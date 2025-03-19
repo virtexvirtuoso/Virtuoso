@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: virtuoso-app
+    volumes:
+      - .:/app
+      # Exclude virtual environment folders to avoid conflicts
+      - /app/venv
+      - /app/venv_new
+      - /app/venv_new_py312
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"  # For API/UI if needed
+    command: bash -c "python -m src.main"  # Adjust to your main script
+    restart: unless-stopped
+    
+  # Add services as needed (e.g., database, test)
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: virtuoso-test
+    volumes:
+      - .:/app
+      # Exclude virtual environment folders
+      - /app/venv
+      - /app/venv_new
+      - /app/venv_new_py312
+    env_file:
+      - .env
+    command: pytest -c config/ci/pytest.ini
+    profiles:
+      - test 
