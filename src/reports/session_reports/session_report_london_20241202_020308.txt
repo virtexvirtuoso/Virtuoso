@@ -1,0 +1,55 @@
+🌐 European Session Market Report - 2024-12-02 07:03 UTC
+
+📊 Executive Summary
+Market is Directionless with very high volatility. Bitcoin +0.09% on $57 volume. Risk level is high.
+
+🎯 Market Analysis
+Market Type: Directionless
+Characteristics:
+• No clear price direction
+• Choppy price action
+• Low volume or inconsistent volume
+
+Trading Implications:
+• Reduce position sizes
+• Very selective entry points
+• Quick take-profits recommended
+
+Risk Note: Higher risk of false breakouts
+
+📈 Market Conditions
+• Volatility Regime: Very High
+• Liquidity Conditions: Low
+• Trading Activity: Moderate
+• Risk Level: High
+
+₿ Bitcoin Performance
+• Session Change: +0.09%
+• Range: $96,337 - $96,437
+• Volatility: nan%
+• Volume: $57
+
+📊 Market Dynamics
+• Liquidity Score: 50/100
+• Market Depth: 50/100
+• Order Flow: Neutral
+• Market Efficiency: 0.00
+
+🏆 Top Movers
+Leading Gainers:
+• 1000PEPEUSDT: +0.43% | Vol: $89.5M | Momentum: Neutral
+• BRETTUSDT: +0.43% | Vol: $792.9K | Momentum: Neutral
+• POPCATUSDT: +0.38% | Vol: $159.3K | Momentum: Neutral
+
+Largest Declines:
+• ALGOUSDT: -0.61% | Vol: $1.1M | Momentum: Neutral
+• LTCUSDT: -0.29% | Vol: $4.3K | Momentum: Neutral
+• LINKUSDT: -0.23% | Vol: $22.2K | Momentum: Neutral
+
+💹 Order Flow
+Institutional Activity:
+
+⚠️ Risk Analysis
+• Overall Risk Level: High
+• Volatility Regime: Very High
+• Liquidity Risk: Low
