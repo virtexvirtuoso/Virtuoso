@@ -1,0 +1,38 @@
+{
+  "symbol": "ETHUSDT",
+  "timestamp": "2025-03-01T13:45:46.713551",
+  "sentiment_score": 56.129556897181125,
+  "components": {
+    "funding_rate": 49.98043125103914,
+    "long_short_ratio": 79.1391472673955,
+    "liquidations": 37.41998030184407,
+    "volume": 99.87289837369187,
+    "market_mood": 57.978668768445765,
+    "risk": 50.0,
+    "sentiment": 56.129556897181125
+  },
+  "interpretation": {
+    "signal": "neutral",
+    "bias": "neutral",
+    "risk_level": "unfavorable",
+    "summary": "Market sentiment is neutral with unfavorable risk conditions",
+    "component_interpretations": {
+      "funding_rate": "Funding rate showing neutral market expectations",
+      "long_short_ratio": "Long/Short ratio indicating moderately bullish sentiment",
+      "liquidations": "Score is moderately bearish",
+      "volume": "Score is strongly bullish",
+      "market_mood": "Overall market mood is neutral",
+      "risk": "Score is neutral",
+      "sentiment": "Score is neutral"
+    }
+  },
+  "signals": [
+    {
+      "signal": "BUY",
+      "strength": "WEAK",
+      "confidence": 0.7,
+      "reason": "Strong buying volume detected",
+      "component": "volume"
+    }
+  ]
+}

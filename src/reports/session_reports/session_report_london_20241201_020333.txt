@@ -1,0 +1,33 @@
+🌐 European Session Market Report - 2024-12-01 07:03 UTC
+
+📈 Summary
+Market is mixed with very high volatility. Bitcoin -0.02% on $51 volume. Risk level is high.
+
+📈 Market Conditions
+• Market Type: Mixed
+• Volatility Regime: Very High
+• Liquidity Conditions: Normal
+• Trading Activity: Moderate
+• Risk Level: High
+
+Market Dynamics:
+• Liquidity Score: 50/100
+• Market Depth: 50/100
+• Order Flow: Neutral
+
+₿ Bitcoin Performance:
+• Session Change: -0.02%
+• Range: $96,390 - $96,415
+• Volatility: nan%
+• Volume: $51
+
+🏆 Top Movers
+Leading Gainers:
+• DOGEUSDT: +0.34% | Vol: $4.8M | Momentum: Bullish
+• ENSUSDT: +0.30% | Vol: $14.6K | Momentum: Bullish
+• PUFFERUSDT: +0.30% | Vol: $107.7K | Momentum: Bullish
+
+Largest Declines:
+• THEUSDT: -0.68% | Vol: $69.7K | Momentum: Bullish
+• MEMEFIUSDT: -0.51% | Vol: $2.9M | Momentum: Bullish
+• NEARUSDT: -0.30% | Vol: $37.7K | Momentum: Bullish

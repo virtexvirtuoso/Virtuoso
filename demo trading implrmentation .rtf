@@ -1,0 +1,755 @@
+{\rtf1\ansi\ansicpg1252\cocoartf2821
+\cocoatextscaling0\cocoaplatform0{\fonttbl\f0\froman\fcharset0 Times-Roman;\f1\froman\fcharset0 Times-Bold;\f2\fmodern\fcharset0 Courier;
+}
+{\colortbl;\red255\green255\blue255;\red0\green0\blue0;}
+{\*\expandedcolortbl;;\cssrgb\c0\c0\c0;}
+{\*\listtable{\list\listtemplateid1\listhybrid{\listlevel\levelnfc0\levelnfcn0\leveljc0\leveljcn0\levelfollow0\levelstartat1\levelspace360\levelindent0{\*\levelmarker \{decimal\}}{\leveltext\leveltemplateid1\'01\'00;}{\levelnumbers\'01;}\fi-360\li720\lin720 }{\listlevel\levelnfc23\levelnfcn23\leveljc0\leveljcn0\levelfollow0\levelstartat1\levelspace360\levelindent0{\*\levelmarker \{circle\}}{\leveltext\leveltemplateid2\'01\uc0\u9702 ;}{\levelnumbers;}\fi-360\li1440\lin1440 }{\listname ;}\listid1}
+{\list\listtemplateid2\listhybrid{\listlevel\levelnfc0\levelnfcn0\leveljc0\leveljcn0\levelfollow0\levelstartat1\levelspace360\levelindent0{\*\levelmarker \{decimal\}}{\leveltext\leveltemplateid101\'01\'00;}{\levelnumbers\'01;}\fi-360\li720\lin720 }{\listname ;}\listid2}
+{\list\listtemplateid3\listhybrid{\listlevel\levelnfc0\levelnfcn0\leveljc0\leveljcn0\levelfollow0\levelstartat1\levelspace360\levelindent0{\*\levelmarker \{decimal\}}{\leveltext\leveltemplateid201\'01\'00;}{\levelnumbers\'01;}\fi-360\li720\lin720 }{\listname ;}\listid3}
+{\list\listtemplateid4\listhybrid{\listlevel\levelnfc0\levelnfcn0\leveljc0\leveljcn0\levelfollow0\levelstartat1\levelspace360\levelindent0{\*\levelmarker \{decimal\}}{\leveltext\leveltemplateid301\'01\'00;}{\levelnumbers\'01;}\fi-360\li720\lin720 }{\listlevel\levelnfc23\levelnfcn23\leveljc0\leveljcn0\levelfollow0\levelstartat1\levelspace360\levelindent0{\*\levelmarker \{circle\}}{\leveltext\leveltemplateid302\'01\uc0\u9702 ;}{\levelnumbers;}\fi-360\li1440\lin1440 }{\listname ;}\listid4}
+{\list\listtemplateid5\listhybrid{\listlevel\levelnfc0\levelnfcn0\leveljc0\leveljcn0\levelfollow0\levelstartat1\levelspace360\levelindent0{\*\levelmarker \{decimal\}}{\leveltext\leveltemplateid401\'01\'00;}{\levelnumbers\'01;}\fi-360\li720\lin720 }{\listname ;}\listid5}}
+{\*\listoverridetable{\listoverride\listid1\listoverridecount0\ls1}{\listoverride\listid2\listoverridecount0\ls2}{\listoverride\listid3\listoverridecount0\ls3}{\listoverride\listid4\listoverridecount0\ls4}{\listoverride\listid5\listoverridecount0\ls5}}
+\margl1440\margr1440\vieww51000\viewh28240\viewkind0
+\deftab720
+\pard\pardeftab720\sa240\partightenfactor0
+
+\f0\fs24 \cf0 \expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 <think>The user wants to implement a trading strategy on Bybit with the following features:\
+\pard\tx220\tx720\pardeftab720\li720\fi-720\sa240\partightenfactor0
+\ls1\ilvl0\cf0 \kerning1\expnd0\expndtw0 \outl0\strokewidth0 {\listtext	1	}\expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 If the "confluence score" is above 70, take a position with:\
+\pard\tx940\tx1440\pardeftab720\li1440\fi-1440\sa240\partightenfactor0
+\ls1\ilvl1\cf0 \kerning1\expnd0\expndtw0 \outl0\strokewidth0 {\listtext	\uc0\u9702 	}\expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 3% of available capital\
+\ls1\ilvl1\kerning1\expnd0\expndtw0 \outl0\strokewidth0 {\listtext	\uc0\u9702 	}\expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 Use a trailing stop loss\
+\ls1\ilvl1\kerning1\expnd0\expndtw0 \outl0\strokewidth0 {\listtext	\uc0\u9702 	}\expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 Scale up the position percentage based on how high (for longs) or low (for shorts) the price goes\
+\pard\pardeftab720\sa240\partightenfactor0
+\cf0 The user has also linked to the Bybit v5 demo API documentation, which suggests they want to implement this using the Bybit API, possibly in a demo environment first.\
+To help the user, I should:\
+\pard\tx220\tx720\pardeftab720\li720\fi-720\sa240\partightenfactor0
+\ls2\ilvl0\cf0 \kerning1\expnd0\expndtw0 \outl0\strokewidth0 {\listtext	1	}\expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 Understand their codebase to see what exists already\
+\ls2\ilvl0\kerning1\expnd0\expndtw0 \outl0\strokewidth0 {\listtext	2	}\expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 Determine how the "confluence score" is currently calculated\
+\ls2\ilvl0\kerning1\expnd0\expndtw0 \outl0\strokewidth0 {\listtext	3	}\expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 Figure out how to implement the position sizing, trailing stop, and scaling logic\
+\ls2\ilvl0\kerning1\expnd0\expndtw0 \outl0\strokewidth0 {\listtext	4	}\expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 Show how to integrate this with the Bybit API\
+\pard\pardeftab720\sa240\partightenfactor0
+\cf0 Let me start by exploring their codebase.</think>I'll help you implement this trading strategy with the Bybit API. First, let's explore your codebase to understand the current structure and where this new functionality should fit.\
+Ran tool\
+I notice you have several files related to Bybit API integration and trading. Let's look more closely at the src directory to understand the structure of your project better.\
+Ran tool\
+Now, let's look at the confluence score implementation to understand how it's calculated and where we should implement our position sizing logic.\
+Read file: confluence_fixed.py\
+Let's look at the trade execution module to understand how to implement our position sizing logic:\
+Ran tool\
+Let's examine the trade executor:\
+Read file: src/trade_execution/trade_executor.py\
+Now let's look at the trading directory to see if there's more implementation details:\
+Ran tool\
+Let's examine the trading system implementation:\
+Read file: src/trade_execution/trading/trading_system.py\
+Let's examine the position manager to understand how position sizing and management works:\
+Ran tool\
+Let's check if we have a module for Bybit exchange integration:\
+Ran tool\
+Now that I've explored your codebase, I notice you have a ConfluenceAnalyzer that calculates a confluence score, and a basic trade execution framework, but the position management and exchange integration needs enhancement.\
+Based on your requirements, I'll design a solution to:\
+\pard\tx220\tx720\pardeftab720\li720\fi-720\sa240\partightenfactor0
+\ls3\ilvl0\cf0 \kerning1\expnd0\expndtw0 \outl0\strokewidth0 {\listtext	1	}\expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 Check if the confluence score is above 70\
+\ls3\ilvl0\kerning1\expnd0\expndtw0 \outl0\strokewidth0 {\listtext	2	}\expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 Calculate a 3% position size\
+\ls3\ilvl0\kerning1\expnd0\expndtw0 \outl0\strokewidth0 {\listtext	3	}\expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 Implement a trailing stop loss\
+\ls3\ilvl0\kerning1\expnd0\expndtw0 \outl0\strokewidth0 {\listtext	4	}\expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 Implement a position scaling mechanism based on price movement\
+\pard\pardeftab720\sa240\partightenfactor0
+\cf0 Here's how I would implement this:\
+\pard\pardeftab720\sa280\partightenfactor0
+
+\f1\b\fs28 \cf0 1. Create a Position Manager Class\
+\pard\pardeftab720\sa240\partightenfactor0
+
+\f0\b0\fs24 \cf0 First, let's create a dedicated position manager class:\
+\pard\pardeftab720\partightenfactor0
+
+\f2\fs26 \cf0 # src/trade_execution/position_manager.py\
+\
+import logging\
+from typing import Dict, Any, Optional, List, Tuple\
+import ccxt\
+import time\
+\
+logger = logging.getLogger(__name__)\
+\
+class PositionManager:\
+    """Manages trading positions including sizing, stops, and scaling."""\
+    \
+    def __init__(self, config: Dict[str, Any]):\
+        """Initialize position manager.\
+        \
+        Args:\
+            config: Configuration dictionary with exchange settings\
+        """\
+        self.config = config\
+        self.exchange_config = config.get('exchanges', \{\}).get('bybit', \{\})\
+        self.api_key = self.exchange_config.get('api_credentials', \{\}).get('api_key')\
+        self.api_secret = self.exchange_config.get('api_credentials', \{\}).get('api_secret')\
+        self.base_url = self.exchange_config.get('endpoint', '<https://api.bybit.com')>\
+        \
+        # Initialize exchange client\
+        self.exchange = ccxt.bybit(\{\
+            'apiKey': self.api_key,\
+            'secret': self.api_secret,\
+            'enableRateLimit': True,\
+            'urls': \{\
+                'api': self.base_url\
+            \}\
+        \})\
+        \
+        # Position settings\
+        self.position_settings = \{\
+            'base_position_pct': 0.03,  # 3% of available capital\
+            'min_confluence_score': 70,  # Minimum confluence score to take a trade\
+            'trailing_stop_pct': 0.02,   # 2% trailing stop loss\
+            'scale_factor': 0.01,        # How much to increase position per point above threshold\
+            'max_position_pct': 0.10,    # Maximum position size (10%)\
+            'scaling_threshold': \{\
+                'long': 75,              # Score above which to start scaling for longs\
+                'short': 25              # Score below which to start scaling for shorts\
+            \}\
+        \}\
+        \
+        self.active_positions = \{\}\
+        self.trailing_stops = \{\}\
+        \
+    async def initialize(self) -> bool:\
+        """Initialize the position manager."""\
+        try:\
+            # Test exchange connection\
+            await self._test_connection()\
+            logger.info("Position manager initialized successfully")\
+            return True\
+        except Exception as e:\
+            logger.error(f"Failed to initialize position manager: \{str(e)\}")\
+            return False\
+            \
+    async def _test_connection(self) -> bool:\
+        """Test the exchange connection."""\
+        try:\
+            markets = self.exchange.fetch_markets()\
+            logger.debug(f"Connected to exchange. Found \{len(markets)\} markets")\
+            return True\
+        except Exception as e:\
+            logger.error(f"Failed to connect to exchange: \{str(e)\}")\
+            return False\
+            \
+    def calculate_position_size(self, symbol: str, side: str, \
+                               confluence_score: float, account_balance: float) -> float:\
+        """Calculate position size based on confluence score.\
+        \
+        Args:\
+            symbol: Trading symbol (e.g. 'BTC/USDT')\
+            side: Trade side ('buy' or 'sell')\
+            confluence_score: The confluence score (0-100)\
+            account_balance: Account balance to size against\
+            \
+        Returns:\
+            Position size in base currency units\
+        """\
+        # Check if confluence score meets minimum threshold\
+        min_score = self.position_settings['min_confluence_score']\
+        if side == 'buy' and confluence_score < min_score:\
+            logger.info(f"Confluence score \{confluence_score\} below minimum \{min_score\} for long position")\
+            return 0\
+        elif side == 'sell' and confluence_score > (100 - min_score):\
+            logger.info(f"Confluence score \{confluence_score\} above maximum \{100-min_score\} for short position")\
+            return 0\
+        \
+        # Base position percentage\
+        base_pct = self.position_settings['base_position_pct']\
+        position_pct = base_pct\
+        \
+        # Scale up for stronger signals\
+        if side == 'buy' and confluence_score > self.position_settings['scaling_threshold']['long']:\
+            # For every point above long threshold, add scale_factor to position size\
+            extra_points = confluence_score - self.position_settings['scaling_threshold']['long']\
+            extra_size = extra_points * self.position_settings['scale_factor']\
+            position_pct += extra_size\
+            logger.info(f"Scaling up long position: +\{extra_size:.2%\} for \{extra_points\} points above threshold")\
+            \
+        elif side == 'sell' and confluence_score < self.position_settings['scaling_threshold']['short']:\
+            # For every point below short threshold, add scale_factor to position size\
+            extra_points = self.position_settings['scaling_threshold']['short'] - confluence_score\
+            extra_size = extra_points * self.position_settings['scale_factor']\
+            position_pct += extra_size\
+            logger.info(f"Scaling up short position: +\{extra_size:.2%\} for \{extra_points\} points below threshold")\
+        \
+        # Cap at maximum position size\
+        max_pct = self.position_settings['max_position_pct']\
+        if position_pct > max_pct:\
+            logger.info(f"Capping position size from \{position_pct:.2%\} to \{max_pct:.2%\}")\
+            position_pct = max_pct\
+            \
+        # Calculate position size in account balance terms\
+        position_value = account_balance * position_pct\
+        logger.info(f"Position size: \{position_pct:.2%\} of \{account_balance\} = \{position_value\}")\
+        \
+        return position_value\
+        \
+    async def open_position(self, symbol: str, side: str, \
+                           confluence_score: float) -> Dict[str, Any]:\
+        """Open a new position with proper sizing and stops.\
+        \
+        Args:\
+            symbol: Trading symbol (e.g. 'BTC/USDT')\
+            side: Trade side ('buy' or 'sell')\
+            confluence_score: The confluence score (0-100)\
+            \
+        Returns:\
+            Dict with position details\
+        """\
+        try:\
+            # Fetch account balance\
+            balance = await self._fetch_balance()\
+            available_balance = balance['free']['USDT']  # Assuming USDT as quote currency\
+            \
+            # Calculate position size\
+            position_value = self.calculate_position_size(\
+                symbol, side, confluence_score, available_balance\
+            )\
+            \
+            if position_value <= 0:\
+                logger.info(f"No position opened: calculated size <= 0")\
+                return \{"status": "rejected", "reason": "position_size_zero"\}\
+            \
+            # Get current market price\
+            ticker = await self.exchange.fetch_ticker(symbol)\
+            current_price = ticker['last']\
+            \
+            # Calculate quantity in base currency\
+            quantity = position_value / current_price\
+            \
+            # Place market order\
+            order = await self.exchange.create_order(\
+                symbol=symbol,\
+                type='market',\
+                side=side,\
+                amount=quantity\
+            )\
+            \
+            # Set trailing stop\
+            await self._set_trailing_stop(symbol, side, current_price, order['id'])\
+            \
+            # Track position\
+            self.active_positions[order['id']] = \{\
+                'symbol': symbol,\
+                'side': side,\
+                'entry_price': current_price,\
+                'quantity': quantity,\
+                'confluence_score': confluence_score,\
+                'timestamp': time.time(),\
+                'trailing_stop': True\
+            \}\
+            \
+            logger.info(f"Opened \{side\} position for \{symbol\}: \{quantity\} @ \{current_price\}")\
+            return \{\
+                "status": "success",\
+                "order_id": order['id'],\
+                "symbol": symbol,\
+                "side": side,\
+                "quantity": quantity,\
+                "price": current_price,\
+                "value": position_value\
+            \}\
+            \
+        except Exception as e:\
+            logger.error(f"Failed to open position: \{str(e)\}")\
+            return \{"status": "error", "reason": str(e)\}\
+    \
+    async def _set_trailing_stop(self, symbol: str, side: str, \
+                                current_price: float, order_id: str) -> bool:\
+        """Set a trailing stop for the position.\
+        \
+        Args:\
+            symbol: Trading symbol\
+            side: Trade side ('buy' or 'sell')\
+            current_price: Current market price\
+            order_id: The order ID to track\
+            \
+        Returns:\
+            Boolean indicating success\
+        """\
+        try:\
+            # Calculate activation price based on side\
+            trailing_pct = self.position_settings['trailing_stop_pct']\
+            \
+            if side == 'buy':\
+                # For long positions, activate stop below current price\
+                activation_price = current_price * (1 - trailing_pct)\
+                stop_side = 'sell'\
+            else:\
+                # For short positions, activate stop above current price\
+                activation_price = current_price * (1 + trailing_pct)\
+                stop_side = 'buy'\
+            \
+            # Place trailing stop order\
+            trailing_stop_order = await self.exchange.create_order(\
+                symbol=symbol,\
+                type='trailing_stop',\
+                side=stop_side,\
+                amount=self.active_positions[order_id]['quantity'],\
+                params=\{\
+                    'activationPrice': activation_price,\
+                    'callbackRate': trailing_pct * 100  # Convert to percentage points\
+                \}\
+            )\
+            \
+            self.trailing_stops[order_id] = trailing_stop_order['id']\
+            \
+            logger.info(f"Set trailing stop for \{symbol\} \{side\} position at \{activation_price\}")\
+            return True\
+            \
+        except Exception as e:\
+            logger.error(f"Failed to set trailing stop: \{str(e)\}")\
+            return False\
+            \
+    async def _fetch_balance(self) -> Dict[str, Any]:\
+        """Fetch account balance."""\
+        try:\
+            return await self.exchange.fetch_balance()\
+        except Exception as e:\
+            logger.error(f"Failed to fetch balance: \{str(e)\}")\
+            raise\
+            \
+    async def update_trailing_stops(self) -> None:\
+        """Update trailing stops for all active positions."""\
+        for order_id, position in self.active_positions.items():\
+            try:\
+                # Get current market price\
+                ticker = await self.exchange.fetch_ticker(position['symbol'])\
+                current_price = ticker['last']\
+                \
+                # Calculate new activation price based on side and current price\
+                if position['side'] == 'buy':\
+                    # For long positions\
+                    new_activation = current_price * (1 - self.position_settings['trailing_stop_pct'])\
+                    # Only update if price has moved up\
+                    if new_activation > position.get('activation_price', 0):\
+                        await self._update_stop(order_id, position, new_activation)\
+                else:\
+                    # For short positions\
+                    new_activation = current_price * (1 + self.position_settings['trailing_stop_pct'])\
+                    # Only update if price has moved down\
+                    if new_activation < position.get('activation_price', float('inf')):\
+                        await self._update_stop(order_id, position, new_activation)\
+                \
+            except Exception as e:\
+                logger.error(f"Error updating trailing stop for \{position['symbol']\}: \{str(e)\}")\
+    \
+    async def _update_stop(self, order_id: str, position: Dict[str, Any], new_activation: float) -> None:\
+        """Update a trailing stop order."""\
+        try:\
+            # Cancel existing stop\
+            if order_id in self.trailing_stops:\
+                await self.exchange.cancel_order(self.trailing_stops[order_id], position['symbol'])\
+            \
+            # Create new stop\
+            stop_side = 'sell' if position['side'] == 'buy' else 'buy'\
+            trailing_stop_order = await self.exchange.create_order(\
+                symbol=position['symbol'],\
+                type='trailing_stop',\
+                side=stop_side,\
+                amount=position['quantity'],\
+                params=\{\
+                    'activationPrice': new_activation,\
+                    'callbackRate': self.position_settings['trailing_stop_pct'] * 100\
+                \}\
+            )\
+            \
+            # Update tracking\
+            self.trailing_stops[order_id] = trailing_stop_order['id']\
+            position['activation_price'] = new_activation\
+            \
+            logger.info(f"Updated trailing stop for \{position['symbol']\} to \{new_activation\}")\
+            \
+        except Exception as e:\
+            logger.error(f"Failed to update trailing stop: \{str(e)\}")\
+\pard\pardeftab720\sa280\partightenfactor0
+
+\f1\b\fs28 \cf0 2. Integrate with the ConfluenceAnalyzer\
+\pard\pardeftab720\sa240\partightenfactor0
+
+\f0\b0\fs24 \cf0 Next, we'll create a simple trading strategy that uses the ConfluenceAnalyzer and the PositionManager:\
+\pard\pardeftab720\partightenfactor0
+
+\f2\fs26 \cf0 # src/trade_execution/strategy_manager.py\
+\
+import logging\
+from typing import Dict, Any, Optional\
+import asyncio\
+\
+logger = logging.getLogger(__name__)\
+\
+class StrategyManager:\
+    """Manages trading strategies and signal generation."""\
+    \
+    def __init__(self, config: Dict[str, Any]):\
+        """Initialize strategy manager.\
+        \
+        Args:\
+            config: Configuration dictionary\
+        """\
+        self.config = config\
+        self.position_manager = None  # Will be injected\
+        self.confluence_analyzer = None  # Will be injected\
+        \
+    async def initialize(self, position_manager=None, confluence_analyzer=None) -> bool:\
+        """Initialize the strategy manager."""\
+        self.position_manager = position_manager\
+        self.confluence_analyzer = confluence_analyzer\
+        logger.info("Strategy manager initialized")\
+        return True\
+    \
+    async def evaluate_market(self, symbol: str, market_data: Dict[str, Any]) -> Dict[str, Any]:\
+        """Evaluate market conditions and generate trading signals.\
+        \
+        Args:\
+            symbol: Trading symbol\
+            market_data: Market data dictionary\
+            \
+        Returns:\
+            Dict with trading signals\
+        """\
+        if not self.confluence_analyzer:\
+            logger.error("Confluence analyzer not initialized")\
+            return \{"action": "none", "reason": "analyzer_not_initialized"\}\
+        \
+        # Analyze market data\
+        analysis_result = await self.confluence_analyzer.analyze(market_data)\
+        \
+        # Get confluence score\
+        confluence_score = analysis_result.get('confluence_score', 50)\
+        logger.info(f"Confluence score for \{symbol\}: \{confluence_score\}")\
+        \
+        # Generate signals based on score\
+        signals = \{"action": "none", "score": confluence_score\}\
+        \
+        # If score is above threshold, consider a long position\
+        if confluence_score >= 70:\
+            signals["action"] = "buy"\
+            signals["reason"] = f"Confluence score \{confluence_score\} >= 70"\
+            logger.info(f"Generated BUY signal for \{symbol\} with score \{confluence_score\}")\
+            \
+        # If score is below threshold, consider a short position\
+        elif confluence_score <= 30:\
+            signals["action"] = "sell"\
+            signals["reason"] = f"Confluence score \{confluence_score\} <= 30"\
+            logger.info(f"Generated SELL signal for \{symbol\} with score \{confluence_score\}")\
+        \
+        return signals\
+    \
+    async def execute_signals(self, symbol: str, signals: Dict[str, Any]) -> Dict[str, Any]:\
+        """Execute trading signals.\
+        \
+        Args:\
+            symbol: Trading symbol\
+            signals: Trading signals\
+            \
+        Returns:\
+            Dict with execution results\
+        """\
+        if not self.position_manager:\
+            logger.error("Position manager not initialized")\
+            return \{"status": "error", "reason": "position_manager_not_initialized"\}\
+        \
+        action = signals.get("action", "none")\
+        confluence_score = signals.get("score", 50)\
+        \
+        if action == "none":\
+            logger.debug(f"No action for \{symbol\}, score: \{confluence_score\}")\
+            return \{"status": "no_action"\}\
+        \
+        # Execute trade based on signal\
+        if action in ["buy", "sell"]:\
+            logger.info(f"Executing \{action\} signal for \{symbol\}, score: \{confluence_score\}")\
+            result = await self.position_manager.open_position(\
+                symbol=symbol,\
+                side=action,\
+                confluence_score=confluence_score\
+            )\
+            return result\
+        \
+        return \{"status": "unknown_action", "action": action\}\
+\pard\pardeftab720\sa280\partightenfactor0
+
+\f1\b\fs28 \cf0 3. Create a Main Trading Script\
+\pard\pardeftab720\sa240\partightenfactor0
+
+\f0\b0\fs24 \cf0 Finally, let's create a main script that ties everything together:\
+\pard\pardeftab720\partightenfactor0
+
+\f2\fs26 \cf0 # src/trade_execution/trade_runner.py\
+\
+import asyncio\
+import logging\
+import os\
+import json\
+from typing import Dict, Any, List\
+import time\
+from datetime import datetime\
+\
+from src.trade_execution.position_manager import PositionManager\
+from src.trade_execution.strategy_manager import StrategyManager\
+from confluence_fixed import ConfluenceAnalyzer\
+\
+# Setup logging\
+logging.basicConfig(\
+    level=logging.INFO,\
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',\
+    handlers=[\
+        logging.FileHandler("logs/trading.log"),\
+        logging.StreamHandler()\
+    ]\
+)\
+\
+logger = logging.getLogger(__name__)\
+\
+class TradeRunner:\
+    """Main class for running the trading system."""\
+    \
+    def __init__(self, config_path: str = "config/trading_config.json"):\
+        """Initialize the trade runner.\
+        \
+        Args:\
+            config_path: Path to configuration file\
+        """\
+        # Load configuration\
+        self.config_path = config_path\
+        self.config = self._load_config()\
+        \
+        # Initialize components\
+        self.position_manager = PositionManager(self.config)\
+        self.confluence_analyzer = ConfluenceAnalyzer(self.config)\
+        self.strategy_manager = StrategyManager(self.config)\
+        \
+        # Trading settings\
+        self.symbols = self.config.get("symbols", ["BTC/USDT"])\
+        self.update_interval = self.config.get("update_interval", 60)  # seconds\
+        self.enabled = False\
+        \
+    def _load_config(self) -> Dict[str, Any]:\
+        """Load configuration from file."""\
+        try:\
+            with open(self.config_path, 'r') as f:\
+                config = json.load(f)\
+            logger.info(f"Loaded configuration from \{self.config_path\}")\
+            return config\
+        except Exception as e:\
+            logger.error(f"Failed to load configuration: \{str(e)\}")\
+            # Return default configuration\
+            return \{\
+                "exchanges": \{\
+                    "bybit": \{\
+                        "api_credentials": \{\
+                            "api_key": os.environ.get("BYBIT_API_KEY", ""),\
+                            "api_secret": os.environ.get("BYBIT_API_SECRET", "")\
+                        \},\
+                        "endpoint": "<https://api.bybit.com>"\
+                    \}\
+                \},\
+                "symbols": ["BTC/USDT"],\
+                "update_interval": 60\
+            \}\
+    \
+    async def initialize(self) -> bool:\
+        """Initialize the trading system."""\
+        try:\
+            # Initialize components\
+            await self.position_manager.initialize()\
+            await self.strategy_manager.initialize(\
+                position_manager=self.position_manager,\
+                confluence_analyzer=self.confluence_analyzer\
+            )\
+            \
+            logger.info("Trading system initialized successfully")\
+            return True\
+        except Exception as e:\
+            logger.error(f"Failed to initialize trading system: \{str(e)\}")\
+            return False\
+    \
+    async def start(self) -> None:\
+        """Start the trading loop."""\
+        self.enabled = True\
+        logger.info("Starting trading loop")\
+        \
+        while self.enabled:\
+            try:\
+                for symbol in self.symbols:\
+                    await self._process_symbol(symbol)\
+                \
+                # Update trailing stops\
+                await self.position_manager.update_trailing_stops()\
+                \
+                # Sleep until next update\
+                logger.debug(f"Sleeping for \{self.update_interval\} seconds")\
+                await asyncio.sleep(self.update_interval)\
+                \
+            except Exception as e:\
+                logger.error(f"Error in trading loop: \{str(e)\}")\
+                await asyncio.sleep(10)  # Sleep and retry\
+    \
+    async def stop(self) -> None:\
+        """Stop the trading loop."""\
+        self.enabled = False\
+        logger.info("Stopping trading loop")\
+    \
+    async def _process_symbol(self, symbol: str) -> None:\
+        """Process a trading symbol.\
+        \
+        Args:\
+            symbol: Trading symbol\
+        """\
+        try:\
+            # Fetch market data\
+            market_data = await self._fetch_market_data(symbol)\
+            \
+            # Evaluate market\
+            signals = await self.strategy_manager.evaluate_market(symbol, market_data)\
+            \
+            # Execute signals\
+            if signals["action"] != "none":\
+                result = await self.strategy_manager.execute_signals(symbol, signals)\
+                logger.info(f"Signal execution result: \{result\}")\
+            \
+        except Exception as e:\
+            logger.error(f"Error processing \{symbol\}: \{str(e)\}")\
+    \
+    async def _fetch_market_data(self, symbol: str) -> Dict[str, Any]:\
+        """Fetch market data for analysis.\
+        \
+        Args:\
+            symbol: Trading symbol\
+            \
+        Returns:\
+            Dict with market data\
+        """\
+        # Placeholder - implement actual data fetching logic\
+        # This would normally fetch OHLCV, orderbook, trades, etc.\
+        return \{\
+            "symbol": symbol,\
+            "timestamp": int(time.time() * 1000),\
+            "ohlcv": \{\},\
+            "orderbook": \{\},\
+            "trades": []\
+        \}\
+\
+async def main():\
+    """Main entry point."""\
+    try:\
+        # Create and initialize trade runner\
+        runner = TradeRunner()\
+        \
+        if await runner.initialize():\
+            # Start trading loop\
+            await runner.start()\
+        else:\
+            logger.error("Failed to initialize trading system, exiting")\
+            \
+    except KeyboardInterrupt:\
+        logger.info("Keyboard interrupt received, shutting down")\
+    except Exception as e:\
+        logger.error(f"Unhandled exception: \{str(e)\}")\
+    finally:\
+        # Cleanup\
+        if 'runner' in locals():\
+            await runner.stop()\
+\
+if __name__ == "__main__":\
+    asyncio.run(main())\
+\pard\pardeftab720\sa280\partightenfactor0
+
+\f1\b\fs28 \cf0 4. Configuration File\
+\pard\pardeftab720\sa240\partightenfactor0
+
+\f0\b0\fs24 \cf0 Create a configuration file for the trading system:\
+\pard\pardeftab720\partightenfactor0
+
+\f2\fs26 \cf0 \{\
+    "exchanges": \{\
+        "bybit": \{\
+            "api_credentials": \{\
+                "api_key": "",\
+                "api_secret": ""\
+            \},\
+            "endpoint": "<https://api.bybit.com>"\
+        \}\
+    \},\
+    "symbols": ["BTC/USDT"],\
+    "update_interval": 60,\
+    "position_manager": \{\
+        "base_position_pct": 0.03,\
+        "min_confluence_score": 70,\
+        "trailing_stop_pct": 0.02,\
+        "scale_factor": 0.01,\
+        "max_position_pct": 0.10,\
+        "scaling_threshold": \{\
+            "long": 75,\
+            "short": 25\
+        \}\
+    \}\
+\}\
+\pard\pardeftab720\sa280\partightenfactor0
+
+\f1\b\fs28 \cf0 Implementation Summary\
+\pard\pardeftab720\sa240\partightenfactor0
+
+\f0\b0\fs24 \cf0 This implementation:\
+\pard\tx220\tx720\pardeftab720\li720\fi-720\sa240\partightenfactor0
+\ls4\ilvl0
+\f1\b \cf0 \kerning1\expnd0\expndtw0 \outl0\strokewidth0 {\listtext	1	}\expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 Calculates position size
+\f0\b0  based on the confluence score:\
+\pard\tx940\tx1440\pardeftab720\li1440\fi-1440\sa240\partightenfactor0
+\ls4\ilvl1\cf0 \kerning1\expnd0\expndtw0 \outl0\strokewidth0 {\listtext	\uc0\u9702 	}\expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 Base position is 3% if score > 70 (long) or < 30 (short)\
+\ls4\ilvl1\kerning1\expnd0\expndtw0 \outl0\strokewidth0 {\listtext	\uc0\u9702 	}\expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 Scales up position size by 1% for each point above 75 for longs or below 25 for shorts\
+\ls4\ilvl1\kerning1\expnd0\expndtw0 \outl0\strokewidth0 {\listtext	\uc0\u9702 	}\expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 Caps at a maximum position size of 10%\
+\pard\tx220\tx720\pardeftab720\li720\fi-720\sa240\partightenfactor0
+\ls4\ilvl0
+\f1\b \cf0 \kerning1\expnd0\expndtw0 \outl0\strokewidth0 {\listtext	2	}\expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 Implements trailing stops
+\f0\b0 :\
+\pard\tx940\tx1440\pardeftab720\li1440\fi-1440\sa240\partightenfactor0
+\ls4\ilvl1\cf0 \kerning1\expnd0\expndtw0 \outl0\strokewidth0 {\listtext	\uc0\u9702 	}\expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 Sets a 2% trailing stop loss when entering a position\
+\ls4\ilvl1\kerning1\expnd0\expndtw0 \outl0\strokewidth0 {\listtext	\uc0\u9702 	}\expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 Automatically updates the stop as price moves favorably\
+\pard\tx220\tx720\pardeftab720\li720\fi-720\sa240\partightenfactor0
+\ls4\ilvl0
+\f1\b \cf0 \kerning1\expnd0\expndtw0 \outl0\strokewidth0 {\listtext	3	}\expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 Manages trading logic
+\f0\b0 :\
+\pard\tx940\tx1440\pardeftab720\li1440\fi-1440\sa240\partightenfactor0
+\ls4\ilvl1\cf0 \kerning1\expnd0\expndtw0 \outl0\strokewidth0 {\listtext	\uc0\u9702 	}\expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 Uses the ConfluenceAnalyzer to generate scores\
+\ls4\ilvl1\kerning1\expnd0\expndtw0 \outl0\strokewidth0 {\listtext	\uc0\u9702 	}\expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 Executes trades based on signals\
+\ls4\ilvl1\kerning1\expnd0\expndtw0 \outl0\strokewidth0 {\listtext	\uc0\u9702 	}\expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 Continuously monitors and updates trailing stops\
+\pard\pardeftab720\sa240\partightenfactor0
+\cf0 To use the system, you need to:\
+\pard\tx220\tx720\pardeftab720\li720\fi-720\sa240\partightenfactor0
+\ls5\ilvl0\cf0 \kerning1\expnd0\expndtw0 \outl0\strokewidth0 {\listtext	1	}\expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 Add your Bybit API key and secret to the configuration file or as environment variables\
+\ls5\ilvl0\kerning1\expnd0\expndtw0 \outl0\strokewidth0 {\listtext	2	}\expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 Run the trade_runner.py script to start the trading system\
+\ls5\ilvl0\kerning1\expnd0\expndtw0 \outl0\strokewidth0 {\listtext	3	}\expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 Adjust parameters in the configuration file as neede\
+}

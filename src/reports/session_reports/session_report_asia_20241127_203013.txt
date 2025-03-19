@@ -1,0 +1,44 @@
+🌐 Asian Session Market Report - 2024-11-28 01:30 UTC
+
+📈 Summary
+Market is ranging with very low volatility. Bitcoin -0.38% on $9.2K volume. Risk level is moderate.
+
+📈 Market Conditions
+• Market Type: Ranging
+• Volatility Regime: Very Low
+• Liquidity Conditions: Normal
+• Trading Activity: Moderate
+• Risk Level: Moderate
+
+Market Dynamics:
+• Liquidity Score: 50/100
+• Market Depth: 50/100
+• Order Flow: Neutral
+
+₿ Bitcoin Performance:
+• Session Change: -0.38%
+• Range: $95,777 - $96,648
+• Volatility: 0.22%
+• Volume: $9.2K
+
+🏆 Top Movers
+Leading Gainers:
+• MEMEFIUSDT: +12.27% | Vol: $2.6B | Momentum: Bullish
+• UNIUSDT: +5.34% | Vol: $1.9M | Momentum: Bullish
+• SEIUSDT: +1.59% | Vol: $31.3M | Momentum: Bullish
+
+Largest Declines:
+• ENSUSDT: -5.77% | Vol: $4.7M | Momentum: Bullish
+• THEUSDT: -5.28% | Vol: $8.5M | Momentum: Bullish
+• TIAUSDT: -2.61% | Vol: $2.9M | Momentum: Bullish
+
+🔗 BTC Correlation Analysis
+
+🔴 Strong BTC Correlation:
+• 1000PEPEUSDT: 0.89 (β: 2.99)
+• DOGEUSDT: 0.85 (β: 2.92)
+
+🟢 Weak/No BTC Correlation:
+• UNIUSDT: -0.03 (β: -0.12)
+• PNUTUSDT: 0.10 (β: 0.44)
+• ARBUSDT: 0.11 (β: 0.45)

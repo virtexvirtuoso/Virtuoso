@@ -1,0 +1,33 @@
+🌐 European Session Market Report - 2024-11-30 07:03 UTC
+
+📈 Summary
+Market is mixed with very high volatility. Bitcoin +0.03% on $96 volume. Risk level is high.
+
+📈 Market Conditions
+• Market Type: Mixed
+• Volatility Regime: Very High
+• Liquidity Conditions: Normal
+• Trading Activity: Moderate
+• Risk Level: High
+
+Market Dynamics:
+• Liquidity Score: 50/100
+• Market Depth: 50/100
+• Order Flow: Neutral
+
+₿ Bitcoin Performance:
+• Session Change: +0.03%
+• Range: $96,619 - $96,778
+• Volatility: nan%
+• Volume: $96
+
+🏆 Top Movers
+Leading Gainers:
+• XLMUSDT: +0.61% | Vol: $3.1M | Momentum: Bullish
+• XRPUSDT: +0.58% | Vol: $7.2M | Momentum: Bullish
+• ADAUSDT: +0.40% | Vol: $2.1M | Momentum: Bullish
+
+Largest Declines:
+• MEMEFIUSDT: -0.36% | Vol: $7.3M | Momentum: Bullish
+• ENSUSDT: -0.32% | Vol: $23.5K | Momentum: Bullish
+• SUIUSDT: -0.21% | Vol: $334.4K | Momentum: Bullish

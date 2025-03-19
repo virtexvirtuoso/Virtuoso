@@ -1,0 +1,9 @@
+from typing import Protocol
+from datetime import datetime
+
+class ValidationProvider(Protocol):
+    async def validate(self, data: Any) -> ValidationResult: ...
+    async def get_validation_rules(self) -> Dict[str, Any]: ...
+
+class AlertProvider(Protocol):
+    async def send_alert(self, message: str, level: str, context: str) -> None: ...

@@ -1,0 +1,199 @@
+/* Market Report Specific Styles */
+.report-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+}
+
+.report-header #report-timestamp {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    margin-right: 1rem;
+}
+
+.report-container {
+    position: relative;
+    min-height: 500px;
+    background-color: var(--bg-card);
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.report-section {
+    margin-bottom: 2.5rem;
+}
+
+.report-section h3 {
+    color: var(--text-primary);
+    font-size: 1.3rem;
+    margin-bottom: 1.2rem;
+    display: flex;
+    align-items: center;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.report-section h3 i {
+    margin-right: 0.6rem;
+    color: var(--accent-blue);
+}
+
+.report-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1.2rem;
+}
+
+.metric-card {
+    background-color: rgba(40, 44, 52, 0.7);
+    border-radius: 6px;
+    padding: 1.2rem;
+    border: 1px solid var(--border-color);
+    transition: transform 0.2s ease;
+}
+
+.metric-card:hover {
+    transform: translateY(-3px);
+}
+
+.metric-title {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    margin-bottom: 0.6rem;
+}
+
+.metric-value {
+    font-size: 1.6rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.regime-indicator {
+    background-color: rgba(40, 44, 52, 0.7);
+    border-radius: 6px;
+    padding: 1.5rem;
+    border: 1px solid var(--border-color);
+}
+
+.regime-label {
+    font-size: 1.8rem;
+    font-weight: 700;
+    margin-bottom: 0.8rem;
+}
+
+.regime-label.bullish {
+    color: var(--bullish);
+}
+
+.regime-label.bearish {
+    color: var(--bearish);
+}
+
+.regime-label.neutral {
+    color: var(--neutral);
+}
+
+.regime-description {
+    color: var(--text-primary);
+    line-height: 1.6;
+}
+
+.movers-container {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+}
+
+.movers-column h4 {
+    color: var(--text-secondary);
+    margin-bottom: 1rem;
+    font-size: 1.1rem;
+}
+
+.movers-list {
+    list-style: none;
+    padding: 0;
+}
+
+.movers-list li {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.7rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.movers-list li:last-child {
+    border-bottom: none;
+}
+
+.movers-list .symbol {
+    font-weight: 600;
+}
+
+.movers-list .change {
+    font-weight: 600;
+}
+
+.movers-list .change.positive {
+    color: var(--bullish);
+}
+
+.movers-list .change.negative {
+    color: var(--bearish);
+}
+
+#order-flow-content, 
+#whale-activity-content, 
+#market-outlook-content {
+    background-color: rgba(40, 44, 52, 0.7);
+    border-radius: 6px;
+    padding: 1.5rem;
+    border: 1px solid var(--border-color);
+    line-height: 1.6;
+    white-space: pre-wrap;
+    font-family: monospace;
+    font-size: 0.95rem;
+    overflow-x: auto;
+}
+
+/* Progress bar styles */
+.progress-bar {
+    width: 100%;
+    height: 0.6rem;
+    background-color: var(--border-color);
+    border-radius: 3px;
+    margin: 0.5rem 0;
+    overflow: hidden;
+}
+
+.progress-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.3s ease;
+}
+
+.progress-fill.bullish {
+    background-color: var(--bullish);
+}
+
+.progress-fill.bearish {
+    background-color: var(--bearish);
+}
+
+.progress-fill.neutral {
+    background-color: var(--neutral);
+}
+
+/* For small screens */
+@media (max-width: 768px) {
+    .movers-container {
+        grid-template-columns: 1fr;
+    }
+    
+    .report-grid {
+        grid-template-columns: 1fr;
+    }
+} 

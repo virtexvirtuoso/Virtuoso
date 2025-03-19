@@ -1,0 +1,45 @@
+🌐 New York Session Market Report - 2024-12-01 15:05 UTC
+
+📈 Summary
+Market is ranging with very low volatility. Bitcoin -0.27% on $6.1K volume. Risk level is moderate.
+
+📈 Market Conditions
+• Market Type: Ranging
+• Volatility Regime: Very Low
+• Liquidity Conditions: Normal
+• Trading Activity: Moderate
+• Risk Level: Moderate
+
+Market Dynamics:
+• Liquidity Score: 50/100
+• Market Depth: 50/100
+• Order Flow: Neutral
+
+₿ Bitcoin Performance:
+• Session Change: -0.27%
+• Range: $96,733 - $97,473
+• Volatility: 0.14%
+• Volume: $6.1K
+
+🏆 Top Movers
+Leading Gainers:
+• ENSUSDT: +1.26% | Vol: $510.2K | Momentum: Bullish
+• GOATUSDT: +1.01% | Vol: $15.0M | Momentum: Bullish
+• TIAUSDT: +0.25% | Vol: $1.2M | Momentum: Bullish
+
+Largest Declines:
+• PUFFERUSDT: -5.34% | Vol: $10.7M | Momentum: Bullish
+• FTMUSDT: -2.99% | Vol: $14.1M | Momentum: Bullish
+• 1000PEPEUSDT: -2.61% | Vol: $5.9B | Momentum: Bullish
+
+🔗 BTC Correlation Analysis
+
+🔴 Strong BTC Correlation:
+• ARBUSDT: 0.85 (β: 1.64)
+• MEMEFIUSDT: 0.83 (β: 2.65)
+• ADAUSDT: 0.80 (β: 1.14)
+
+🟢 Weak/No BTC Correlation:
+• THEUSDT: 0.00 (β: 0.01)
+• 1000BONKUSDT: -0.01 (β: -0.06)
+• GOATUSDT: -0.02 (β: -0.23)
