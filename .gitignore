@@ -28,6 +28,7 @@ ENV/
 env/
 env.bak/
 venv.bak/
+src/venv/
 
 # Environment variables
 .env
