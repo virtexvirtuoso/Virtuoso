@@ -22,6 +22,7 @@ wheels/
 
 # Virtual environments
 venv/
+venv_new/
 venv_new_py312/
 ENV/
 env/
@@ -56,4 +57,48 @@ Thumbs.db
 .idea/
 .vscode/
 *.swp
-*.swo 
+*.swo
+
+# Backup files
+*.bak
+*.bak.*
+*_backup.*
+*.backup
+*/backup/
+*~
+
+# Temporary files
+temp_*
+tmp_*
+*.tmp
+*.temp
+
+# Duplicate and development files
+volume_fixes.py
+volume_indicators_fixed.py
+volume_indicators_new.py
+*_fixed.py
+*_new.py
+*_debug.py
+*_test_data.*
+
+# Large data files
+*.csv
+*.xlsx
+*.xls
+*.json
+!package.json
+!package-lock.json
+!tsconfig.json
+!requirements.json
+!configuration.json
+
+# Test reports
+test-reports/
+coverage/
+.coverage
+.pytest_cache/
+htmlcov/
+
+# Jupyter Notebook
+.ipynb_checkpoints 
