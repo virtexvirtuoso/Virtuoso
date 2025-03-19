@@ -101,4 +101,18 @@ coverage/
 htmlcov/
 
 # Jupyter Notebook
-.ipynb_checkpoints 
+.ipynb_checkpoints
+
+# Proprietary algorithms - KEEP PRIVATE
+src/core/analysis/confluence.py
+src/indicators/orderflow_indicators.py
+src/indicators/volume_indicators.py
+src/indicators/sentiment_indicators.py
+src/indicators/technical_indicators.py
+src/indicators/orderbook_indicators.py
+src/indicators/price_structure_indicators.py
+
+# Fix and test files in root directory
+/fix_*.py
+/fix_*.sh
+/test_*.py 
