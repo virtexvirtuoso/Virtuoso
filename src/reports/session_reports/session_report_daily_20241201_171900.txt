@@ -1,0 +1,44 @@
+🌐 Daily Session Market Report - 2024-12-01 22:18 UTC
+
+📊 Executive Summary
+Market is random_walk with moderate volatility. Bitcoin -0.99% on $53.6K volume. Risk level is moderate.
+
+📈 Market Conditions
+• Market Type: Random_Walk
+• Volatility Regime: Moderate
+• Liquidity Conditions: Low
+• Trading Activity: Moderate
+• Risk Level: Moderate
+
+₿ Bitcoin Performance
+• Session Change: -0.99%
+• Range: $95,750 - $97,929
+• Volatility: 0.15%
+• Volume: $53.6K
+
+📊 Market Dynamics
+• Liquidity Score: 50/100
+• Market Depth: 50/100
+• Order Flow: Neutral
+• Market Efficiency: 0.09
+
+🏆 Top Movers
+Leading Gainers:
+• ETHUSDT: +0.24% | Vol: $793.6K | Momentum: Neutral
+
+Largest Declines:
+• XRPUSDT: -9.99% | Vol: $1.9B | Momentum: Neutral
+• BTCUSDT: -0.99% | Vol: $53.6K | Momentum: Neutral
+
+🔗 BTC Correlation Analysis
+
+Weak/No BTC Correlation:
+• XRPUSDT: 0.26 (β: 1.46)
+
+💹 Order Flow
+Institutional Activity:
+
+⚠️ Risk Analysis
+• Overall Risk Level: Moderate
+• Volatility Regime: Moderate
+• Liquidity Risk: Low

@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Virtuoso - Market Report</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+    <link rel="stylesheet" href="/static/css/report.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <header>
+        <div class="logo">
+            <h1>Virtuoso</h1>
+            <span class="subtitle">CRYPTO SIGNALS</span>
+        </div>
+        <nav>
+            <ul>
+                <li><a href="/ui">Dashboard</a></li>
+                <li><a href="/static/market-report.html" class="active">Market Report</a></li>
+                <li><a href="#">Portfolio</a></li>
+                <li><a href="#">Settings</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <main>
+        <div class="report-header">
+            <h2>Comprehensive Market Report</h2>
+            <div class="controls">
+                <span id="report-timestamp">Last updated: Loading...</span>
+                <button id="refresh-btn"><i class="fas fa-sync-alt"></i> Refresh</button>
+            </div>
+        </div>
+
+        <div class="report-container">
+            <div class="loader">Loading market report...</div>
+            
+            <!-- Report content will be inserted here -->
+            <div id="report-content" style="display: none;">
+                <div class="report-section" id="market-overview">
+                    <h3><i class="fas fa-chart-line"></i> Market Overview</h3>
+                    <div class="report-grid">
+                        <div class="metric-card">
+                            <div class="metric-title">Total Market Volume</div>
+                            <div class="metric-value" id="total-volume">$0</div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-title">Market Sentiment</div>
+                            <div class="metric-value" id="market-sentiment">Neutral</div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-title">Volatility Index</div>
+                            <div class="metric-value" id="volatility-index">0</div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-title">Smart Money Flow</div>
+                            <div class="metric-value" id="smart-money-flow">0</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="report-section" id="market-regime">
+                    <h3><i class="fas fa-compass"></i> Market Regime</h3>
+                    <div class="regime-indicator">
+                        <div class="regime-label" id="regime-name">Analyzing...</div>
+                        <div class="regime-description" id="regime-description"></div>
+                    </div>
+                </div>
+                
+                <div class="report-section" id="top-movers">
+                    <h3><i class="fas fa-rocket"></i> Top Market Movers</h3>
+                    <div class="movers-container">
+                        <div class="movers-column">
+                            <h4>Top Gainers</h4>
+                            <ul id="top-gainers-list" class="movers-list">
+                                <!-- Top gainers will be inserted here -->
+                            </ul>
+                        </div>
+                        <div class="movers-column">
+                            <h4>Top Losers</h4>
+                            <ul id="top-losers-list" class="movers-list">
+                                <!-- Top losers will be inserted here -->
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="report-section" id="order-flow">
+                    <h3><i class="fas fa-exchange-alt"></i> Order Flow Analysis</h3>
+                    <div id="order-flow-content"></div>
+                </div>
+                
+                <div class="report-section" id="whale-activity">
+                    <h3><i class="fas fa-whale"></i> Whale Activity</h3>
+                    <div id="whale-activity-content"></div>
+                </div>
+                
+                <div class="report-section" id="market-outlook">
+                    <h3><i class="fas fa-binoculars"></i> Market Outlook</h3>
+                    <div id="market-outlook-content"></div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer>
+        <p>&copy; 2025 Virtuoso Trading System</p>
+    </footer>
+
+    <script src="/static/js/market-report.js"></script>
+</body>
+</html> 

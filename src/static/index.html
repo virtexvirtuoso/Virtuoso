@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Virtuoso Trading System - Crypto Analysis</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <header>
+        <div class="logo">
+            <h1>Virtuoso</h1>
+            <span class="subtitle">CRYPTO SIGNALS</span>
+        </div>
+        <nav>
+            <ul>
+                <li><a href="/ui" class="active">Dashboard</a></li>
+                <li><a href="/static/market-report.html">Market Report</a></li>
+                <li><a href="#">Portfolio</a></li>
+                <li><a href="#">Settings</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <main>
+        <div class="dashboard-header">
+            <h2>Market Analysis Dashboard</h2>
+            <div class="controls">
+                <select id="timeframe-selector">
+                    <option value="1h">1 Hour</option>
+                    <option value="4h" selected>4 Hours</option>
+                    <option value="1d">1 Day</option>
+                </select>
+                <button id="refresh-btn"><i class="fas fa-sync-alt"></i> Refresh</button>
+            </div>
+        </div>
+
+        <div class="analysis-grid" id="analysis-container">
+            <!-- Analysis cards will be dynamically inserted here -->
+            <div class="loader">Loading analyses...</div>
+        </div>
+    </main>
+
+    <footer>
+        <p>&copy; 2025 Virtuoso Trading System</p>
+    </footer>
+
+    <!-- Analysis Card Template -->
+    <template id="analysis-card-template">
+        <div class="analysis-card">
+            <div class="card-header">
+                <h3 class="symbol"></h3>
+                <span class="badge"></span>
+            </div>
+            <div class="card-body">
+                <div class="market-prism">
+                    <h4>Market Prism</h4>
+                    <div class="overall-signal">
+                        <span class="score"></span>
+                        <span class="max">/100</span>
+                    </div>
+                    <div class="metrics">
+                        <div class="metric">
+                            <span class="label">Technical</span>
+                            <span class="value technical"></span>
+                        </div>
+                        <div class="metric">
+                            <span class="label">Volume</span>
+                            <span class="value volume"></span>
+                        </div>
+                        <div class="metric">
+                            <span class="label">Orderflow</span>
+                            <span class="value orderflow"></span>
+                        </div>
+                        <div class="metric">
+                            <span class="label">Orderbook</span>
+                            <span class="value orderbook"></span>
+                        </div>
+                    </div>
+                </div>
+                <div class="ai-analysis">
+                    <h4>AI Analysis</h4>
+                    <div class="sentiment">
+                        <span class="label">Market Sentiment</span>
+                        <span class="value sentiment-value"></span>
+                    </div>
+                    <div class="confidence">
+                        <span class="label">Confidence:</span>
+                        <span class="value confidence-value"></span>
+                    </div>
+                    <div class="insights">
+                        <h5>Key Insights</h5>
+                        <ul class="insights-list">
+                            <!-- Insights will be dynamically added here -->
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            <div class="card-footer">
+                <button class="details-btn">View Details</button>
+                <span class="updated-time"></span>
+            </div>
+        </div>
+    </template>
+
+    <script src="/static/js/dashboard.js"></script>
+</body>
+</html> 

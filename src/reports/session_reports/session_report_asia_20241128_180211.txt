@@ -1,0 +1,33 @@
+🌐 Asian Session Market Report - 2024-11-28 23:02 UTC
+
+📈 Summary
+Market is mixed with very high volatility. Bitcoin +0.01% on $224 volume. Risk level is high.
+
+📈 Market Conditions
+• Market Type: Mixed
+• Volatility Regime: Very High
+• Liquidity Conditions: Normal
+• Trading Activity: Moderate
+• Risk Level: High
+
+Market Dynamics:
+• Liquidity Score: 50/100
+• Market Depth: 50/100
+• Order Flow: Neutral
+
+₿ Bitcoin Performance:
+• Session Change: +0.01%
+• Range: $95,690 - $95,794
+• Volatility: nan%
+• Volume: $224
+
+🏆 Top Movers
+Leading Gainers:
+• XLMUSDT: +0.68% | Vol: $1.6M | Momentum: Bullish
+• XRPUSDT: +0.30% | Vol: $3.1M | Momentum: Bullish
+• NEARUSDT: +0.17% | Vol: $107.7K | Momentum: Bullish
+
+Largest Declines:
+• PUFFERUSDT: -1.66% | Vol: $247.0K | Momentum: Bullish
+• ENSUSDT: -0.94% | Vol: $39.1K | Momentum: Bullish
+• MEMEFIUSDT: -0.91% | Vol: $14.6M | Momentum: Bullish

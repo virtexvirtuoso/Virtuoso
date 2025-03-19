@@ -1,0 +1,43 @@
+🌐 Daily Session Market Report - 2024-11-27 23:56 UTC
+📈 Summary
+Market is ranging with very low volatility. Bitcoin -5.44% on $1.3M volume. Risk level is high.
+🎯 Top Confluence Scores
+No confluence scores available
+📊 Market Overview
+📊 Market Overview
+
+Bitcoin Performance:
+• Session Change: -5.44%
+• Range: $89,721 - $99,690
+• Volatility: 0.28%
+• Volume: $1,331,448
+
+Market Dynamics:
+• Liquidity Score: 50/100
+• Market Depth: 50/100
+• Order Flow: Neutral
+🏆 Top Movers
+🔗 Correlation Analysis
+📊 BTC Correlation Analysis
+
+🟡 Moderate BTC Correlation:
+• DOGEUSDT: 0.66 (β: 1.91)
+• SOLUSDT: 0.64 (β: 1.15)
+• ETHUSDT: 0.61 (β: 0.94)
+• 1000PEPEUSDT: 0.58 (β: 1.78)
+• ADAUSDT: 0.49 (β: 1.65)
+• XRPUSDT: 0.43 (β: 1.46)
+• TIAUSDT: 0.42 (β: 1.60)
+
+🟢 Weak/No BTC Correlation:
+• XLMUSDT: 0.29 (β: 1.67)
+• THEUSDT: -0.02 (β: -0.44)
+📈 Market Conditions
+• Market Type: Ranging
+• Volatility Regime: Very Low
+• Liquidity Conditions: Normal
+• Trading Activity: Moderate
+• Risk Level: High
+💹 Order Flow
+🔮 Next Session Outlook
+No outlook data available

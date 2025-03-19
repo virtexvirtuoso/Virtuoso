@@ -1,0 +1,10 @@
+pandas
+numpy
+matplotlib
+psutil
+aiohttp
+memory_profiler
+snakeviz
+gprof2dot
+python-dotenv
+tracemalloc
