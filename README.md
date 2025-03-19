@@ -138,6 +138,12 @@ make format
 Detailed documentation is available in the `docs/` directory:
 
 - [API Documentation](docs/api/)
+  - [API Overview](docs/api/index.md)
+  - [Market Data API](docs/api/market.md)
+  - [Trading API](docs/api/trading.md)
+  - [System API](docs/api/system.md)
+  - [WebSocket API](docs/api/websocket.md)
+  - [Authentication](docs/api/authentication.md)
 - [User Guides](docs/guides/)
 - [Development Guidelines](docs/development/)
 - [Architecture Documentation](docs/architecture/)
