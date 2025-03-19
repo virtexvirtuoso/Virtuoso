@@ -18,32 +18,32 @@ Raw Market Data (Spectrum) → Market Prism → Trading Signals (Light)
 
 #### The Six Faces of Market Analysis:
 
-1. **Technical** (15% weight)
+1. **Technical** 
    - Reveals the fastest-moving market forces
    - Captures immediate price action and directional strength
    - Identifies acceleration and deceleration patterns
 
-2. **Volume** (15% weight)
+2. **Volume**
    - Shows the depth and intensity of market moves
    - Measures participation and conviction
    - Validates price action with volume confirmation
 
-3. **Orderflow** (22.5% weight)
+3. **Orderflow**
    - Reveals the flow and pressure of trading activity
    - Tracks institutional activity and market maker behavior
    - Identifies significant accumulation/distribution
 
-4. **Orderbook** (22.5% weight)
+4. **Orderbook**
    - Shows the market's structural foundation
    - Maps supply and demand dynamics
    - Reveals potential support and resistance levels
 
-5. **Price Structure** (15% weight)
+5. **Price Structure**
    - Illuminates market participant positioning
    - Tracks aggregate trader behavior
    - Identifies potential squeeze points
 
-6. **Sentiment** (10% weight)
+6. **Sentiment**
    - Captures the market's emotional state
    - Measures market psychology and bias
    - Identifies extreme sentiment conditions
