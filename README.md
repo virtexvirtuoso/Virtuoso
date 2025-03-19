@@ -1,6 +1,10 @@
 # Virtuoso Trading System
 
-## System Overview
+![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/fil0s/Virtuoso/python-tests.yml?branch=main&style=flat-square)
+![License](https://img.shields.io/github/license/fil0s/Virtuoso?style=flat-square)
+![Python Version](https://img.shields.io/badge/python-3.9%20%7C%203.10%20%7C%203.11-blue?style=flat-square)
+
+## Overview
 
 Virtuoso is an advanced cryptocurrency trading system that combines real-time market analysis, multi-factor signal generation, and automated trading execution. The system leverages machine learning and statistical analysis to identify high-probability trading opportunities across multiple timeframes.
 
@@ -45,6 +49,86 @@ Raw Market Data (Spectrum) → Market Prism → Trading Signals (Light)
    - Identifies extreme sentiment conditions
 
 Just as a prism reveals the hidden spectrum within white light, Virtuoso's market prism reveals the underlying forces driving price action. The system combines these six dimensions into a coherent trading signal, with each component weighted according to its predictive power and market conditions.
+
+## Getting Started
+
+### Prerequisites
+
+- Python 3.9+ 
+- Git
+
+### Installation
+
+**Option 1: Standard Setup**
+
+```bash
+# Clone the repository
+git clone https://github.com/fil0s/Virtuoso.git
+cd Virtuoso
+
+# Setup development environment
+make setup
+```
+
+**Option 2: Docker Setup**
+
+```bash
+# Clone the repository
+git clone https://github.com/fil0s/Virtuoso.git
+cd Virtuoso
+
+# Setup with Docker
+make docker-setup
+```
+
+### Configuration
+
+1. Copy the example environment file: `cp config/.env.example .env`
+2. Edit the `.env` file with your specific configuration
+
+## Development
+
+### Running Tests
+
+```bash
+# Run all tests
+make test
+
+# Run tests in Docker
+make docker-test
+```
+
+### Code Style
+
+This project uses pre-commit hooks to enforce code style standards:
+
+```bash
+# Install pre-commit hooks
+pre-commit install
+
+# Run linting checks
+make lint
+
+# Format code
+make format
+```
+
+## Documentation
+
+Detailed documentation is available in the `docs/` directory:
+
+- [API Documentation](docs/api/)
+- [User Guides](docs/guides/)
+- [Development Guidelines](docs/development/)
+- [Architecture Documentation](docs/architecture/)
+
+## Contributing
+
+We welcome contributions! Please see [Contributing Guidelines](.github/CONTRIBUTING.md) for more information.
+
+## License
+
+This project is licensed under the [LICENSE](LICENSE) - see the LICENSE file for details.
 
 ## Advanced System Features
 
