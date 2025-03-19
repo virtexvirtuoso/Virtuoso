@@ -1,0 +1,45 @@
+# Set default behavior to automatically normalize line endings
+* text=auto
+
+# Explicitly declare text files to be normalized
+*.py text
+*.md text
+*.txt text
+*.yaml text
+*.yml text
+*.json text
+*.html text
+*.css text
+*.js text
+*.sh text eol=lf
+*.bat text eol=crlf
+
+# Binary files that should not be modified
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.gz binary
+*.tar binary
+*.whl binary
+*.pyc binary
+
+# Python-specific settings
+*.pxd    text diff=python
+*.py     text diff=python
+*.py3    text diff=python
+*.pyw    text diff=python
+*.pyx    text diff=python
+*.pyz    text diff=python
+*.pyi    text diff=python
+
+# Jupyter notebook
+*.ipynb  text
+
+# Define files that are not added to archive when creating a release package
+.gitattributes export-ignore
+.gitignore export-ignore
+.gitkeep export-ignore 
