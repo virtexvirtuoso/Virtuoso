@@ -2497,6 +2497,10 @@ class AlertManager:
         reliability = signal.get('reliability', 100)
         price = signal.get('price', 0)
         
+        # Convert reliability to percentage if it's a decimal
+        if isinstance(reliability, (int, float)) and 0 <= reliability <= 1:
+            reliability = reliability * 100
+        
         # Color coding
         if signal_type.lower() in ['buy', 'bullish']:
             color = 3066993  # Green
@@ -2513,7 +2517,7 @@ class AlertManager:
             "title": f"{emoji} {symbol} CONFLUENCE ANALYSIS {emoji}",
             "description": (
                 f"**OVERALL SCORE: {score:.2f} ({signal_type})**\n"
-                f"**RELIABILITY: {reliability}% (HIGH)**\n\n"
+                f"**RELIABILITY: {reliability:.0f}% (HIGH)**\n\n"
                 f"Current Price: ${price:.2f}\n"
                 f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}"
             ),
@@ -2553,29 +2557,56 @@ class AlertManager:
             if price <= 0:
                 price_text = "UNKNOWN (price unavailable)"
             else:
-                price_text = f"${price:.2f}"
+                # Format price to show 4 digits to left of decimal
+                price_text = f"${price:,.2f}"
         else:
-            price_text = f"${price:.2f}"
+            # Format price to show 4 digits to left of decimal
+            price_text = f"${price:,.2f}"
             
         # Update description with correct price
         embed["description"] = (
             f"**OVERALL SCORE: {score:.2f} ({signal_type})**\n"
-            f"**RELIABILITY: {reliability}% (HIGH)**\n\n"
+            f"**RELIABILITY: {reliability:.0f}% (HIGH)**\n\n"
             f"Current Price: {price_text}\n"
             f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}"
         )
         
-        # Add component breakdown field
+        # Extract components and their impact values
         components = signal.get('components', {})
+        
+        # Look for impact values in both direct format and nested format
+        component_impacts = {}
+        
+        # Check for direct impact values in signal data (component_name_impact format)
+        for key in signal:
+            if key.endswith('_impact') and key.replace('_impact', '') in components:
+                component_name = key.replace('_impact', '')
+                component_impacts[component_name] = signal[key]
+        
+        # Also look for impact values in a dedicated impacts dictionary if it exists
+        impacts = signal.get('impacts', signal.get('component_impacts', {}))
+        if isinstance(impacts, dict):
+            for component_name, impact_value in impacts.items():
+                if component_name in components:
+                    component_impacts[component_name] = impact_value
+        
+        # Add component breakdown field
         if components:
             component_text = "```\n"
             component_text += "COMPONENT          | SCORE  | IMPACT \n"
             component_text += "------------------ | ------ | ------\n"
             
-            # Sort components by impact
+            # Create a list of tuples with component name, score, and impact
+            component_list = []
+            for comp_name, comp_score in components.items():
+                # Get impact from our collected impacts or default to 0
+                comp_impact = component_impacts.get(comp_name, 0)
+                component_list.append((comp_name, comp_score, comp_impact))
+            
+            # Sort components by impact (if available) or by score
             sorted_components = sorted(
-                [(k, v, components.get(f"{k}_impact", 0)) for k, v in components.items()],
-                key=lambda x: x[2], 
+                component_list,
+                key=lambda x: x[2] if x[2] != 0 else x[1],  # Sort by impact if available, otherwise by score
                 reverse=True
             )
             
@@ -2584,7 +2615,7 @@ class AlertManager:
                 display_name = comp_name.replace('_', ' ').title()
                 display_name = display_name.ljust(18)[:18]
                 
-                # Add gauges based on score
+                # Format score and impact values
                 component_text += f"{display_name} | {comp_score:.2f}  | {comp_impact:.1f}\n"
             
             component_text += "```"
@@ -2601,27 +2632,30 @@ class AlertManager:
             influential_text = ""
             
             for comp_name, comp_data in results.items():
-                if 'components' in comp_data and isinstance(comp_data['components'], dict):
+                # Add check to ensure comp_data is a dictionary
+                if comp_name in components:  # Only process if in components list
                     comp_score = components.get(comp_name, 0)
                     influential_text += f"**{comp_name.replace('_', ' ').title()} ({comp_score:.2f})**\n"
                     
-                    # Sort subcomponents by value
-                    subcomps = comp_data['components']
-                    sorted_subcomps = sorted(subcomps.items(), key=lambda x: abs(float(x[1])) if isinstance(x[1], (int, float)) else 0, reverse=True)
-                    
-                    # Take top 3
-                    for i, (sub_name, sub_value) in enumerate(sorted_subcomps[:3]):
-                        if isinstance(sub_value, (int, float)):
-                            # Direction indicator
-                            if sub_value >= 70:
-                                direction = "↑"
-                            elif sub_value >= 50:
-                                direction = "→"
-                            else:
-                                direction = "↓"
-                                
-                            sub_display = sub_name.replace('_', ' ').title()
-                            influential_text += f"• {sub_display}: {sub_value:.2f} {direction}\n"
+                    # Check if comp_data is a dictionary with components
+                    if isinstance(comp_data, dict) and 'components' in comp_data and isinstance(comp_data['components'], dict):
+                        # Sort subcomponents by value
+                        subcomps = comp_data['components']
+                        sorted_subcomps = sorted(subcomps.items(), key=lambda x: abs(float(x[1])) if isinstance(x[1], (int, float)) else 0, reverse=True)
+                        
+                        # Take top 3
+                        for i, (sub_name, sub_value) in enumerate(sorted_subcomps[:3]):
+                            if isinstance(sub_value, (int, float)):
+                                # Direction indicator
+                                if sub_value >= 70:
+                                    direction = "↑"
+                                elif sub_value >= 50:
+                                    direction = "→"
+                                else:
+                                    direction = "↓"
+                                    
+                                sub_display = sub_name.replace('_', ' ').title()
+                                influential_text += f"• {sub_display}: {sub_value:.2f} {direction}\n"
                     
                     influential_text += "\n"
             
@@ -2652,15 +2686,49 @@ class AlertManager:
             from src.core.analysis.interpretation_generator import InterpretationGenerator
             interpretation_generator = InterpretationGenerator()
             
-            buy_threshold = signal.get('buy_threshold', 65)
-            sell_threshold = signal.get('sell_threshold', 35)
+            # Check if results structure is suitable for interpretation generation
+            has_valid_results = False
+            if isinstance(results, dict):
+                # Check if at least one component has a valid dictionary structure
+                for comp_key, comp_value in results.items():
+                    if isinstance(comp_value, dict) and 'components' in comp_value:
+                        has_valid_results = True
+                        break
             
-            actionable_insights = interpretation_generator.generate_actionable_insights(
-                results, score, buy_threshold, sell_threshold
-            )
-            
-            if actionable_insights:
-                insights_text = "• " + "\n• ".join(actionable_insights)
+            # Only generate insights if we have valid results structure
+            if has_valid_results:
+                buy_threshold = signal.get('buy_threshold', 65)
+                sell_threshold = signal.get('sell_threshold', 35)
+                
+                actionable_insights = interpretation_generator.generate_actionable_insights(
+                    results, score, buy_threshold, sell_threshold
+                )
+                
+                if actionable_insights:
+                    insights_text = "• " + "\n• ".join(actionable_insights)
+                    embed["fields"].append({
+                        "name": "🎯 ACTIONABLE TRADING INSIGHTS",
+                        "value": insights_text[:1024],
+                        "inline": False
+                    })
+            else:
+                # Add basic actionable insights based on score
+                basic_insights = []
+                
+                if score >= 65:
+                    basic_insights.append(f"BULLISH BIAS: Overall confluence score ({score:.2f}) above buy threshold (65)")
+                    basic_insights.append("RISK ASSESSMENT: MODERATE - Standard position sizing recommended with normal stop distances")
+                    basic_insights.append("STRATEGY: Consider bullish strategies: swing longs or breakouts with defined risk")
+                elif score <= 35:
+                    basic_insights.append(f"BEARISH BIAS: Overall confluence score ({score:.2f}) below sell threshold (35)")
+                    basic_insights.append("RISK ASSESSMENT: MODERATE - Standard position sizing recommended with normal stop distances")
+                    basic_insights.append("STRATEGY: Consider bearish strategies: swing shorts or breakdown entries with defined risk")
+                else:
+                    basic_insights.append(f"NEUTRAL BIAS: Overall confluence score ({score:.2f}) within neutral zone")
+                    basic_insights.append("RISK ASSESSMENT: ELEVATED - Reduced position sizing recommended")
+                    basic_insights.append("STRATEGY: Consider range-bound strategies or wait for stronger signals")
+                
+                insights_text = "• " + "\n• ".join(basic_insights)
                 embed["fields"].append({
                     "name": "🎯 ACTIONABLE TRADING INSIGHTS",
                     "value": insights_text[:1024],
@@ -2668,6 +2736,29 @@ class AlertManager:
                 })
         except Exception as e:
             self.logger.warning(f"Error generating actionable insights: {str(e)}")
+            
+            # Fallback to basic actionable insights
+            basic_insights = []
+            
+            if score >= 65:
+                basic_insights.append(f"BULLISH BIAS: Overall confluence score ({score:.2f}) above buy threshold (65)")
+                basic_insights.append("RISK ASSESSMENT: MODERATE - Standard position sizing recommended with normal stop distances")
+                basic_insights.append("STRATEGY: Consider bullish strategies: swing longs or breakouts with defined risk")
+            elif score <= 35:
+                basic_insights.append(f"BEARISH BIAS: Overall confluence score ({score:.2f}) below sell threshold (35)")
+                basic_insights.append("RISK ASSESSMENT: MODERATE - Standard position sizing recommended with normal stop distances")
+                basic_insights.append("STRATEGY: Consider bearish strategies: swing shorts or breakdown entries with defined risk")
+            else:
+                basic_insights.append(f"NEUTRAL BIAS: Overall confluence score ({score:.2f}) within neutral zone")
+                basic_insights.append("RISK ASSESSMENT: ELEVATED - Reduced position sizing recommended")
+                basic_insights.append("STRATEGY: Consider range-bound strategies or wait for stronger signals")
+            
+            insights_text = "• " + "\n• ".join(basic_insights)
+            embed["fields"].append({
+                "name": "🎯 ACTIONABLE TRADING INSIGHTS",
+                "value": insights_text[:1024],
+                "inline": False
+            })
         
         # Add risk management section from existing code
         # Calculate default targets if not provided
@@ -2702,12 +2793,12 @@ class AlertManager:
             target_price = target_data.get("price", 0)
             target_size = target_data.get("size", 0)
             pct_change = abs((target_price / price_for_calcs) - 1) * 100
-            targets_text += f"{target_name}: ${target_price:.2f} ({pct_change:.2f}%) - {target_size * 100:.0f}%\n"
+            targets_text += f"{target_name}: ${target_price:,.2f} ({pct_change:.2f}%) - {target_size * 100:.0f}%\n"
         
         # Add entry and exits field
         embed["fields"].append({
             "name": "📊 ENTRY & EXITS",
-            "value": f"**Stop Loss:** ${stop_loss:.2f} ({abs((stop_loss / price_for_calcs) - 1) * 100:.2f}%)\n**Targets:**\n{targets_text}",
+            "value": f"**Stop Loss:** ${stop_loss:,.2f} ({abs((stop_loss / price_for_calcs) - 1) * 100:.2f}%)\n**Targets:**\n{targets_text}",
             "inline": True
         })
         
