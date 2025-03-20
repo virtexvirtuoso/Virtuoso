@@ -2495,11 +2495,12 @@ class AlertManager:
         signal_type = signal.get('signal', 'Unknown').upper()
         score = signal.get('confluence_score', signal.get('score', 0))
         reliability = signal.get('reliability', 100)
-        price = signal.get('price', 0)
         
-        # Convert reliability to percentage if it's a decimal
-        if isinstance(reliability, (int, float)) and 0 <= reliability <= 1:
+        # Ensure reliability is displayed as percentage (not decimal)
+        if reliability <= 1.0:
             reliability = reliability * 100
+        
+        price = signal.get('price', 0)
         
         # Color coding
         if signal_type.lower() in ['buy', 'bullish']:
@@ -2518,7 +2519,7 @@ class AlertManager:
             "description": (
                 f"**OVERALL SCORE: {score:.2f} ({signal_type})**\n"
                 f"**RELIABILITY: {reliability:.0f}% (HIGH)**\n\n"
-                f"Current Price: ${price:.2f}\n"
+                f"Current Price: ${price:.4f}\n"
                 f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}"
             ),
             "color": color,
@@ -2557,11 +2558,9 @@ class AlertManager:
             if price <= 0:
                 price_text = "UNKNOWN (price unavailable)"
             else:
-                # Format price to show 4 digits to left of decimal
-                price_text = f"${price:,.2f}"
+                price_text = f"${price:.4f}"
         else:
-            # Format price to show 4 digits to left of decimal
-            price_text = f"${price:,.2f}"
+            price_text = f"${price:.4f}"
             
         # Update description with correct price
         embed["description"] = (
@@ -2589,7 +2588,7 @@ class AlertManager:
             for component_name, impact_value in impacts.items():
                 if component_name in components:
                     component_impacts[component_name] = impact_value
-        
+                    
         # Add component breakdown field
         if components:
             component_text = "```\n"
@@ -2625,7 +2624,7 @@ class AlertManager:
                 "value": component_text,
                 "inline": False
             })
-        
+            
         # Add top influential components
         results = signal.get('results', {})
         if results:
@@ -2665,7 +2664,7 @@ class AlertManager:
                     "value": influential_text[:1024],
                     "inline": False
                 })
-        
+                
         # Add market interpretations
         interpretations = self._extract_interpretations(results)
         if interpretations:
@@ -2680,7 +2679,7 @@ class AlertManager:
                     "value": interp_text[:1024],
                     "inline": False
                 })
-        
+                
         # Add actionable insights
         try:
             from src.core.analysis.interpretation_generator import InterpretationGenerator
@@ -2759,7 +2758,7 @@ class AlertManager:
                 "value": insights_text[:1024],
                 "inline": False
             })
-        
+            
         # Add risk management section from existing code
         # Calculate default targets if not provided
         price_for_calcs = price if price > 0 else 100.0
@@ -2793,12 +2792,12 @@ class AlertManager:
             target_price = target_data.get("price", 0)
             target_size = target_data.get("size", 0)
             pct_change = abs((target_price / price_for_calcs) - 1) * 100
-            targets_text += f"{target_name}: ${target_price:,.2f} ({pct_change:.2f}%) - {target_size * 100:.0f}%\n"
+            targets_text += f"{target_name}: ${target_price:.4f} ({pct_change:.2f}%) - {target_size * 100:.0f}%\n"
         
         # Add entry and exits field
         embed["fields"].append({
             "name": "📊 ENTRY & EXITS",
-            "value": f"**Stop Loss:** ${stop_loss:,.2f} ({abs((stop_loss / price_for_calcs) - 1) * 100:.2f}%)\n**Targets:**\n{targets_text}",
+            "value": f"**Stop Loss:** ${stop_loss:.4f} ({abs((stop_loss / price_for_calcs) - 1) * 100:.2f}%)\n**Targets:**\n{targets_text}",
             "inline": True
         })
         
