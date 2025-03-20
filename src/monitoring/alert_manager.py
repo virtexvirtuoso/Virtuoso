@@ -2502,6 +2502,11 @@ class AlertManager:
         
         price = signal.get('price', 0)
         
+        # Log signal structure for debugging
+        self.logger.debug(f"ENHANCED ALERT DEBUG: Signal keys: {list(signal.keys())}")
+        if 'metadata' in signal:
+            self.logger.debug(f"ENHANCED ALERT DEBUG: Metadata keys: {list(signal.get('metadata', {}).keys())}")
+        
         # Color coding
         if signal_type.lower() in ['buy', 'bullish']:
             color = 3066993  # Green
@@ -2573,22 +2578,74 @@ class AlertManager:
         # Extract components and their impact values
         components = signal.get('components', {})
         
-        # Look for impact values in both direct format and nested format
+        # Check if we have components and log for debugging
+        if components:
+            self.logger.debug(f"ENHANCED ALERT DEBUG: Components: {components}")
+        
+        # Look for impact values in multiple potential locations
         component_impacts = {}
         
-        # Check for direct impact values in signal data (component_name_impact format)
+        # 1. Check for direct impact values in signal data (component_name_impact format)
         for key in signal:
             if key.endswith('_impact') and key.replace('_impact', '') in components:
                 component_name = key.replace('_impact', '')
                 component_impacts[component_name] = signal[key]
+                self.logger.debug(f"ENHANCED ALERT DEBUG: Found impact for {component_name}: {signal[key]}")
         
-        # Also look for impact values in a dedicated impacts dictionary if it exists
+        # 2. Check for impact values in a dedicated impacts dictionary
         impacts = signal.get('impacts', signal.get('component_impacts', {}))
         if isinstance(impacts, dict):
             for component_name, impact_value in impacts.items():
                 if component_name in components:
                     component_impacts[component_name] = impact_value
-                    
+                    self.logger.debug(f"ENHANCED ALERT DEBUG: Found impact in impacts dict for {component_name}: {impact_value}")
+        
+        # 3. Check for weights and calculate impacts
+        weights = signal.get('weights', {})
+        if weights and isinstance(weights, dict):
+            for component_name, weight in weights.items():
+                if component_name in components and component_name not in component_impacts:
+                    # Calculate impact from weight and score
+                    comp_score = components.get(component_name, 0)
+                    impact = (comp_score / 100) * weight * 100
+                    component_impacts[component_name] = impact
+                    self.logger.debug(f"ENHANCED ALERT DEBUG: Calculated impact from weight for {component_name}: {impact}")
+        
+        # 4. Check in metadata if available
+        metadata = signal.get('metadata', {})
+        if metadata and isinstance(metadata, dict):
+            # Look for component impacts or weights in metadata
+            meta_impacts = metadata.get('impacts', metadata.get('component_impacts', {}))
+            if meta_impacts and isinstance(meta_impacts, dict):
+                for component_name, impact_value in meta_impacts.items():
+                    if component_name in components:
+                        component_impacts[component_name] = impact_value
+                        self.logger.debug(f"ENHANCED ALERT DEBUG: Found impact in metadata for {component_name}: {impact_value}")
+            
+            # Also check for weights in metadata
+            meta_weights = metadata.get('weights', {})
+            if meta_weights and isinstance(meta_weights, dict):
+                for component_name, weight in meta_weights.items():
+                    if component_name in components and component_name not in component_impacts:
+                        # Calculate impact from weight and score
+                        comp_score = components.get(component_name, 0)
+                        impact = (comp_score / 100) * weight * 100
+                        component_impacts[component_name] = impact
+                        self.logger.debug(f"ENHANCED ALERT DEBUG: Calculated impact from metadata weight for {component_name}: {impact}")
+        
+        # 5. Last resort: If no impacts found, calculate based on component scores
+        if not component_impacts and components:
+            total_score = sum(components.values())
+            for component_name, comp_score in components.items():
+                if total_score > 0:
+                    # Simple proportional impact based on score contribution
+                    impact = (comp_score / total_score) * 100
+                    component_impacts[component_name] = impact
+                    self.logger.debug(f"ENHANCED ALERT DEBUG: Generated fallback impact for {component_name}: {impact}")
+        
+        # Log impact values for debugging
+        self.logger.debug(f"ENHANCED ALERT DEBUG: Final component impacts: {component_impacts}")
+        
         # Add component breakdown field
         if components:
             component_text = "```\n"
@@ -2624,7 +2681,7 @@ class AlertManager:
                 "value": component_text,
                 "inline": False
             })
-            
+        
         # Add top influential components
         results = signal.get('results', {})
         if results:
