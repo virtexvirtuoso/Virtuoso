@@ -578,7 +578,7 @@ class MarketReporter:
             except (ValueError, TypeError):
                 continue
 
-    async def _calculate_market_overview(self) -> dict:
+    async def _calculate_market_overview(self, top_pairs=None) -> dict:
         """Calculate various market metrics to provide an overview.
         
         Args:
