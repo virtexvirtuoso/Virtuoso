@@ -77,6 +77,9 @@ from src.core.market.market_data_manager import MarketDataManager  # Import the 
 from src.monitoring.health_monitor import HealthMonitor
 from src.core.exchanges.websocket_manager import WebSocketManager  # Import WebSocketManager
 
+# Add import for liquidation cache
+from src.utils.liquidation_cache import liquidation_cache
+
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
@@ -1230,9 +1233,10 @@ class MarketMonitor:
         
         # Initialize MarketReporter
         self.market_reporter = MarketReporter(
+            exchange=self.exchange,
+            logger=self.logger,
             top_symbols_manager=top_symbols_manager,
-            alert_manager=alert_manager,
-            logger=self.logger
+            alert_manager=alert_manager
         )
 
     def _initialize_websocket(self) -> None:
@@ -1537,9 +1541,13 @@ class MarketMonitor:
             data = message.get('data', {})
             timestamp = message.get('timestamp', self.timestamp_utility.get_utc_timestamp())
             
+            # Enhanced debug logging for incoming message
+            self.logger.debug(f"RECEIVED LIQUIDATION MSG: {json.dumps(message, default=str)[:200]}...")
+            
             # Extract liquidation data
             liquidation_data = data.get('data', {})
             if not liquidation_data:
+                self.logger.warning("Empty liquidation data received")
                 return
             
             # Format liquidation data
@@ -1548,11 +1556,21 @@ class MarketMonitor:
                 'timestamp': int(liquidation_data.get('timestamp', timestamp)),
                 'price': float(liquidation_data.get('price', 0)),
                 'size': float(liquidation_data.get('size', 0)),
-                'side': liquidation_data.get('side', 'unknown').lower()
+                'side': liquidation_data.get('side', 'unknown').lower(),
+                'source': 'websocket'
             }
             
             # Log liquidation event
             self.logger.warning(f"Liquidation detected: {liquidation['side']} {liquidation['size']} {self.symbol} @ {liquidation['price']}")
+            
+            # Save to cache
+            symbol_str = self._get_symbol_string(self.symbol)
+            self.logger.debug(f"SAVING TO LIQUIDATION CACHE: {symbol_str} -> {liquidation}")
+            liquidation_cache.append(liquidation, symbol_str)
+            
+            # Verify cache immediately after saving
+            cached_data = liquidation_cache.load(symbol_str)
+            self.logger.debug(f"VERIFICATION - CACHE NOW CONTAINS: {len(cached_data) if cached_data else 0} events")
             
             # If health monitor is available, create alert
             if self.health_monitor:
@@ -2936,35 +2954,227 @@ class MarketMonitor:
     
     async def _generate_market_report(self) -> None:
         """Generate and send comprehensive market report."""
+        start_time = time.time()
+        report_generation_metrics = {
+            'start_time': datetime.now().isoformat(),
+            'steps_completed': [],
+            'errors': [],
+            'warnings': [],
+            'duration_ms': 0
+        }
+        
         try:
-            self.logger.info("Starting market report generation...")
+            self.logger.info("=" * 80)
+            self.logger.info("MARKET REPORT GENERATION STARTED")
+            self.logger.info("=" * 80)
+            report_generation_metrics['steps_completed'].append({'step': 'initialization', 'timestamp': datetime.now().isoformat()})
             
             # Check if market_reporter is available
             if not hasattr(self, 'market_reporter') or self.market_reporter is None:
-                self.logger.error("Market reporter not available, cannot generate report")
+                error_msg = "Market reporter not available, cannot generate report"
+                self.logger.error(error_msg)
+                report_generation_metrics['errors'].append({'error': error_msg, 'timestamp': datetime.now().isoformat()})
                 return
             
             # Log the market reporter details
+            self.logger.info("-" * 80)
+            self.logger.info("SECTION: Initializing Market Reporter")
+            section_start = time.time()
             self.logger.info(f"Using market reporter: {self.market_reporter}")
             self.logger.info(f"Market reporter has top_symbols_manager: {hasattr(self.market_reporter, 'top_symbols_manager') and self.market_reporter.top_symbols_manager is not None}")
             self.logger.info(f"Market reporter has alert_manager: {hasattr(self.market_reporter, 'alert_manager') and self.market_reporter.alert_manager is not None}")
+            self.logger.info(f"SECTION TIME: {time.time() - section_start:.2f}s")
+            
+            # Log memory usage before report generation
+            self.logger.info("-" * 80)
+            self.logger.info("SECTION: Memory Usage Check (Before)")
+            section_start = time.time()
+            memory_before = self._get_memory_usage() if hasattr(self, '_get_memory_usage') else None
+            if memory_before:
+                self.logger.info(f"Memory usage before report generation: {memory_before:.2f} MB")
+            self.logger.info(f"SECTION TIME: {time.time() - section_start:.2f}s")
+            
+            # Log active symbols that will be processed
+            self.logger.info("-" * 80)
+            self.logger.info("SECTION: Symbol Check")
+            section_start = time.time()
+            if hasattr(self.market_reporter, 'symbols') and self.market_reporter.symbols:
+                symbol_count = len(self.market_reporter.symbols)
+                top_symbols = self.market_reporter.symbols[:5]  # Show first 5 symbols
+                self.logger.info(f"Reporting on {symbol_count} symbols. Top symbols: {top_symbols}")
+            self.logger.info(f"SECTION TIME: {time.time() - section_start:.2f}s")
+                
+            report_generation_metrics['steps_completed'].append({'step': 'pre_generation_checks', 'timestamp': datetime.now().isoformat()})
             
             # Use the dedicated market reporter to generate the report
+            self.logger.info("-" * 80)
+            self.logger.info("SECTION: Generating Market Summary")
+            section_start = time.time()
             self.logger.info("Calling market_reporter.generate_market_summary()...")
+            generation_start = time.time()
             report_result = await self.market_reporter.generate_market_summary()
+            generation_duration = time.time() - generation_start
+            self.logger.info(f"Market summary generation completed in {generation_duration:.2f}s")
+            self.logger.info(f"SECTION TIME: {time.time() - section_start:.2f}s")
+            
+            report_generation_metrics['steps_completed'].append({
+                'step': 'report_generation', 
+                'timestamp': datetime.now().isoformat(),
+                'duration_seconds': generation_duration
+            })
+            
+            # Log memory usage after report generation
+            self.logger.info("-" * 80)
+            self.logger.info("SECTION: Memory Usage Check (After)")
+            section_start = time.time()
+            memory_after = self._get_memory_usage() if hasattr(self, '_get_memory_usage') else None
+            if memory_after and memory_before:
+                memory_diff = memory_after - memory_before
+                self.logger.info(f"Memory usage after report generation: {memory_after:.2f} MB (Change: {memory_diff:+.2f} MB)")
+                report_generation_metrics['memory_impact_mb'] = memory_diff
+            self.logger.info(f"SECTION TIME: {time.time() - section_start:.2f}s")
             
             # Update the last report time
             self.last_report_time = datetime.now(timezone.utc)
             
+            # Process report results
+            self.logger.info("-" * 80)
+            self.logger.info("SECTION: Processing Report Results")
+            section_start = time.time()
             if report_result:
                 self.logger.info(f"Market report generated successfully at {self.last_report_time}")
-                self.logger.debug(f"Report result: {report_result}")
+                
+                # Log successful report details
+                quality_score = report_result.get('quality_score', 'N/A')
+                
+                # Check which components are present
+                available_components = []
+                for component in ['market_overview', 'futures_premium', 'smart_money_index', 'whale_activity']:
+                    if component in report_result:
+                        available_components.append(component)
+                        comp_data = report_result[component]
+                        self.logger.info(f"  - {component.replace('_', ' ').title()}: {len(comp_data) if isinstance(comp_data, dict) else 'N/A'} data points")
+                
+                component_count = len(available_components)
+                self.logger.info(f"Report summary: Quality score: {quality_score}, Components: {component_count}/4, Generation time: {generation_duration:.2f}s")
+                
+                # Log report structure details
+                if self.logger.isEnabledFor(logging.DEBUG):
+                    report_keys = list(report_result.keys())
+                    self.logger.debug(f"Report structure: {report_keys}")
+                    
+                    # Check for empty components
+                    empty_components = [k for k in report_keys 
+                                        if isinstance(report_result[k], dict) and not any(report_result[k].values())]
+                    if empty_components:
+                        self.logger.warning(f"Empty components in report: {empty_components}")
+                        report_generation_metrics['warnings'].append({
+                            'warning': f"Empty components: {empty_components}", 
+                            'timestamp': datetime.now().isoformat()
+                        })
+            
+            # Send report to Discord as a formatted webhook message
+            if hasattr(self.market_reporter, 'alert_manager') and self.market_reporter.alert_manager:
+                self.logger.info("SECTION: Sending Report to Discord")
+                section_start = time.time()
+                
+                try:
+                    # First, send a simple alert notification
+                    await self.market_reporter.alert_manager.send_alert(
+                        level="info",
+                        message="Market report generated",
+                        details={"type": "market_report"}
+                    )
+                    
+                    # Then format and send the rich Discord embed
+                    if hasattr(self.market_reporter.alert_manager, 'send_discord_webhook_message'):
+                        # Extract the data needed for the formatted report
+                        market_overview = report_result.get('market_overview', {})
+                        top_pairs = self.market_reporter.symbols[:10] if hasattr(self.market_reporter, 'symbols') else []
+                        
+                        # Format the report with embeds
+                        formatted_report = await self.market_reporter.format_market_report(
+                            overview=market_overview,
+                            top_pairs=top_pairs
+                        )
+                        
+                        # Send the formatted report via webhook
+                        self.logger.info("Sending formatted market report via Discord webhook")
+                        await self.market_reporter.alert_manager.send_discord_webhook_message(formatted_report)
+                        self.logger.info("Formatted market report sent successfully")
+                    else:
+                        self.logger.warning("Discord webhook message method not available on alert manager")
+                        
+                    self.logger.info(f"SECTION TIME: {time.time() - section_start:.2f}s")
+                except Exception as e:
+                    error_msg = f"Error sending formatted report to Discord: {str(e)}"
+                    self.logger.error(error_msg)
+                    self.logger.debug(traceback.format_exc())
+                    report_generation_metrics['errors'].append({
+                        'error': error_msg,
+                        'timestamp': datetime.now().isoformat()
+                    })
             else:
-                self.logger.warning("Market report may not have been fully generated or sent")
+                warning_msg = "Market report may not have been fully generated or sent"
+                self.logger.warning(warning_msg)
+                report_generation_metrics['warnings'].append({
+                    'warning': warning_msg, 
+                    'timestamp': datetime.now().isoformat()
+                })
+            self.logger.info(f"SECTION TIME: {time.time() - section_start:.2f}s")
+            
+            report_generation_metrics['steps_completed'].append({'step': 'completion', 'timestamp': datetime.now().isoformat()})
             
         except Exception as e:
-            self.logger.error(f"Error generating market report: {str(e)}")
+            error_msg = f"Error generating market report: {str(e)}"
+            self.logger.error(error_msg)
             self.logger.debug(traceback.format_exc())
+            report_generation_metrics['errors'].append({
+                'error': error_msg, 
+                'traceback': traceback.format_exc(),
+                'timestamp': datetime.now().isoformat()
+            })
+        finally:
+            # Calculate total duration
+            total_duration = time.time() - start_time
+            report_generation_metrics['duration_seconds'] = total_duration
+            report_generation_metrics['end_time'] = datetime.now().isoformat()
+            
+            # Log the metrics
+            self.logger.info("-" * 80)
+            self.logger.info(f"MARKET REPORT GENERATION COMPLETED in {total_duration:.2f}s")
+            self.logger.info("=" * 80)
+            
+            # Store metrics for later analysis
+            if hasattr(self, 'metrics_manager') and self.metrics_manager:
+                try:
+                    metrics_key = f"market_report_generation_{int(time.time())}"
+                    # Try different methods to store metrics based on what's available
+                    if hasattr(self.metrics_manager, 'store_metric'):
+                        self.metrics_manager.store_metric(metrics_key, report_generation_metrics)
+                    elif hasattr(self.metrics_manager, 'record_metric'):
+                        # Fallback to record_metric if available
+                        duration = report_generation_metrics.get('duration', 0)
+                        self.metrics_manager.record_metric(metrics_key, duration, {
+                            "status": report_generation_metrics.get('status', 'unknown'),
+                            "error": report_generation_metrics.get('error', None)
+                        })
+                    elif hasattr(self.metrics_manager, 'update_metric'):
+                        # Second fallback to update_metric
+                        duration = report_generation_metrics.get('duration', 0)
+                        await self.metrics_manager.update_metric(
+                            metrics_key, 
+                            float(duration), 
+                            {"status": report_generation_metrics.get('status', 'unknown')}
+                        )
+                    else:
+                        self.logger.warning("MetricsManager doesn't have a compatible method to store metrics")
+                except Exception as e:
+                    self.logger.error(f"Failed to store metrics: {str(e)}")
+                
+            # Log detailed metrics if debug is enabled
+            if self.logger.isEnabledFor(logging.DEBUG):
+                self.logger.debug(f"Report generation metrics: {json.dumps(report_generation_metrics, indent=2)}")
 
 
     async def process_symbol(self, symbol: str) -> None:
@@ -3476,6 +3686,31 @@ class MarketMonitor:
             else:
                 self.logger.debug(f"Trades data type: {type(trades)}")
             
+            # Try to get liquidation data from cache
+            liquidations = liquidation_cache.load(symbol_str)
+            
+            # Fetch other market data
+            ticker = await self._fetch_with_retry("fetch_ticker", symbol_str)
+            orderbook = await self._fetch_with_retry("fetch_order_book", symbol_str, limit=100)
+            trades = await self._fetch_with_retry("fetch_trades", symbol_str, limit=100)
+            
+            # Load long/short ratio if available
+            long_short_ratio = None
+            try:
+                long_short_ratio = await self.exchange_manager.fetch_long_short_ratio(symbol_str)
+            except Exception as e:
+                self.logger.warning(f"Could not fetch long/short ratio: {str(e)}")
+            
+            # Get funding rate if available
+            funding_rate = ticker.get('fundingRate', None)
+            if not funding_rate:
+                try:
+                    funding_info = await self.exchange_manager.fetch_funding_rate(symbol_str)
+                    funding_rate = funding_info.get('fundingRate', 0)
+                except Exception as e:
+                    self.logger.warning(f"Could not fetch funding rate: {str(e)}")
+                    funding_rate = 0
+            
             # Combine all market data
             market_data = {
                 'symbol': symbol_str,
@@ -3483,7 +3718,12 @@ class MarketMonitor:
                 'orderbook': orderbook,
                 'ticker': ticker,
                 'trades': trades,
-                'funding': None,  # Add funding data if applicable
+                'funding': {'rate': funding_rate},
+                'sentiment': {
+                    'long_short_ratio': long_short_ratio,
+                    'liquidations': liquidations or [],
+                    'funding_rate': funding_rate
+                },
                 'timestamp': self.timestamp_utility.get_utc_timestamp()
             }
             
@@ -3502,6 +3742,9 @@ class MarketMonitor:
             for tf, df in ohlcv_data.items():
                 if isinstance(df, pd.DataFrame):
                     self.logger.info(f"  - {tf} timeframe: {len(df)} data points")
+            
+            if liquidations:
+                self.logger.info(f"  - Liquidations: {len(liquidations)} events from cache")
             
             return market_data
         
@@ -5380,3 +5623,340 @@ class MarketMonitor:
             self.logger.error(f"ANALYZE_MARKET: Error in analyze_market: {str(e)}")
             self.logger.error(traceback.format_exc())
             return formatted_data  # Return the data even on error to avoid breaking the pipeline
+
+    async def diagnose_report_generation(self) -> Dict[str, Any]:
+        """
+        Perform a diagnostic test of the market report generation process.
+        
+        This method tests each component of the report generation process individually,
+        measures performance, and identifies potential issues.
+        
+        Returns:
+            Dict containing diagnostic results with detailed metrics for each component.
+        """
+        diagnostic_results = {
+            'timestamp': datetime.now().isoformat(),
+            'components': {},
+            'overall': {
+                'success': False,
+                'total_duration_seconds': 0,
+                'issues_found': [],
+                'recommendations': []
+            }
+        }
+        
+        start_time = time.time()
+        
+        try:
+            self.logger.info("Starting market report generation diagnostics...")
+            
+            # Check if market_reporter is available
+            if not hasattr(self, 'market_reporter') or self.market_reporter is None:
+                diagnostic_results['overall']['issues_found'].append("Market reporter not available")
+                diagnostic_results['overall']['recommendations'].append(
+                    "Initialize MarketReporter in the MarketMonitor constructor"
+                )
+                return diagnostic_results
+                
+            # Test market_reporter configuration
+            reporter_config = {
+                'has_top_symbols_manager': hasattr(self.market_reporter, 'top_symbols_manager') and 
+                                          self.market_reporter.top_symbols_manager is not None,
+                'has_alert_manager': hasattr(self.market_reporter, 'alert_manager') and 
+                                    self.market_reporter.alert_manager is not None,
+                'symbol_count': len(self.market_reporter.symbols) if hasattr(self.market_reporter, 'symbols') else 0,
+                'cache_available': hasattr(self.market_reporter, 'cache') and self.market_reporter.cache is not None
+            }
+            
+            diagnostic_results['components']['reporter_config'] = reporter_config
+            
+            if not reporter_config['has_top_symbols_manager']:
+                diagnostic_results['overall']['issues_found'].append("Missing top_symbols_manager")
+                diagnostic_results['overall']['recommendations'].append(
+                    "Initialize TopSymbolsManager and pass it to MarketReporter"
+                )
+                
+            if not reporter_config['has_alert_manager']:
+                diagnostic_results['overall']['issues_found'].append("Missing alert_manager")
+                diagnostic_results['overall']['recommendations'].append(
+                    "Initialize AlertManager and pass it to MarketReporter"
+                )
+                
+            if reporter_config['symbol_count'] == 0:
+                diagnostic_results['overall']['issues_found'].append("No symbols configured")
+                diagnostic_results['overall']['recommendations'].append(
+                    "Ensure symbols are properly configured in MarketReporter"
+                )
+                
+            # Test individual component fetching
+            components = [
+                ('market_overview', self.market_reporter._calculate_market_overview),
+                ('futures_premium', self.market_reporter._calculate_futures_premium),
+                ('smart_money_index', self.market_reporter._calculate_smart_money_index),
+                ('whale_activity', self.market_reporter._calculate_whale_activity),
+                ('performance_metrics', self.market_reporter._calculate_performance_metrics)
+            ]
+            
+            # Get a sample of symbols to test with
+            test_symbols = self.market_reporter.symbols[:3] if hasattr(self.market_reporter, 'symbols') else []
+            
+            if not test_symbols:
+                diagnostic_results['overall']['issues_found'].append("No symbols available for testing")
+                diagnostic_results['overall']['recommendations'].append(
+                    "Configure symbols list in MarketReporter"
+                )
+            else:
+                # Test each component
+                for component_name, component_func in components:
+                    try:
+                        self.logger.info(f"Testing {component_name} component...")
+                        component_start = time.time()
+                        component_result = await component_func(test_symbols)
+                        component_duration = time.time() - component_start
+                        
+                        component_diagnostic = {
+                            'success': component_result is not None,
+                            'duration_seconds': component_duration,
+                            'data_returned': bool(component_result),
+                            'result_type': type(component_result).__name__ if component_result else None,
+                            'memory_impact_mb': None  # Will calculate if _get_memory_usage available
+                        }
+                        
+                        # Check for component-specific issues
+                        if not component_result:
+                            component_diagnostic['issues'] = ["No data returned"]
+                        elif isinstance(component_result, dict):
+                            component_diagnostic['keys_returned'] = list(component_result.keys())
+                            
+                            # Check for empty or missing required keys
+                            expected_keys = {
+                                'market_overview': ['regime', 'trend_strength', 'timestamp'],
+                                'futures_premium': ['premiums', 'timestamp'],
+                                'smart_money_index': ['index', 'timestamp'],
+                                'whale_activity': ['whale_activity', 'timestamp'],
+                                'performance_metrics': ['metrics', 'timestamp']
+                            }
+                            
+                            if component_name in expected_keys:
+                                missing_keys = [key for key in expected_keys[component_name] if key not in component_result]
+                                if missing_keys:
+                                    if not component_diagnostic.get('issues'):
+                                        component_diagnostic['issues'] = []
+                                    component_diagnostic['issues'].append(f"Missing required keys: {missing_keys}")
+                                
+                        diagnostic_results['components'][component_name] = component_diagnostic
+                        
+                    except Exception as e:
+                        self.logger.error(f"Error testing {component_name}: {str(e)}")
+                        diagnostic_results['components'][component_name] = {
+                            'success': False,
+                            'error': str(e),
+                            'traceback': traceback.format_exc()
+                        }
+                        diagnostic_results['overall']['issues_found'].append(f"Component {component_name} failed: {str(e)}")
+            
+            # Test full report generation
+            try:
+                self.logger.info("Testing full report generation...")
+                report_start = time.time()
+                full_report = await self.market_reporter.generate_market_summary()
+                report_duration = time.time() - report_start
+                
+                diagnostic_results['full_report'] = {
+                    'success': full_report is not None,
+                    'duration_seconds': report_duration,
+                    'component_count': sum(1 for component in ['market_overview', 'futures_premium', 'smart_money_index', 'whale_activity'] 
+                                          if component in full_report),
+                    'quality_score': full_report.get('quality_score') if full_report else None,
+                    'timestamp': full_report.get('timestamp') if full_report else None
+                }
+                
+                if full_report:
+                    diagnostic_results['overall']['success'] = True
+                else:
+                    diagnostic_results['overall']['issues_found'].append("Full report generation failed")
+                    
+            except Exception as e:
+                self.logger.error(f"Error in full report generation: {str(e)}")
+                diagnostic_results['full_report'] = {
+                    'success': False,
+                    'error': str(e),
+                    'traceback': traceback.format_exc()
+                }
+                diagnostic_results['overall']['issues_found'].append(f"Full report generation failed: {str(e)}")
+            
+            # Generate recommendations based on issues found
+            if not diagnostic_results['overall']['issues_found']:
+                diagnostic_results['overall']['recommendations'].append(
+                    "No issues found. Report generation is working correctly."
+                )
+            else:
+                # Add specific recommendations based on detected issues
+                if any("timeout" in issue.lower() for issue in diagnostic_results['overall']['issues_found']):
+                    diagnostic_results['overall']['recommendations'].append(
+                        "Consider increasing timeout values or optimizing network connections"
+                    )
+                
+                if any("memory" in issue.lower() for issue in diagnostic_results['overall']['issues_found']):
+                    diagnostic_results['overall']['recommendations'].append(
+                        "Optimize memory usage by implementing better caching and garbage collection"
+                    )
+                    
+                if any("missing" in issue.lower() for issue in diagnostic_results['overall']['issues_found']):
+                    diagnostic_results['overall']['recommendations'].append(
+                        "Ensure all required data sources are properly configured and accessible"
+                    )
+            
+        except Exception as e:
+            self.logger.error(f"Error in report diagnostics: {str(e)}")
+            diagnostic_results['overall']['issues_found'].append(f"Diagnostic process failed: {str(e)}")
+            diagnostic_results['overall']['error'] = str(e)
+            diagnostic_results['overall']['traceback'] = traceback.format_exc()
+            
+        finally:
+            # Calculate total duration
+            diagnostic_results['overall']['total_duration_seconds'] = time.time() - start_time
+            
+            # Log results summary
+            issue_count = len(diagnostic_results['overall']['issues_found'])
+            success_status = diagnostic_results['overall']['success']
+            self.logger.info(f"Report generation diagnostics completed in {diagnostic_results['overall']['total_duration_seconds']:.2f}s. " +
+                            f"Success: {success_status}, Issues found: {issue_count}")
+            
+            if diagnostic_results['overall']['recommendations']:
+                self.logger.info(f"Recommendations: {diagnostic_results['overall']['recommendations']}")
+                
+            return diagnostic_results
+
+    async def test_report_component(self, component_name: str, symbol_count: int = 3) -> Dict[str, Any]:
+        """
+        Test a specific component of the market report generation process.
+        
+        This method allows testing an individual component of the market reporter
+        to isolate issues and measure performance.
+        
+        Args:
+            component_name: Name of the component to test, one of:
+                            'market_overview', 'futures_premium', 'smart_money_index',
+                            'whale_activity', 'performance_metrics'
+            symbol_count: Number of symbols to use for testing
+            
+        Returns:
+            Dict containing test results and metrics
+        """
+        start_time = time.time()
+        test_result = {
+            'component': component_name,
+            'timestamp': datetime.now().isoformat(),
+            'success': False,
+            'duration_seconds': 0,
+            'symbols_tested': [],
+            'error': None,
+            'data': None,
+            'memory_before_mb': None,
+            'memory_after_mb': None,
+            'memory_diff_mb': None
+        }
+        
+        try:
+            self.logger.info(f"Starting test for report component: {component_name}")
+            
+            # Check if market_reporter is available
+            if not hasattr(self, 'market_reporter') or self.market_reporter is None:
+                raise ValueError("Market reporter not available, cannot test components")
+            
+            # Validate component name
+            component_funcs = {
+                'market_overview': self.market_reporter._calculate_market_overview,
+                'futures_premium': self.market_reporter._calculate_futures_premium,
+                'smart_money_index': self.market_reporter._calculate_smart_money_index, 
+                'whale_activity': self.market_reporter._calculate_whale_activity,
+                'performance_metrics': self.market_reporter._calculate_performance_metrics
+            }
+            
+            if component_name not in component_funcs:
+                raise ValueError(f"Unknown component: {component_name}. Valid components: {list(component_funcs.keys())}")
+                
+            # Get component function
+            component_func = component_funcs[component_name]
+            
+            # Get test symbols
+            symbols = self.market_reporter.symbols[:symbol_count] if hasattr(self.market_reporter, 'symbols') else []
+            if not symbols:
+                raise ValueError("No symbols available for testing")
+                
+            test_result['symbols_tested'] = symbols
+            
+            # Capture memory usage before test if available
+            if hasattr(self, '_get_memory_usage') or hasattr(self.market_reporter, '_get_memory_usage'):
+                memory_getter = getattr(self, '_get_memory_usage', None) or getattr(self.market_reporter, '_get_memory_usage')
+                test_result['memory_before_mb'] = memory_getter()
+            
+            # Test with verbose logging
+            self.logger.info(f"Testing {component_name} with symbols: {symbols}")
+            orig_level = self.logger.level
+            self.logger.setLevel(logging.DEBUG)  # Temporarily set to DEBUG for detailed logging
+            
+            # Set a new memory high water mark before test
+            gc.collect()
+            
+            # Execute the component function
+            component_start = time.time()
+            result = await component_func(symbols)
+            component_duration = time.time() - component_start
+            
+            # Restore original log level
+            self.logger.setLevel(orig_level)
+            
+            # Capture memory after test
+            if test_result['memory_before_mb'] is not None and hasattr(self, '_get_memory_usage'):
+                test_result['memory_after_mb'] = self._get_memory_usage()
+                test_result['memory_diff_mb'] = test_result['memory_after_mb'] - test_result['memory_before_mb']
+            
+            # Record results
+            test_result['duration_seconds'] = component_duration
+            test_result['success'] = result is not None
+            
+            # Include safe version of data for logging
+            if result is not None:
+                if isinstance(result, dict):
+                    # Include a safe version for logging (limit size)
+                    if hasattr(self.market_reporter, '_sanitize_for_logging'):
+                        test_result['data'] = self.market_reporter._sanitize_for_logging(result)
+                    else:
+                        # Simple sanitization if _sanitize_for_logging not available
+                        test_result['data'] = {
+                            k: (f"[dict with {len(v)} keys]" if isinstance(v, dict) and len(v) > 10 else
+                                f"[list with {len(v)} items]" if isinstance(v, list) and len(v) > 10 else
+                                v[:100] + "..." if isinstance(v, str) and len(v) > 100 else v)
+                            for k, v in result.items()
+                        }
+                    
+                    # Also include keys for easier analysis
+                    test_result['result_keys'] = list(result.keys())
+                    test_result['result_size'] = len(str(result))
+                else:
+                    test_result['data'] = str(result)[:500] + "..." if len(str(result)) > 500 else str(result)
+            
+            # Force garbage collection and report
+            collected = gc.collect()
+            self.logger.debug(f"Garbage collection after component test: {collected} objects collected")
+            
+        except Exception as e:
+            test_result['error'] = str(e)
+            test_result['traceback'] = traceback.format_exc()
+            self.logger.error(f"Error testing component {component_name}: {str(e)}")
+            self.logger.debug(traceback.format_exc())
+            
+        finally:
+            # Set final duration
+            test_result['duration_seconds'] = time.time() - start_time
+            
+            # Log results
+            status = "succeeded" if test_result['success'] else "failed"
+            self.logger.info(f"Component test for {component_name} {status} in {test_result['duration_seconds']:.2f}s")
+            
+            if test_result['memory_diff_mb'] is not None:
+                self.logger.info(f"Memory impact: {test_result['memory_diff_mb']:.2f} MB")
+                
+            return test_result

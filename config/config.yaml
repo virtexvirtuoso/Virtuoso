@@ -105,8 +105,8 @@ confluence:
       orderflow: 0.25               # Order flow dynamics weight
       price_structure: 0.15         # Price structure weight
       sentiment: 0.1                # Market sentiment indicators weight
-      technical: 0.2                # Technical analysis indicators weight
-      volume: 0.1                   # Volume analysis weight
+      technical: 0.17                # Technical analysis indicators weight
+      volume: 0.12                   # Volume analysis weight
     # Sub-component weights (weights for individual indicators within each category)
     sub_components:
       # Orderbook sub-component weights
@@ -137,13 +137,12 @@ confluence:
         vwap: 0.2                   # Volume Weighted Average Price weight
       # Sentiment sub-component weights
       sentiment:
-        funding_rate: 0.15          # Funding rate weight
-        funding_rate_volatility: 0.1 # Funding rate volatility weight
-        liquidation_events: 0.15    # Liquidation events weight
-        long_short_ratio: 0.15      # Long/short ratio weight
-        market_mood: 0.15           # Market mood weight
-        risk_score: 0.15            # Risk score weight
-        volume_sentiment: 0.15      # Volume sentiment weight
+        funding_rate: 0.20          # Funding rate weight (increased from 0.17)
+        long_short_ratio: 0.15      # Long/short ratio weight (decreased from 0.17)
+        liquidations: 0.20          # Liquidations weight (increased from 0.17)
+        market_activity: 0.15       # Market activity weight (decreased from 0.17)
+        risk: 0.12                  # Risk score weight (decreased from 0.16)
+        volatility: 0.18            # Volatility weight (increased from 0.16)
       # Technical sub-component weights
       technical:
         ao: 0.2                     # Awesome Oscillator weight
@@ -176,6 +175,12 @@ analysis:
         depth_levels: 25            # Number of price levels to include in analysis
         update_interval: 100        # Milliseconds between orderbook updates
         min_data_points: 10         # Minimum data points for valid analysis
+        
+        # Sigmoid transformation parameters
+        sigmoid_transformation:
+          default_sensitivity: 0.12  # Default sensitivity for all transformations
+          imbalance_sensitivity: 0.15 # Sensitivity for bid/ask imbalance transformation
+          pressure_sensitivity: 0.18  # Sensitivity for orderbook pressure transformation
         
         # Absorption: Measures how well the market absorbs large orders
         absorption:
@@ -362,6 +367,13 @@ analysis:
       funding_threshold: 0.01       # Threshold for funding rate significance
       liquidation_threshold: 1000000 # Threshold for liquidation significance (in USD)
       parameters:
+        # Sigmoid transformation parameters
+        sigmoid_transformation:
+          default_sensitivity: 0.12  # Default sensitivity for all transformations
+          long_short_sensitivity: 0.12 # Sensitivity for long/short ratio transformation
+          funding_sensitivity: 0.15   # Sensitivity for funding rate transformation
+          liquidation_sensitivity: 0.10 # Sensitivity for liquidation events transformation
+          
         # Funding rate: Analyzes perpetual futures funding rates
         funding_rate:
           period: 8                 # Period for funding rate calculations

@@ -300,9 +300,7 @@ async def test_fetch_risk_limits(exchange):
             logger.error(f"Error fetching risk limits for {symbol}: {e}", exc_info=True)
 
 async def test_fetch_market_info(exchange):
-    """Test market info fetching and parsing"""
-    logger.info("\n===== Testing Market Info Fetching =====")
-    
+    """Test fetching market information."""
     try:
         logger.info("Fetching market information...")
         
@@ -322,27 +320,77 @@ async def test_fetch_market_info(exchange):
             logger.error("Empty instruments list")
             return
             
-        logger.info(f"Market instruments:")
+        # Verify structure
+        assert isinstance(instruments, list), "Instruments should be a list"
+        assert len(instruments) > 0, "Should have at least one instrument"
+        
+        # Log sample data
+        logger.info("Market instruments:")
         logger.info(f"  Count: {len(instruments)}")
         
-        # Show a few sample instruments for BTC and ETH
-        btc_instruments = [instr for instr in instruments if "BTC" in instr.get('symbol', '')]
-        eth_instruments = [instr for instr in instruments if "ETH" in instr.get('symbol', '')]
+        # Find BTC and ETH instruments
+        btc_instrument = next((i for i in instruments if i.get('baseCoin') == 'BTC'), None)
+        eth_instrument = next((i for i in instruments if i.get('baseCoin') == 'ETH'), None)
         
-        if btc_instruments:
+        if btc_instrument:
             logger.info("  Sample BTC instrument:")
-            for key, value in btc_instruments[0].items():
+            for key, value in btc_instrument.items():
                 logger.info(f"    {key}: {value}")
-                
-        if eth_instruments:
+        
+        if eth_instrument:
             logger.info("  Sample ETH instrument:")
-            for key, value in eth_instruments[0].items():
+            for key, value in eth_instrument.items():
                 logger.info(f"    {key}: {value}")
-                
+        
         logger.info("✅ Market info test passed")
         
     except Exception as e:
         logger.error(f"Error fetching market info: {e}", exc_info=True)
+        raise e
+
+async def test_market_data(exchange):
+    """Test fetching comprehensive market data including volatility."""
+    try:
+        symbols = ['BTCUSDT', 'ETHUSDT']
+        for symbol in symbols:
+            logger.info(f"\nTesting market data for {symbol}...")
+            
+            # Fetch market data
+            market_data = await exchange.fetch_market_data(symbol)
+            
+            # Verify structure
+            assert isinstance(market_data, dict), "Market data should be a dictionary"
+            assert 'sentiment' in market_data, "Market data should contain sentiment"
+            assert 'volatility' in market_data['sentiment'], "Sentiment should contain volatility"
+            
+            # Verify volatility data structure
+            volatility_data = market_data['sentiment']['volatility']
+            assert isinstance(volatility_data, dict), "Volatility data should be a dictionary"
+            
+            # Check required fields
+            required_fields = ['value', 'window', 'timeframe', 'timestamp', 'trend', 'period_minutes']
+            for field in required_fields:
+                assert field in volatility_data, f"Volatility data missing {field}"
+            
+            # Validate field types and values
+            assert isinstance(volatility_data['value'], (int, float)), "Volatility value should be numeric"
+            assert volatility_data['value'] >= 0, "Volatility value should be non-negative"
+            assert isinstance(volatility_data['window'], int), "Window should be integer"
+            assert isinstance(volatility_data['timeframe'], str), "Timeframe should be string"
+            assert isinstance(volatility_data['timestamp'], int), "Timestamp should be integer"
+            assert isinstance(volatility_data['trend'], str), "Trend should be string"
+            assert isinstance(volatility_data['period_minutes'], int), "Period minutes should be integer"
+            
+            # Log volatility data
+            logger.info(f"Volatility data for {symbol}:")
+            for key, value in volatility_data.items():
+                logger.info(f"  {key}: {value}")
+            
+            logger.info(f"✅ Market data test passed for {symbol}")
+            
+    except Exception as e:
+        logger.error(f"Error testing market data: {e}", exc_info=True)
+        raise e
 
 async def main():
     try:
@@ -364,6 +412,7 @@ async def main():
         await test_fetch_long_short_ratio(exchange)
         await test_fetch_risk_limits(exchange)
         await test_fetch_market_info(exchange)
+        await test_market_data(exchange)
         
         # Summary
         logger.info("\n===== Test Summary =====")

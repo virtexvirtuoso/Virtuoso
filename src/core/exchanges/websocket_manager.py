@@ -16,41 +16,61 @@ class WebSocketManager:
     """
     
     def __init__(self, config: Dict[str, Any]):
+        """Initialize WebSocketManager with configuration
+        
+        Args:
+            config: Configuration dictionary
+        """
         self.config = config
+        
+        # Store WebSocket connections
         self.connections = {}
+        
+        # Store message queues for each symbol
         self.message_queues = {}
-        self.subscriptions = {}
-        self.logger = logging.getLogger(__name__)
-        self.is_testnet = config.get('exchanges', {}).get('bybit', {}).get('testnet', False)
         
-        # WebSocket endpoints
-        if self.is_testnet:
-            self.ws_url = "wss://stream-testnet.bybit.com/v5/public/linear"
-        else:
-            self.ws_url = "wss://stream.bybit.com/v5/public/linear"
+        # Store subscribed topics
+        self.topics = {}
         
-        # Track connection status
+        # Store connection status
         self.status = {
             'connected': False,
             'last_message_time': 0,
-            'subscribed_topics': set(),
-            'errors': []
+            'seconds_since_last_message': 0,
+            'messages_received': 0,
+            'errors': 0,
+            'active_connections': 0
         }
+        
+        # Message callback
+        self.message_callback = None
         
         # Get WebSocket logging configuration
         ws_logging_config = config.get('market_data', {}).get('websocket_logging', {})
         
-        # For rate-limiting log messages
-        self._message_counts = defaultdict(Counter)
-        self._last_log_time = defaultdict(float)
-        self._log_interval = ws_logging_config.get('summary_interval', 60)  
+        # Configure logging throttling
+        self._last_log_time = 0
+        self._message_count = 0
+        self._log_interval = ws_logging_config.get('summary_interval', 60)
         self._log_message_threshold = ws_logging_config.get('message_threshold', 1)
         self._verbose_logging = ws_logging_config.get('verbose', False)
         self._include_message_content = ws_logging_config.get('include_message_content', False)
         
         # Log the WebSocket logging configuration at INFO level
+        self.logger = logging.getLogger(__name__)
         self.logger.info(f"WebSocket logging config: verbose={self._verbose_logging}, "
-                        f"summary_interval={self._log_interval}s, message_threshold={self._log_message_threshold}")
+                         f"include_message_content={self._include_message_content}")
+        
+        # Store reconnect tasks to ensure they're properly cancelled
+        self.reconnect_tasks = set()
+        
+        # WebSocket endpoints
+        self.is_testnet = config.get('exchanges', {}).get('bybit', {}).get('testnet', False)
+        
+        if self.is_testnet:
+            self.ws_url = "wss://stream-testnet.bybit.com/v5/public/linear"
+        else:
+            self.ws_url = "wss://stream.bybit.com/v5/public/linear"
     
     async def initialize(self, symbols: List[str]) -> None:
         """Initialize WebSocket connections and subscriptions
@@ -64,7 +84,7 @@ class WebSocketManager:
             self.message_queues[symbol] = asyncio.Queue()
             
             # Define subscriptions for this symbol
-            self.subscriptions[symbol] = [
+            self.topics[symbol] = [
                 f"tickers.{symbol}",          # Ticker updates (includes OI)
                 f"kline.1.{symbol}",          # 1-minute candlesticks
                 f"orderbook.50.{symbol}",     # Orderbook with 50 levels
@@ -91,8 +111,8 @@ class WebSocketManager:
         
         # Group all subscriptions into batches
         all_topics = []
-        for symbol_topics in self.subscriptions.values():
-            all_topics.extend(symbol_topics)
+        for topics in self.topics.values():
+            all_topics.extend(topics)
         
         # Create batches of topics
         for topic in all_topics:
@@ -117,7 +137,9 @@ class WebSocketManager:
         # Update status
         self.status['connected'] = len(self.connections) > 0
         self.status['last_message_time'] = time.time()
-        self.status['subscribed_topics'] = set(all_topics)
+        self.status['messages_received'] = 0
+        self.status['errors'] = 0
+        self.status['active_connections'] = len(self.connections)
         
         # Log status
         if self.status['connected']:
@@ -171,129 +193,79 @@ class WebSocketManager:
         
         Args:
             ws: WebSocket connection
-            topics: List of subscribed topics
-            connection_id: Unique identifier for this connection
+            topics: Subscribed topics
+            connection_id: Connection identifier
             session: aiohttp session
         """
         try:
-            logger.info(f"Starting message handler for connection {connection_id}")
-            
             async for msg in ws:
+                # Track message received time
+                self.status['last_message_time'] = time.time()
+                self.status['messages_received'] += 1
+                
                 if msg.type == aiohttp.WSMsgType.TEXT:
+                    # Log the message if verbose logging is enabled
                     try:
+                        self._log_message(connection_id, msg.data)
+                    except AttributeError:
+                        # Fallback logging if _log_message isn't available
+                        if self._verbose_logging:
+                            self.logger.debug(f"WebSocket message received on connection {connection_id}")
+                    
+                    try:
+                        # Parse data
                         data = json.loads(msg.data)
                         
-                        # Update last message time
-                        self.status['last_message_time'] = time.time()
-                        self.connections[connection_id]['last_message_time'] = time.time()
+                        # Get topic and symbol
+                        topic = data.get('topic', None)
+                        if not topic:
+                            continue  # Skip messages without a topic (e.g., responses to ping)
                         
-                        # Handle subscription responses
-                        if "op" in data and data["op"] == "subscribe":
-                            logger.debug(f"Subscription response: {data}")
-                            continue
-                        
-                        # Handle ping/pong
-                        if "op" in data and data["op"] == "ping":
-                            await ws.send_json({"op": "pong"})
-                            continue
-                        
-                        # Process message based on topic
-                        if "topic" in data:
-                            topic = data["topic"]
-                            # Extract symbol from topic (format varies by channel)
-                            
-                            # Handle different topic formats
-                            if "." in topic:
-                                parts = topic.split(".")
-                                symbol = parts[-1]  # Last part is usually the symbol
-                                
-                                # For kline topics, symbol is the last part after removing interval
-                                if "kline" in topic:
-                                    symbol = parts[-1]
-                            else:
-                                # Default case
-                                symbol = data.get("data", {}).get("symbol")
-                            
-                            # Add message to symbol's queue if it exists
-                            if symbol in self.message_queues:
-                                await self.message_queues[symbol].put({
-                                    "connection_id": connection_id,
-                                    "topic": topic,
-                                    "data": data,
-                                    "timestamp": int(time.time() * 1000)
-                                })
-                                
-                                # Rate-limited logging with counters
-                                self._message_counts[symbol][topic] += 1
-                                
-                                # Only log the first message for each topic if verbose logging is enabled
-                                if self._verbose_logging and self._message_counts[symbol][topic] <= self._log_message_threshold:
-                                    if self._include_message_content:
-                                        # Log with message content (more verbose)
-                                        msg_sample = str(data)[:100] + "..." if len(str(data)) > 100 else str(data)
-                                        logger.debug(f"Received {topic} for {symbol}: {msg_sample}")
-                                    else:
-                                        # Log just the topic (less verbose)
-                                        logger.debug(f"Queued message for {symbol}: {topic}")
-                                
-                                # Periodically log summary
-                                now = time.time()
-                                if now - self._last_log_time[symbol] >= self._log_interval:
-                                    # Log summary of message counts - be more concise
-                                    msg_counts = self._message_counts[symbol]
-                                    if msg_counts:
-                                        count_sum = sum(msg_counts.values())
-                                        topic_count = len(msg_counts)
-                                        
-                                        # Calculate message rate (messages per second)
-                                        time_diff = now - self._last_log_time[symbol]
-                                        if time_diff > 0:
-                                            msg_rate = count_sum / time_diff
-                                        else:
-                                            msg_rate = 0
-                                        
-                                        # Log at INFO level for better visibility with reduced frequency
-                                        topic_counts = ', '.join([f"{topic.split('.')[0]}:{count}" for topic, count in msg_counts.items() if count > 0])
-                                        logger.info(f"WebSocket ({symbol}): {count_sum} msgs, {msg_rate:.1f} msgs/sec ({topic_counts})")
-                                        
-                                        # Reset counters
-                                        self._message_counts[symbol] = Counter()
-                                        self._last_log_time[symbol] = now
-                            else:
-                                logger.warning(f"Received message for unknown symbol: {symbol}")
+                        # Extract symbol from topic (format: "channel.symbol" or "channel.timeframe.symbol")
+                        parts = topic.split('.')
+                        if len(parts) >= 2:
+                            symbol = parts[-1]  # Last part should be the symbol
                         else:
-                            logger.warning(f"Received message without topic: {data}")
-                    
+                            continue  # Skip messages with unexpected topic format
+                        
+                        # Queue message for processing
+                        if symbol in self.message_queues:
+                            await self.message_queues[symbol].put(data)
+                        
                     except json.JSONDecodeError:
-                        logger.error(f"Failed to parse WebSocket message: {msg.data}")
+                        self.logger.error(f"Invalid JSON in WebSocket message: {msg.data[:200]}...")
+                        self.status['errors'] += 1
                     except Exception as e:
-                        logger.error(f"Error processing WebSocket message: {str(e)}")
-                        logger.debug(traceback.format_exc())
+                        self.logger.error(f"Error processing WebSocket message: {str(e)}")
+                        self.logger.debug(traceback.format_exc())
+                        self.status['errors'] += 1
                 
                 elif msg.type == aiohttp.WSMsgType.ERROR:
-                    logger.error(f"WebSocket connection error: {ws.exception()}")
-                    self.status['errors'].append({
-                        'time': time.time(),
-                        'error': str(ws.exception()),
-                        'connection_id': connection_id
-                    })
+                    self.logger.error(f"WebSocket connection error: {connection_id}")
+                    self.status['errors'] += 1
                     break
                 
                 elif msg.type == aiohttp.WSMsgType.CLOSED:
-                    logger.warning(f"WebSocket connection closed: {connection_id}")
+                    self.logger.warning(f"WebSocket connection closed: {connection_id}")
                     break
         
+        except asyncio.CancelledError:
+            self.logger.info(f"WebSocket message handler for {connection_id} cancelled")
+            raise
         except Exception as e:
-            logger.error(f"Error in WebSocket message handler: {str(e)}")
-            logger.debug(traceback.format_exc())
+            self.logger.error(f"Error in WebSocket message handler: {str(e)}")
+            self.logger.debug(traceback.format_exc())
         finally:
             # Mark connection as closed
             if connection_id in self.connections:
                 self.connections[connection_id]['connected'] = False
             
             # Attempt to reconnect
-            asyncio.create_task(self._reconnect(topics, connection_id, session))
-    
+            reconnect_task = asyncio.create_task(self._reconnect(topics, connection_id, session))
+            reconnect_task.set_name(f"reconnect_{connection_id}")
+            self.reconnect_tasks.add(reconnect_task)
+            reconnect_task.add_done_callback(self.reconnect_tasks.discard)
+            
     async def _reconnect(self, topics, connection_id, session):
         """Reconnect WebSocket with exponential backoff
         
@@ -305,7 +277,10 @@ class WebSocketManager:
         try:
             # Close existing session if it's still open
             if not session.closed:
-                await session.close()
+                try:
+                    await session.close()
+                except Exception as e:
+                    self.logger.warning(f"Error closing session: {str(e)}")
                 
             # Remove connection from active connections
             if connection_id in self.connections:
@@ -318,11 +293,16 @@ class WebSocketManager:
             retries = 0
             
             while backoff <= max_backoff and retries < max_retries:
-                logger.info(f"Attempting to reconnect {connection_id} in {backoff}s...")
-                await asyncio.sleep(backoff)
-                retries += 1
-                
                 try:
+                    logger.info(f"Attempting to reconnect {connection_id} in {backoff}s...")
+                    await asyncio.sleep(backoff)
+                    retries += 1
+                    
+                    # Check if task was cancelled
+                    if asyncio.current_task().cancelled():
+                        logger.info(f"Reconnect task for {connection_id} was cancelled")
+                        return
+                    
                     # Create new connection
                     conn_info = await self._create_connection(topics, connection_id)
                     if conn_info:
@@ -331,6 +311,9 @@ class WebSocketManager:
                         return
                     else:
                         logger.error(f"Failed to reconnect {connection_id}")
+                except asyncio.CancelledError:
+                    logger.info(f"Reconnect task for {connection_id} was cancelled")
+                    return
                 except Exception as e:
                     logger.error(f"Error during reconnect attempt: {str(e)}")
                 
@@ -342,9 +325,12 @@ class WebSocketManager:
             # Update status
             self.status['connected'] = len(self.connections) > 0
         
+        except asyncio.CancelledError:
+            logger.info(f"Reconnect task for {connection_id} was cancelled")
+            return
         except Exception as e:
             logger.error(f"Error in reconnect process: {str(e)}")
-    
+            
     async def _process_symbol_messages(self, symbol):
         """Process queued messages for a specific symbol
         
@@ -383,13 +369,27 @@ class WebSocketManager:
     
     async def close(self):
         """Close all WebSocket connections and cleanup resources"""
-        logger.info("Closing WebSocket connections")
+        self.logger.info("Closing WebSocket connections")
         
         # Cancel all message processing tasks
         tasks = asyncio.all_tasks()
         for task in tasks:
             if task.get_name().startswith("_process_symbol_messages"):
                 task.cancel()
+        
+        # Cancel all reconnect tasks first
+        for task in list(self.reconnect_tasks):
+            task.cancel()
+            
+        # Wait for reconnect tasks to complete
+        if self.reconnect_tasks:
+            pending_tasks = list(self.reconnect_tasks)
+            self.logger.info(f"Waiting for {len(pending_tasks)} reconnect tasks to complete")
+            done, pending = await asyncio.wait(pending_tasks, timeout=5)
+            for task in pending:
+                task.cancel()
+                
+        self.reconnect_tasks.clear()
         
         # Close all WebSocket connections
         for conn_id, conn in list(self.connections.items()):
@@ -398,16 +398,16 @@ class WebSocketManager:
                     await conn["ws"].close()
                 if "session" in conn and not conn["session"].closed:
                     await conn["session"].close()
-                logger.info(f"Closed connection {conn_id}")
+                self.logger.info(f"Closed connection {conn_id}")
             except Exception as e:
-                logger.error(f"Error closing connection {conn_id}: {str(e)}")
+                self.logger.error(f"Error closing connection {conn_id}: {str(e)}")
         
         # Clear connections
         self.connections = {}
         
         # Update status
         self.status['connected'] = False
-        logger.info("All WebSocket connections closed")
+        self.logger.info("All WebSocket connections closed")
     
     def register_message_callback(self, callback):
         """Register a callback function to process WebSocket messages
@@ -434,4 +434,88 @@ class WebSocketManager:
         self.status['active_connections'] = len(self.connections)
         
         # Return copy of status
-        return self.status.copy() 
+        return self.status.copy()
+
+    def _extract_symbol(self, data):
+        """Extract symbol from WebSocket message
+        
+        Args:
+            data: WebSocket message
+            
+        Returns:
+            Symbol extracted from the message or None if no symbol found
+        """
+        try:
+            # Check for topic field first
+            if "topic" in data:
+                topic = data["topic"]
+                
+                # Common format: "channel.symbol" or "channel.timeframe.symbol"
+                if "." in topic:
+                    parts = topic.split(".")
+                    
+                    # Handle different topic formats based on channel
+                    channel = parts[0]
+                    
+                    if channel in ["tickers", "orderbook", "publicTrade", "liquidation"]:
+                        # Format: "channel.symbol" (e.g., "tickers.BTCUSDT")
+                        return parts[1]
+                    elif channel == "kline":
+                        # Format: "kline.timeframe.symbol" (e.g., "kline.1.BTCUSDT")
+                        return parts[2]
+                
+            # Try to extract from data field
+            if "data" in data and isinstance(data["data"], dict):
+                if "symbol" in data["data"]:
+                    return data["data"]["symbol"]
+            
+            # Special case for specific message types
+            if "ret_msg" in data and data.get("ret_msg") == "pong":
+                return None  # Ignore pong messages
+            
+            return None
+        except Exception as e:
+            self.logger.error(f"Error extracting symbol from message: {str(e)}")
+            return None
+            
+    def _log_message(self, connection_id, message_data):
+        """Log a WebSocket message based on verbose settings
+        
+        Args:
+            connection_id: Connection identifier
+            message_data: Raw message data
+        """
+        try:
+            # Log message count
+            now = time.time()
+            self._message_count += 1
+            
+            # Log summary periodically
+            if now - self._last_log_time > self._log_interval:
+                self.logger.info(f"WebSocket messages received: {self._message_count} in the last {self._log_interval} seconds")
+                self._message_count = 0
+                self._last_log_time = now
+                
+            # Log individual messages if verbose is enabled
+            if self._verbose_logging:
+                if self._include_message_content:
+                    try:
+                        # Try to parse as JSON for pretty logging
+                        data = json.loads(message_data)
+                        self.logger.debug(f"WebSocket message on {connection_id}: {json.dumps(data)[:200]}...")
+                    except:
+                        # Fall back to raw message if not JSON
+                        self.logger.debug(f"WebSocket message on {connection_id}: {str(message_data)[:200]}...")
+                else:
+                    self.logger.debug(f"WebSocket message received on connection {connection_id}")
+        except Exception as e:
+            # Don't let logging errors interrupt the message handler
+            self.logger.error(f"Error logging WebSocket message: {str(e)}")
+    
+    def _init_ws_state(self):
+        """Initialize websocket state"""
+        self._ws_subscriptions = {}
+        self._ws_callbacks = {}
+        self._ws_reconnecting = False
+        self._ws_connected = asyncio.Event()
+        self._ws_tasks = set() 

@@ -376,6 +376,7 @@ async def test_market_data_report():
         market_reporter = MarketReporter(
             top_symbols_manager=top_symbols_manager,
             alert_manager=alert_manager,
+            exchange=primary_exchange,
             logger=logger
         )
         

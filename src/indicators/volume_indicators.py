@@ -26,12 +26,11 @@ class VolumeIndicators(BaseIndicator):
         
         # Default component weights
         default_weights = {
-            'volume_delta': 0.20,    # Volume Delta (20%)
-            'adl': 0.15,            # ADL (15%)
+            'volume_delta': 0.25,    # Volume Delta (25%)
+            'adl': 0.20,            # ADL (20%)
             'cmf': 0.15,            # CMF (15%)
             'relative_volume': 0.20, # Relative Volume (20%)
-            'obv': 0.15,            # OBV (15%)
-            'divergence': 0.15      # Divergence (15%)
+            'obv': 0.20,            # OBV (20%)
         }
         
         # Initialize config with default structure if not provided
@@ -53,21 +52,33 @@ class VolumeIndicators(BaseIndicator):
         if 'components' not in volume_config:
             volume_config['components'] = {}
         
-        # Read component weights from config if available
-        components_config = volume_config['components']
-        self.component_weights = {}
-        
-        # Use weights from config or fall back to defaults
-        for component, default_weight in default_weights.items():
-            component_config = components_config.get(component, {})
-            if isinstance(component_config, dict):
-                config_weight = component_config.get('weight', default_weight)
-            else:
-                config_weight = default_weight
-            self.component_weights[component] = config_weight
+        # **** IMPORTANT: Must set component_weights BEFORE calling super().__init__ ****
+        # Initialize component weights dictionary with defaults
+        self.component_weights = default_weights.copy()
         
         # Now call super().__init__
         super().__init__(config, logger)
+        
+        # Read component weights from config if available
+        components_config = volume_config['components']
+        
+        # Try to get weights from confluence section first (most accurate)
+        confluence_weights = config.get('confluence', {}).get('weights', {}).get('sub_components', {}).get('volume', {})
+        
+        # Override defaults with weights from config
+        for component, default_weight in default_weights.items():
+            # First try to get from confluence configuration (most reliable source)
+            if confluence_weights and component in confluence_weights:
+                self.component_weights[component] = confluence_weights[component]
+            # Then try from component config 
+            elif isinstance(components_config.get(component), dict):
+                self.component_weights[component] = components_config.get(component, {}).get('weight', default_weight)
+        
+        # Normalize weights to ensure they sum to 1.0
+        weight_sum = sum(self.component_weights.values())
+        if weight_sum != 0:
+            for component in self.component_weights:
+                self.component_weights[component] /= weight_sum
         
         # Set default parameters if not provided in config
         # These parameters are used throughout the indicator calculations
