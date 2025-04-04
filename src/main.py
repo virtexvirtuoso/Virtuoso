@@ -42,19 +42,14 @@ from src.core.market.market_data_manager import MarketDataManager
 # Load environment variables
 load_dotenv()
 
-# Initialize root logger with basic configuration
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='[%(asctime)s] [%(levelname)s] %(name)s: %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S',
-    force=True  # Force override any existing configuration
-)
+# Initialize root logger with enhanced configuration
+configure_logging()
 
 # Get the root logger
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
 
-logger.debug("Debug logging enabled")
+logger.info("🚀 Starting Virtuoso Trading System with enhanced logging")
+logger.debug("Debug logging enabled with color support")
 
 # Initialize components
 config_manager = None
@@ -167,6 +162,7 @@ async def lifespan(app: FastAPI):
         market_reporter = MarketReporter(
             top_symbols_manager=top_symbols_manager,
             alert_manager=alert_manager,
+            exchange=await exchange_manager.get_primary_exchange(),
             logger=logger
         )
         
@@ -351,28 +347,20 @@ async def root():
             logger.error(error_msg)
             status["components"]["market_monitor"]["error"] = error_msg
             
-        # Get monitored symbols
-        try:
-            if top_symbols_manager:
-                logger.debug("Top symbols manager exists, getting monitored symbols...")
-                try:
-                    symbols = top_symbols_manager.top_symbols
-                    logger.debug(f"Retrieved {len(symbols) if symbols else 0} monitored symbols")
-                    status["components"]["top_symbols"]["count"] = len(symbols) if symbols else 0
-                    status["components"]["top_symbols"]["symbols"] = list(symbols) if symbols else []
-                    status["components"]["top_symbols"]["details"]["initialized"] = bool(top_symbols_manager)
-                    logger.debug(f"Top symbols details: {status['components']['top_symbols']}")
-                except Exception as e:
-                    error_msg = f"Error getting symbols: {str(e)}"
-                    logger.error(error_msg)
-                    status["components"]["top_symbols"]["error"] = error_msg
-            else:
-                logger.warning("Top symbols manager is not initialized")
-                status["components"]["top_symbols"]["error"] = "Not initialized"
-        except Exception as e:
-            error_msg = f"Error checking top symbols: {str(e)}"
-            logger.error(error_msg)
-            status["components"]["top_symbols"]["error"] = error_msg
+        # Check top symbols manager
+        if top_symbols_manager:
+            try:
+                symbols = await top_symbols_manager.get_symbols()
+                status["components"]["top_symbols"]["count"] = len(symbols) if symbols else 0
+                status["components"]["top_symbols"]["symbols"] = list(symbols) if symbols else []
+                status["components"]["top_symbols"]["details"]["initialized"] = bool(top_symbols_manager)
+                logger.debug(f"Top symbols details: {status['components']['top_symbols']}")
+            except Exception as e:
+                error_msg = f"Error getting top symbols: {str(e)}"
+                logger.error(error_msg)
+                status["components"]["top_symbols"]["error"] = error_msg
+        else:
+            status["components"]["top_symbols"]["error"] = "Not initialized"
 
         # Check overall status
         has_errors = any(
@@ -411,8 +399,9 @@ async def health_check():
             "exchange_manager": bool(exchange_manager and await exchange_manager.is_healthy()),
             "portfolio_analyzer": bool(portfolio_analyzer),
             "database_client": bool(database_client and await database_client.is_healthy()),
-            "market_monitor": bool(market_monitor and await market_monitor.is_healthy()),
-            "top_symbols_manager": bool(top_symbols_manager and top_symbols_manager.top_symbols)
+            "market_monitor": bool(market_monitor and market_monitor.is_running()),
+            "market_reporter": bool(market_reporter),
+            "top_symbols_manager": bool(top_symbols_manager)
         }
         
         # Check if any component is unhealthy
@@ -910,8 +899,9 @@ async def frontend():
 async def get_top_symbols():
     """Get the top trading symbols."""
     try:
-        if top_symbols_manager and top_symbols_manager.top_symbols:
-            return {"symbols": list(top_symbols_manager.top_symbols)[:10]}
+        if top_symbols_manager:
+            symbols = await top_symbols_manager.get_symbols()
+            return {"symbols": list(symbols)[:10]}
         else:
             # Fallback to default symbols
             return {"symbols": ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT", "DOGEUSDT"]}
@@ -928,44 +918,13 @@ async def get_market_report():
             
         # Generate a market summary
         market_summary = await market_reporter.generate_market_summary()
-        
-        # Get other report components
-        top_pairs = list(top_symbols_manager.top_symbols) if top_symbols_manager else []
-        
-        # Calculate market regime data
-        market_regime = await market_reporter._calculate_market_regime(top_pairs)
-        
-        # Calculate smart money indicators
-        smart_money = await market_reporter._calculate_smart_money_index(top_pairs)
-        
-        # Calculate whale activity
-        whale_activity = await market_reporter._calculate_whale_activity(top_pairs)
-        
-        # Calculate BTC betas
-        btc_betas = await market_reporter._calculate_btc_betas(top_pairs)
-        
-        # Analyze orderbooks
-        orderbook_analysis = await market_reporter._analyze_all_orderbooks(top_pairs)
-        
-        # Calculate performance metrics
-        performance_metrics = await market_reporter._calculate_performance_metrics(top_pairs)
-        
-        # Format full report
-        formatted_report = await market_reporter.format_market_report(
-            market_summary, 
-            top_pairs,
-            market_regime,
-            smart_money,
-            whale_activity,
-            btc_betas,
-            orderbook_analysis,
-            performance_metrics
-        )
-        
+        if not market_summary:
+            raise HTTPException(status_code=500, detail="Failed to generate market report")
+            
         # Add timestamp to the report
-        formatted_report["timestamp"] = int(time.time() * 1000)
+        market_summary["timestamp"] = int(time.time() * 1000)
         
-        return formatted_report
+        return market_summary
         
     except Exception as e:
         logger.error(f"Error generating market report: {str(e)}")
@@ -1052,6 +1011,7 @@ async def main():
         market_reporter = MarketReporter(
             top_symbols_manager=top_symbols_manager,
             alert_manager=alert_manager,
+            exchange=await exchange_manager.get_primary_exchange(),
             logger=logger
         )
         

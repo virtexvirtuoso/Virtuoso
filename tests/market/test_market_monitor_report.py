@@ -165,6 +165,7 @@ async def test_market_monitor_report():
         market_reporter = MarketReporter(
             top_symbols_manager=top_symbols_manager,
             alert_manager=alert_manager,
+            exchange=await exchange_manager.get_primary_exchange(),
             logger=logger
         )
         

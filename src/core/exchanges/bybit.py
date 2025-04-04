@@ -1791,6 +1791,68 @@ class BybitExchange(BaseExchange):
             category_bucket.append(now)
             endpoint_bucket.append(now)
 
+    def _get_default_market_data(self, symbol: str) -> Dict[str, Any]:
+        """Return default market data structure with neutral values."""
+        timestamp = int(time.time() * 1000)
+        return {
+            'symbol': symbol,
+            'exchange': 'bybit',
+            'timestamp': timestamp,
+            'ticker': {},
+            'orderbook': {
+                'bids': [],
+                'asks': [],
+                'timestamp': timestamp
+            },
+            'trades': [],
+            'sentiment': {
+                'long_short_ratio': {
+                    'symbol': symbol,
+                    'long': 0.5,
+                    'short': 0.5,
+                    'timestamp': timestamp
+                },
+                'liquidations': [],
+                'funding_rate': 0.0,
+                'volatility': {
+                    'value': 0.0,
+                    'window': 24,
+                    'timeframe': '5min',
+                    'timestamp': timestamp,
+                    'trend': 'unknown',
+                    'period_minutes': 5
+                },
+                'volume_sentiment': {
+                    'buy_volume': 0.0,
+                    'sell_volume': 0.0,
+                    'timestamp': timestamp
+                },
+                'market_mood': {
+                    'risk_level': 1,
+                    'max_leverage': 100.0,
+                    'timestamp': timestamp
+                },
+                'open_interest': {
+                    'current': 0.0,
+                    'previous': 0.0,
+                    'change': 0.0,
+                    'timestamp': timestamp,
+                    'history': []
+                }
+            },
+            'ohlcv': {},
+            'metadata': {
+                'ticker_success': False,
+                'orderbook_success': False,
+                'trades_success': False,
+                'lsr_success': False,
+                'risk_limits_success': False,
+                'ohlcv_success': False,
+                'oi_history_success': False,
+                'volatility_success': False
+            }
+        }
+
     async def fetch_market_data(self, symbol: str) -> Dict[str, Any]:
         """Fetch comprehensive market data for a symbol with rate limiting."""
         try:
@@ -1806,195 +1868,204 @@ class BybitExchange(BaseExchange):
                         result = await fetch_func(*args, **kwargs)
                         return result
                     except Exception as e:
-                        if attempt == max_retries:
-                            self.logger.error(f"Failed to fetch {endpoint} after {max_retries} attempts: {str(e)}")
-                            return None
                         self.logger.warning(f"Attempt {attempt} failed for {endpoint}: {str(e)}. Retrying in {retry_delay}s...")
-                        await asyncio.sleep(retry_delay)
-                        retry_delay *= 2  # Exponential backoff
+                        if attempt < max_retries:
+                            await asyncio.sleep(retry_delay)
+                            retry_delay *= 2  # Exponential backoff
+                        else:
+                            self.logger.error(f"Failed to fetch {endpoint} after {max_retries} attempts: {str(e)}")
+                            raise
             
-            # Setup fetch functions
-            fetch_funcs = [
-                ('ticker', lambda: self._fetch_ticker(symbol)),
-                ('orderbook', lambda: self.get_orderbook(symbol, limit=100)),
-                ('trades', lambda: self.fetch_trades(symbol, limit=100)),
-                ('ohlcv', lambda: self._fetch_all_timeframes(symbol)),
-                ('long_short_ratio', lambda: self._fetch_long_short_ratio(symbol)),
-                ('oi_history', lambda: self.fetch_open_interest_history(symbol, interval='5min', limit=200)),
-                ('risk_limits', lambda: self._fetch_risk_limits(symbol))
+            start_time = time.time()
+            
+            # Initialize market data structure
+            market_data = self._get_default_market_data(symbol)
+            
+            # Define coroutines for parallel fetching
+            fetch_tasks = [
+                fetch_with_retry('ticker', self._fetch_ticker, symbol),
+                fetch_with_retry('orderbook', self.get_orderbook, symbol, 100),
+                fetch_with_retry('trades', self.fetch_trades, symbol, limit=100),
+                fetch_with_retry('lsr', self._fetch_long_short_ratio, symbol),
+                fetch_with_retry('risk_limits', self._fetch_risk_limits, symbol),
             ]
             
-            # Execute all fetch operations concurrently
-            start_time = time.time()
-            results = await asyncio.gather(*[fetch_with_retry(endpoint, func) for endpoint, func in fetch_funcs], 
-                                           return_exceptions=True)
+            # Run all tasks concurrently
+            results = await asyncio.gather(*fetch_tasks, return_exceptions=True)
+            
+            # Initialize market data with default values
+            ticker, orderbook, trades, lsr, risk_limits = [None] * 5
+            
+            # Process results
+            for i, result in enumerate(results):
+                if isinstance(result, Exception):
+                    self.logger.error(f"Error fetching data: {str(result)}")
+                    continue
+                
+                # Assign results to variables
+                if i == 0: ticker = result
+                elif i == 1: orderbook = result
+                elif i == 2: trades = result
+                elif i == 3: lsr = result
+                elif i == 4: risk_limits = result
+            
+            # Try to fetch OHLCV data (this is CPU intensive so we don't parallelize)
+            try:
+                ohlcv = await fetch_with_retry('ohlcv', self._fetch_all_timeframes, symbol)
+            except Exception as e:
+                self.logger.error(f"Failed to fetch OHLCV data: {str(e)}")
+                ohlcv = None
+                
+            # Try to fetch open interest history
+            try:
+                oi_history = await fetch_with_retry('oi_history', self.fetch_open_interest_history, symbol, '5min')
+            except Exception as e:
+                self.logger.error(f"Failed to fetch open interest history: {str(e)}")
+                oi_history = None
+                
+            # Try to fetch historical volatility
+            try:
+                volatility = await fetch_with_retry('volatility', self._calculate_historical_volatility, symbol, '5min')
+            except Exception as e:
+                self.logger.error(f"Failed to fetch volatility: {str(e)}")
+                volatility = None
+            
+            # Fill market data structure with fetched data
+            if ticker:
+                market_data['ticker'] = ticker
+                market_data['metadata']['ticker_success'] = True
+            
+            if orderbook:
+                market_data['orderbook'] = orderbook
+                market_data['metadata']['orderbook_success'] = True
+            
+            if trades:
+                market_data['trades'] = trades
+                market_data['metadata']['trades_success'] = True
+                
+                # Calculate volume sentiment directly from trades
+                # Count buy/sell volume
+                buy_volume = 0.0
+                sell_volume = 0.0
+                
+                for trade in trades:
+                    try:
+                        # Convert size to float before adding
+                        size = float(trade.get('size', 0))
+                        side = trade.get('side', '').lower()
+                        
+                        if side == 'buy':
+                            buy_volume += size
+                        elif side == 'sell':
+                            sell_volume += size
+                    except (ValueError, TypeError) as e:
+                        self.logger.warning(f"Error processing trade size: {e}")
+                
+                market_data['sentiment']['volume_sentiment'] = {
+                    'buy_volume': buy_volume,
+                    'sell_volume': sell_volume,
+                    'timestamp': int(time.time() * 1000)
+                }
+            
+            if lsr:
+                # Convert from API format (buyRatio/sellRatio) to our format (long/short)
+                if isinstance(lsr, dict) and 'list' in lsr and lsr['list']:
+                    latest_lsr = lsr['list'][0]
+                    
+                    try:
+                        # Extract values and convert to float
+                        buy_ratio = float(latest_lsr.get('buyRatio', 0.5))
+                        sell_ratio = float(latest_lsr.get('sellRatio', 0.5))
+                        timestamp = int(latest_lsr.get('timestamp', int(time.time() * 1000)))
+                        
+                        # Create structured format
+                        market_data['sentiment']['long_short_ratio'] = {
+                            'symbol': symbol,
+                            'long': buy_ratio,
+                            'short': sell_ratio,
+                            'timestamp': timestamp
+                        }
+                        market_data['metadata']['lsr_success'] = True
+                    except (ValueError, TypeError) as e:
+                        self.logger.warning(f"Error processing long/short ratio: {e}")
+            
+            if risk_limits:
+                market_data['risk_limit'] = risk_limits
+                market_data['metadata']['risk_limits_success'] = True
+                
+                # Create market mood from risk limits
+                if 'initialMargin' in risk_limits and 'maxLeverage' in risk_limits:
+                    market_data['sentiment']['market_mood'] = {
+                        'risk_level': int(risk_limits.get('currentTier', 1)),
+                        'max_leverage': float(risk_limits.get('maxLeverage', 100.0)),
+                        'timestamp': int(time.time() * 1000)
+                    }
+            
+            if ticker:
+                # Extract funding rate
+                try:
+                    funding_rate = float(ticker.get('fundingRate', 0.0))
+                    market_data['sentiment']['funding_rate'] = funding_rate
+                except (ValueError, TypeError):
+                    self.logger.warning("Could not convert funding rate to float")
+                
+                # Extract open interest
+                try:
+                    open_interest = float(ticker.get('openInterest', 0.0))
+                    open_interest_value = float(ticker.get('openInterestValue', 0.0))
+                    
+                    market_data['sentiment']['open_interest'] = {
+                        'current': open_interest,
+                        'previous': 0.0,  # We don't have previous OI in ticker
+                        'change': 0.0,
+                        'timestamp': int(time.time() * 1000),
+                        'value': open_interest_value,
+                        'history': []
+                    }
+                except (ValueError, TypeError) as e:
+                    self.logger.warning(f"Error processing open interest: {e}")
+            
+            if ohlcv:
+                market_data['ohlcv'] = ohlcv
+                market_data['metadata']['ohlcv_success'] = True
+            
+            if oi_history and isinstance(oi_history, dict) and 'list' in oi_history:
+                # Extract history list
+                history_list = oi_history.get('list', [])
+                if history_list:
+                    market_data['sentiment']['open_interest']['history'] = history_list
+                    market_data['metadata']['oi_history_success'] = True
+            
+            if volatility:
+                market_data['sentiment']['volatility'] = volatility
+                market_data['metadata']['volatility_success'] = True
+            
             end_time = time.time()
             self.logger.debug(f"Market data fetch completed in {end_time - start_time:.3f}s")
             
-            # Map results
-            ticker, orderbook, trades, ohlcv, long_short_ratio, oi_history, risk_limits = results
-            
-            # Ensure we catch any exceptions during fetching
-            for i, result in enumerate(results):
-                if isinstance(result, Exception):
-                    endpoint = fetch_funcs[i][0]
-                    self.logger.error(f"Error in {endpoint} fetch: {str(result)}")
-                    results[i] = None  # Replace exceptions with None
-            
-            # Reassign variables after replacing exceptions with None
-            ticker, orderbook, trades, ohlcv, long_short_ratio, oi_history, risk_limits = results
-            
-            # Transform OHLCV data to have the structure expected by the monitor
-            # The monitor expects each timeframe to be a dict with a 'data' key
-            wrapped_ohlcv = {}
-            if ohlcv is not None and isinstance(ohlcv, dict):
-                for timeframe, df in ohlcv.items():
-                    wrapped_ohlcv[timeframe] = {'data': df}
-            
-            # Get current open interest from ticker and historical values from OI history endpoint
-            current_oi = 0.0
-            previous_oi = 0.0
-            oi_history_list = []
-            
-            # Process current open interest from ticker
-            if ticker is not None and 'openInterest' in ticker:
-                current_oi = float(ticker.get('openInterest', 0))
-            
-            # Process open interest history
-            if oi_history is not None and isinstance(oi_history, dict) and 'history' in oi_history:
-                oi_history_list = oi_history['history']
-                if len(oi_history_list) > 1:  # Need at least 2 entries to get previous value
-                    # First entry (index 0) is the most recent
-                    current_oi = float(oi_history_list[0]['value'])
-                    # Second entry (index 1) is the second most recent
-                    previous_oi = float(oi_history_list[1]['value'])
-                    self.logger.debug(f"Using OI history for current ({current_oi}) and previous ({previous_oi}) values")
-                elif len(oi_history_list) == 1:
-                    current_oi = float(oi_history_list[0]['value'])
-                    # If we only have one entry, use it for both current and previous
-                    previous_oi = current_oi
-                    self.logger.debug(f"Using single OI history entry for both current and previous: {current_oi}")
-            
-            # If we don't have previous_oi from history, estimate it from current
-            if previous_oi == 0.0 and current_oi > 0:
-                previous_oi = current_oi * 0.99  # Estimate previous as 99% of current
-                self.logger.debug(f"Estimating previous OI as 99% of current: {previous_oi}")
-            
-            # If we still don't have OI history but have current value from ticker, create synthetic history
-            if len(oi_history_list) == 0 and current_oi > 0:
-                now = int(time.time() * 1000)
-                # Create synthetic history with decreasing values going back in time
-                oi_history_list = [
-                    {'timestamp': now, 'value': current_oi, 'symbol': symbol},
-                    {'timestamp': now - 5*60*1000, 'value': previous_oi, 'symbol': symbol},  # 5 min ago
-                    {'timestamp': now - 10*60*1000, 'value': previous_oi * 0.995, 'symbol': symbol},  # 10 min ago
-                    {'timestamp': now - 15*60*1000, 'value': previous_oi * 0.99, 'symbol': symbol},  # 15 min ago
-                ]
-                self.logger.debug(f"Created synthetic OI history with {len(oi_history_list)} entries")
-            
-            # Structure market data with proper typing and structure
-            market_data = {
-                'symbol': symbol,
-                'exchange': 'bybit',  # Add the exchange identifier
-                'timestamp': int(time.time() * 1000),
-                'ticker': ticker if ticker is not None else {},
-                'orderbook': orderbook if orderbook is not None else {'bids': [], 'asks': []},
-                'trades': trades if trades is not None else [],
-                'ohlcv': wrapped_ohlcv,
-                'sentiment': {
-                    'long_short_ratio': (
-                        long_short_ratio['long'] / (long_short_ratio['short'] + long_short_ratio['long']) 
-                        if long_short_ratio is not None and not isinstance(long_short_ratio, Exception)
-                        else 0.5
-                    ),
-                    'liquidations': [],  # Will be populated via WebSocket
-                    'funding_rate': float(ticker.get('fundingRate', 0)) if ticker is not None else 0.0
-                },
-                'open_interest': {
-                    'current': current_oi,
-                    'previous': previous_oi,
-                    'value': float(ticker.get('openInterestValue', 0)) if ticker is not None else 0.0,
-                    'timestamp': int(time.time() * 1000),
-                    'history': oi_history_list
-                },
-                'risk_limit': risk_limits if risk_limits is not None else {},
-                'metadata': {
-                    'exchange': 'bybit',
-                    'market_type': 'linear',
-                    'quote_currency': 'USDT',
-                    'fetch_timestamp': int(time.time() * 1000),
-                    'success': {
-                        'ticker': ticker is not None,
-                        'orderbook': orderbook is not None,
-                        'trades': trades is not None,
-                        'ohlcv': ohlcv is not None,
-                        'long_short_ratio': long_short_ratio is not None,
-                        'risk_limits': risk_limits is not None,
-                    }
-                }
-            }
-            
-            # Add fallbacks for critical fields
-            market_data.setdefault('sentiment', {}).setdefault('long_short_ratio', 0.5)
-            
-            # Add price structure for easier access
-            if ticker is not None:
-                market_data['price'] = {
-                    'last': float(ticker.get('last', 0)),
-                    'high': float(ticker.get('high', 0)),
-                    'low': float(ticker.get('low', 0)),
-                    'change_24h': float(ticker.get('change', 0)),
-                    'volume': float(ticker.get('volume', 0)),
-                    'turnover': float(ticker.get('turnover', 0))
-                }
-            else:
-                market_data['price'] = {
-                    'last': 0.0,
-                    'high': 0.0,
-                    'low': 0.0,
-                    'change_24h': 0.0,
-                    'volume': 0.0,
-                    'turnover': 0.0
-                }
-            
-            # Add required fields for validation
-            market_data['turnover24h'] = float(ticker.get('turnover', 0)) if ticker is not None else 0.0
-            market_data['volume24h'] = float(ticker.get('volume', 0)) if ticker is not None else 0.0
-            market_data['bid'] = float(ticker.get('bid', 0)) if ticker is not None else 0.0
-            market_data['ask'] = float(ticker.get('ask', 0)) if ticker is not None else 0.0
-            
-            # Add data freshness check
-            if 'fetch_timestamp' in market_data.get('metadata', {}):
-                age = time.time() - (market_data['metadata']['fetch_timestamp'] / 1000)
-                if age > 300:  # 5 minutes
-                    self.logger.warning(f"Stale market data for {symbol} ({age:.1f}s old)")
-            
-            # Log data structure before validation
+            # Log market data structure for debugging
             self.logger.debug("Market data structure before validation:")
             self.logger.debug(f"Sentiment data: {market_data['sentiment']}")
-            self.logger.debug(f"Open interest data: current={market_data['open_interest']['current']}, previous={market_data['open_interest']['previous']}, history entries={len(market_data['open_interest']['history'])}")
-            self.logger.debug(f"Risk limits: {market_data['risk_limit']}")
+            if volatility:
+                self.logger.debug(f"Volatility data: {market_data['sentiment']['volatility']}")
+            if 'open_interest' in market_data['sentiment']:
+                oi = market_data['sentiment']['open_interest']
+                self.logger.debug(f"Open interest data: current={oi.get('current', 0)}, previous={oi.get('previous', 0)}, history entries={len(oi.get('history', []))}")
+            if risk_limits:
+                self.logger.debug(f"Risk limits: {risk_limits}")
             
-            # Validate market data structure
+            # Validate market data
             if not self.validate_market_data(market_data):
-                self.logger.error(f"Invalid market data structure for {symbol}")
-                return {}
-            
-            # Get long/short ratio
-            ls_ratio = await self.fetch_long_short_ratio(symbol)
-            if ls_ratio and 'list' in ls_ratio.get('result', {}):
-                market_data['long_short_ratio'] = {
-                    'buy_ratio': float(ls_ratio['result']['list'][0]['buyRatio']),
-                    'sell_ratio': float(ls_ratio['result']['list'][0]['sellRatio']),
-                    'timestamp': int(ls_ratio['result']['list'][0]['timestamp'])
-                }
+                self.logger.warning("Market data validation failed")
             
             return market_data
             
         except Exception as e:
             self.logger.error(f"Error fetching market data for {symbol}: {str(e)}")
             self.logger.debug(f"Traceback: {traceback.format_exc()}")
-            return {}
+            
+            # Return default structure instead of empty dict
+            return self._get_default_market_data(symbol)
 
     async def _fetch_with_rate_limit(self, endpoint: str, fetch_func: Callable, *args, **kwargs) -> Any:
         """Execute fetch function with rate limiting."""
@@ -2319,9 +2390,10 @@ class BybitExchange(BaseExchange):
             self.logger.debug(f"Making OHLCV request for {symbol} @ {interval}")
             
             # Convert timeframe from standard format to Bybit's format if needed
-            # Check if the interval follows standard format (with 'm', 'h', 'd')
+            # First check if the interval is already in Bybit's numeric format
             bybit_interval = interval
-            if interval.endswith('m') or interval.endswith('h') or interval.endswith('d') or interval.endswith('w') or interval.endswith('M'):
+            if not interval.isdigit() and interval not in ['D', 'W', 'M']:
+                # If not numeric, try to convert from standard format
                 bybit_interval = {
                     '1m': '1',
                     '3m': '3',
@@ -2451,11 +2523,17 @@ class BybitExchange(BaseExchange):
                         })
                 market_data['trades'] = processed_trades
                 
-            # Get timeframes data
-            for interval in ['1', '5', '30', '240']:
-                candles = await self._fetch_klines(symbol, interval)
+            # Get timeframes data - use Bybit's numeric format directly
+            intervals = {
+                '1': '1',  # 1 minute
+                '5': '5',  # 5 minutes
+                '30': '30',  # 30 minutes
+                '240': '240'  # 4 hours
+            }
+            for interval_key, interval_value in intervals.items():
+                candles = await self._fetch_klines(symbol, interval_value)
                 if candles:
-                    market_data['timeframes'][interval] = candles
+                    market_data['timeframes'][interval_key] = candles
                     
             # Get orderbook data
             orderbook = await self.fetch_order_book(symbol)
@@ -2468,7 +2546,7 @@ class BybitExchange(BaseExchange):
                 market_data['ticker'] = ticker
                 
             # Get open interest data
-            oi_history = await self.fetch_open_interest_history(symbol, interval='5min', limit=200)
+            oi_history = await self.fetch_open_interest_history(symbol, interval='5', limit=200)  # Use Bybit's format
             oi_history_list = []
             
             # Get current OI from ticker
@@ -2515,6 +2593,9 @@ class BybitExchange(BaseExchange):
                 'history': oi_history_list,
                 'timestamp': int(time.time() * 1000)
             }
+            
+            # Add direct reference to history for easier access
+            market_data['open_interest_history'] = oi_history_list
             
             # Also add to sentiment for backward compatibility
             market_data['sentiment']['open_interest'] = {
@@ -3048,8 +3129,8 @@ class BybitExchange(BaseExchange):
                 # Return default structure
                 return {
                     'symbol': symbol,
-                    'long': 1.0,
-                    'short': 1.0,
+                    'long': 50.0,
+                    'short': 50.0,
                     'timestamp': int(time.time() * 1000)
                 }
             
@@ -3060,20 +3141,25 @@ class BybitExchange(BaseExchange):
                 # Return default structure
                 return {
                     'symbol': symbol,
-                    'long': 1.0,
-                    'short': 1.0,
+                    'long': 50.0,
+                    'short': 50.0,
                     'timestamp': int(time.time() * 1000)
                 }
             
             # Parse the first entry
             latest = ratio_data[0]
+            self.logger.debug(f"Raw long/short ratio data: {latest}")
             
-            # Build result
+            # Build result using the correct API fields (buyRatio/sellRatio)
+            buy_ratio = float(latest.get('buyRatio', 50.0))
+            sell_ratio = float(latest.get('sellRatio', 50.0))
+            timestamp = int(latest.get('timestamp', time.time() * 1000))
+            
             return {
                 'symbol': symbol,
-                'long': float(latest.get('longAccount', 50.0)),
-                'short': float(latest.get('shortAccount', 50.0)),
-                'timestamp': int(time.time() * 1000)
+                'long': buy_ratio,
+                'short': sell_ratio,
+                'timestamp': timestamp
             }
             
         except Exception as e:
@@ -3081,8 +3167,8 @@ class BybitExchange(BaseExchange):
             # Return default structure
             return {
                 'symbol': symbol,
-                'long': 1.0,
-                'short': 1.0,
+                'long': 50.0,
+                'short': 50.0,
                 'timestamp': int(time.time() * 1000)
             }
     
@@ -3111,7 +3197,12 @@ class BybitExchange(BaseExchange):
                 return {
                     'symbol': symbol,
                     'riskLimits': [],
-                    'timestamp': int(time.time() * 1000)
+                    'initialMargin': 0.01,  # 1% default initial margin
+                    'maintenanceMargin': 0.005,  # 0.5% default maintenance margin
+                    'currentTier': 1,
+                    'maxLeverage': 100.0,
+                    'timestamp': int(time.time() * 1000),
+                    'levels': []
                 }
             
             # Extract data from response
@@ -3122,15 +3213,43 @@ class BybitExchange(BaseExchange):
                 return {
                     'symbol': symbol,
                     'riskLimits': [],
-                    'timestamp': int(time.time() * 1000)
+                    'initialMargin': 0.01, 
+                    'maintenanceMargin': 0.005,
+                    'currentTier': 1,
+                    'maxLeverage': 100.0,
+                    'timestamp': int(time.time() * 1000),
+                    'levels': []
                 }
             
-            # Return the full risk limits list
-            return {
+            # Get the first/current tier - generally this is the lowest risk level
+            current_tier = 1
+            default_tier = None
+            for tier in risk_data:
+                if tier.get('isLowestRisk', 0) == 1:
+                    default_tier = tier
+                    break
+            
+            # If no tier marked as lowest risk, use the first one
+            if default_tier is None and risk_data:
+                default_tier = risk_data[0]
+            
+            # Extract key risk metrics from the default tier
+            result = {
                 'symbol': symbol,
                 'riskLimits': risk_data,
-                'timestamp': int(time.time() * 1000)
+                'initialMargin': float(default_tier.get('initialMargin', 0.01)) if default_tier else 0.01,
+                'maintenanceMargin': float(default_tier.get('maintenanceMargin', 0.005)) if default_tier else 0.005,
+                'currentTier': current_tier,
+                'maxLeverage': float(default_tier.get('maxLeverage', 100.0)) if default_tier else 100.0,
+                'timestamp': int(time.time() * 1000),
+                'levels': risk_data  # Add full risk levels list
             }
+            
+            self.logger.debug(f"Risk limits extracted: initialMargin={result['initialMargin']}, "
+                             f"maintenanceMargin={result['maintenanceMargin']}, "
+                             f"maxLeverage={result['maxLeverage']}")
+            
+            return result
             
         except Exception as e:
             self.logger.error(f"Error fetching risk limits for {symbol}: {str(e)}")
@@ -3138,7 +3257,12 @@ class BybitExchange(BaseExchange):
             return {
                 'symbol': symbol,
                 'riskLimits': [],
-                'timestamp': int(time.time() * 1000)
+                'initialMargin': 0.01,
+                'maintenanceMargin': 0.005,
+                'currentTier': 1,
+                'maxLeverage': 100.0,
+                'timestamp': int(time.time() * 1000),
+                'levels': []
             }
 
     async def fetch_long_short_ratio(self, symbol: str) -> Dict[str, Any]:
@@ -3317,53 +3441,214 @@ class BybitExchange(BaseExchange):
             # Check rate limit
             await self._check_rate_limit('market_data', category='linear')
             
+            # Do NOT convert the interval format for open interest endpoint
+            # Bybit expects the full format with time unit (e.g., '5min', not '5')
+            
             # Set up request parameters
             params = {
                 'category': 'linear',
                 'symbol': symbol_str,
-                'intervalTime': interval,  # Changed from 'IntervalTime' to 'intervalTime'
+                'intervalTime': interval,  # Use the original interval format directly
                 'limit': min(limit, 200)  # Bybit maximum is 200
             }
+            
+            self.logger.debug(f"Fetching open interest with params: {params}")
             
             # Make the request
             response = await self._make_request('GET', '/v5/market/open-interest', params=params)
             
+            # Log only essential information about the response
+            if response:
+                self.logger.debug(f"Open interest API response: status={response.get('retCode')}, msg={response.get('retMsg')}")
+                if 'result' in response and 'list' in response['result']:
+                    record_count = len(response['result']['list'])
+                    self.logger.debug(f"Received {record_count} open interest records for {symbol}")
+            
             # Parse response
-            if not response or 'result' not in response or 'list' not in response['result']:
-                self.logger.error(f"Invalid open interest response for {symbol}")
+            if not response:
+                self.logger.error(f"Null response from open interest API for {symbol}")
+                return {'history': []}
+                
+            if 'retCode' in response and response['retCode'] != 0:
+                self.logger.error(f"API error fetching open interest: code={response['retCode']}, msg={response.get('retMsg', 'No message')}")
+                return {'history': []}
+                
+            if 'result' not in response:
+                self.logger.error(f"Missing 'result' field in open interest response for {symbol}")
+                return {'history': []}
+                
+            if 'list' not in response['result']:
+                self.logger.error(f"Missing 'list' field in open interest result for {symbol}")
                 return {'history': []}
             
             oi_list = response['result']['list']
+            
             if not oi_list:
                 self.logger.warning(f"Empty open interest list for {symbol}")
                 return {'history': []}
             
             # Process the open interest data
             history = []
+            processed_count = 0
+            error_count = 0
+            
             for item in oi_list:
                 try:
+                    # Process without logging each item
+                    timestamp = int(item.get('timestamp', 0))
+                    openInterest = item.get('openInterest', 0)
+                    
+                    if not timestamp or not openInterest:
+                        self.logger.warning(f"Incomplete OI data item: {item}")
+                        error_count += 1
+                        continue
+                        
                     history.append({
-                        'timestamp': int(item.get('timestamp', 0)),
-                        'value': float(item.get('openInterest', 0)),
+                        'timestamp': timestamp,
+                        'value': float(openInterest),
                         'symbol': symbol_str
                     })
+                    processed_count += 1
+                    
                 except (ValueError, TypeError) as e:
                     self.logger.warning(f"Error processing open interest item: {e}")
+                    error_count += 1
                     continue
             
             # Sort by timestamp (newest first)
             history.sort(key=lambda x: x['timestamp'], reverse=True)
             
-            return {
+            self.logger.debug(f"Successfully processed {processed_count} of {len(oi_list)} open interest records. Errors: {error_count}")
+            
+            result = {
                 'history': history,
                 'symbol': symbol,
                 'interval': interval,
                 'timestamp': int(time.time() * 1000)
             }
             
+            return result
+            
         except Exception as e:
             self.logger.error(f"Error fetching open interest history: {e}")
+            self.logger.error(traceback.format_exc())
             return {'history': []}
+
+    async def _calculate_historical_volatility(self, symbol: str, timeframe: str = '5min', window: int = 24) -> Dict[str, Any]:
+        """
+        Calculate historical volatility from OHLCV data.
+        
+        Args:
+            symbol: Trading pair symbol
+            timeframe: Time interval for calculations
+            window: Number of periods to calculate volatility over
+            
+        Returns:
+            Dictionary containing volatility data
+        """
+        try:
+            self.logger.debug(f"Calculating historical volatility for {symbol}")
+            
+            # Convert timeframe to minutes
+            period_minutes = self._timeframe_to_minutes(timeframe)
+            if period_minutes == 0:
+                self.logger.error(f"Invalid timeframe format: {timeframe}")
+                return self._default_volatility_data(timeframe, window)
+            
+            # Fetch OHLCV data with extra candles for trend calculation
+            candles = await self._fetch_ohlcv(symbol, timeframe, limit=window + 5)
+            
+            if not candles or len(candles) < window:
+                self.logger.warning(f"Insufficient OHLCV data for volatility calculation: {len(candles) if candles else 0} candles")
+                return self._default_volatility_data(timeframe, window)
+            
+            # Convert to DataFrame with correct columns
+            df = pd.DataFrame(candles, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+            df['close'] = pd.to_numeric(df['close'], errors='coerce')
+            
+            # Drop rows with NaN values
+            df = df.dropna(subset=['close'])
+            if len(df) < window:
+                self.logger.warning(f"Insufficient valid data points after cleaning: {len(df)}")
+                return self._default_volatility_data(timeframe, window)
+            
+            # Calculate log returns
+            df['returns'] = np.log(df['close'] / df['close'].shift(1))
+            
+            # Calculate annualized volatility
+            minutes_per_year = 365 * 24 * 60
+            periods_per_year = minutes_per_year / period_minutes
+            volatility = df['returns'].rolling(window=window).std() * np.sqrt(periods_per_year)
+            
+            # Get the most recent volatility value
+            current_vol = float(volatility.iloc[-1]) if not volatility.empty else 0.0
+            
+            # Calculate volatility trend using exponential moving average
+            vol_ema = volatility.ewm(span=5).mean()
+            if len(vol_ema) >= 2:
+                if vol_ema.iloc[-1] > vol_ema.iloc[-2] * 1.05:
+                    trend = 'increasing'
+                elif vol_ema.iloc[-1] < vol_ema.iloc[-2] * 0.95:
+                    trend = 'decreasing'
+                else:
+                    trend = 'stable'
+            else:
+                trend = 'unknown'
+            
+            return {
+                'value': current_vol,
+                'window': window,
+                'timeframe': timeframe,
+                'timestamp': int(time.time() * 1000),
+                'trend': trend,
+                'period_minutes': period_minutes
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error calculating historical volatility: {str(e)}", exc_info=True)
+            return self._default_volatility_data(timeframe, window)
+    
+    def _default_volatility_data(self, timeframe: str, window: int) -> Dict[str, Any]:
+        """Return default volatility data structure when calculation fails."""
+        period_minutes = self._timeframe_to_minutes(timeframe)
+        return {
+            'value': 0.0,
+            'window': window,
+            'timeframe': timeframe,
+            'timestamp': int(time.time() * 1000),
+            'trend': 'unknown',
+            'period_minutes': period_minutes
+        }
+    
+    def _timeframe_to_minutes(self, timeframe: str) -> int:
+        """Convert timeframe string to minutes.
+        
+        Args:
+            timeframe (str): Timeframe string (e.g., '1m', '5m', '1h', '1d')
+            
+        Returns:
+            int: Number of minutes in the timeframe
+        """
+        try:
+            if 'min' in timeframe:
+                return int(timeframe.replace('min', ''))
+            elif 'm' in timeframe:
+                return int(timeframe.replace('m', ''))
+            elif 'h' in timeframe:
+                return int(timeframe.replace('h', '')) * 60
+            elif 'd' in timeframe:
+                return int(timeframe.replace('d', '')) * 24 * 60
+            else:
+                self.logger.error(f"Unsupported timeframe format: {timeframe}")
+                return 5  # Default to 5 minutes
+        
+        except (ValueError, TypeError) as e:
+            self.logger.error(f"Error parsing timeframe: {str(e)}")
+            return 5  # Default to 5 minutes
+
+    async def _fetch_klines(self, symbol: str, interval: str) -> List[List[Any]]:
+        """Alias for _fetch_ohlcv to maintain compatibility."""
+        return await self._fetch_ohlcv(symbol, interval)
 
 class BybitWebSocket:
     """WebSocket client for Bybit exchange."""

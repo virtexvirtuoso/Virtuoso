@@ -94,11 +94,11 @@ class PriceStructureIndicators(BaseIndicator):
         
         # Default component weights
         default_weights = {
-            'order_block': 0.20,
-            'volume_profile': 0.20,
-            'vwap': 0.15,
+            'order_block': 0.15,
+            'volume_profile': 0.25,
+            'vwap': 0.2,
             'composite_value': 0.15,
-            'support_resistance': 0.15,
+            'support_resistance': 0.1,
             'market_structure': 0.15
         }
         
@@ -124,10 +124,26 @@ class PriceStructureIndicators(BaseIndicator):
         components_config = price_structure_config.get('components', {})
         self.component_weights = {}
         
+        # Try to get weights from confluence section first (most accurate)
+        confluence_weights = config.get('confluence', {}).get('weights', {}).get('sub_components', {}).get('price_structure', {})
+        
         # Use weights from config or fall back to defaults
         for component, default_weight in default_weights.items():
-            config_weight = components_config.get(component, {}).get('weight', default_weight)
-            self.component_weights[component] = config_weight
+            # First try to get from confluence configuration (most reliable source)
+            if confluence_weights and component in confluence_weights:
+                self.component_weights[component] = confluence_weights[component]
+            # Then try from component config 
+            elif component in components_config:
+                self.component_weights[component] = components_config.get(component, {}).get('weight', default_weight)
+            # Fall back to default
+            else:
+                self.component_weights[component] = default_weight
+                
+        # Normalize weights to ensure they sum to 1.0
+        weight_sum = sum(self.component_weights.values())
+        if weight_sum != 0:
+            for component in self.component_weights:
+                self.component_weights[component] /= weight_sum
         
         # Setup required timeframes
         self.required_timeframes = ['base', 'ltf', 'mtf', 'htf']
@@ -167,6 +183,23 @@ class PriceStructureIndicators(BaseIndicator):
         
         # Validate weights
         self._validate_weights()
+
+    def _validate_weights(self):
+        """Validate that component weights are properly loaded."""
+        try:
+            weight_sum = sum(self.component_weights.values())
+            if abs(weight_sum - 1.0) > 0.001:
+                self.logger.warning(f"Component weights do not sum to 1.0 (sum: {weight_sum:.4f})")
+                
+            # Log the weights for debugging
+            self.logger.info("PriceStructure component weights:")
+            for component, weight in self.component_weights.items():
+                self.logger.info(f"  - {component}: {weight:.4f}")
+                
+            return True
+        except Exception as e:
+            self.logger.error(f"Error validating component weights: {str(e)}")
+            return False
 
     @debug_method(DebugLevel.DETAILED)
     async def _calculate_component_scores(self, data: Dict[str, Any]) -> Dict[str, float]:
@@ -659,25 +692,38 @@ class PriceStructureIndicators(BaseIndicator):
             price_range = df['close'].max() - df['close'].min()
             adaptive_bins = max(20, min(200, int(price_range / (price_std * 0.1))))
             
-            # Calculate volume profile
-            price_levels = pd.qcut(df['close'], q=adaptive_bins, duplicates='drop')
-            volume_profile = df.groupby(price_levels, observed=False)['volume'].sum()
+            # Calculate volume profile using numeric indices instead of interval objects
+            bins = np.linspace(df['close'].min(), df['close'].max(), adaptive_bins + 1)
+            df['price_level'] = pd.cut(df['close'], bins=bins, labels=False)
+            bin_centers = (bins[:-1] + bins[1:]) / 2
+            volume_profile = df.groupby('price_level')['volume'].sum()
+            volume_profile.index = bin_centers[volume_profile.index.astype(int)]
             
             # Get POC and value area
-            poc_level = volume_profile.idxmax()
+            poc_level = float(volume_profile.idxmax())
             current_price = df['close'].iloc[-1]
             
             # Calculate value area (70% of volume)
             total_volume = volume_profile.sum()
             sorted_profile = volume_profile.sort_values(ascending=False)
-            value_area = sorted_profile[sorted_profile.cumsum() <= (total_volume * self.value_area_volume)]
+            value_area_volume = total_volume * self.value_area_volume
             
-            va_high = value_area.index.max().right
-            va_low = value_area.index.min().left
+            # Find value area price levels
+            cumulative_volume = 0
+            value_area_indices = []
+            
+            for idx, vol in sorted_profile.items():
+                cumulative_volume += vol
+                value_area_indices.append(idx)
+                if cumulative_volume >= value_area_volume:
+                    break
+            
+            va_high = max(value_area_indices)
+            va_low = min(value_area_indices)
             
             # Score based on position relative to value area
             if current_price >= va_low and current_price <= va_high:
-                va_position = (current_price - va_low) / (va_high - va_low)
+                va_position = (current_price - va_low) / (va_high - va_low) if va_high != va_low else 0.5
                 score = 100 * (1 - abs(va_position - 0.5) * 2)
             else:
                 distance = min(abs(current_price - va_high), abs(current_price - va_low))
@@ -1307,8 +1353,12 @@ class PriceStructureIndicators(BaseIndicator):
                 return 50.0
             
             # Calculate volume nodes with more granular bins for better resolution
-            price_levels = pd.qcut(df['close'], q=50, duplicates='drop')  # Increased bins
-            volume_profile = df.groupby(price_levels, observed=False)['volume'].sum()
+            num_bins = 50
+            bins = np.linspace(df['close'].min(), df['close'].max(), num_bins + 1)
+            df['price_level'] = pd.cut(df['close'], bins=bins, labels=False)
+            bin_centers = (bins[:-1] + bins[1:]) / 2
+            volume_profile = df.groupby('price_level')['volume'].sum()
+            volume_profile.index = bin_centers[volume_profile.index.astype(int)]
             
             # Calculate volume thresholds
             mean_volume = volume_profile.mean()
@@ -1328,12 +1378,12 @@ class PriceStructureIndicators(BaseIndicator):
             
             # Process high volume nodes (value areas)
             for level, volume in high_volume_nodes.items():
-                distance = abs(level.mid - current_price) / current_price
+                distance = abs(level - current_price) / current_price
                 strength = (volume - mean_volume) / std_volume
                 
                 if distance < 0.01:  # Within 1% of node
                     # Higher score when price is above HVN (support)
-                    node_score = 75 if current_price > level.mid else 25
+                    node_score = 75 if current_price > level else 25
                 else:
                     # Neutral score weighted by node strength
                     node_score = 50 + (strength * 5)
@@ -1342,7 +1392,7 @@ class PriceStructureIndicators(BaseIndicator):
             
             # Process low volume nodes (air pockets)
             for level, volume in low_volume_nodes.items():
-                distance = abs(level.mid - current_price) / current_price
+                distance = abs(level - current_price) / current_price
                 weakness = (mean_volume - volume) / std_volume
                 
                 # Check if we're approaching LVN
@@ -1352,13 +1402,13 @@ class PriceStructureIndicators(BaseIndicator):
                     
                     if trend > 0:  # Uptrend
                         # Higher score if LVN is above (potential acceleration zone)
-                        node_score = 80 if current_price < level.mid else 40
+                        node_score = 80 if current_price < level else 40
                     else:  # Downtrend
                         # Lower score if LVN is below (potential acceleration zone)
-                        node_score = 40 if current_price > level.mid else 80
+                        node_score = 40 if current_price > level else 80
                 else:
                     # Neutral score with slight bias based on LVN position
-                    node_score = 50 + (weakness * 2 * (-1 if current_price > level.mid else 1))
+                    node_score = 50 + (weakness * 2 * (-1 if current_price > level else 1))
                 
                 node_scores.append(('lvn', node_score))
             
@@ -1507,8 +1557,11 @@ class PriceStructureIndicators(BaseIndicator):
             bins = np.linspace(price_min, price_max, num=adaptive_bins)
             
             # Create volume profile
-            df['price_level'] = pd.cut(df['close'], bins=bins, labels=bins[:-1])
+            df['price_level'] = pd.cut(df['close'], bins=bins, labels=False)
+            # Map labels back to price points for easier interpretation
+            price_points = (bins[:-1] + bins[1:]) / 2
             volume_profile = df.groupby('price_level')['volume'].sum()
+            volume_profile.index = price_points[volume_profile.index]
             
             # Find Point of Control (POC)
             if volume_profile.empty:
@@ -2049,24 +2102,38 @@ class PriceStructureIndicators(BaseIndicator):
             if df.empty:
                 return {'poc': 0, 'va_high': 0, 'va_low': 0}
             
-            # Calculate volume profile with observed=True to handle the warning
-            price_levels = pd.qcut(df['close'], q=20, duplicates='drop')
-            volume_profile = df.groupby(price_levels, observed=True)['volume'].sum()
+            # Calculate volume profile using numeric indices
+            num_bins = 20
+            bins = np.linspace(df['close'].min(), df['close'].max(), num_bins + 1)
+            df['price_level'] = pd.cut(df['close'], bins=bins, labels=False)
+            bin_centers = (bins[:-1] + bins[1:]) / 2
+            volume_profile = df.groupby('price_level')['volume'].sum()
+            volume_profile.index = bin_centers[volume_profile.index.astype(int)]
             
             # Get POC
-            poc_level = volume_profile.idxmax()
-            poc = poc_level.mid
+            poc = float(volume_profile.idxmax())
             
             # Calculate value area (70% of volume)
             total_volume = volume_profile.sum()
             sorted_profile = volume_profile.sort_values(ascending=False)
-            value_area = sorted_profile.cumsum() <= (total_volume * 0.7)
-            value_area_levels = sorted_profile[value_area].index
+            
+            # Find value area price levels
+            cumulative_volume = 0
+            value_area_indices = []
+            
+            for idx, vol in sorted_profile.items():
+                cumulative_volume += vol
+                value_area_indices.append(idx)
+                if cumulative_volume >= (total_volume * 0.7):
+                    break
+            
+            va_high = max(value_area_indices)
+            va_low = min(value_area_indices)
             
             return {
                 'poc': float(poc),
-                'va_high': float(value_area_levels.max().right),
-                'va_low': float(value_area_levels.min().left)
+                'va_high': float(va_high),
+                'va_low': float(va_low)
             }
             
         except Exception as e:

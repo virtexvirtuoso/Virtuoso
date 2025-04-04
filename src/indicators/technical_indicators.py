@@ -47,20 +47,36 @@ class TechnicalIndicators(BaseIndicator):
             'cci': 0.15
         }
         
+        # **** IMPORTANT: Must set component_weights BEFORE calling super().__init__ ****
+        # Initialize component weights dictionary with defaults
+        self.component_weights = default_weights.copy()
+        
+        # Now call super().__init__
+        super().__init__(config, logger)
+        
         # Get technical specific config
         technical_config = config.get('analysis', {}).get('indicators', {}).get('technical', {})
         
         # Read component weights from config if available
         components_config = technical_config.get('components', {})
-        self.component_weights = {}
         
-        # Use weights from config or fall back to defaults
+        # Try to get weights from confluence section first (most accurate)
+        confluence_weights = config.get('confluence', {}).get('weights', {}).get('sub_components', {}).get('technical', {})
+        
+        # Override defaults with weights from config
         for component, default_weight in default_weights.items():
-            config_weight = components_config.get(component, {}).get('weight', default_weight)
-            self.component_weights[component] = config_weight
+            # First try to get from confluence configuration (most reliable source)
+            if confluence_weights and component in confluence_weights:
+                self.component_weights[component] = confluence_weights[component]
+            # Then try from component config 
+            elif component in components_config:
+                self.component_weights[component] = components_config.get(component, {}).get('weight', default_weight)
         
-        # Now call super().__init__
-        super().__init__(config, logger)
+        # Normalize weights to ensure they sum to 1.0
+        weight_sum = sum(self.component_weights.values())
+        if weight_sum != 0:
+            for component in self.component_weights:
+                self.component_weights[component] /= weight_sum
         
         # Get timeframe config
         self.timeframe_weights = {

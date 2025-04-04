@@ -702,6 +702,26 @@ class MetricsManager:
         except Exception as e:
             self.logger.error(f"Error storing metrics for {symbol}: {str(e)}")
 
+    def store_metric(self, key: str, value: Any) -> None:
+        """Store a single metric with the given key.
+        
+        Args:
+            key: The key to store the metric under
+            value: The metric value to store
+        """
+        try:
+            if not hasattr(self, '_custom_metrics'):
+                self._custom_metrics = {}
+            
+            self._custom_metrics[key] = {
+                'value': value,
+                'timestamp': datetime.now(timezone.utc)
+            }
+            
+            self.logger.debug(f"Stored metric: {key}")
+        except Exception as e:
+            self.logger.error(f"Error storing metric {key}: {str(e)}")
+
     def start_operation(self, operation_name: str) -> Dict[str, Any]:
         """Start tracking an operation with performance metrics.
         
