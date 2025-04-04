@@ -487,7 +487,7 @@ class MarketDataManager:
                         
                         # Initialize in cache
                         if symbol not in self.data_cache:
-                            self.data_cache[symbol] = {}
+                            self.data_cache[symbol] = {}    
                         
                         self.data_cache[symbol]['open_interest'] = market_data['open_interest']
                         # ADDED: Also store direct reference in cache
