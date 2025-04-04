@@ -1058,7 +1058,7 @@ class MarketReporter:
                             all_markets = self.cache[cache_key]
                             self.logger.debug(f"Using cached markets data for {base_asset}")
                         else:
-                            all_markets = await self.exchange.fetch_markets()
+                            all_markets = await self.exchange.get_markets()
                             self.cache[cache_key] = all_markets
                         
                         # Define regex pattern for weekly and quarterly futures

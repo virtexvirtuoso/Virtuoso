@@ -2720,6 +2720,40 @@ class BybitExchange(BaseExchange):
             self.logger.error(f"Error getting complete market data: {str(e)}")
             return []
 
+    async def fetch_market_symbols(self) -> List[Dict[str, Any]]:
+        """Fetch available symbols and their specifications from Bybit API.
+        
+        Returns:
+            List of symbol dictionaries containing symbol specifications
+        """
+        try:
+            self.logger.debug("Fetching market symbols from Bybit V5 API...")
+            
+            # Make request for linear futures symbols
+            response = await self._make_request('GET', '/v5/market/instruments-info', {
+                'category': 'linear'
+            })
+            
+            if not response:
+                self.logger.error("Empty response from instruments-info endpoint")
+                return []
+                
+            if 'retCode' in response and response['retCode'] != 0:
+                self.logger.error(f"API error: {response.get('retMsg', 'Unknown error')}")
+                return []
+                
+            if 'result' not in response or 'list' not in response['result']:
+                self.logger.error("Invalid response structure")
+                return []
+                
+            symbols_list = response['result']['list']
+            self.logger.debug(f"Fetched {len(symbols_list)} symbols from Bybit API")
+            
+            return symbols_list
+            
+        except Exception as e:
+            self.logger.error(f"Error fetching market symbols: {str(e)}")
+            return []
 
     async def fetch_market_tickers(self) -> List[Dict[str, Any]]:
         """Fetch market information with current prices and volumes.
@@ -3305,14 +3339,19 @@ class BybitExchange(BaseExchange):
         """Convert local symbol format to exchange symbol format
         
         Args:
-            symbol: Symbol in local format (e.g., BTC/USDT)
+            symbol: Symbol in local format (e.g., BTC/USDT, BTCUSDT:USDT)
             
         Returns:
             Symbol in exchange format (e.g., BTCUSDT)
         """
+        # Handle formats like BTCUSDT:USDT (perpetual contract)
+        if ':USDT' in symbol:
+            return symbol.replace(':USDT', '')
+            
         # Bybit expects symbols without a separator
         if '/' in symbol:
             return symbol.replace('/', '')
+            
         return symbol
 
     async def _fetch_ticker(self, symbol: str) -> dict:
@@ -3359,52 +3398,58 @@ class BybitExchange(BaseExchange):
             # Log raw data for debugging
             logger.debug(f"Raw ticker data for {symbol}: {ticker_data}")
             
-            # Extract relevant fields
-            volume = float(ticker_data.get('volume24h', 0))
-            turnover = float(ticker_data.get('turnover24h', 0))
+            # Define safe_float helper function to handle empty strings
+            def safe_float(value, default=0.0):
+                if value is None or value == '':
+                    return default
+                try:
+                    # Remove any commas and convert to float
+                    cleaned = str(value).replace(',', '')
+                    return float(cleaned)
+                except (ValueError, TypeError):
+                    logger.warning(f"Could not convert {value} to float, using default {default}")
+                    return default
+            
+            # Extract relevant fields using safe_float
+            volume = safe_float(ticker_data.get('volume24h', 0))
+            turnover = safe_float(ticker_data.get('turnover24h', 0))
             
             # Extract open interest data with explicit logging
             open_interest = 0.0
             open_interest_value = 0.0
             
             if 'openInterest' in ticker_data:
-                try:
-                    open_interest = float(ticker_data.get('openInterest', 0))
-                    logger.debug(f"Extracted openInterest = {open_interest} for {symbol}")
-                except (ValueError, TypeError):
-                    logger.warning(f"Could not convert openInterest to float: {ticker_data.get('openInterest')}")
+                open_interest = safe_float(ticker_data.get('openInterest', 0))
+                logger.debug(f"Extracted openInterest = {open_interest} for {symbol}")
                     
             if 'openInterestValue' in ticker_data:
-                try:
-                    open_interest_value = float(ticker_data.get('openInterestValue', 0))
-                    logger.debug(f"Extracted openInterestValue = {open_interest_value} for {symbol}")
-                except (ValueError, TypeError):
-                    logger.warning(f"Could not convert openInterestValue to float: {ticker_data.get('openInterestValue')}")
+                open_interest_value = safe_float(ticker_data.get('openInterestValue', 0))
+                logger.debug(f"Extracted openInterestValue = {open_interest_value} for {symbol}")
             
             # Format the data into a standard structure
             formatted_ticker = {
                 'symbol': symbol,
                 'timestamp': int(time.time() * 1000),
                 'datetime': datetime.utcnow().isoformat(),
-                'high': float(ticker_data.get('highPrice24h', 0)),
-                'low': float(ticker_data.get('lowPrice24h', 0)),
-                'bid': float(ticker_data.get('bid1Price', 0)),
-                'ask': float(ticker_data.get('ask1Price', 0)),
-                'last': float(ticker_data.get('lastPrice', 0)),
+                'high': safe_float(ticker_data.get('highPrice24h', 0)),
+                'low': safe_float(ticker_data.get('lowPrice24h', 0)),
+                'bid': safe_float(ticker_data.get('bid1Price', 0)),
+                'ask': safe_float(ticker_data.get('ask1Price', 0)),
+                'last': safe_float(ticker_data.get('lastPrice', 0)),
                 'volume': volume,
                 'turnover': turnover,
-                'mark': float(ticker_data.get('markPrice', 0)),
-                'index': float(ticker_data.get('indexPrice', 0)),
-                'percentage': float(ticker_data.get('price24hPcnt', 0)) * 100,
-                'bid_size': float(ticker_data.get('bid1Size', 0)),
-                'ask_size': float(ticker_data.get('ask1Size', 0)),
+                'mark': safe_float(ticker_data.get('markPrice', 0)),
+                'index': safe_float(ticker_data.get('indexPrice', 0)),
+                'percentage': safe_float(ticker_data.get('price24hPcnt', 0)) * 100,
+                'bid_size': safe_float(ticker_data.get('bid1Size', 0)),
+                'ask_size': safe_float(ticker_data.get('ask1Size', 0)),
                 # Use both field names for compatibility
                 'open_interest': open_interest,
                 'open_interest_value': open_interest_value,
                 'openInterest': open_interest,  # Legacy format for compatibility
                 'openInterestValue': open_interest_value,  # Legacy format for compatibility
-                'fundingRate': float(ticker_data.get('fundingRate', 0)),
-                'nextFundingTime': int(ticker_data.get('nextFundingTime', 0)),
+                'fundingRate': safe_float(ticker_data.get('fundingRate', 0)),
+                'nextFundingTime': int(ticker_data.get('nextFundingTime', 0) or 0),
                 # Include the raw ticker data for direct access
                 'raw_data': ticker_data
             }
