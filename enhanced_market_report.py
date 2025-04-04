@@ -213,6 +213,10 @@ async def get_enhanced_market_data(exchange_manager, symbols: List[str]) -> Dict
                     market_data['open_interest']['current'] = current_oi
                     market_data['open_interest']['previous'] = previous_oi
                     market_data['open_interest']['timestamp'] = int(time.time() * 1000)
+                    market_data['open_interest']['history'] = oi_history['history']
+                    
+                    # Add direct reference to history for easier access
+                    market_data['open_interest_history'] = oi_history['history']
             
             # Add more detailed price data if needed
             if not market_data.get('price') or all(v == 0 for v in market_data.get('price', {}).values()):

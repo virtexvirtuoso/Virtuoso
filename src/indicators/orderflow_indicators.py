@@ -28,44 +28,45 @@ class OrderflowIndicators(BaseIndicator):
         self.indicator_type = 'orderflow'
         
         # Initialize component weights with defaults - use the same keys as component scores
-        self.component_weights = {
+        default_weights = {
             'cvd': 0.25,                  # Cumulative Volume Delta (buy vs sell volume)
-            'trade_flow_score': 0.25,     # Buy vs sell trade flow
+            'trade_flow_score': 0.20,     # Buy vs sell trade flow
             'imbalance_score': 0.15,      # Orderbook imbalance
-            'open_interest_score': 0.1,   # Open interest analysis
-            'pressure_score': 0.05,       # Market pressure
-            'liquidity_score': 0.2        # NEW: Liquidity score based on trade frequency and volume
+            'open_interest_score': 0.15,   # Open interest analysis
+            'liquidity_score': 0.15,      # Liquidity score based on trade frequency and volume
+            'order_block': 0.10          # Order block analysis
         }
         
         # Cache for computed values to avoid redundant calculations
         self._cache = {}
         
-        # Apply any custom weights from config
-        if 'weights' in config:
-            for component, weight in config['weights'].items():
-                if component in self.component_weights:
-                    self.component_weights[component] = float(weight)
+        # **** IMPORTANT: Must set component_weights BEFORE calling super().__init__ ****
+        # Initialize component weights dictionary with defaults
+        self.component_weights = default_weights.copy()
+        
+        # Now that component_weights is set, call super().__init__
+        super().__init__(config, logger)
         
         # Try to load weights from the confluence configuration
-        # This takes precedence over the direct 'weights' in config
         confluence_weights = config.get('confluence', {}).get('weights', {}).get('sub_components', {}).get('orderflow', {})
+        
+        # Map config weight names to component weight keys
+        weight_mapping = {
+            'cvd': 'cvd',
+            'trade_flow': 'trade_flow_score',
+            'imbalance': 'imbalance_score',
+            'open_interest': 'open_interest_score',
+            'liquidity': 'liquidity_score',
+            'order_block': 'order_block'
+        }
+        
+        # Override default weights with those from confluence config if available
         if confluence_weights:
-            # Map config weight names to component weight keys
-            weight_mapping = {
-                'cvd': 'cvd',
-                'trade_flow': 'trade_flow_score',
-                'imbalance': 'imbalance_score',
-                'open_interest': 'open_interest_score',
-                'pressure': 'pressure_score',
-                'liquidity': 'liquidity_score'
-            }
-            
-            # Apply weights from confluence config
             for config_key, component_key in weight_mapping.items():
                 if config_key in confluence_weights:
                     self.component_weights[component_key] = float(confluence_weights[config_key])
         
-        # Validate and normalize weights
+        # Now validate and normalize weights
         self._validate_weights()
         
         # Configure lookback periods
@@ -106,14 +107,6 @@ class OrderflowIndicators(BaseIndicator):
             for label, value in config['thresholds'].items():
                 if label in self.thresholds:
                     self.thresholds[label] = float(value)
-        
-        # Call parent class constructor
-        super().__init__(config, logger)
-        
-        # Log initialization (after super().__init__ so self.logger is available)
-        self.logger.debug(f"Initialized OrderflowIndicators with weights: {self.component_weights}")
-        self.logger.debug(f"Timeframe weights: {self.timeframe_weights}")
-        self.logger.debug(f"Thresholds: {self.thresholds}")
         
         # Initialize parameters
         self.volume_threshold = config.get('volume_threshold', 1.5)
@@ -569,21 +562,45 @@ class OrderflowIndicators(BaseIndicator):
             return {comp: 50.0 for comp in self.component_weights}
 
     def _validate_weights(self):
-        """Validate component weights."""
-        # Ensure all weights are present and sum to 1.0
-        required_components = ['cvd', 'trade_flow_score', 'imbalance_score', 'open_interest_score', 'pressure_score', 'liquidity_score']
-        
-        # Check if all required components have weights
-        for component in required_components:
-            if component not in self.component_weights:
-                self.component_weights[component] = 0.20  # Default equal weight
-        
-        # Normalize weights to sum to 1.0
-        total_weight = sum(self.component_weights.values())
-        if total_weight != 1.0:
-            for component in self.component_weights:
-                self.component_weights[component] /= total_weight
+        """Validate component weights and normalize if needed."""
+        try:
+            # Calculate sum of weights
+            weight_sum = sum(self.component_weights.values())
+            
+            # If weights don't sum to 1.0, normalize them
+            if not np.isclose(weight_sum, 1.0, rtol=1e-5):
+                # Use safe logging to avoid AttributeError
+                if hasattr(self, 'logger'):
+                    self.logger.warning(f"Component weights sum to {weight_sum:.4f}, normalizing.")
                 
+                # Normalize weights
+                for component in self.component_weights:
+                    self.component_weights[component] /= weight_sum
+            
+            # Log the final weights
+            if hasattr(self, 'logger'):
+                self.logger.info("OrderflowIndicators component weights:")
+                for component, weight in self.component_weights.items():
+                    self.logger.info(f"  - {component}: {weight:.4f}")
+                    
+            return True
+        except Exception as e:
+            # Use safe logging to avoid AttributeError
+            if hasattr(self, 'logger'):
+                self.logger.error(f"Error validating weights: {str(e)}")
+            else:
+                print(f"Error validating weights: {str(e)}")
+                
+            # Set default weights
+            self.component_weights = {
+                'cvd': 0.3,
+                'trade_flow_score': 0.2,
+                'imbalance_score': 0.2,
+                'open_interest_score': 0.1,
+                'liquidity_score': 0.2
+            }
+            return False
+
     def _cached_compute(self, key: str, compute_func, *args, **kwargs):
         """Compute a value with caching to avoid redundant calculations.
         
@@ -2071,7 +2088,13 @@ class OrderflowIndicators(BaseIndicator):
                 return {'type': 'neutral', 'strength': 0.0}
             
             # Get open interest history
-            if isinstance(oi_data, dict) and 'history' in oi_data and isinstance(oi_data['history'], list):
+            if 'open_interest_history' in market_data and isinstance(market_data['open_interest_history'], list):
+                # ADDED: Check for direct reference first
+                oi_history = market_data['open_interest_history']
+                self.logger.debug(f"Using direct open_interest_history reference with {len(oi_history)} entries")
+                if len(oi_history) > 0:
+                    self.logger.debug(f"First entry from direct reference: {json.dumps(oi_history[0], default=str)}")
+            elif isinstance(oi_data, dict) and 'history' in oi_data and isinstance(oi_data['history'], list):
                 oi_history = oi_data['history']
                 self.logger.debug(f"Using open interest history from 'history' key with {len(oi_history)} entries")
                 # Enhanced debugging: Sample of history data

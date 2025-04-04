@@ -48,19 +48,8 @@ class OrderbookIndicators(BaseIndicator):
 
     indicator_type = 'orderbook'
 
-    def __init__(self, config: Dict[str, Any], logger: Optional[Logger] = None) -> None:
-        """Initialize OrderbookIndicators.
-        
-        Components and weights:
-        - Imbalance (25%): Order book imbalance analysis
-        - MPI (20%): Market Pressure Index
-        - Depth (20%): Order book depth analysis
-        - Liquidity (10%): Depth and spread-based liquidity
-        - Absorption/Exhaustion (10%): Supply/demand absorption
-        - DOM Momentum (5%): Depth of Market momentum
-        - Spread (5%): Bid-ask spread analysis
-        - OBPS (5%): Order Book Pressure Score
-        """
+    def __init__(self, config_data: Dict[str, Any] = None, logger=None):
+        # Set required attributes before calling super().__init__
         self.indicator_type = 'orderbook'
         
         # Default component weights
@@ -73,30 +62,44 @@ class OrderbookIndicators(BaseIndicator):
             'dom_momentum': 0.05,
             'spread': 0.05,
             'obps': 0.05
-        }  # Total: 1.0
+        }
         
-        # Get orderbook specific config
-        orderbook_config = config.get('analysis', {}).get('indicators', {}).get('orderbook', {})
+        # Initialize component weights dictionary with defaults
+        self.component_weights = default_weights.copy()
         
-        # Read component weights from config if available
-        components_config = orderbook_config.get('components', {})
-        self.component_weights = {}
+        # Set configuration parameters before calling super().__init__
+        config = config_data or {}
         
-        # Use weights from config or fall back to defaults
-        for component, default_weight in default_weights.items():
-            config_weight = components_config.get(component, {}).get('weight', default_weight)
-            self.component_weights[component] = config_weight
+        # Set weights first (needed for validation)
+        self.weight_imbalance = config.get('orderbook', {}).get('weights', {}).get('imbalance', 0.3)
+        self.weight_pressure = config.get('orderbook', {}).get('weights', {}).get('pressure', 0.3)
+        self.weight_liquidity = config.get('orderbook', {}).get('weights', {}).get('liquidity', 0.2)
+        self.weight_spread = config.get('orderbook', {}).get('weights', {}).get('spread', 0.2)
         
-        super().__init__(config, logger)
+        # Now it's safe to call super().__init__
+        super().__init__(config_data, logger or Logger(__name__).logger)
+        
+        # Configuration parameters
+        self.depth_levels = self.config.get('orderbook', {}).get('depth_levels', 10)
+        self.imbalance_threshold = self.config.get('orderbook', {}).get('imbalance_threshold', 1.5)
+        self.liquidity_threshold = self.config.get('orderbook', {}).get('liquidity_threshold', 1.5)
+        self.spread_factor = self.config.get('orderbook', {}).get('spread_factor', 2.0)
+        self.max_spread_bps = self.config.get('orderbook', {}).get('max_spread_bps', 50)
+        self.min_price_impact = self.config.get('orderbook', {}).get('min_price_impact', 0.05)
+        
+        # Get sigmoid transformation parameters from config
+        sigmoid_config = self.config.get('orderbook', {}).get('parameters', {}).get('sigmoid_transformation', {})
+        self.default_sensitivity = sigmoid_config.get('default_sensitivity', 0.12)
+        self.imbalance_sensitivity = sigmoid_config.get('imbalance_sensitivity', 0.15)
+        self.pressure_sensitivity = sigmoid_config.get('pressure_sensitivity', 0.18)
         
         # Initialize parameters
-        self.depth_levels = orderbook_config.get('depth_levels', 10)
-        self.spread_ma_period = orderbook_config.get('spread_ma_period', 20)
-        self.obps_depth = orderbook_config.get('obps_depth', 10)
-        self.obps_decay = orderbook_config.get('obps_decay', 0.85)
+        self.spread_ma_period = self.config.get('orderbook', {}).get('spread_ma_period', 20)
+        self.obps_depth = self.config.get('orderbook', {}).get('obps_depth', 10)
+        self.obps_decay = self.config.get('orderbook', {}).get('obps_decay', 0.85)
         
         # Add alert thresholds
-        alert_params = orderbook_config.get('alerts', {})
+        alert_params = self.config.get('orderbook', {}).get('alerts', {})
         self.large_order_threshold_usd = alert_params.get('large_order_threshold_usd', 100000)
         self.aggressive_price_threshold = alert_params.get('aggressive_price_threshold', 0.002)
         self.alert_cooldown = alert_params.get('cooldown', 60)
@@ -114,21 +117,48 @@ class OrderbookIndicators(BaseIndicator):
         # Validate weights
         self._validate_weights()
         
-        self.logger.info(f"Initialized {self.__class__.__name__} with config: {orderbook_config}")
+        self.logger.info(f"Initialized {self.__class__.__name__} with config: {self.config}")
 
-    def _validate_weights(self) -> None:
-        """Validate that weights sum to 1.0"""
-        try:
-            comp_total = sum(self.component_weights.values())
-            if not np.isclose(comp_total, 1.0, rtol=1e-5):
-                self.logger.warning(f"Component weights sum to {comp_total}, normalizing")
-                self.component_weights = {k: v/comp_total for k, v in self.component_weights.items()}
-                
-            self.logger.debug("Weights validated and normalized")
+    def _validate_weights(self):
+        """Validate that indicator weights sum to 1.0"""
+        total_weight = (self.weight_imbalance + self.weight_pressure + 
+                      self.weight_liquidity + self.weight_spread)
+        
+        if abs(total_weight - 1.0) > 0.001:
+            self.logger.warning(f"Orderbook indicator weights sum to {total_weight}, normalizing")
+            # Normalize weights
+            self.weight_imbalance /= total_weight
+            self.weight_pressure /= total_weight
+            self.weight_liquidity /= total_weight
+            self.weight_spread /= total_weight
+
+    def _apply_sigmoid_transformation(self, value: float, sensitivity: float = 0.12, center: float = 50.0) -> float:
+        """
+        Apply sigmoid transformation to amplify signals outside the neutral range.
+        
+        Args:
+            value: The value to transform
+            sensitivity: Controls how aggressive the transformation is (lower = more aggressive)
+            center: The center point considered neutral
             
+        Returns:
+            Transformed value in the same range as the input
+        """
+        try:
+            # Normalize around center
+            normalized = (value - center) / 50.0
+            
+            # Apply sigmoid with sensitivity parameter
+            transformed = 1.0 / (1.0 + np.exp(-normalized / sensitivity))
+            
+            # Scale back to original range
+            result = transformed * 100.0
+            
+            self.logger.debug(f"Sigmoid transformation: input={value:.2f}, sensitivity={sensitivity}, output={result:.2f}")
+            return float(result)
         except Exception as e:
-            self.logger.error(f"Error validating weights: {str(e)}")
-            raise
+            self.logger.error(f"Error in sigmoid transformation: {str(e)}")
+            return value  # Return original value on error
 
     def _update_historical_metrics(self, spread: float, depth: float) -> None:
         """Update historical metrics for spread and depth."""
@@ -1063,7 +1093,7 @@ class OrderbookIndicators(BaseIndicator):
             asks = orderbook.get('asks', [])
             
             if not bids or not asks:
-                return 1.0  # Neutral ratio
+                return 50.0  # Neutral ratio when data is missing
                 
             # Calculate total volume on bid and ask sides (up to depth_levels)
             bid_volume = sum(float(bid[1]) for bid in bids[:self.depth_levels])
@@ -1074,12 +1104,34 @@ class OrderbookIndicators(BaseIndicator):
                 ratio = bid_volume / ask_volume
             else:
                 ratio = 2.0  # Strong bid imbalance if no asks
-                
-            return float(ratio)
             
+            # Log raw imbalance ratio
+            self.logger.debug(f"Raw bid/ask imbalance ratio: {ratio:.4f}")
+            
+            # Convert ratio to a score from 0-100 where 50 is balanced
+            # 1.0 means equal volume, >1.0 means more bids, <1.0 means more asks
+            if ratio >= 1.0:
+                # More bids than asks (ratio > 1.0)
+                raw_score = 50.0 + 50.0 * min((ratio - 1.0) / 2.0, 1.0)
+            else:
+                # More asks than bids (ratio < 1.0)
+                raw_score = 50.0 - 50.0 * min((1.0 - ratio) / 1.0, 1.0)
+            
+            # Apply sigmoid transformation using config values
+            transformed_score = self._apply_sigmoid_transformation(
+                raw_score, 
+                sensitivity=self.imbalance_sensitivity, 
+                center=50.0
+            )
+            
+            self.logger.debug(f"Imbalance ratio={ratio:.2f}, raw_score={raw_score:.2f}, transformed={transformed_score:.2f}")
+            
+            # Return the transformed score
+            return float(transformed_score)
+                
         except Exception as e:
             self.logger.error(f"Error calculating imbalance ratio: {str(e)}")
-            return 1.0
+            return 50.0  # Return neutral score on error
 
     def _get_liquidity_ratio(self, market_data: Dict[str, Any]) -> float:
         """Calculate the liquidity ratio from orderbook data."""
@@ -1709,4 +1761,74 @@ class OrderbookIndicators(BaseIndicator):
                 'signals': {},
                 'metadata': {'error': str(e)}
             }
+
+    def _calculate_orderbook_pressure(self, market_data: Dict[str, Any]) -> Tuple[float, Dict[str, Any]]:
+        """
+        Calculate orderbook pressure metrics.
+        
+        Returns:
+            tuple: (pressure_score, metadata)
+        """
+        try:
+            # Get orderbook data
+            orderbook = market_data.get('orderbook', {})
+            bids = orderbook.get('bids', [])
+            asks = orderbook.get('asks', [])
+            
+            if not bids or not asks:
+                self.logger.warning("Empty orderbook data for pressure calculation")
+                return 50.0, {'error': 'Empty orderbook'}
+            
+            # Calculate bid and ask volumes
+            bid_volumes = [float(bid[1]) for bid in bids[:self.depth_levels]]
+            ask_volumes = [float(ask[1]) for ask in asks[:self.depth_levels]]
+            
+            # Calculate total volumes
+            total_bid_volume = sum(bid_volumes)
+            total_ask_volume = sum(ask_volumes)
+            
+            # Calculate weighted pressures (higher weight to closer prices)
+            weights = [1.0 - (i / self.depth_levels) for i in range(self.depth_levels)]
+            
+            # Calculate weighted volumes
+            weighted_bid_volume = sum(v * w for v, w in zip(bid_volumes, weights))
+            weighted_ask_volume = sum(v * w for v, w in zip(ask_volumes, weights))
+            
+            # Pressure ratio: >1.0 means buying pressure, <1.0 means selling pressure
+            if weighted_ask_volume > 0:
+                pressure_ratio = weighted_bid_volume / weighted_ask_volume
+            else:
+                pressure_ratio = 2.0  # Strong buying pressure if no asks
+            
+            # Convert ratio to a score from 0-100
+            if pressure_ratio >= 1.0:
+                # Buying pressure (above 50)
+                raw_score = 50.0 + min(50.0 * ((pressure_ratio - 1.0) / 2.0), 50.0)
+            else:
+                # Selling pressure (below 50)
+                raw_score = 50.0 - min(50.0 * ((1.0 - pressure_ratio) / 1.0), 50.0)
+            
+            # Apply sigmoid transformation to amplify significant pressures
+            transformed_score = self._apply_sigmoid_transformation(
+                raw_score, 
+                sensitivity=self.pressure_sensitivity, 
+                center=50.0
+            )
+            
+            self.logger.debug(f"Orderbook pressure: ratio={pressure_ratio:.2f}, raw_score={raw_score:.2f}, transformed={transformed_score:.2f}")
+            
+            # Create metadata
+            metadata = {
+                'bid_volume': total_bid_volume,
+                'ask_volume': total_ask_volume,
+                'pressure_ratio': pressure_ratio,
+                'raw_score': raw_score,
+                'transformed_score': transformed_score
+            }
+            
+            return transformed_score, metadata
+            
+        except Exception as e:
+            self.logger.error(f"Error calculating orderbook pressure: {str(e)}")
+            return 50.0, {'error': str(e)}
 

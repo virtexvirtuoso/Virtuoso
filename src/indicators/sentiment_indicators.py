@@ -18,42 +18,84 @@ class SentimentIndicators(BaseIndicator):
         """Initialize SentimentIndicators.
         
         Components and weights:
-        - Funding Rate (15%): Analyzes funding rate trends and volatility
-        - Long/Short Ratio (15%): Measures market positioning
-        - Liquidations (15%): Tracks forced position closures
-        - Volume Sentiment (15%): Analyzes buying/selling volume
-        - Market Mood (15%): Overall market mood indicators
-        - Risk Score (15%): Measures market risk
-        - Funding Rate Volatility (10%): Analyzes funding rate volatility
+        - Funding Rate (17%): Analyzes funding rate trends and volatility
+        - Long/Short Ratio (17%): Measures market positioning
+        - Liquidations (17%): Tracks forced position closures
+        - Market Activity (17%): Combined volume and open interest analysis
+        - Risk Score (16%): Measures market risk
+        - Volatility (16%): Measures historical volatility
         """
         # Set required attributes before calling super().__init__
         self.indicator_type = 'sentiment'
         
         # Default component weights
         default_weights = {
-            'funding_rate': 0.15,
-            'long_short_ratio': 0.15,
-            'liquidations': 0.15,
-            'volume_sentiment': 0.15,
-            'market_mood': 0.15,
-            'risk_score': 0.15,
-            'funding_rate_volatility': 0.10
+            'funding_rate': 0.17,
+            'long_short_ratio': 0.17,
+            'liquidations': 0.17,
+            'market_activity': 0.17,
+            'risk': 0.16,
+            'volatility': 0.16
         }
+        
+        # Get sigmoid transformation parameters from config
+        sigmoid_config = config.get('analysis', {}).get('indicators', {}).get('sentiment', {}).get('parameters', {}).get('sigmoid_transformation', {})
+        self.default_sensitivity = sigmoid_config.get('default_sensitivity', 0.12)
+        self.long_short_sensitivity = sigmoid_config.get('long_short_sensitivity', 0.12)
+        self.funding_sensitivity = sigmoid_config.get('funding_sensitivity', 0.15)
+        self.liquidation_sensitivity = sigmoid_config.get('liquidation_sensitivity', 0.10)
+        
+        # **** IMPORTANT: Must set component_weights BEFORE calling super().__init__ ****
+        
+        # Initialize component weights dictionary with defaults
+        self.component_weights = default_weights.copy()
+        
+        # Now call parent class constructor
+        super().__init__(config, logger)
         
         # Get sentiment specific config
         sentiment_config = config.get('analysis', {}).get('indicators', {}).get('sentiment', {})
         
-        # Read component weights from config if available
-        components_config = sentiment_config.get('components', {})
-        self.component_weights = {}
+        # Try to get weights from confluence section first (most accurate)
+        confluence_weights = config.get('confluence', {}).get('weights', {}).get('sub_components', {}).get('sentiment', {})
         
-        # Use weights from config or fall back to defaults
-        for component, default_weight in default_weights.items():
-            config_weight = components_config.get(component, {}).get('weight', default_weight)
-            self.component_weights[component] = config_weight
+        # Map config keys to internal keys
+        config_to_internal = {
+            'funding_rate': 'funding_rate',
+            'long_short_ratio': 'long_short_ratio',
+            'liquidation_events': 'liquidations',
+            'volume_sentiment': 'volume_sentiment',
+            'market_mood': 'market_mood',
+            'risk_score': 'risk',
+        }
         
-        # Call parent class constructor
-        super().__init__(config, logger)
+        # Override defaults with weights from config
+        if confluence_weights:
+            # First, handle the funding_rate and funding_rate_volatility special case
+            funding_rate_weight = confluence_weights.get('funding_rate', 0.15)
+            volatility_weight = confluence_weights.get('funding_rate_volatility', 0.1)
+            
+            # Combine the weights
+            combined_funding_weight = funding_rate_weight + volatility_weight
+            self.component_weights['funding_rate'] = combined_funding_weight
+            self.logger.debug(f"Combined funding rate weight: {combined_funding_weight} (rate: {funding_rate_weight} + volatility: {volatility_weight})")
+            
+            # Process other components
+            for config_key, internal_key in config_to_internal.items():
+                if config_key in confluence_weights and config_key != 'funding_rate':
+                    self.component_weights[internal_key] = float(confluence_weights[config_key])
+                    self.logger.debug(f"Using weight from config: {config_key} -> {internal_key}: {self.component_weights[internal_key]}")
+        
+        # Normalize weights to ensure they sum to 1.0
+        weight_sum = sum(self.component_weights.values())
+        if weight_sum != 0:
+            for component in self.component_weights:
+                self.component_weights[component] /= weight_sum
+            self.logger.debug(f"Normalized weights (sum: {weight_sum}): {self.component_weights}")
+        
+        # Store the internal funding rate volatility weight (for use in calculation)
+        self.funding_volatility_weight = 0.3  # 30% volatility, 70% raw rate
+        self.logger.debug(f"Internal funding rate volatility weight: {self.funding_volatility_weight}")
         
         # Initialize parameters
         self.funding_threshold = sentiment_config.get('funding_threshold', 0.01)
@@ -105,9 +147,31 @@ class SentimentIndicators(BaseIndicator):
 
             # Extract long/short ratio from the data
             if isinstance(long_short_data, dict):
-                long_ratio = float(long_short_data.get('long', 0))
-                short_ratio = float(long_short_data.get('short', 0))
-                self.logger.debug(f"Long ratio: {long_ratio}, Short ratio: {short_ratio}")
+                # Try various expected formats
+                # Format 1: {long: 0.xx, short: 0.xx}
+                if 'long' in long_short_data and 'short' in long_short_data:
+                    long_ratio = float(long_short_data.get('long', 0))
+                    short_ratio = float(long_short_data.get('short', 0))
+                    self.logger.debug(f"Using long/short format - Long ratio: {long_ratio}, Short ratio: {short_ratio}")
+                # Format 2: {buyRatio: 0.xx, sellRatio: 0.xx}
+                elif 'buyRatio' in long_short_data and 'sellRatio' in long_short_data:
+                    long_ratio = float(long_short_data.get('buyRatio', 0))
+                    short_ratio = float(long_short_data.get('sellRatio', 0))
+                    self.logger.debug(f"Using buyRatio/sellRatio format - Long ratio: {long_ratio}, Short ratio: {short_ratio}")
+                else:
+                    # Try to find any keys that might contain ratio information
+                    ratio_keys = [k for k in long_short_data.keys() if any(term in k.lower() for term in ['long', 'buy', 'short', 'sell', 'ratio'])]
+                    self.logger.debug(f"Looking for ratio keys, found: {ratio_keys}")
+                    
+                    if len(ratio_keys) >= 2:
+                        # Take first two keys that might represent long/short
+                        key1, key2 = ratio_keys[:2]
+                        long_ratio = float(long_short_data.get(key1, 0))
+                        short_ratio = float(long_short_data.get(key2, 0))
+                        self.logger.debug(f"Using detected keys {key1}/{key2} - Values: {long_ratio}/{short_ratio}")
+                    else:
+                        self.logger.warning(f"Could not identify long/short keys in data: {list(long_short_data.keys())}")
+                        return 50.0
                 
                 if long_ratio == 0 and short_ratio == 0:
                     self.logger.debug("Both ratios are 0, returning neutral score")
@@ -115,6 +179,7 @@ class SentimentIndicators(BaseIndicator):
                     
                 total = long_ratio + short_ratio
                 long_percentage = (long_ratio / total) if total > 0 else 0.5
+                self.logger.debug(f"Calculated long percentage: {long_percentage} from {long_ratio}/{total}")
             else:
                 # If it's a single value, assume it's already a percentage
                 long_percentage = float(long_short_data)
@@ -255,6 +320,23 @@ class SentimentIndicators(BaseIndicator):
     def calculate_liquidation_events(self, market_data: Dict[str, Any]) -> float:
         """
         Calculate sentiment score based on liquidation events with reversal detection.
+        
+        Expected data structure in market_data:
+        market_data = {
+            'sentiment': {
+                'liquidations': [
+                    {
+                        'side': 'long' or 'short',
+                        'size': float,
+                        'price': float,
+                        'timestamp': int (milliseconds),
+                        'source': str (optional)
+                    },
+                    ...
+                ]
+            }
+        }
+        
         Returns score 0-100 where:
         - 0-30: Strong bearish pressure
         - 30-45: Moderate bearish with potential reversal
@@ -263,347 +345,669 @@ class SentimentIndicators(BaseIndicator):
         - 70-100: Strong bullish pressure
         """
         try:
+            self.logger.debug("\n=== Calculating Liquidation Events Score ===")
+            self.logger.debug(f"Input market_data keys: {list(market_data.keys())}")
+            
             sentiment_data = market_data.get('sentiment', {})
             liquidations = sentiment_data.get('liquidations', [])
             
+            self.logger.debug(f"Liquidations data type: {type(liquidations)}")
+            self.logger.debug(f"Liquidations data: {liquidations if isinstance(liquidations, dict) else f'List of {len(liquidations)} events' if isinstance(liquidations, list) else 'Invalid data'}")
+            
             if not liquidations:
+                self.logger.warning("No liquidation data available, returning neutral score")
                 return 50.0
 
-            # Extract and process liquidation data
-            if isinstance(liquidations, dict):
-                # Single liquidation event
-                long_liq = float(liquidations.get('long', liquidations.get('longAmount', 0)))
-                short_liq = float(liquidations.get('short', liquidations.get('shortAmount', 0)))
-                timestamp = liquidations.get('timestamp', time.time() * 1000)
-                liquidation_events = [{'amount': long_liq, 'side': 'long', 'timestamp': timestamp}] if long_liq > 0 else []
-                liquidation_events.extend([{'amount': short_liq, 'side': 'short', 'timestamp': timestamp}] if short_liq > 0 else [])
-            elif isinstance(liquidations, list):
-                liquidation_events = liquidations
-            else:
+            # Process liquidations data
+            try:
+                if isinstance(liquidations, dict):
+                    self.logger.debug("Processing dictionary liquidation data")
+                    long_liq = float(liquidations.get('long', liquidations.get('longAmount', 0)))
+                    short_liq = float(liquidations.get('short', liquidations.get('shortAmount', 0)))
+                    self.logger.debug(f"Long liquidations: {long_liq}, Short liquidations: {short_liq}")
+                elif isinstance(liquidations, list):
+                    self.logger.debug("Processing list of liquidation events")
+                    long_liq = sum(float(event.get('size', event.get('amount', 0))) 
+                                 for event in liquidations if event.get('side', '').lower() == 'long')
+                    short_liq = sum(float(event.get('size', event.get('amount', 0))) 
+                                  for event in liquidations if event.get('side', '').lower() == 'short')
+                    self.logger.debug(f"Total long liquidations: {long_liq}, Total short liquidations: {short_liq}")
+                else:
+                    self.logger.warning(f"Unexpected liquidation data format: {type(liquidations)}")
+                    return 50.0
+                
+                # Calculate score based on liquidation ratio
+                total_liq = long_liq + short_liq
+                if total_liq > 0:
+                    long_ratio = long_liq / total_liq
+                    score = (1 - long_ratio) * 100  # More long liquidations = bearish
+                    self.logger.debug(f"Liquidation ratio: {long_ratio:.4f}, Score: {score:.2f}")
+                else:
+                    self.logger.debug("Zero total liquidations")
+                    return 50.0
+                
+                return float(np.clip(score, 0, 100))
+                
+            except Exception as e:
+                self.logger.error(f"Error processing liquidation data: {str(e)}", exc_info=True)
                 return 50.0
-
-            # Sort by timestamp
-            liquidation_events.sort(key=lambda x: x.get('timestamp', 0))
-            
-            # Calculate time-weighted metrics
-            now = time.time() * 1000
-            window_size = 3600000  # 1 hour window
-            cutoff_time = now - window_size
-            
-            recent_events = [event for event in liquidation_events 
-                            if event.get('timestamp', 0) > cutoff_time]
-            
-            if not recent_events:
-                return 50.0
-
-            # Split into recent and older events
-            very_recent_cutoff = now - (window_size * 0.25)  # Last 15 minutes
-            very_recent = [event for event in recent_events 
-                          if event.get('timestamp', 0) > very_recent_cutoff]
-            older_recent = [event for event in recent_events 
-                           if event.get('timestamp', 0) <= very_recent_cutoff]
-
-            # Calculate liquidation patterns
-            def get_side_totals(events):
-                long_total = sum(float(e.get('amount', 0)) for e in events 
-                               if e.get('side', '').lower() == 'long')
-                short_total = sum(float(e.get('amount', 0)) for e in events 
-                                if e.get('side', '').lower() == 'short')
-                return long_total, short_total
-
-            recent_long, recent_short = get_side_totals(very_recent)
-            older_long, older_short = get_side_totals(older_recent)
-
-            # Calculate acceleration factors
-            recent_rate = (recent_long + recent_short) / (window_size * 0.25)
-            older_rate = (older_long + older_short) / (window_size * 0.75) if older_recent else 0
-            
-            acceleration = recent_rate / older_rate if older_rate > 0 else 1.0
-
-            self.logger.debug("\n=== Liquidation Analysis ===")
-            self.logger.debug(f"Recent rate: {recent_rate:.2f} contracts/ms")
-            self.logger.debug(f"Older rate: {older_rate:.2f} contracts/ms")
-            self.logger.debug(f"Acceleration: {acceleration:.2f}x")
-
-            # Determine immediate impact vs reversal weights
-            if acceleration > 1.5:
-                # Accelerating liquidations - weight immediate impact higher
-                immediate_weight = 0.7
-                reversal_weight = 0.3
-                self.logger.debug("Liquidations accelerating - favoring immediate impact")
-            elif acceleration < 0.5:
-                # Decelerating liquidations - weight reversal higher
-                immediate_weight = 0.3
-                reversal_weight = 0.7
-                self.logger.debug("Liquidations decelerating - favoring reversal potential")
-            else:
-                # Stable liquidations - balanced weights
-                immediate_weight = 0.5
-                reversal_weight = 0.5
-                self.logger.debug("Liquidations stable - balanced weighting")
-
-            # Calculate immediate impact score (inverted from liquidation direction)
-            total_recent = recent_long + recent_short
-            if total_recent > 0:
-                long_ratio = recent_long / total_recent
-                immediate_score = (1 - long_ratio) * 100  # More long liquidations = bearish immediate impact
-            else:
-                immediate_score = 50.0
-
-            # Calculate reversal potential score (aligned with liquidation direction)
-            total_older = older_long + older_short
-            if total_older > 0:
-                long_ratio = older_long / total_older
-                reversal_score = long_ratio * 100  # More long liquidations = bullish reversal potential
-            else:
-                reversal_score = 50.0
-
-            # Combine scores
-            final_score = (immediate_score * immediate_weight + 
-                          reversal_score * reversal_weight)
-
-            self.logger.debug(f"Immediate impact score: {immediate_score:.2f}")
-            self.logger.debug(f"Reversal potential score: {reversal_score:.2f}")
-            self.logger.debug(f"Final liquidation score: {final_score:.2f}")
-
-            return float(np.clip(final_score, 0, 100))
             
         except Exception as e:
-            self.logger.error(f"Error calculating liquidation events score: {str(e)}")
+            self.logger.error(f"Error calculating liquidation events score: {str(e)}", exc_info=True)
             return 50.0
 
     def calculate_volume_sentiment(self, market_data: Dict[str, Any]) -> float:
-        """Calculate sentiment based on trade volumes."""
+        """Calculate sentiment score based on buy/sell volume."""
         try:
-            # Check for trades data
-            if 'trades' not in market_data or not market_data['trades']:
+            self.logger.debug("\n=== Calculating Volume Sentiment Score ===")
+            self.logger.debug(f"Input market_data keys: {list(market_data.keys())}")
+            
+            # Dump market_data structure for debugging
+            for key in ['volume', 'trades', 'sentiment']:
+                if key in market_data:
+                    self.logger.debug(f"{key} data: {market_data[key]}")
+            
+            # Check for volume information in sentiment data
+            volume_data = {}
+            
+            # First try direct volume field
+            if 'volume' in market_data:
+                volume_data = market_data.get('volume', {})
+            # Then try sentiment.volume_sentiment
+            elif 'sentiment' in market_data and 'volume_sentiment' in market_data['sentiment']:
+                volume_data = market_data['sentiment']['volume_sentiment']
+            
+            self.logger.debug(f"Volume data: {volume_data}")
+            
+            buy_volume_pct = volume_data.get('buy_volume_percent')
+            
+            self.logger.debug(f"Buy volume percentage: {buy_volume_pct}")
+            
+            # If buy volume percentage is directly available
+            if buy_volume_pct is not None:
+                self.logger.debug(f"Using provided buy volume percentage: {buy_volume_pct:.4f}")
+                buy_volume_pct = float(buy_volume_pct)
+                score = buy_volume_pct * 100
+                return float(np.clip(score, 0, 100))
+            
+            # If we have buy and sell volumes directly
+            buy_volume = volume_data.get('buy_volume')
+            sell_volume = volume_data.get('sell_volume')
+            
+            if buy_volume is not None and sell_volume is not None:
+                self.logger.debug(f"Using provided volumes - Buy: {buy_volume}, Sell: {sell_volume}")
+                try:
+                    buy_volume = float(buy_volume)
+                    sell_volume = float(sell_volume)
+                    total_volume = buy_volume + sell_volume
+                    
+                    if total_volume > 0:
+                        buy_percentage = buy_volume / total_volume
+                        self.logger.debug(f"Calculated buy percentage: {buy_percentage:.4f}")
+                        raw_score = buy_percentage * 100
+                        adjusted_score = self._adjust_volume_score(raw_score)
+                        return float(np.clip(adjusted_score, 0, 100))
+                except (ValueError, TypeError) as e:
+                    self.logger.warning(f"Error processing volume data: {e}")
+            
+            # If not directly available, try to calculate from trades
+            trades = market_data.get('trades', [])
+            
+            if not trades:
                 self.logger.debug("No trades data for volume sentiment")
                 return 50.0
-                
-            # Get volume ratio from helper method
-            ratio = self._get_volume_sentiment_ratio(market_data)
             
-            # Transform to 0-100 scale (1:1 ratio = 50)
-            # Higher ratio (more buying) = higher score
-            # Lower ratio (more selling) = lower score
-            if ratio == 1.0:
-                score = 50.0
-            elif ratio > 1.0:
-                # More buying pressure (max 2:1 = score 100)
-                normalized_ratio = min(ratio, 2.0)
-                score = 50.0 + (normalized_ratio - 1.0) * 50.0
-            else:
-                # More selling pressure (min 1:2 = score 0)
-                normalized_ratio = max(ratio, 0.5)
-                score = 50.0 - ((1.0 / normalized_ratio) - 1.0) * 50.0
-                
-            # Apply non-linear transformation to make mid-range more sensitive
-            adjusted_score = self._apply_sigmoid_transformation(score, sensitivity=0.15)
+            self.logger.debug(f"Calculating volume sentiment from {len(trades)} trades")
             
-            # Apply recent price trend impact
-            if 'ohlcv' in market_data and market_data['ohlcv']:
+            # Calculate buy and sell volume
+            buy_volume = 0.0
+            sell_volume = 0.0
+            
+            for trade in trades:
+                self.logger.debug(f"Processing trade: {trade}")
+                
+                # Skip invalid trades
+                if 'side' not in trade or 'size' not in trade:
+                    continue
+                    
                 try:
-                    # Get OHLCV data
-                    ohlcv = market_data['ohlcv']
-                    df = None
+                    size = float(trade['size'])
+                    side = trade['side'].lower()
                     
-                    # Extract DataFrame using various possible structures
-                    if isinstance(ohlcv, dict):
-                        if 'base' in ohlcv:
-                            base_data = ohlcv['base']
-                            if isinstance(base_data, pd.DataFrame):
-                                df = base_data
-                            elif isinstance(base_data, dict) and 'data' in base_data:
-                                df = base_data['data']
-                        elif 'data' in ohlcv:
-                            df = ohlcv['data']
-                    elif isinstance(ohlcv, pd.DataFrame):
-                        df = ohlcv
-                        
-                    if df is not None and isinstance(df, pd.DataFrame) and not df.empty:
-                        # Calculate short-term price trend
-                        window = min(12, len(df) - 1)
-                        if window > 1:
-                            oldest_price = df['close'].iloc[-window]
-                            newest_price = df['close'].iloc[-1]
-                            price_change = (newest_price / oldest_price - 1) * 100
-                            
-                            # If price trend doesn't match volume sentiment, reduce confidence
-                            if (price_change > 0 and adjusted_score < 50) or (price_change < 0 and adjusted_score > 50):
-                                # Pull score back toward neutral based on the divergence
-                                pull_strength = min(0.3, abs(price_change) / 10)  # Cap at 30%
-                                adjusted_score = adjusted_score * (1 - pull_strength) + 50 * pull_strength
-                        
-                except Exception as e:
-                    self.logger.debug(f"Error calculating price trend impact: {e}")
+                    if side == 'buy':
+                        buy_volume += size
+                    elif side == 'sell':
+                        sell_volume += size
+                except (ValueError, TypeError) as e:
+                    self.logger.warning(f"Error processing trade: {e}")
+                    continue
                     
-            # Log detailed calculation
-            self.logger.debug(f"Volume sentiment - Buy/Sell ratio: {ratio:.3f}, Raw score: {score:.2f}, " +
-                            f"Final score: {adjusted_score:.2f}")
+            total_volume = buy_volume + sell_volume
             
-            return float(np.clip(adjusted_score, 0, 100))
-            
-        except Exception as e:
-            self.logger.error(f"Error calculating volume sentiment: {str(e)}")
-            return 50.0
-            
-    def _calculate_funding_score(self, sentiment_data: Dict[str, Any]) -> float:
-        """Calculate sentiment score based on funding rate."""
-        try:
-            # Check cache for recent calculation
-            current_time = time.time()
-            if (self._cache['last_funding_rate'] is not None and 
-                current_time - self._cache['last_calculation_time'] < self.cache_expiration):
-                self.logger.debug("Using cached funding rate calculation")
-                return self._cache['last_funding_rate']
-                
-            # Extract funding rate
-            if 'funding_rate' not in sentiment_data:
-                self.logger.debug("No funding rate data found")
+            if total_volume == 0:
+                self.logger.debug("Zero total volume, returning neutral score")
                 return 50.0
-                
-            funding_rate = sentiment_data['funding_rate']
             
-            # Handle different funding rate formats
-            if isinstance(funding_rate, dict):
-                # Get current rate or last rate from dictionary
-                rate = funding_rate.get('current', funding_rate.get('last', funding_rate.get('rate', 0.0)))
-            elif isinstance(funding_rate, (int, float)):
-                rate = funding_rate
-            else:
-                self.logger.debug(f"Unsupported funding rate format: {type(funding_rate)}")
-                return 50.0
-                
-            # Ensure rate is a float
-            try:
-                rate = float(rate)
-            except (ValueError, TypeError):
-                self.logger.debug(f"Could not convert funding rate to float: {rate}")
-                return 50.0
-                
-            # Normalize rate to percentage
-            if abs(rate) > 1:
-                # Already in percentage/bps format
-                rate_pct = rate
-            else:
-                # Convert to percentage
-                rate_pct = rate * 100
-                
-            # Calculate hourly, daily, and annual rates
-            hourly_rate = rate_pct
-            daily_rate = hourly_rate * 24
-            annual_rate = daily_rate * 365
+            # Calculate buy percentage
+            buy_percentage = buy_volume / total_volume
             
-            # Apply sigmoid transformation to normalize extreme values
-            normalized_rate = self._sigmoid_normalize(rate_pct, scale=0.05)
+            self.logger.debug(f"Buy volume: {buy_volume:.2f}, Sell volume: {sell_volume:.2f}")
+            self.logger.debug(f"Buy percentage: {buy_percentage:.4f}")
             
-            # Calculate sentiment score (inverted - negative funding is bullish)
-            score = 50 - normalized_rate * 50
+            # Convert to a score from 0-100
+            raw_score = buy_percentage * 100
             
-            # Log detailed metrics
-            self.logger.debug("\n=== Funding Rate Analysis ===")
-            self.logger.debug(f"Raw rate: {rate:.6f}")
-            self.logger.debug(f"Hourly: {hourly_rate:.4f}%")
-            self.logger.debug(f"Daily: {daily_rate:.4f}%")
-            self.logger.debug(f"Annual: {annual_rate:.2f}%")
-            self.logger.debug(f"Normalized: {normalized_rate:.4f}")
-            self.logger.debug(f"Score: {score:.2f}")
+            # Apply non-linear transformation for extreme values
+            adjusted_score = self._adjust_volume_score(raw_score)
             
-            # Apply confidence adjustment based on rate magnitude
-            adjusted_score = self._apply_sigmoid_transformation(score, sensitivity=0.1)
-            self.logger.debug(f"Adjusted score: {adjusted_score:.2f}")
-            
-            # Apply extreme value capping for very high/low rates
-            final_score = np.clip(adjusted_score, 5, 95)
-            
-            # Cache the result
-            self._cache['last_funding_rate'] = final_score
-            self._cache['last_calculation_time'] = current_time
-            
-            return float(final_score)
-            
-        except Exception as e:
-            self.logger.error(f"Error calculating funding rate score: {str(e)}")
-            return 50.0
-            
-    def _calculate_lsr_score(self, sentiment_data: Dict[str, Any]) -> float:
-        """Calculate sentiment score based on long/short ratio."""
-        try:
-            # Check cache for recent calculation
-            current_time = time.time()
-            if (self._cache['last_lsr'] is not None and 
-                current_time - self._cache['last_calculation_time'] < self.cache_expiration):
-                self.logger.debug("Using cached long/short ratio calculation")
-                return self._cache['last_lsr']
-                
-            # Extract long/short ratio
-            if 'long_short_ratio' not in sentiment_data:
-                self.logger.debug("No long/short ratio data found")
-                return 50.0
-                
-            lsr_data = sentiment_data['long_short_ratio']
-            
-            # Handle different lsr formats
-            if isinstance(lsr_data, dict):
-                # Look for ratio or calculate from long/short values
-                if 'ratio' in lsr_data:
-                    ratio = float(lsr_data['ratio'])
-                elif 'long' in lsr_data and 'short' in lsr_data:
-                    # Calculate ratio from long and short values
-                    long_value = float(lsr_data['long'])
-                    short_value = float(lsr_data['short'])
-                    
-                    # Avoid division by zero
-                    if short_value <= 0:
-                        ratio = 2.0  # Cap at 2:1 for extreme cases
-                    else:
-                        ratio = long_value / short_value
-                else:
-                    self.logger.debug(f"No usable data in long_short_ratio: {lsr_data}")
-                    return 50.0
-            elif isinstance(lsr_data, (int, float)):
-                ratio = float(lsr_data)
-            else:
-                self.logger.debug(f"Unsupported long/short ratio format: {type(lsr_data)}")
-                return 50.0
-                
-            # Cap extreme values
-            ratio = min(max(ratio, 0.1), 10.0)
-            
-            # Calculate score based on the ratio (1:1 = 50)
-            if ratio == 1.0:
-                score = 50.0
-            elif ratio > 1.0:
-                # More longs than shorts (bullish)
-                # Transform to 50-100 range (max 2:1 ratio = score 100)
-                normalized_ratio = min(ratio, 2.0)
-                score = 50.0 + (normalized_ratio - 1.0) * 50.0
-            else:
-                # More shorts than longs (bearish)
-                # Transform to 0-50 range (min 1:2 ratio = score 0)
-                normalized_ratio = max(ratio, 0.5)
-                score = 50.0 - ((1.0 / normalized_ratio) - 1.0) * 50.0
-                
-            # Apply non-linear transformation to enhance sensitivity around neutral mark
-            adjusted_score = self._apply_sigmoid_transformation(score, sensitivity=0.15)
-            
-            # Log detailed metrics
-            self.logger.debug("\n=== Long/Short Ratio Analysis ===")
-            self.logger.debug(f"Raw ratio: {ratio:.4f}")
-            self.logger.debug(f"Linear score: {score:.2f}")
-            self.logger.debug(f"Adjusted score: {adjusted_score:.2f}")
-            
-            # Cache the result
-            self._cache['last_lsr'] = adjusted_score
-            self._cache['last_calculation_time'] = current_time
+            self.logger.debug(f"Raw volume score: {raw_score:.2f}")
+            self.logger.debug(f"Adjusted volume score: {adjusted_score:.2f}")
             
             return float(adjusted_score)
             
         except Exception as e:
-            self.logger.error(f"Error calculating long/short ratio score: {str(e)}")
+            self.logger.error(f"Error calculating volume sentiment: {str(e)}", exc_info=True)
             return 50.0
+    
+    def _adjust_volume_score(self, raw_score: float) -> float:
+        """Apply non-linear adjustments to volume score."""
+        try:
+            if raw_score > 80:
+                adjusted_score = 80 + (raw_score - 80) * 1.5
+            elif raw_score < 20:
+                adjusted_score = raw_score * 0.75
+            else:
+                deviation = (raw_score - 50) / 50
+                sigmoid = 1 / (1 + np.exp(-4 * deviation))
+                adjusted_score = 50 + (sigmoid - 0.5) * 60
                 
-    def _apply_sigmoid_transformation(self, value, sensitivity=0.1, center=50):
+            return float(np.clip(adjusted_score, 0, 100))
+        except Exception as e:
+            self.logger.error(f"Error adjusting volume score: {e}")
+            return raw_score
+
+    def _calculate_funding_score(self, sentiment_data: Dict[str, Any]) -> float:
+        """Calculate score based on funding rate."""
+        try:
+            self.logger.debug(f"Funding rate input: {sentiment_data.get('funding_rate')}")
+            
+            # Try different ways to extract funding rate
+            funding_rate = None
+            
+            # Check if funding_rate is directly available as a number
+            if isinstance(sentiment_data.get('funding_rate'), (int, float)):
+                funding_rate = float(sentiment_data.get('funding_rate', 0))
+                self.logger.debug(f"Found direct funding rate value: {funding_rate}")
+            # Check if funding_rate is in dict format
+            elif isinstance(sentiment_data.get('funding_rate'), dict):
+                funding_data = sentiment_data.get('funding_rate', {})
+                self.logger.debug(f"Funding rate dict: {funding_data}")
+                
+                # Try common keys for funding rate
+                for key in ['rate', 'fundingRate', 'value']:
+                    if key in funding_data:
+                        funding_rate = float(funding_data.get(key, 0))
+                        self.logger.debug(f"Found funding rate in key '{key}': {funding_rate}")
+                        break
+            # Check ticker for funding rate (common in exchange data)
+            elif 'ticker' in sentiment_data:
+                ticker = sentiment_data.get('ticker', {})
+                if isinstance(ticker, dict) and 'fundingRate' in ticker:
+                    funding_rate = float(ticker.get('fundingRate', 0))
+                    self.logger.debug(f"Found funding rate in ticker: {funding_rate}")
+            
+            if funding_rate is None:
+                self.logger.debug("No valid funding rate found, returning neutral score")
+                return 50.0
+                
+            # Normalize funding rate to 0-100 scale
+            # Typical funding rates range from -0.1% to 0.1%
+            # Convert to percentage for easier calculation
+            funding_pct = funding_rate * 100
+            
+            self.logger.debug(f"Funding rate: {funding_rate}, as percentage: {funding_pct}%")
+            
+            # Clip to reasonable range (-0.2% to 0.2%)
+            funding_pct = max(-0.2, min(0.2, funding_pct))
+            
+            # Map to 0-100 scale (inverted: negative funding = bullish)
+            # -0.2% -> 100, 0% -> 50, 0.2% -> 0
+            raw_score = 50 - (funding_pct * 250)
+            
+            # Apply sigmoid transformation with specific sensitivity for funding
+            score = self._apply_sigmoid_transformation(raw_score, sensitivity=self.funding_sensitivity)
+            
+            self.logger.debug(f"Funding rate score: {score:.2f} (rate: {funding_rate:.6f}, raw: {raw_score:.2f})")
+            
+            return float(score)
+            
+        except Exception as e:
+            self.logger.error(f"Error calculating funding rate score: {str(e)}")
+            return 50.0
+
+    def calculate_market_mood(self, market_data: Dict[str, Any]) -> float:
+        """Calculate sentiment score based on overall market mood indicators."""
+        try:
+            self.logger.debug("\n=== Calculating Market Mood Score ===")
+            
+            # Check for market_mood data in sentiment or directly
+            market_mood = None
+            
+            # Try different paths to market mood data
+            if 'sentiment' in market_data and 'market_mood' in market_data['sentiment']:
+                market_mood = market_data['sentiment']['market_mood']
+                self.logger.debug(f"Found market_mood in sentiment: {market_mood}")
+            elif 'market_mood' in market_data:
+                market_mood = market_data['market_mood']
+                self.logger.debug(f"Found direct market_mood: {market_mood}")
+            
+            if not market_mood or not isinstance(market_mood, dict):
+                self.logger.debug("No valid market mood data available")
+                return 50.0
+            
+            self.logger.debug(f"Market mood data: {market_mood}")
+
+            # Set component weights
+            weights = {
+                'social_sentiment': 0.25,
+                'fear_and_greed': 0.30,
+                'search_trends': 0.15,
+                'positive_mentions': 0.30,
+                'risk_level': 0.20,  # Alternative component if available
+                'max_leverage': 0.15  # Alternative component if available
+            }
+            
+            scores = {}
+            
+            # Process each component
+            for component, weight in weights.items():
+                if component in market_mood:
+                    try:
+                        value = float(market_mood[component])
+                        if component == 'positive_mentions':
+                            # Convert to 0-100 scale
+                            value = value * 100
+                        elif component == 'risk_level':
+                            # Inverse risk level (lower is better)
+                            if isinstance(value, (int, float)) and value > 0:
+                                # Assume risk levels are 1-10, higher = more risk
+                                value = max(0, 100 - (value * 10))
+                        elif component == 'max_leverage':
+                            # Higher leverage = better market conditions
+                            if isinstance(value, (int, float)) and value > 0:
+                                # Map common leverage values (1-100) to score
+                                value = min(100, value)
+                        
+                        scores[component] = np.clip(value, 0, 100)
+                        self.logger.debug(f"{component}: raw={market_mood[component]}, processed={scores[component]:.2f}")
+                    except (ValueError, TypeError) as e:
+                        self.logger.warning(f"Error processing {component}: {e}")
+            
+            if not scores:
+                self.logger.debug("No valid component scores calculated")
+                return 50.0
+            
+            # Calculate weighted average
+            total_weight = sum(weights[comp] for comp in scores.keys())
+            weighted_sum = sum(scores[comp] * weights[comp] for comp in scores.keys())
+            
+            if total_weight == 0:
+                self.logger.debug("Zero total weight")
+                return 50.0
+            
+            final_score = weighted_sum / total_weight
+            
+            self.logger.debug("\n=== Market Mood Score Breakdown ===")
+            for component in scores:
+                self.logger.debug(f"{component}: {scores[component]:.2f} × {weights[component]:.2f} = {scores[component] * weights[component]:.2f}")
+            self.logger.debug(f"Final score: {final_score:.2f} (total weight: {total_weight:.2f})")
+            
+            return float(np.clip(final_score, 0, 100))
+            
+        except Exception as e:
+            self.logger.error(f"Error calculating market mood: {str(e)}", exc_info=True)
+            return 50.0
+
+    def _calculate_risk_score(self, sentiment_data: Dict[str, Any]) -> float:
+        """Calculate risk score based on market-wide risk parameters."""
+        try:
+            # Debug the input structure
+            self.logger.debug("\n=== Calculating Risk Score ===")
+            self.logger.debug(f"Sentiment data keys: {list(sentiment_data.keys())}")
+            
+            # Get risk data from sentiment data
+            risk_data = None
+            
+            # Try different paths to find risk data
+            if 'risk_limit' in sentiment_data:
+                risk_data = sentiment_data['risk_limit']
+                self.logger.debug(f"Found risk_limit data: {type(risk_data)}")
+            elif 'sentiment' in sentiment_data and 'risk_limit' in sentiment_data['sentiment']:
+                risk_data = sentiment_data['sentiment']['risk_limit']
+                self.logger.debug(f"Found risk_limit in sentiment: {type(risk_data)}")
+            
+            if not risk_data:
+                self.logger.debug("No risk data available")
+                return 50.0
+            
+            if not isinstance(risk_data, dict):
+                self.logger.debug(f"Invalid risk data type: {type(risk_data)}")
+                return 50.0
+            
+            # Print actual data structure for debugging
+            if len(risk_data) > 0:
+                self.logger.debug(f"Risk data keys: {list(risk_data.keys())}")
+                if len(str(risk_data)) < 1000:  # Only log if not too large
+                    self.logger.debug(f"Risk data: {risk_data}")
+            
+            # Extract risk levels from response structure
+            risk_levels = []
+            if 'result' in risk_data and 'list' in risk_data['result']:
+                risk_levels = risk_data['result']['list']
+                self.logger.debug(f"Found {len(risk_levels)} risk levels in result.list")
+            elif 'levels' in risk_data:
+                risk_levels = risk_data['levels']
+                self.logger.debug(f"Found {len(risk_levels)} risk levels in levels")
+            elif 'riskLimits' in risk_data:
+                risk_levels = risk_data['riskLimits']
+                self.logger.debug(f"Found {len(risk_levels)} risk levels in riskLimits")
+            
+            if not risk_levels:
+                self.logger.debug("No risk levels available")
+                return 50.0
+            
+            # Log first risk level for debugging
+            if len(risk_levels) > 0:
+                self.logger.debug(f"First risk level: {risk_levels[0]}")
+            
+            # Sort risk levels by ID to ensure proper ordering
+            try:
+                risk_levels = sorted(risk_levels, key=lambda x: int(x.get('id', 0)))
+            except (ValueError, TypeError) as e:
+                self.logger.warning(f"Error sorting risk levels: {e}")
+            
+            # Get base tier (lowest risk tier)
+            base_tier = risk_levels[0]
+            
+            # Extract key values with fallbacks
+            initial_margin = 0.01  # Default 1%
+            max_leverage = 100.0   # Default 100x
+            
+            try:
+                # Try to extract initial margin
+                if 'initialMargin' in base_tier:
+                    initial_margin = float(base_tier['initialMargin'])
+                    self.logger.debug(f"Extracted initialMargin: {initial_margin}")
+                
+                # Try to extract max leverage
+                if 'maxLeverage' in base_tier:
+                    max_leverage = float(base_tier['maxLeverage'])
+                    self.logger.debug(f"Extracted maxLeverage: {max_leverage}")
+            except (ValueError, TypeError) as e:
+                self.logger.warning(f"Error extracting risk parameters: {e}")
+            
+            # Calculate base risk score (40% weight)
+            # Lower initial margin = better score
+            base_score = 100 - (initial_margin * 100 * 10)  # Scale factor of 10 to make more sensitive
+            base_score = max(0, min(100, base_score))
+            
+            # Calculate leverage score (30% weight)
+            # Higher max leverage = better score
+            leverage_score = (max_leverage / 100) * 100  # Normalize to 0-100
+            leverage_score = max(0, min(100, leverage_score))
+            
+            # Calculate market risk score (30% weight)
+            # Based on the number and distribution of risk tiers
+            num_tiers = len(risk_levels)
+            
+            try:
+                max_risk_limit = float(risk_levels[-1].get('riskLimitValue', 0))
+                min_risk_limit = float(base_tier.get('riskLimitValue', 0))
+                self.logger.debug(f"Risk limits - min: {min_risk_limit}, max: {max_risk_limit}, tiers: {num_tiers}")
+            except (ValueError, TypeError, IndexError) as e:
+                self.logger.warning(f"Error processing risk limits: {e}")
+                max_risk_limit = 1_200_000_000  # Default large value
+                min_risk_limit = 2_000_000      # Default small value
+            
+            # More tiers and higher max risk limit = better market depth = better score
+            market_depth_score = min(100, (num_tiers / 35) * 100)  # Normalize against typical max of 35 tiers
+            risk_limit_score = min(100, (max_risk_limit / 1_200_000_000) * 100)  # Normalize against 1.2B typical max
+            market_risk_score = (market_depth_score * 0.5) + (risk_limit_score * 0.5)
+            
+            # Calculate weighted final score
+            weights = {
+                'base': 0.4,
+                'leverage': 0.3,
+                'market_risk': 0.3
+            }
+            
+            final_score = (
+                base_score * weights['base'] +
+                leverage_score * weights['leverage'] +
+                market_risk_score * weights['market_risk']
+            )
+            
+            # Log detailed breakdown
+            self.logger.debug("\n=== Risk Score Breakdown ===")
+            self.logger.debug(f"Base Tier Initial Margin: {initial_margin:.4f}")
+            self.logger.debug(f"Max Leverage: {max_leverage:.2f}x")
+            self.logger.debug(f"Number of Risk Tiers: {num_tiers}")
+            self.logger.debug(f"Max Risk Limit: {max_risk_limit:,.0f}")
+            self.logger.debug(f"\nComponent Scores:")
+            self.logger.debug(f"Base Score: {base_score:.2f} (weight: {weights['base']:.2f})")
+            self.logger.debug(f"Leverage Score: {leverage_score:.2f} (weight: {weights['leverage']:.2f})")
+            self.logger.debug(f"Market Risk Score: {market_risk_score:.2f} (weight: {weights['market_risk']:.2f})")
+            self.logger.debug(f"Final Risk Score: {final_score:.2f}")
+            
+            return float(np.clip(final_score, 0, 100))
+            
+        except Exception as e:
+            self.logger.error(f"Error calculating risk score: {str(e)}")
+            return 50.0
+
+    def _calculate_volatility_score(self, volatility_data: Dict[str, Any]) -> float:
+        """Calculate sentiment score based on historical volatility."""
+        try:
+            self.logger.debug("\n=== Calculating Volatility Score ===")
+            
+            # Log input data
+            if isinstance(volatility_data, dict):
+                self.logger.debug(f"Volatility data keys: {list(volatility_data.keys())}")
+                if len(str(volatility_data)) < 1000:  # Only log if not too large
+                    self.logger.debug(f"Volatility data: {volatility_data}")
+            else:
+                self.logger.debug(f"Volatility data type: {type(volatility_data)}")
+            
+            if not volatility_data or not isinstance(volatility_data, dict):
+                self.logger.debug("No volatility data available, returning neutral score")
+                return 50.0
+
+            # Extract volatility value
+            volatility = None
+            
+            # Try different keys that might contain the volatility value
+            for key in ['value', 'volatility', 'historical_volatility']:
+                if key in volatility_data:
+                    try:
+                        volatility = float(volatility_data[key])
+                        self.logger.debug(f"Found volatility in key '{key}': {volatility}")
+                        break
+                    except (ValueError, TypeError) as e:
+                        self.logger.warning(f"Error converting volatility from key '{key}': {e}")
+            
+            if volatility is None:
+                self.logger.debug("No valid volatility value found")
+                return 50.0
+                
+            self.logger.debug(f"Raw volatility value: {volatility}")
+
+            # Convert to percentage if needed (if value is in decimal form)
+            if volatility < 1 and volatility > 0:
+                volatility = volatility * 100
+                self.logger.debug(f"Converted to percentage: {volatility}%")
+
+            # Calculate score based on volatility ranges
+            if volatility <= 30:
+                # Low volatility (bullish) - map 0-30% to 80-100
+                score = 80 + (30 - volatility) * (20/30)
+                explanation = "Low volatility is bullish"
+            elif volatility <= 60:
+                # Medium volatility (neutral) - map 30-60% to 50-80
+                score = 80 - ((volatility - 30) * (30/30))
+                explanation = "Medium volatility is neutral to slightly bullish"
+            else:
+                # High volatility (bearish) - map >60% to 0-50
+                score = max(0, 50 - ((volatility - 60) * (50/40)))
+                explanation = "High volatility is bearish"
+
+            score = float(np.clip(score, 0, 100))
+            
+            self.logger.debug(f"Volatility: {volatility:.2f}%, Score: {score:.2f} ({explanation})")
+            return score
+
+        except Exception as e:
+            self.logger.error(f"Error calculating volatility score: {str(e)}")
+            return 50.0
+
+    def calculate_historical_volatility(self, market_data: Dict[str, Any]) -> Dict[str, float]:
+        """Calculate historical volatility from OHLCV data."""
+        try:
+            # Get base timeframe data (1m)
+            ohlcv_data = market_data.get('ohlcv', {})
+            base_df = ohlcv_data.get('base')
+            
+            if not isinstance(base_df, pd.DataFrame) or base_df.empty:
+                return None
+                
+            # Calculate returns
+            returns = np.log(base_df['close'] / base_df['close'].shift(1))
+            
+            # Calculate annualized volatility (assuming 1m data)
+            volatility = returns.std() * np.sqrt(525600)  # Annualized from 1-minute data
+            
+            return {
+                'value': volatility,
+                'window': len(base_df),
+                'timeframe': '1m'
+            }
+        except Exception as e:
+            self.logger.error(f"Error calculating historical volatility: {str(e)}")
+            return None
+
+    def _prepare_risk_data(self, market_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Prepare risk data from market data."""
+        try:
+            ticker = market_data.get('ticker', {})
+            
+            # Extract values from ticker
+            open_interest_value = float(ticker.get('openInterestValue', 0))
+            max_leverage = float(ticker.get('maxLeverage', 100))
+            
+            # Calculate initial margin based on max leverage
+            initial_margin = 1 / max_leverage if max_leverage > 0 else 0.01
+            
+            # Create base risk tier
+            base_tier = {
+                'id': 1,
+                'initialMargin': initial_margin,
+                'maxLeverage': max_leverage,
+                'riskLimitValue': open_interest_value,
+                'tier': 1
+            }
+            
+            # Create risk data structure
+            risk_data = {
+                'levels': [base_tier]
+            }
+            
+            # Add additional risk tiers if available
+            if 'riskLimits' in market_data:
+                additional_tiers = market_data['riskLimits']
+                if isinstance(additional_tiers, list):
+                    for i, tier in enumerate(additional_tiers, start=2):
+                        tier['id'] = i
+                        risk_data['levels'].append(tier)
+            
+            self.logger.debug(f"Prepared risk data with {len(risk_data['levels'])} tiers")
+            return risk_data
+            
+        except Exception as e:
+            self.logger.error(f"Error preparing risk data: {str(e)}")
+            return None
+
+    def _process_sentiment_data(self, market_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Process and normalize sentiment data from market_data."""
+        try:
+            self.logger.debug(f"Processing sentiment data from market_data with keys: {list(market_data.keys())}")
+            
+            # Create a copy of the sentiment data (avoid double nesting)
+            sentiment_data = {}
+            
+            # First check if sentiment is directly in market_data
+            if 'sentiment' in market_data:
+                sentiment_data = market_data['sentiment'].copy() if isinstance(market_data['sentiment'], dict) else {}
+                self.logger.debug(f"Found sentiment data with keys: {list(sentiment_data.keys())}")
+            
+            # Calculate historical volatility
+            volatility_data = self.calculate_historical_volatility(market_data)
+            if volatility_data:
+                sentiment_data['volatility'] = volatility_data
+                self.logger.debug(f"Added calculated volatility: {volatility_data}")
+            
+            # Prepare risk data
+            risk_data = self._prepare_risk_data(market_data)
+            if risk_data:
+                sentiment_data['risk_limit'] = risk_data
+                self.logger.debug(f"Added prepared risk data with {len(risk_data['levels'])} tiers")
+
+            # Process long/short ratio from different formats
+            if 'long_short_ratio' in market_data:
+                lsr_data = market_data['long_short_ratio']
+                self.logger.debug(f"Processing external long_short_ratio: {lsr_data}")
+                
+                if isinstance(lsr_data, dict) and 'list' in lsr_data:
+                    # Get most recent entry from Bybit historical data
+                    latest_lsr = lsr_data['list'][0] if lsr_data['list'] else None
+                    if latest_lsr:
+                        sentiment_data['long_short_ratio'] = latest_lsr
+                        self.logger.debug(f"Using latest LSR data from list: {latest_lsr}")
+                else:
+                    sentiment_data['long_short_ratio'] = lsr_data
+                    self.logger.debug(f"Using direct LSR data: {lsr_data}")
+            
+            # Add other required fields directly from market_data if not already in sentiment
+            for field in ['liquidations', 'risk_limit', 'ticker']:
+                if field in market_data and field not in sentiment_data:
+                    sentiment_data[field] = market_data[field]
+                    self.logger.debug(f"Added {field} from market_data")
+            
+            # Handle funding_rate specially since it might be in ticker data
+            if 'funding_rate' not in sentiment_data:
+                # Try direct value
+                if 'funding_rate' in market_data:
+                    sentiment_data['funding_rate'] = market_data['funding_rate']
+                    self.logger.debug(f"Added funding_rate from market_data: {market_data['funding_rate']}")
+                # Try from ticker
+                elif 'ticker' in market_data:
+                    ticker = market_data['ticker']
+                    if isinstance(ticker, dict) and 'fundingRate' in ticker:
+                        funding_rate = float(ticker['fundingRate'])
+                        sentiment_data['funding_rate'] = funding_rate
+                        self.logger.debug(f"Added funding_rate from ticker: {funding_rate}")
+            
+            self.logger.debug(f"Processed sentiment data: {sentiment_data}")
+            return sentiment_data
+        
+        except Exception as e:
+            self.logger.error(f"Error processing sentiment data: {str(e)}")
+            # Return empty dict with minimal structure
+            return {
+                'funding_rate': None,
+                'long_short_ratio': None,
+                'liquidations': []
+            }
+
+    def _apply_sigmoid_transformation(self, value, sensitivity=None, center=50):
         """
         Apply sigmoid transformation to make values more sensitive around the center.
         
@@ -616,6 +1020,9 @@ class SentimentIndicators(BaseIndicator):
             Transformed value
         """
         try:
+            # Use provided sensitivity or default from config
+            sensitivity = sensitivity or self.default_sensitivity
+            
             # Normalize around center
             normalized = (value - center) / 50
             
@@ -625,169 +1032,21 @@ class SentimentIndicators(BaseIndicator):
             # Scale back to original range
             result = transformed * 100
             
+            self.logger.debug(f"Sigmoid transformation: input={value:.2f}, sensitivity={sensitivity}, output={result:.2f}")
+            
             return float(result)
-        except Exception:
+        except Exception as e:
+            self.logger.error(f"Error in sigmoid transformation: {str(e)}")
             return value  # Return original value on error
-
-    def calculate_market_mood(self, market_data: Dict[str, Any]) -> float:
-        """Calculate overall market mood using multiple metrics."""
-        try:
-            # Check if we have OHLCV data
-            if 'ohlcv' not in market_data:
-                self.logger.debug("No OHLCV data available for market mood calculation")
-                return 50.0
-
-            # Get OHLCV data
-            ohlcv = market_data['ohlcv']
-            df = None
-            
-            # Try to extract dataframe using different structures
-            if isinstance(ohlcv, dict):
-                if 'base' in ohlcv:
-                    # Try to get from standard structure
-                    base_data = ohlcv['base']
-                    if isinstance(base_data, pd.DataFrame):
-                        df = base_data
-                    elif isinstance(base_data, dict) and 'data' in base_data:
-                        df = base_data['data']
-                elif 'data' in ohlcv:
-                    # Alternative structure
-                    df = ohlcv['data']
-            elif isinstance(ohlcv, pd.DataFrame):
-                # Direct DataFrame access
-                df = ohlcv
-                
-            # If we couldn't find a valid DataFrame, return neutral
-            if df is None or not isinstance(df, pd.DataFrame) or df.empty:
-                self.logger.debug("Could not extract valid DataFrame from OHLCV data")
-                return 50.0
-
-            # Calculate volatility safely
-            try:
-                returns = df['close'].pct_change().dropna()
-                volatility = returns.std() * np.sqrt(252)  # Annualized volatility
-            except (KeyError, ValueError) as e:
-                self.logger.debug(f"Error calculating volatility: {e}")
-                volatility = 0.01  # Default low volatility
-            
-            # Calculate momentum safely
-            try:
-                tail_size = min(20, len(returns))
-                momentum = returns.tail(tail_size).mean() * 100
-            except (KeyError, ValueError) as e:
-                self.logger.debug(f"Error calculating momentum: {e}")
-                momentum = 0.0  # Neutral momentum
-            
-            # Calculate volume trend safely
-            try:
-                window_size = min(20, len(df) - 1)
-                if window_size > 1:
-                    volume_ma = df['volume'].rolling(window=window_size).mean()
-                    volume_trend = (df['volume'].iloc[-1] / volume_ma.iloc[-1] if not volume_ma.empty and volume_ma.iloc[-1] > 0 else 1.0) - 1
-                else:
-                    volume_trend = 0
-            except (KeyError, ValueError, IndexError) as e:
-                self.logger.debug(f"Error calculating volume trend: {e}")
-                volume_trend = 0.0  # Neutral trend
-            
-            # Calculate price trend strength safely
-            try:
-                if len(df) >= 50:
-                    sma_20 = df['close'].rolling(window=20).mean()
-                    sma_50 = df['close'].rolling(window=50).mean()
-                    trend_strength = (df['close'].iloc[-1] / sma_50.iloc[-1] - 1) * 100 if sma_50.iloc[-1] > 0 else 0
-                else:
-                    trend_strength = 0
-            except (KeyError, ValueError, IndexError) as e:
-                self.logger.debug(f"Error calculating trend strength: {e}")
-                trend_strength = 0.0  # Neutral strength
-            
-            # Combine metrics into mood score
-            volatility_score = 100 - np.clip(volatility * 100, 0, 100)  # Lower volatility = higher score
-            momentum_score = np.clip(momentum * 5 + 50, 0, 100)  # Center around 50
-            volume_score = np.clip(volume_trend * 50 + 50, 0, 100)  # Center around 50
-            trend_score = np.clip(trend_strength * 2 + 50, 0, 100)  # Center around 50
-            
-            # Weighted combination
-            mood_score = (
-                volatility_score * 0.3 +
-                momentum_score * 0.3 +
-                volume_score * 0.2 +
-                trend_score * 0.2
-            )
-            
-            self.logger.debug(f"Market mood - Vol: {volatility_score:.2f}, Mom: {momentum_score:.2f}, Vol: {volume_score:.2f}, Trend: {trend_score:.2f}, Final: {mood_score:.2f}")
-            return float(mood_score)
-            
-        except Exception as e:
-            self.logger.error(f"Error calculating market mood: {str(e)}")
-            return 50.0
-
-    def calculate_risk_score(self, market_data: Dict[str, Any]) -> float:
-        """Calculate risk score with improved risk metrics."""
-        try:
-            # Check if we've already looked for risk limit data and found it missing
-            if self._cache['missing_risk_data']:
-                return 50.0
-
-            risk_limit_data = market_data.get('risk_limit', {})
-            if not risk_limit_data or 'list' not in risk_limit_data:
-                # Cache the fact that risk data is missing to prevent repeated logging
-                self._cache['missing_risk_data'] = True
-                self.logger.debug("No risk limit data available")
-                return 50.0
-
-            risk_tiers = risk_limit_data['list']
-            if not risk_tiers:
-                self._cache['missing_risk_data'] = True
-                return 50.0
-
-            # Reset the missing flag since we found data
-            self._cache['missing_risk_data'] = False
-
-            # Get current tier
-            current_tier = risk_tiers[0]
-            
-            # Extract key metrics
-            risk_limit_value = float(current_tier.get('riskLimitValue', 0))
-            initial_margin = float(current_tier.get('initialMargin', 0))
-            max_leverage = float(current_tier.get('maxLeverage', 0))
-            maintenance_margin = float(current_tier.get('maintenanceMargin', 0))
-            
-            self.logger.debug("\n=== Risk Score Calculation ===")
-            self.logger.debug(f"Risk limit value: {risk_limit_value:,.0f}")
-            self.logger.debug(f"Initial margin: {initial_margin:.4f}")
-            self.logger.debug(f"Max leverage: {max_leverage:.2f}x")
-            self.logger.debug(f"Maintenance margin: {maintenance_margin:.4f}")
-
-            # Calculate risk metrics
-            leverage_score = 100 - (max_leverage / 100 * 50)  # Higher leverage = higher risk
-            margin_score = (1 - initial_margin) * 100  # Higher margin = lower risk
-            maintenance_score = (1 - maintenance_margin) * 100  # Higher maintenance = lower risk
-
-            self.logger.debug(f"Leverage score: {leverage_score:.2f}")
-            self.logger.debug(f"Margin score: {margin_score:.2f}")
-            self.logger.debug(f"Maintenance score: {maintenance_score:.2f}")
-
-            # Combine scores with weights
-            final_score = (
-                leverage_score * 0.4 +
-                margin_score * 0.3 +
-                maintenance_score * 0.3
-            )
-            
-            self.logger.debug(f"Final risk score: {final_score:.2f}")
-            return float(np.clip(final_score, 0, 100))
-
-        except Exception as e:
-            self.logger.error(f"Error calculating risk score: {str(e)}")
-            return 50.0
 
     def _log_component_breakdown(self, components: Dict[str, float]) -> None:
         """Log detailed breakdown of sentiment components."""
         try:
+            # First log the raw component details for debugging
             self.logger.debug("\n=== Sentiment Component Breakdown ===")
             for component, score in components.items():
+                if component == 'sentiment':  # Skip the overall sentiment score in debug output
+                    continue
                 weight = self.component_weights.get(component, 0.0)
                 weighted_score = score * weight
                 self.logger.debug(f"{component}:")
@@ -795,6 +1054,37 @@ class SentimentIndicators(BaseIndicator):
                 self.logger.debug(f"  Weight: {weight:.2f}")
                 self.logger.debug(f"  Weighted Score: {weighted_score:.2f}")
             self.logger.debug("================================")
+            
+            # Now create a nicely formatted table view
+            # Create list of (component, score, weight, contribution) tuples for formatter
+            # Exclude the 'sentiment' entry which is the final score, not a component
+            contributions = []
+            for component, score in components.items():
+                # Skip the overall sentiment score in the breakdown table
+                if component == 'sentiment':
+                    continue
+                    
+                weight = self.component_weights.get(component, 0.0)
+                contribution = score * weight
+                contributions.append((component, score, weight, contribution))
+            
+            # Sort by contribution (highest first)
+            contributions.sort(key=lambda x: x[3], reverse=True)
+            
+            # Generate title with symbol if available
+            symbol = ""  # We'll leave this empty as we don't have it in the method signature
+            
+            # Use the fancy formatter
+            from src.core.formatting.formatter import LogFormatter
+            formatted_section = LogFormatter.format_score_contribution_section(
+                "Sentiment Score Contribution Breakdown", 
+                contributions, 
+                symbol
+            )
+            
+            # Log the formatted breakdown at INFO level for visibility
+            self.logger.info(formatted_section)
+            
         except Exception as e:
             self.logger.error(f"Error logging component breakdown: {str(e)}")
 
@@ -881,11 +1171,10 @@ class SentimentIndicators(BaseIndicator):
             'components': {
                 'long_short_ratio': 50.0,
                 'funding_rate': 50.0,
-                'funding_rate_volatility': 50.0,
                 'liquidations': 50.0,
                 'volume_sentiment': 50.0,
                 'market_mood': 50.0,
-                'risk_score': 50.0
+                'risk': 50.0
             },
             'interpretation': 'Analysis failed: ' + reason,
             'metadata': {
@@ -931,86 +1220,144 @@ class SentimentIndicators(BaseIndicator):
             'last_calculation_time': 0
         }
 
-    def _calculate_sync(self, sentiment_data: Dict[str, Any]) -> Dict[str, Any]:
+    def _calculate_sync(self, market_data: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Calculate sentiment indicators from market data (synchronous version).
+        Calculate sentiment indicators synchronously.
         
         Args:
-            sentiment_data: Dictionary containing market data
+            market_data: Dictionary containing market data
             
         Returns:
             Dictionary containing sentiment scores, components, and interpretation
         """
         try:
-            # Track calculation start time
             start_time = time.time()
+            self.logger.debug(f"Calculating sentiment with input keys: {list(market_data.keys())}")
             
-            # Reset any cached state from previous runs
-            self.reset_cache()
+            # Process sentiment data from market data
+            processed_data = self._process_sentiment_data(market_data)
+            self.logger.debug(f"Processed sentiment data: {processed_data}")
             
-            # Validate input data
-            if not sentiment_data:
-                self.logger.error("No sentiment data provided")
-                return self._get_default_scores()
-            
-            self.logger.debug(f"Calculating sentiment with input keys: {list(sentiment_data.keys())}")
-            
-            # Process the sentiment data
-            processed_data = self._process_sentiment_data(sentiment_data)
-            
-            # Calculate component scores
-            component_scores = {}
+            # Initialize component scores dictionary
+            components = {}
             
             # Calculate funding rate score
-            funding_score = self._calculate_funding_score(processed_data)
-            component_scores['funding_rate'] = funding_score
+            try:
+                self.logger.debug("Calculating funding rate score...")
+                funding_score = self._calculate_funding_score(processed_data)
+                self.logger.debug(f"Funding rate score calculated: {funding_score}")
+                components['funding_rate'] = funding_score
+            except Exception as e:
+                self.logger.error(f"Error calculating funding rate score: {str(e)}")
+                components['funding_rate'] = 50.0
             
-            # Calculate long-short ratio score
-            lsr_score = self._calculate_lsr_score(processed_data)
-            component_scores['long_short_ratio'] = lsr_score
+            # Calculate long/short ratio score
+            try:
+                self.logger.debug("Calculating long/short ratio score...")
+                lsr_data = processed_data.get('long_short_ratio')
+                self.logger.debug(f"LSR data for calculation: {lsr_data}")
+                lsr_score = self._calculate_lsr_score(lsr_data)
+                self.logger.debug(f"Long/short ratio score calculated: {lsr_score}")
+                components['long_short_ratio'] = lsr_score
+            except Exception as e:
+                self.logger.error(f"Error calculating long/short ratio score: {str(e)}", exc_info=True)
+                components['long_short_ratio'] = 50.0
+            
+            # Calculate market mood score
+            try:
+                self.logger.debug("Calculating market mood score...")
+                mood_data = processed_data.get('market_mood')
+                self.logger.debug(f"Market mood data for calculation: {mood_data}")
+                mood_score = self._calculate_market_mood(processed_data)
+                self.logger.debug(f"Market mood score calculated: {mood_score}")
+                components['market_mood'] = mood_score
+            except Exception as e:
+                self.logger.error(f"Error calculating market mood score: {str(e)}")
+                components['market_mood'] = 50.0
             
             # Calculate liquidation score
-            liquidation_score = self._calculate_liquidation_score(processed_data)
-            component_scores['liquidations'] = liquidation_score
-            
-            # Calculate volume sentiment
-            volume_score = self.calculate_volume_sentiment(processed_data)
-            component_scores['volume'] = volume_score
-            
-            # Calculate market mood
-            mood_score = self._calculate_market_mood(processed_data)
-            component_scores['market_mood'] = mood_score
-            
-            # Calculate risk score
-            risk_score = self._calculate_risk_score(processed_data)
-            component_scores['risk'] = risk_score
-            
-            # Calculate weighted average of component scores
-            weighted_score = self._compute_weighted_score(component_scores)
-            component_scores['sentiment'] = weighted_score
-            
-            # Log the component breakdown
-            self._log_component_breakdown(component_scores)
-            
-            # Get interpretation for each component
-            interpretation = self._get_detailed_sentiment_interpretation(component_scores, weighted_score)
-            
-            # Generate signals based on the scores - handle async method from sync context
             try:
-                # Use a non-async way to get signals
-                signals = self._get_signals_sync(sentiment_data, existing_scores=component_scores)
+                self.logger.debug("Calculating liquidation score...")
+                liquidation_score = self._calculate_liquidation_score(processed_data)
+                self.logger.debug(f"Liquidation score calculated: {liquidation_score}")
+                components['liquidations'] = liquidation_score
             except Exception as e:
-                self.logger.error(f"Error generating signals: {str(e)}")
-                signals = []
+                self.logger.error(f"Error calculating liquidation score: {str(e)}")
+                components['liquidations'] = 50.0
+                
+            # Calculate volatility score
+            try:
+                self.logger.debug("Calculating volatility score...")
+                volatility_data = processed_data.get('volatility')
+                self.logger.debug(f"Volatility data for calculation: {volatility_data}")
+                volatility_score = self._calculate_volatility_score(volatility_data)
+                self.logger.debug(f"Volatility score calculated: {volatility_score}")
+                components['volatility'] = volatility_score
+            except Exception as e:
+                self.logger.error(f"Error calculating volatility score: {str(e)}")
+                components['volatility'] = 50.0
+                
+            # Calculate risk score
+            try:
+                self.logger.debug("Calculating risk score...")
+                risk_score = self._calculate_risk_score(processed_data)
+                self.logger.debug(f"Risk score calculated: {risk_score}")
+                components['risk'] = risk_score
+            except Exception as e:
+                self.logger.error(f"Error calculating risk score: {str(e)}")
+                components['risk'] = 50.0
+                
+            # Calculate market activity score (combines volume and open interest)
+            try:
+                self.logger.debug("Calculating market activity score...")
+                market_activity_score = self._calculate_market_activity(market_data)
+                self.logger.debug(f"Market activity score calculated: {market_activity_score}")
+                components['market_activity'] = market_activity_score
+            except Exception as e:
+                self.logger.error(f"Error calculating market activity score: {str(e)}")
+                components['market_activity'] = 50.0
+                
+            # Calculate open interest score (kept for backward compatibility)
+            try:
+                self.logger.debug("Calculating open interest score...")
+                oi_data = processed_data.get('open_interest')
+                self.logger.debug(f"Open interest data for calculation: {oi_data}")
+                oi_score = self._calculate_open_interest_score(processed_data)
+                self.logger.debug(f"Open interest score calculated: {oi_score}")
+                components['open_interest'] = oi_score
+            except Exception as e:
+                self.logger.error(f"Error calculating open interest score: {str(e)}")
+                components['open_interest'] = 50.0
+                
+            # Calculate the overall sentiment score as weighted average of components
+            try:
+                self.logger.debug("Calculating overall sentiment score...")
+                sentiment_score = self._compute_weighted_score(components)
+                self.logger.debug(f"Overall sentiment score calculated: {sentiment_score}")
+            except Exception as e:
+                self.logger.error(f"Error computing weighted sentiment score: {str(e)}")
+                sentiment_score = 50.0
             
-            # Calculate time taken
+            # Log component breakdown
+            self._log_component_breakdown(components)
+            
+            # Add sentinel to components dictionary
+            components['sentiment'] = sentiment_score
+            
+            # Generate interpretation
+            interpretation = self._interpret_sentiment(sentiment_score, components)
+            
+            # Generate signals based on sentiment
+            signals = self._generate_signals(components)
+            
+            # Calculate execution time
             end_time = time.time()
-            calculation_time = (end_time - start_time) * 1000  # Convert to milliseconds
+            execution_time_ms = (end_time - start_time) * 1000
             
-            # Construct and return result
-            result = {
-                'score': weighted_score,
-                'components': component_scores,
+            # Return result
+            return {
+                'score': sentiment_score,
+                'components': components,
                 'signals': signals,
                 'interpretation': interpretation,
                 'timestamp': end_time,
@@ -1018,20 +1365,13 @@ class SentimentIndicators(BaseIndicator):
                 'metadata': {
                     'timestamp': int(end_time * 1000),
                     'status': 'SUCCESS',
-                    'calculation_time_ms': calculation_time,
-                    'component_weights': self.component_weights,
-                    'raw_values': {
-                        'funding_rate': processed_data.get('funding_rate', 0),
-                        'long_short_ratio': processed_data.get('long_short_ratio', {})
-                    }
+                    'calculation_time_ms': execution_time_ms
                 }
             }
             
-            return result
-            
         except Exception as e:
+            self.logger.error(f"Error calculating sentiment: {str(e)}", exc_info=True)
             error_time = time.time()
-            self.logger.error(f"Error calculating sentiment: {str(e)}")
             return {
                 'score': 50.0, 
                 'components': {'sentiment': 50.0},
@@ -1075,6 +1415,13 @@ class SentimentIndicators(BaseIndicator):
         """
         try:
             self.logger.debug("Running async calculate for sentiment indicators")
+            self.logger.debug(f"Market data keys: {list(market_data.keys())}")
+            if 'sentiment' in market_data:
+                self.logger.debug(f"Sentiment keys: {list(market_data['sentiment'].keys())}")
+                if 'long_short_ratio' in market_data['sentiment']:
+                    self.logger.debug(f"Long/Short ratio data: {market_data['sentiment']['long_short_ratio']}")
+                if 'funding_rate' in market_data['sentiment']:
+                    self.logger.debug(f"Funding rate data: {market_data['sentiment']['funding_rate']}")
             
             # Call the synchronous calculate method
             result = self._calculate_sync(market_data)
@@ -1116,7 +1463,7 @@ class SentimentIndicators(BaseIndicator):
             self.logger.debug("Running async calculate_score for sentiment indicators")
             
             # Call the regular calculate method which does all the heavy lifting
-            result = self.calculate(market_data)
+            result = await self.calculate(market_data)
             
             # Extract the overall score from the result
             score = result.get('score', 50.0)
@@ -1125,6 +1472,9 @@ class SentimentIndicators(BaseIndicator):
             component_scores = result.get('components', {})
             if component_scores:
                 from src.core.analysis.indicator_utils import log_score_contributions, log_final_score
+                
+                # Explicitly log the component breakdown details
+                self._log_component_breakdown(component_scores)
                 
                 # Log component contributions
                 log_score_contributions(
@@ -1147,7 +1497,7 @@ class SentimentIndicators(BaseIndicator):
             return float(score)
             
         except Exception as e:
-            self.logger.error(f"Error in sentiment calculate_score: {str(e)}", exc_info=True)
+            self.logger.error(f"Error in sentiment calculate_score: {str(e)}")
             return 50.0  # Default neutral score on error
 
     async def get_signals(self, sentiment_data: Dict[str, Any], existing_scores: Dict[str, Any] = None) -> List[Dict[str, Any]]:
@@ -1514,146 +1864,6 @@ class SentimentIndicators(BaseIndicator):
             self.logger.error(f"Error calculating volume sentiment ratio: {str(e)}")
             return 1.0  # Neutral on error
             
-    def _calculate_market_mood(self, sentiment_data: Dict[str, Any]) -> float:
-        """Calculate overall market mood using multiple metrics."""
-        try:
-            # Check if we have OHLCV data
-            if 'ohlcv' not in sentiment_data:
-                self.logger.debug("No OHLCV data available for market mood calculation")
-                return 50.0
-
-            # Get OHLCV data
-            ohlcv = sentiment_data.get('ohlcv')
-            df = None
-            
-            # Try to extract dataframe using different structures
-            if isinstance(ohlcv, dict):
-                if 'base' in ohlcv:
-                    # Try to get from standard structure
-                    base_data = ohlcv['base']
-                    if isinstance(base_data, pd.DataFrame):
-                        df = base_data
-                    elif isinstance(base_data, dict) and 'data' in base_data:
-                        df = base_data['data']
-                elif 'data' in ohlcv:
-                    # Alternative structure
-                    df = ohlcv['data']
-            elif isinstance(ohlcv, pd.DataFrame):
-                # Direct DataFrame access
-                df = ohlcv
-                
-            # If we couldn't find a valid DataFrame, return neutral
-            if df is None or not isinstance(df, pd.DataFrame) or df.empty:
-                self.logger.debug("Could not extract valid DataFrame from OHLCV data")
-                return 50.0
-
-            # Calculate volatility safely
-            try:
-                returns = df['close'].pct_change().dropna()
-                volatility = returns.std() * np.sqrt(252)  # Annualized volatility
-            except (KeyError, ValueError) as e:
-                self.logger.debug(f"Error calculating volatility: {e}")
-                volatility = 0.01  # Default low volatility
-            
-            # Calculate momentum safely
-            try:
-                tail_size = min(20, len(returns))
-                momentum = returns.tail(tail_size).mean() * 100
-            except (KeyError, ValueError) as e:
-                self.logger.debug(f"Error calculating momentum: {e}")
-                momentum = 0.0  # Neutral momentum
-            
-            # Calculate volume trend safely
-            try:
-                window_size = min(20, len(df) - 1)
-                if window_size > 1:
-                    volume_ma = df['volume'].rolling(window=window_size).mean()
-                    volume_trend = (df['volume'].iloc[-1] / volume_ma.iloc[-1] if not volume_ma.empty and volume_ma.iloc[-1] > 0 else 1.0) - 1
-                else:
-                    volume_trend = 0
-            except (KeyError, ValueError, IndexError) as e:
-                self.logger.debug(f"Error calculating volume trend: {e}")
-                volume_trend = 0.0  # Neutral trend
-            
-            # Calculate price trend strength safely
-            try:
-                if len(df) >= 50:
-                    sma_20 = df['close'].rolling(window=20).mean()
-                    sma_50 = df['close'].rolling(window=50).mean()
-                    trend_strength = (df['close'].iloc[-1] / sma_50.iloc[-1] - 1) * 100 if sma_50.iloc[-1] > 0 else 0
-                else:
-                    trend_strength = 0
-            except (KeyError, ValueError, IndexError) as e:
-                self.logger.debug(f"Error calculating trend strength: {e}")
-                trend_strength = 0.0  # Neutral strength
-            
-            # Combine metrics into mood score
-            volatility_score = 100 - np.clip(volatility * 100, 0, 100)  # Lower volatility = higher score
-            momentum_score = np.clip(momentum * 5 + 50, 0, 100)  # Center around 50
-            volume_score = np.clip(volume_trend * 50 + 50, 0, 100)  # Center around 50
-            trend_score = np.clip(trend_strength * 2 + 50, 0, 100)  # Center around 50
-            
-            # Weighted combination
-            mood_score = (
-                volatility_score * 0.3 +
-                momentum_score * 0.3 +
-                volume_score * 0.2 +
-                trend_score * 0.2
-            )
-            
-            self.logger.debug(f"Market mood - Vol: {volatility_score:.2f}, Mom: {momentum_score:.2f}, Vol: {volume_score:.2f}, Trend: {trend_score:.2f}, Final: {mood_score:.2f}")
-            return float(mood_score)
-            
-        except Exception as e:
-            self.logger.error(f"Error calculating market mood: {str(e)}")
-            return 50.0
-            
-    def _sigmoid_normalize(self, value, scale=1.0):
-        """Apply sigmoid normalization to a value."""
-        try:
-            return 2 / (1 + np.exp(-value * scale)) - 1
-        except:
-            return 0.0
-
-    def _process_sentiment_data(self, market_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Extract and normalize sentiment data from market data."""
-        try:
-            # Extract sentiment from market data
-            sentiment_data = market_data.get('sentiment', {})
-            
-            # Ensure we have a proper dictionary
-            if not isinstance(sentiment_data, dict):
-                self.logger.warning(f"Sentiment data is not a dictionary: {type(sentiment_data)}")
-                sentiment_data = {}
-                
-            # Add additional data that might be needed for sentiment calculations
-            if 'ohlcv' in market_data:
-                sentiment_data['ohlcv'] = market_data['ohlcv']
-                
-            if 'trades' in market_data:
-                sentiment_data['trades'] = market_data['trades']
-                
-            if 'ticker' in market_data:
-                sentiment_data['ticker'] = market_data['ticker']
-                
-            if 'risk_limit' in market_data:
-                sentiment_data['risk_limit'] = market_data['risk_limit']
-                
-            # Ensure all required fields exist
-            if 'funding_rate' not in sentiment_data and 'ticker' in market_data:
-                ticker = market_data['ticker']
-                if isinstance(ticker, dict) and 'info' in ticker:
-                    funding_rate = ticker['info'].get('fundingRate')
-                    if funding_rate is not None:
-                        sentiment_data['funding_rate'] = funding_rate
-                        
-            # Return the processed sentiment data
-            return sentiment_data
-            
-        except Exception as e:
-            self.logger.error(f"Error processing sentiment data: {str(e)}")
-            return {}
-
     def _compute_weighted_score(self, scores: Dict[str, float]) -> float:
         """Calculate weighted average of sentiment scores."""
         try:
@@ -1698,181 +1908,408 @@ class SentimentIndicators(BaseIndicator):
                 return float(np.clip(avg_score, 0, 100))
             return 50.0
 
-    def _calculate_liquidation_score(self, sentiment_data: Dict[str, Any]) -> float:
-        """Calculate sentiment score based on liquidation events."""
+    def _calculate_enhanced_metrics(self, market_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Calculate enhanced metrics for sentiment analysis."""
         try:
-            # Extract liquidation events
-            if 'liquidations' not in sentiment_data:
-                self.logger.debug("No liquidation data found")
-                return 50.0
-                
-            liquidations = sentiment_data['liquidations']
+            enhanced_metrics = {}
             
-            if not liquidations:
-                self.logger.debug("Empty liquidation data")
-                return 50.0
-
-            # Extract and process liquidation data
-            if isinstance(liquidations, dict):
-                # Single liquidation event
-                long_liq = float(liquidations.get('long', liquidations.get('longAmount', 0)))
-                short_liq = float(liquidations.get('short', liquidations.get('shortAmount', 0)))
-                timestamp = liquidations.get('timestamp', time.time() * 1000)
-                liquidation_events = [{'amount': long_liq, 'side': 'long', 'timestamp': timestamp}] if long_liq > 0 else []
-                liquidation_events.extend([{'amount': short_liq, 'side': 'short', 'timestamp': timestamp}] if short_liq > 0 else [])
-            elif isinstance(liquidations, list):
-                liquidation_events = liquidations
+            # Extract OHLCV data if available
+            ohlcv_data = market_data.get('ohlcv', {})
+            
+            # Calculate price change over last 24h
+            if ohlcv_data and 'base' in ohlcv_data:
+                df = ohlcv_data['base']
+                if isinstance(df, pd.DataFrame) and len(df) > 24:
+                    # Calculate price change
+                    current_price = df['close'].iloc[-1]
+                    price_24h_ago = df['close'].iloc[-25]  # 24 periods ago for 1-min data
+                    
+                    if price_24h_ago > 0:
+                        price_change_pct = ((current_price - price_24h_ago) / price_24h_ago) * 100
+                        enhanced_metrics['price_change_24h'] = round(price_change_pct, 2)
+                    
+                    # Calculate volatility (standard deviation of percent changes)
+                    if len(df) > 30:
+                        pct_changes = df['close'].pct_change().dropna()
+                        volatility = pct_changes.std() * 100  # Convert to percentage
+                        enhanced_metrics['volatility_24h'] = round(volatility, 2)
+            
+            # Determine market trend
+            if 'price_change_24h' in enhanced_metrics:
+                price_change = enhanced_metrics['price_change_24h']
+                if price_change > 3:
+                    enhanced_metrics['market_trend'] = 'bullish'
+                elif price_change < -3:
+                    enhanced_metrics['market_trend'] = 'bearish'
             else:
-                self.logger.debug(f"Unsupported liquidation data format: {type(liquidations)}")
-                return 50.0
-
-            # Sort by timestamp
-            liquidation_events.sort(key=lambda x: x.get('timestamp', 0))
+                    enhanced_metrics['market_trend'] = 'neutral'
             
-            # Calculate time-weighted metrics
-            now = time.time() * 1000
-            window_size = 3600000  # 1 hour window
-            cutoff_time = now - window_size
+            # Add fear & greed index if available from market_mood
+            sentiment_data = market_data.get('sentiment', {})
+            market_mood = sentiment_data.get('market_mood', {})
             
-            recent_events = [event for event in liquidation_events 
-                            if event.get('timestamp', 0) > cutoff_time]
+            if isinstance(market_mood, dict) and 'fear_and_greed' in market_mood:
+                enhanced_metrics['fear_greed_index'] = market_mood['fear_and_greed']
             
-            if not recent_events:
-                self.logger.debug("No recent liquidation events")
-                return 50.0
-
-            # Split into recent and older events
-            very_recent_cutoff = now - (window_size * 0.25)  # Last 15 minutes
-            very_recent = [event for event in recent_events 
-                          if event.get('timestamp', 0) > very_recent_cutoff]
-            older_recent = [event for event in recent_events 
-                           if event.get('timestamp', 0) <= very_recent_cutoff]
-
-            # Calculate liquidation patterns
-            def get_side_totals(events):
-                long_total = sum(float(e.get('amount', 0)) for e in events 
-                               if e.get('side', '').lower() == 'long')
-                short_total = sum(float(e.get('amount', 0)) for e in events 
-                                if e.get('side', '').lower() == 'short')
-                return long_total, short_total
-
-            recent_long, recent_short = get_side_totals(very_recent)
-            older_long, older_short = get_side_totals(older_recent)
-
-            # Calculate acceleration factors
-            recent_rate = (recent_long + recent_short) / (window_size * 0.25)
-            older_rate = (older_long + older_short) / (window_size * 0.75) if older_recent else 0
+            return enhanced_metrics
             
-            acceleration = recent_rate / older_rate if older_rate > 0 else 1.0
+        except Exception as e:
+            self.logger.warning(f"Error calculating enhanced metrics: {str(e)}")
+            return {}
 
-            self.logger.debug("\n=== Liquidation Analysis ===")
-            self.logger.debug(f"Recent rate: {recent_rate:.2f} contracts/ms")
-            self.logger.debug(f"Older rate: {older_rate:.2f} contracts/ms")
-            self.logger.debug(f"Acceleration: {acceleration:.2f}x")
-
-            # Determine immediate impact vs reversal weights
-            if acceleration > 1.5:
-                # Accelerating liquidations - weight immediate impact higher
-                immediate_weight = 0.7
-                reversal_weight = 0.3
-                self.logger.debug("Liquidations accelerating - favoring immediate impact")
-            elif acceleration < 0.5:
-                # Decelerating liquidations - weight reversal higher
-                immediate_weight = 0.3
-                reversal_weight = 0.7
-                self.logger.debug("Liquidations decelerating - favoring reversal potential")
-            else:
-                # Stable liquidations - balanced weights
-                immediate_weight = 0.5
-                reversal_weight = 0.5
-                self.logger.debug("Liquidations stable - balanced weighting")
-
-            # Calculate immediate impact score (inverted from liquidation direction)
-            total_recent = recent_long + recent_short
-            if total_recent > 0:
-                long_ratio = recent_long / total_recent
-                immediate_score = (1 - long_ratio) * 100  # More long liquidations = bearish immediate impact
-            else:
-                immediate_score = 50.0
-
-            # Calculate reversal potential score (aligned with liquidation direction)
-            total_older = older_long + older_short
-            if total_older > 0:
-                long_ratio = older_long / total_older
-                reversal_score = long_ratio * 100  # More long liquidations = bullish reversal potential
-            else:
-                reversal_score = 50.0
-
-            # Combine scores
-            final_score = (immediate_score * immediate_weight + 
-                          reversal_score * reversal_weight)
-
-            self.logger.debug(f"Immediate impact score: {immediate_score:.2f}")
-            self.logger.debug(f"Reversal potential score: {reversal_score:.2f}")
-            self.logger.debug(f"Final liquidation score: {final_score:.2f}")
-
-            return float(np.clip(final_score, 0, 100))
-            
+    def _calculate_liquidation_score(self, sentiment_data: Dict[str, Any]) -> float:
+        """Calculate score based on liquidation events."""
+        try:
+            # Call the existing liquidation calculation method
+            return self.calculate_liquidation_events(sentiment_data)
         except Exception as e:
             self.logger.error(f"Error calculating liquidation score: {str(e)}")
             return 50.0
 
-    def _calculate_risk_score(self, market_data: Dict[str, Any]) -> float:
-        """Calculate risk score with improved risk metrics."""
+    def _calculate_market_mood(self, sentiment_data: Dict[str, Any]) -> float:
+        """Calculate score based on market mood."""
         try:
-            # Check if we've already looked for risk limit data and found it missing
-            if self._cache['missing_risk_data']:
-                return 50.0
+            # Call the existing market mood calculation method
+            return self.calculate_market_mood(sentiment_data)
+        except Exception as e:
+            self.logger.error(f"Error calculating market mood score: {str(e)}")
+            return 50.0
 
-            risk_limit_data = market_data.get('risk_limit', {})
-            if not risk_limit_data or 'list' not in risk_limit_data:
-                # Cache the fact that risk data is missing to prevent repeated logging
-                self._cache['missing_risk_data'] = True
-                self.logger.debug("No risk limit data available")
-                return 50.0
-
-            risk_tiers = risk_limit_data['list']
-            if not risk_tiers:
-                self._cache['missing_risk_data'] = True
-                return 50.0
-
-            # Reset the missing flag since we found data
-            self._cache['missing_risk_data'] = False
-
-            # Get current tier
-            current_tier = risk_tiers[0]
+    def _safe_get(self, data: Dict[str, Any], key: str, default: Any = None) -> Any:
+        """Safely get a value from a dictionary, handling nested keys."""
+        try:
+            if not isinstance(data, dict):
+                return default
             
-            # Extract key metrics
-            risk_limit_value = float(current_tier.get('riskLimitValue', 0))
-            initial_margin = float(current_tier.get('initialMargin', 0))
-            max_leverage = float(current_tier.get('maxLeverage', 0))
-            maintenance_margin = float(current_tier.get('maintenanceMargin', 0))
+            # Handle nested keys
+            keys = key.split('.')
+            result = data
+            for k in keys:
+                if not isinstance(result, dict):
+                    return default
+                result = result.get(k, default)
+                if result is None:
+                    return default
+            return result
+        except Exception as e:
+            self.logger.error(f"Error in _safe_get: {str(e)}")
+            return default
+
+    def _calculate_lsr_score(self, long_short_data: Any) -> float:
+        """Wrapper method that calls calculate_long_short_ratio.
+        
+        This resolves the method name mismatch in the calculation flow.
+        """
+        self.logger.debug(f"_calculate_lsr_score called with data: {long_short_data}")
+        
+        # Get the market data structure needed by calculate_long_short_ratio
+        if isinstance(long_short_data, dict):
+            market_data = {'sentiment': {'long_short_ratio': long_short_data}}
+        else:
+            # Handle the case where long_short_data is a simple value
+            market_data = {'sentiment': {'long_short_ratio': long_short_data}}
             
-            self.logger.debug("\n=== Risk Score Calculation ===")
-            self.logger.debug(f"Risk limit value: {risk_limit_value:,.0f}")
-            self.logger.debug(f"Initial margin: {initial_margin:.4f}")
-            self.logger.debug(f"Max leverage: {max_leverage:.2f}x")
-            self.logger.debug(f"Maintenance margin: {maintenance_margin:.4f}")
+        self.logger.debug(f"Constructed market_data for LSR calculation: {market_data}")
+        
+        # Call the existing method
+        result = self.calculate_long_short_ratio(market_data)
+        self.logger.debug(f"Long/short ratio calculation result: {result}")
+        
+        return result
 
-            # Calculate risk metrics
-            leverage_score = 100 - (max_leverage / 100 * 50)  # Higher leverage = higher risk
-            margin_score = (1 - initial_margin) * 100  # Higher margin = lower risk
-            maintenance_score = (1 - maintenance_margin) * 100  # Higher maintenance = lower risk
+    def _calculate_open_interest_score(self, sentiment_data: Dict[str, Any]) -> float:
+        """Calculate score based on open interest trend.
+        
+        Args:
+            sentiment_data: Dictionary containing sentiment data
+            
+        Returns:
+            Score between 0 and 100
+        """
+        try:
+            self.logger.debug(f"\n=== Calculating Open Interest Score ===")
+            
+            # Check for open interest data
+            oi_data = None
+            
+            # Try different paths to find open interest data
+            if 'open_interest' in sentiment_data:
+                oi_data = sentiment_data['open_interest']
+                self.logger.debug(f"Found direct open_interest data: {type(oi_data)}")
+            elif 'sentiment' in sentiment_data and 'open_interest' in sentiment_data['sentiment']:
+                oi_data = sentiment_data['sentiment']['open_interest']
+                self.logger.debug(f"Found open_interest in sentiment: {type(oi_data)}")
+            elif 'ticker' in sentiment_data and 'openInterest' in sentiment_data['ticker']:
+                # Extract from ticker
+                ticker = sentiment_data['ticker']
+                current_oi = float(ticker.get('openInterest', 0))
+                oi_data = {
+                    'current': current_oi,
+                    'previous': current_oi * 0.98,  # Default to 2% less as previous
+                    'timestamp': int(time.time() * 1000),
+                    'history': []
+                }
+                self.logger.debug(f"Created OI data from ticker: {oi_data}")
+            
+            if not oi_data:
+                self.logger.debug("No open interest data available")
+                return 50.0
+            
+            # Log the OI data structure
+            if len(str(oi_data)) < 1000:  # Only log if not too large
+                self.logger.debug(f"Open interest data: {oi_data}")
+            
+            # Extract current and previous OI values
+            current_oi = previous_oi = None
+            
+            if isinstance(oi_data, dict):
+                current_oi = float(self._safe_get(oi_data, 'current', 0))
+                previous_oi = float(self._safe_get(oi_data, 'previous', 0))
+                self.logger.debug(f"Extracted OI values - current: {current_oi}, previous: {previous_oi}")
+            
+            # Handle case where we only have a single value
+            if current_oi is None and isinstance(oi_data, (int, float)):
+                current_oi = float(oi_data)
+                previous_oi = current_oi * 0.98  # Assume 2% lower as default
+                self.logger.debug(f"Using direct OI value: {current_oi}, estimated previous: {previous_oi}")
+            
+            # If we don't have valid OI data, return neutral
+            if not current_oi or not previous_oi:
+                self.logger.debug("Invalid OI values")
+                return 50.0
+            
+            # Calculate OI change
+            oi_change = 0
+            if previous_oi > 0:
+                oi_change = (current_oi - previous_oi) / previous_oi
+                oi_change_pct = oi_change * 100
+                self.logger.debug(f"OI change: {oi_change_pct:.2f}%")
+            
+            # Normalize the change to a score
+            # Positive OI changes are bullish (price follows OI in strong trend)
+            if oi_change > 0:
+                # Cap at 20% change (normalization factor of 5)
+                normalized_change = min(oi_change, 0.2) * 5
+                score = 50 + (normalized_change * 50)  # Map to 50-100 range
+                self.logger.debug(f"Positive OI change: normalized to {normalized_change:.4f}, score: {score:.2f} (bullish)")
+                interpretation = "Strongly bullish (increasing open interest)"
+            else:
+                # Negative change, bearish
+                # Cap at -20% change (normalization factor of 5)
+                normalized_change = max(oi_change, -0.2) * 5
+                score = 50 + (normalized_change * 50)  # Map to 0-50 range
+                self.logger.debug(f"Negative OI change: normalized to {normalized_change:.4f}, score: {score:.2f} (bearish)")
+                interpretation = "Bearish (decreasing open interest)"
+            
+            self.logger.debug(f"Open interest interpretation: {interpretation}")
+            
+            return float(np.clip(score, 0, 100))
+            
+        except Exception as e:
+            self.logger.error(f"Error calculating open interest score: {str(e)}")
+            return 50.0
 
-            self.logger.debug(f"Leverage score: {leverage_score:.2f}")
-            self.logger.debug(f"Margin score: {margin_score:.2f}")
-            self.logger.debug(f"Maintenance score: {maintenance_score:.2f}")
+    def _interpret_sentiment(self, overall_score: float, components: Dict[str, float]) -> Dict[str, str]:
+        """Generate detailed interpretation of sentiment scores.
+        
+        Args:
+            overall_score: The overall sentiment score
+            components: Dictionary of component scores
+            
+        Returns:
+            Dictionary of interpretations for each component
+        """
+        try:
+            # Initialize interpretations dictionary
+            interpretations = {}
+            
+            # Overall sentiment interpretation
+            if overall_score >= 75:
+                interpretations['sentiment'] = "Strongly bullish market sentiment"
+            elif overall_score >= 60:
+                interpretations['sentiment'] = "Bullish market sentiment"
+            elif overall_score >= 40:
+                interpretations['sentiment'] = "Neutral market sentiment"
+            elif overall_score >= 25:
+                interpretations['sentiment'] = "Bearish market sentiment"
+            else:
+                interpretations['sentiment'] = "Strongly bearish market sentiment"
+                
+            # Funding rate interpretation
+            funding_score = components.get('funding_rate', 50)
+            if funding_score >= 75:
+                interpretations['funding_rate'] = "Very negative funding rate (strongly bullish)"
+            elif funding_score >= 60:
+                interpretations['funding_rate'] = "Negative funding rate (bullish)"
+            elif funding_score >= 40:
+                interpretations['funding_rate'] = "Neutral funding rate"
+            elif funding_score >= 25:
+                interpretations['funding_rate'] = "Positive funding rate (bearish)"
+            else:
+                interpretations['funding_rate'] = "Very positive funding rate (strongly bearish)"
+                
+            # Long/short ratio interpretation
+            lsr_score = components.get('long_short_ratio', 50)
+            if lsr_score >= 75:
+                interpretations['long_short_ratio'] = "Strong long bias in trader positioning"
+            elif lsr_score >= 60:
+                interpretations['long_short_ratio'] = "Long bias in trader positioning"
+            elif lsr_score >= 40:
+                interpretations['long_short_ratio'] = "Balanced long/short positioning"
+            elif lsr_score >= 25:
+                interpretations['long_short_ratio'] = "Short bias in trader positioning"
+            else:
+                interpretations['long_short_ratio'] = "Strong short bias in trader positioning"
+                
+            # Market activity interpretation
+            market_activity_score = components.get('market_activity', 50)
+            if market_activity_score >= 75:
+                interpretations['market_activity'] = "Very high market activity with strong participation (bullish)"
+            elif market_activity_score >= 60:
+                interpretations['market_activity'] = "Increasing market activity and participation (bullish)"
+            elif market_activity_score >= 40:
+                interpretations['market_activity'] = "Normal market activity and participation"
+            elif market_activity_score >= 25:
+                interpretations['market_activity'] = "Decreasing market activity and participation (bearish)"
+            else:
+                interpretations['market_activity'] = "Very low market activity with weak participation (bearish)"
+                
+            # Add more component interpretations as needed
+            
+            return interpretations
+            
+        except Exception as e:
+            self.logger.error(f"Error interpreting sentiment: {str(e)}")
+            return {"sentiment": "Neutral (error in interpretation)"}
 
-            # Combine scores with weights
+    def _generate_signals(self, components: Dict[str, float]) -> List[Dict[str, Any]]:
+        """Generate trading signals based on sentiment components.
+        
+        Args:
+            components: Dictionary of sentiment component scores
+            
+        Returns:
+            List of signal dictionaries
+        """
+        signals = []
+        overall_score = components.get('sentiment', 50)
+        
+        # Generate signal based on overall sentiment
+        if overall_score >= 70:
+            signals.append({
+                'type': 'SENTIMENT',
+                'direction': 'BUY',
+                'strength': (overall_score - 70) / 30 * 100,  # Normalize to 0-100
+                'description': "Strong bullish market sentiment",
+                'source': 'sentiment'
+            })
+        elif overall_score <= 30:
+            signals.append({
+                'type': 'SENTIMENT',
+                'direction': 'SELL',
+                'strength': (30 - overall_score) / 30 * 100,  # Normalize to 0-100
+                'description': "Strong bearish market sentiment",
+                'source': 'sentiment'
+            })
+            
+        # Add more specific component signals
+        funding_score = components.get('funding_rate', 50)
+        if funding_score >= 70:
+            signals.append({
+                'type': 'FUNDING',
+                'direction': 'BUY',
+                'strength': (funding_score - 70) / 30 * 100,
+                'description': "Negative funding rate suggests long opportunity",
+                'source': 'funding_rate'
+            })
+        elif funding_score <= 30:
+            signals.append({
+                'type': 'FUNDING',
+                'direction': 'SELL',
+                'strength': (30 - funding_score) / 30 * 100,
+                'description': "Positive funding rate suggests short opportunity",
+                'source': 'funding_rate'
+            })
+        
+        # Add market activity signals
+        market_activity_score = components.get('market_activity', 50)
+        if market_activity_score >= 70:
+            signals.append({
+                'type': 'MARKET_ACTIVITY',
+                'direction': 'BUY',
+                'strength': (market_activity_score - 70) / 30 * 100,
+                'description': "Strong market activity and participation suggests bullish momentum",
+                'source': 'market_activity'
+            })
+        elif market_activity_score <= 30:
+            signals.append({
+                'type': 'MARKET_ACTIVITY',
+                'direction': 'SELL',
+                'strength': (30 - market_activity_score) / 30 * 100,
+                'description': "Weak market activity and participation suggests bearish momentum",
+                'source': 'market_activity'
+            })
+            
+        return signals
+
+    def _calculate_market_activity(self, market_data: Dict[str, Any]) -> float:
+        """Calculate market activity score based on volume and open interest."""
+        try:
+            self.logger.debug("\n=== Calculating Market Activity Score ===")
+            
+            ticker = market_data.get('ticker', {})
+            if not ticker:
+                return 50.0
+                
+            # Extract current volume and open interest
+            volume = float(ticker.get('volume', 0))
+            open_interest = float(ticker.get('openInterest', 0))
+            
+            # Calculate volume change (if previous volume available)
+            volume_change = 0
+            if hasattr(self, '_prev_volume') and self._prev_volume:
+                volume_change = ((volume - self._prev_volume) / self._prev_volume) * 100
+            self._prev_volume = volume
+            
+            # Calculate OI change (if previous OI available)
+            oi_change = 0
+            if hasattr(self, '_prev_oi') and self._prev_oi:
+                oi_change = ((open_interest - self._prev_oi) / self._prev_oi) * 100
+            self._prev_oi = open_interest
+            
+            # Calculate OI/Volume ratio
+            oi_volume_ratio = open_interest / volume if volume > 0 else 1
+            
+            # Score components
+            # Volume score: Based on volume change
+            volume_score = 50 + (volume_change * 2)  # Each 1% change = 2 points
+            volume_score = np.clip(volume_score, 0, 100)
+            
+            # OI score: Based on OI change
+            oi_score = 50 + (oi_change * 2)  # Each 1% change = 2 points
+            oi_score = np.clip(oi_score, 0, 100)
+            
+            # Ratio score: Optimal ratio is around 1.5
+            ratio_score = 100 - abs(oi_volume_ratio - 1.5) * 20
+            ratio_score = np.clip(ratio_score, 0, 100)
+            
+            # Log calculations
+            self.logger.debug(f"Volume: {volume:,.1f}, Volume change: {volume_change:.1f}%")
+            self.logger.debug(f"Open interest: {open_interest:,.1f}, OI change: {oi_change:.1f}%")
+            self.logger.debug(f"OI/Volume ratio: {oi_volume_ratio:.2f}")
+            self.logger.debug(f"Volume score: {volume_score:.2f}, OI score: {oi_score:.2f}, Ratio score: {ratio_score:.2f}")
+            
+            # Calculate final score with weights
+            weights = {'volume': 0.4, 'oi': 0.4, 'ratio': 0.2}
             final_score = (
-                leverage_score * 0.4 +
-                margin_score * 0.3 +
-                maintenance_score * 0.3
+                volume_score * weights['volume'] +
+                oi_score * weights['oi'] +
+                ratio_score * weights['ratio']
             )
             
-            self.logger.debug(f"Final risk score: {final_score:.2f}")
-            return float(np.clip(final_score, 0, 100))
-
+            self.logger.debug(f"Combined market activity score: {final_score:.2f}")
+            return float(final_score)
+            
         except Exception as e:
-            self.logger.error(f"Error calculating risk score: {str(e)}")
+            self.logger.error(f"Error calculating market activity score: {str(e)}")
             return 50.0

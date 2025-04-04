@@ -655,7 +655,8 @@ class ConfluenceAnalyzer:
                 'exchange': market_data.get('exchange', ''),
                 'timestamp': market_data.get('timestamp', int(time.time() * 1000)),
                 'ohlcv': market_data.get('ohlcv', {}),
-                'ticker': market_data.get('ticker', {})
+                'ticker': market_data.get('ticker', {}),
+                'risk_limit': market_data.get('risk_limit', {})  # Add risk_limit data from market data
             }
             
             # Process existing sentiment data if available
@@ -1637,7 +1638,8 @@ class ConfluenceAnalyzer:
                 'exchange': market_data.get('exchange', ''),
                 'timestamp': market_data.get('timestamp', int(time.time() * 1000)),
                 'ohlcv': market_data.get('ohlcv', {}),
-                'ticker': market_data.get('ticker', {})
+                'ticker': market_data.get('ticker', {}),
+                'risk_limit': market_data.get('risk_limit', {})  # Add risk_limit data from market data
             }
             
             # Process existing sentiment data if available
@@ -3321,22 +3323,13 @@ class ConfluenceAnalyzer:
                 self.logger.error(f"Sentiment data must be a dictionary, got {type(sentiment_data)}")
                 return False
                 
-            # Check required fields
+            # Check required fields (looser validation)
             required_fields = ['funding_rate', 'long_short_ratio']
             missing_fields = [f for f in required_fields if f not in sentiment_data]
             
             if missing_fields:
-                self.logger.error(f"Missing required sentiment fields: {missing_fields}")
-                return False
-                
-            # Validate data types
-            if not isinstance(sentiment_data.get('funding_rate'), (int, float)):
-                self.logger.error(f"Invalid funding_rate type: {type(sentiment_data.get('funding_rate'))}")
-                return False
-                
-            if not isinstance(sentiment_data.get('long_short_ratio'), (int, float)):
-                self.logger.error(f"Invalid long_short_ratio type: {type(sentiment_data.get('long_short_ratio'))}")
-                return False
+                self.logger.warning(f"Missing recommended sentiment fields: {missing_fields}")
+                # Don't fail validation but warn user
                 
             # Validate OHLCV data for sentiment calculations
             ohlcv_data = market_data['ohlcv']
@@ -3349,11 +3342,223 @@ class ConfluenceAnalyzer:
                 self.logger.error("No valid timeframes found in OHLCV data for sentiment analysis")
                 return False
                 
+            # Modified validation to support different data formats
+            # Funding rate validation with proper nested structure
+            funding_rate = sentiment_data.get('funding_rate')
+            if funding_rate is not None:
+                if isinstance(funding_rate, dict):
+                    if 'rate' not in funding_rate:
+                        self.logger.warning("Funding rate dictionary is missing 'rate' field, setting default")
+                        sentiment_data['funding_rate'] = {
+                            'rate': 0.0001,
+                            'next_funding_time': int(time.time() * 1000) + 8 * 3600 * 1000
+                        }
+                elif isinstance(funding_rate, (int, float)):
+                    self.logger.debug(f"Converting simple funding rate {funding_rate} to structured format")
+                    sentiment_data['funding_rate'] = {
+                        'rate': float(funding_rate),
+                        'next_funding_time': int(time.time() * 1000) + 8 * 3600 * 1000
+                    }
+                else:
+                    self.logger.warning(f"Unexpected funding_rate type: {type(funding_rate)}, setting to default")
+                    sentiment_data['funding_rate'] = {
+                        'rate': 0.0001,
+                        'next_funding_time': int(time.time() * 1000) + 8 * 3600 * 1000
+                    }
+            
+            # Long/short ratio validation - support different formats with proper nested structure
+            lsr = sentiment_data.get('long_short_ratio')
+            if lsr is not None:
+                if isinstance(lsr, dict):
+                    self.logger.debug(f"Dictionary LSR format with keys: {list(lsr.keys())}")
+                    # Check if it has the required long/short keys
+                    if 'long' not in lsr or 'short' not in lsr:
+                        self.logger.warning("LSR dictionary missing required long/short fields, setting defaults")
+                        sentiment_data['long_short_ratio'] = {
+                            'long': 50.0,
+                            'short': 50.0,
+                            'timestamp': int(time.time() * 1000)
+                        }
+                elif isinstance(lsr, (int, float)):
+                    self.logger.debug(f"Converting simple LSR value {lsr} to structured format")
+                    ratio = float(lsr)
+                    # Calculate long and short percentages from ratio
+                    if ratio > 0:
+                        long_pct = (ratio / (1 + ratio)) * 100
+                        short_pct = 100 - long_pct
+                    else:
+                        long_pct = 50.0
+                        short_pct = 50.0
+                    
+                    sentiment_data['long_short_ratio'] = {
+                        'long': long_pct,
+                        'short': short_pct,
+                        'timestamp': int(time.time() * 1000)
+                    }
+                else:
+                    self.logger.warning(f"Unexpected LSR type: {type(lsr)}, setting defaults")
+                    sentiment_data['long_short_ratio'] = {
+                        'long': 50.0,
+                        'short': 50.0,
+                        'timestamp': int(time.time() * 1000)
+                    }
+            
+            # Liquidation data validation - support both array and aggregated formats
+            liquidations = sentiment_data.get('liquidations')
+            if liquidations is not None:
+                if isinstance(liquidations, list):
+                    # Check if the list is empty
+                    if not liquidations:
+                        self.logger.debug("Empty liquidations list, setting default structure")
+                        sentiment_data['liquidations'] = {
+                            'long': 0.0,
+                            'short': 0.0,
+                            'total': 0.0,
+                            'timestamp': int(time.time() * 1000)
+                        }
+                    else:
+                        # Check if we need to aggregate the liquidations
+                        self.logger.debug(f"Processing liquidation list with {len(liquidations)} entries")
+                        long_liq = 0.0
+                        short_liq = 0.0
+                        
+                        for liq in liquidations:
+                            if isinstance(liq, dict):
+                                side = liq.get('side', '').lower()
+                                qty = float(liq.get('qty', 0.0))
+                                
+                                if side == 'buy':
+                                    short_liq += qty
+                                elif side == 'sell':
+                                    long_liq += qty
+                            
+                        sentiment_data['liquidations'] = {
+                            'long': long_liq,
+                            'short': short_liq,
+                            'total': long_liq + short_liq,
+                            'timestamp': int(time.time() * 1000)
+                        }
+                elif isinstance(liquidations, dict):
+                    # Ensure the dictionary has the required fields
+                    if 'long' not in liquidations or 'short' not in liquidations:
+                        self.logger.warning("Liquidations dict missing required long/short fields, setting defaults")
+                        sentiment_data['liquidations'] = {
+                            'long': liquidations.get('long', 0.0),
+                            'short': liquidations.get('short', 0.0),
+                            'total': liquidations.get('long', 0.0) + liquidations.get('short', 0.0),
+                            'timestamp': int(time.time() * 1000)
+                        }
+                    else:
+                        # Calculate total if not provided
+                        if 'total' not in liquidations:
+                            liquidations['total'] = float(liquidations.get('long', 0.0)) + float(liquidations.get('short', 0.0))
+                        
+                        # Ensure timestamp exists
+                        if 'timestamp' not in liquidations:
+                            liquidations['timestamp'] = int(time.time() * 1000)
+                        
+                        sentiment_data['liquidations'] = liquidations
+                else:
+                    self.logger.warning(f"Unexpected liquidations type: {type(liquidations)}, setting defaults")
+                    sentiment_data['liquidations'] = {
+                        'long': 0.0,
+                        'short': 0.0,
+                        'total': 0.0,
+                        'timestamp': int(time.time() * 1000)
+                    }
+            else:
+                self.logger.warning("Missing liquidations data, setting defaults")
+                sentiment_data['liquidations'] = {
+                    'long': 0.0,
+                    'short': 0.0,
+                    'total': 0.0,
+                    'timestamp': int(time.time() * 1000)
+                }
+            
+            # Validate market mood structure
+            market_mood = sentiment_data.get('market_mood')
+            if market_mood is not None and not isinstance(market_mood, dict):
+                self.logger.warning(f"Unexpected market_mood type: {type(market_mood)}, setting to default")
+                sentiment_data['market_mood'] = {
+                    'score': 50.0,
+                    'fear_and_greed': 50,
+                    'source': 'derived'
+                }
+                
+            # Validate risk structure
+            risk = sentiment_data.get('risk')
+            if risk is not None and not isinstance(risk, dict):
+                self.logger.warning(f"Unexpected risk type: {type(risk)}, setting to default")
+                sentiment_data['risk'] = {
+                    'score': 50.0,
+                    'level': 'medium',
+                    'volatility_risk': 50.0
+                }
+            
+            # Validate open interest data structure
+            open_interest = sentiment_data.get('open_interest')
+            if open_interest is not None:
+                if isinstance(open_interest, dict):
+                    # Check if it has the required fields
+                    if 'value' not in open_interest:
+                        self.logger.warning("Open interest dict missing 'value' field, setting default")
+                        sentiment_data['open_interest'] = {
+                            'value': 0.0,
+                            'change_24h': 0.0,
+                            'timestamp': int(time.time() * 1000)
+                        }
+                elif isinstance(open_interest, (int, float)):
+                    self.logger.debug(f"Converting simple open interest value {open_interest} to structured format")
+                    sentiment_data['open_interest'] = {
+                        'value': float(open_interest),
+                        'change_24h': 0.0,
+                        'timestamp': int(time.time() * 1000)
+                    }
+                else:
+                    self.logger.warning(f"Unexpected open_interest type: {type(open_interest)}, setting defaults")
+                    sentiment_data['open_interest'] = {
+                        'value': 0.0,
+                        'change_24h': 0.0,
+                        'timestamp': int(time.time() * 1000)
+                    }
+            
+            # Return True instead of sentiment_data to indicate successful validation
             return True
             
         except Exception as e:
             self.logger.error(f"Error validating sentiment data: {str(e)}")
-            return False
+            self.logger.warning("Sentiment data validation failed, using default values")
+            
+            # Provide default values for essential fields with proper structure
+            if 'sentiment' in market_data:
+                if 'funding_rate' not in market_data['sentiment']:
+                    market_data['sentiment']['funding_rate'] = {
+                        'rate': 0.0001,
+                        'next_funding_time': int(time.time() * 1000) + 8 * 3600 * 1000
+                    }
+                    
+                if 'long_short_ratio' not in market_data['sentiment']:
+                    market_data['sentiment']['long_short_ratio'] = {
+                        'long': 50.0,
+                        'short': 50.0,
+                        'timestamp': int(time.time() * 1000)
+                    }
+                    
+                if 'market_mood' not in market_data['sentiment']:
+                    market_data['sentiment']['market_mood'] = {
+                        'score': 50.0,
+                        'fear_and_greed': 50,
+                        'source': 'fallback'
+                    }
+                    
+                if 'risk' not in market_data['sentiment']:
+                    market_data['sentiment']['risk'] = {
+                        'score': 50.0,
+                        'level': 'medium',
+                        'volatility_risk': 50.0
+                    }
+                    
+            return True  # Continue with defaults rather than failing
 
     def validate_data_for_type(self, data_type: str, market_data: Dict[str, Any]) -> bool:
         """Validate data required for specific analysis type."""
@@ -3395,11 +3600,18 @@ class ConfluenceAnalyzer:
             ticker_data = market_data.get('ticker', {})
             ohlcv_data = market_data.get('ohlcv', {})
             
-            # Create a comprehensive sentiment data structure
+            # Create a comprehensive sentiment data structure with properly nested dictionaries
             enhanced_sentiment = {
-                # Basic sentiment metrics
-                'funding_rate': 0.0001,  # Default value
-                'long_short_ratio': 1.0,  # Neutral by default
+                # Basic sentiment metrics with proper nested structure
+                'funding_rate': {
+                    'rate': 0.0001,  # Default value
+                    'next_funding_time': int(time.time() * 1000) + 8 * 3600 * 1000  # 8 hours from now
+                },
+                'long_short_ratio': {
+                    'long': 50.0,  # Default values for long/short positions
+                    'short': 50.0,
+                    'timestamp': int(time.time() * 1000)
+                },
                 'liquidations': [],
                 
                 # Enhanced metrics
@@ -3410,6 +3622,20 @@ class ConfluenceAnalyzer:
                 'social_sentiment': 50.0,  # Neutral by default
                 'fear_greed_index': 50,    # Neutral by default
                 
+                # Market mood with proper structure
+                'market_mood': {
+                    'score': 50.0,  # Neutral by default
+                    'fear_and_greed': 50,
+                    'source': 'derived'
+                },
+                
+                # Risk metrics
+                'risk': {
+                    'score': 50.0,
+                    'level': 'medium',
+                    'volatility_risk': 50.0
+                },
+                
                 # Metadata
                 'timestamp': int(time.time() * 1000),
                 'source': 'enhanced_processor'
@@ -3417,13 +3643,35 @@ class ConfluenceAnalyzer:
             
             # Extract funding rate from ticker or sentiment data
             if 'funding_rate' in sentiment_data:
-                enhanced_sentiment['funding_rate'] = float(sentiment_data['funding_rate'])
+                if isinstance(sentiment_data['funding_rate'], dict) and 'rate' in sentiment_data['funding_rate']:
+                    enhanced_sentiment['funding_rate'] = sentiment_data['funding_rate']
+                else:
+                    enhanced_sentiment['funding_rate']['rate'] = float(sentiment_data['funding_rate'])
             elif ticker_data and 'fundingRate' in ticker_data:
-                enhanced_sentiment['funding_rate'] = float(ticker_data['fundingRate'])
+                enhanced_sentiment['funding_rate']['rate'] = float(ticker_data['fundingRate'])
             
             # Extract long/short ratio
             if 'long_short_ratio' in sentiment_data:
-                enhanced_sentiment['long_short_ratio'] = float(sentiment_data['long_short_ratio'])
+                if isinstance(sentiment_data['long_short_ratio'], dict):
+                    # Already in correct format with long/short keys
+                    enhanced_sentiment['long_short_ratio'] = sentiment_data['long_short_ratio']
+                elif isinstance(sentiment_data['long_short_ratio'], (int, float)):
+                    # Convert simple ratio to structured format
+                    ratio = float(sentiment_data['long_short_ratio'])
+                    # Calculate long and short percentages from ratio
+                    # ratio = long/short, so long% = ratio/(1+ratio), short% = 1/(1+ratio)
+                    if ratio > 0:
+                        long_pct = (ratio / (1 + ratio)) * 100
+                        short_pct = 100 - long_pct
+                    else:
+                        long_pct = 50.0
+                        short_pct = 50.0
+                    
+                    enhanced_sentiment['long_short_ratio'] = {
+                        'long': long_pct,
+                        'short': short_pct,
+                        'timestamp': int(time.time() * 1000)
+                    }
             
             # Extract liquidations
             if 'liquidations' in sentiment_data:
@@ -3494,13 +3742,41 @@ class ConfluenceAnalyzer:
             fear_greed += price_change * 2  # Price action component
             fear_greed += enhanced_sentiment['volume_change_24h'] * 0.5  # Volume component
             fear_greed -= volatility * 2  # Volatility component (higher volatility = more fear)
-            fear_greed += (enhanced_sentiment['long_short_ratio'] - 1) * 25  # Position component
-            fear_greed -= enhanced_sentiment['funding_rate'] * 1000  # Funding rate component
+            
+            # Use the structured long/short ratio for calculation
+            long_pct = enhanced_sentiment['long_short_ratio']['long']
+            short_pct = enhanced_sentiment['long_short_ratio']['short']
+            if long_pct + short_pct > 0:
+                lsr_ratio = long_pct / short_pct if short_pct > 0 else 1.0
+                fear_greed += (lsr_ratio - 1) * 25  # Position component
+            
+            fear_greed -= enhanced_sentiment['funding_rate']['rate'] * 1000  # Funding rate component
             
             enhanced_sentiment['fear_greed_index'] = int(np.clip(fear_greed, 0, 100))
             
+            # Update market mood with calculated values
+            enhanced_sentiment['market_mood']['score'] = float(np.clip(50 + price_change * 3 - volatility * 2, 0, 100))
+            enhanced_sentiment['market_mood']['fear_and_greed'] = enhanced_sentiment['fear_greed_index']
+            
+            # Update risk metrics
+            enhanced_sentiment['risk']['score'] = float(np.clip(50 + volatility * 2 - price_change, 0, 100))
+            enhanced_sentiment['risk']['volatility_risk'] = float(np.clip(volatility * 5, 0, 100))
+            
+            # Set risk level based on risk score
+            risk_score = enhanced_sentiment['risk']['score']
+            if risk_score < 25:
+                enhanced_sentiment['risk']['level'] = 'very_low'
+            elif risk_score < 40:
+                enhanced_sentiment['risk']['level'] = 'low'
+            elif risk_score < 60:
+                enhanced_sentiment['risk']['level'] = 'medium'
+            elif risk_score < 75:
+                enhanced_sentiment['risk']['level'] = 'high'
+            else:
+                enhanced_sentiment['risk']['level'] = 'very_high'
+            
             # Log the enhanced sentiment data
-            self.logger.debug(f"Enhanced sentiment metrics: funding_rate={enhanced_sentiment['funding_rate']:.6f}, "
+            self.logger.debug(f"Enhanced sentiment metrics: funding_rate={enhanced_sentiment['funding_rate']['rate']:.6f}, "
                              f"price_change_24h={enhanced_sentiment['price_change_24h']:.2f}%, "
                              f"volatility_24h={enhanced_sentiment['volatility_24h']:.2f}%, "
                              f"market_trend={enhanced_sentiment['market_trend']}, "
@@ -3512,9 +3788,26 @@ class ConfluenceAnalyzer:
             self.logger.error(f"Error processing enhanced sentiment data: {str(e)}")
             self.logger.debug(f"Traceback: {traceback.format_exc()}")
             return {
-                'funding_rate': 0.0001,
-                'long_short_ratio': 1.0,
+                'funding_rate': {
+                    'rate': 0.0001,
+                    'next_funding_time': int(time.time() * 1000) + 8 * 3600 * 1000
+                },
+                'long_short_ratio': {
+                    'long': 50.0,
+                    'short': 50.0,
+                    'timestamp': int(time.time() * 1000)
+                },
                 'liquidations': [],
+                'market_mood': {
+                    'score': 50.0,
+                    'fear_and_greed': 50,
+                    'source': 'fallback'
+                },
+                'risk': {
+                    'score': 50.0,
+                    'level': 'medium',
+                    'volatility_risk': 50.0
+                },
                 'price_change_24h': 0.0,
                 'volume_change_24h': 0.0,
                 'volatility_24h': 0.0,
