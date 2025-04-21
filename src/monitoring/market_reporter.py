@@ -1077,7 +1077,7 @@ class MarketReporter:
                 self.logger.warning(f"Timeout fetching tickers for {symbol}")
                 perp_ticker = None
                 spot_ticker = None
-                    
+            
             # Extract prices from different possible structures
             mark_price = None
             index_price = None
@@ -1105,6 +1105,8 @@ class MarketReporter:
             weekly_futures_found = 0
             quarterly_futures_found = 0
             futures_contracts = []
+            premium = 0
+            premium_type = "📊 Neutral"
             
             # Find futures contracts for this base asset more efficiently
             try:
@@ -1144,7 +1146,7 @@ class MarketReporter:
                                     })
                                 except Exception as e:
                                     self.logger.debug(f"Error parsing delivery time for {market_id}: {e}")
-            
+                
                 # If we found futures contracts
                 if futures_contracts:
                     self.logger.debug(f"Found {len(futures_contracts)} futures contracts for {base_asset}")
@@ -1171,10 +1173,12 @@ class MarketReporter:
                                             futures_basis = ((futures_price - index_price) / index_price) * 100
                         except asyncio.TimeoutError:
                             self.logger.warning(f"Timeout fetching futures ticker for {base_asset}")
-                    except Exception as se:
-                        self.logger.debug(f"Error sorting futures markets: {se}")
-            except Exception as me:
-                self.logger.debug(f"Error finding futures contracts for {base_asset}: {me}")
+                        except Exception as se:
+                            self.logger.debug(f"Error fetching futures ticker: {se}")
+                    except Exception as me:
+                        self.logger.debug(f"Error sorting futures contracts for {base_asset}: {me}")
+            except Exception as e:
+                self.logger.debug(f"Error finding futures contracts for {base_asset}: {e}")
             
             # Calculate premium if we have valid prices
             if mark_price and mark_price > 0 and (index_price and index_price > 0):
@@ -1202,7 +1206,7 @@ class MarketReporter:
                 return None
         except Exception as e:
             self.logger.error(f"Error in _calculate_single_premium for {symbol}: {str(e)}")
-            raise e
+            return None
     
     async def _calculate_smart_money_index(self, symbols: List[str]) -> Dict[str, Any]:
         """Calculate smart money index based on whale activity and order flow."""
@@ -1568,32 +1572,32 @@ class MarketReporter:
                 market_embed["fields"].append({
                     "name": "💪 Strength",
                     "value": f"**{overview.get('strength', trend_strength)}%**\n{regime}",
-                    "inline": True
+                            "inline": True
                 })
                 
                 market_embed["fields"].append({
                     "name": "📊 Volatility",
                     "value": f"**{volatility:.1f}%**\n{overview.get('vol_regime', 'Normal')}",
-                    "inline": True
+                            "inline": True
                 })
                 
                 market_embed["fields"].append({
                     "name": "💧 Liquidity",
                     "value": f"**{overview.get('liquidity', '0')}**\n{'High' if int(overview.get('liquidity', 0)) > 75 else 'Medium' if int(overview.get('liquidity', 0)) > 50 else 'Low'}",
-                    "inline": True
+                            "inline": True
                 })
                 
                 # --- Group 2: Key Price Levels (Second Row) ---
                 market_embed["fields"].append({
                     "name": "BTC Support 🛡️",
                     "value": f"**${overview.get('btc_support', '0')}**",
-                    "inline": True
+                            "inline": True
                 })
                 
                 market_embed["fields"].append({
                     "name": "BTC Resistance 🧱",
                     "value": f"**${overview.get('btc_resistance', '0')}**",
-                    "inline": True
+                            "inline": True
                 })
                 
                 market_embed["fields"].append({
@@ -1625,7 +1629,7 @@ class MarketReporter:
                 market_embed["fields"].append({
                     "name": "💰 Market Flows (24h)",
                     "value": flow_text,
-                    "inline": False
+                            "inline": False
                 })
                 
                 # Add Footer
@@ -1738,7 +1742,8 @@ class MarketReporter:
                             icon = "🟢" if zone_type == 'accumulation' else "🔴"
                             zones_list.append(f"{icon} **{symbol}**: {strength:.1f}% Strength ({zone_type})")
                         key_zones_text = "\n".join(zones_list)
-            
+                
+                # Add the smart money embed with detailed information
                 embeds.append({
                     "title": "🧠 Smart Money Flow",
                     "color": 16738740,  # Pink
@@ -1805,7 +1810,7 @@ class MarketReporter:
                     
                     whale_embed = {
                         "title": "🐋 Whale Activity",
-                        "color": 3447003,  # Blue
+                "color": 3447003,  # Blue
                         "url": f"{dashboard_base_url}/whales",
                         "description": whale_desc,
                         "fields": [
@@ -1947,9 +1952,9 @@ class MarketReporter:
                 # Create enhanced outlook embed with metrics as fields
                 outlook_embed = {
                     "title": "🔮 Market Outlook",
-                    "color": 10181046,  # Purple
+                "color": 10181046,  # Purple
                     "url": f"{dashboard_base_url}/outlook",
-                    "description": market_outlook,
+                "description": market_outlook,
                     "fields": [
                         # First row - key metrics
                         {
@@ -2046,4 +2051,4 @@ class MarketReporter:
             return {
                 "content": f"Error generating market report: {str(e)}",
                 "embeds": [{"title": "Error Report", "color": 15158332, "description": "Failed to format report."}]
-            }
+            } 
