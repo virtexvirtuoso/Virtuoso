@@ -985,16 +985,42 @@ class ConfluenceAnalyzer:
             self.logger.debug(f"Traceback: {traceback.format_exc()}")
             return ohlcv_data
 
-    def _validate_market_data(self, market_data: Dict[str, Any]) -> bool:
-        """Validate market data with enhanced error handling and type validation."""
+    def _validate_market_data(self, market_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Validate market data with enhanced error handling and type validation.
+        
+        Returns:
+            A structured validation report with:
+            - is_valid: Boolean indicating if validation passed
+            - errors: List of error messages for failures
+            - warnings: List of warning messages for non-critical issues
+            - details: Dictionary with validation details by category
+        """
+        validation_report = {
+            "is_valid": True,
+            "errors": [],
+            "warnings": [],
+            "details": {
+                "structure": {"valid": True, "issues": []},
+                "ohlcv": {"valid": True, "issues": []},
+                "orderbook": {"valid": True, "issues": []},
+                "trades": {"valid": True, "issues": []},
+                "ticker": {"valid": True, "issues": []}
+            }
+        }
+        
         try:
             self.logger.debug("\n=== Validating Market Data ===")
             self.logger.debug(f"Market data type: {type(market_data)}")
             
             # Basic structure check
             if not isinstance(market_data, dict):
-                self.logger.error(f"Market data must be a dictionary, got {type(market_data)}")
-                return False
+                error_msg = f"Market data must be a dictionary, got {type(market_data)}"
+                self.logger.error(error_msg)
+                validation_report["is_valid"] = False
+                validation_report["errors"].append(error_msg)
+                validation_report["details"]["structure"]["valid"] = False
+                validation_report["details"]["structure"]["issues"].append(error_msg)
+                return validation_report
             
             # Log available keys
             self.logger.debug(f"Available keys: {list(market_data.keys())}")
@@ -1003,26 +1029,42 @@ class ConfluenceAnalyzer:
             required_fields = ['symbol', 'ohlcv']
             missing_fields = [field for field in required_fields if field not in market_data]
             if missing_fields:
-                self.logger.error(f"Missing required data: {', '.join(missing_fields)}")
-                return False
+                error_msg = f"Missing required data: {', '.join(missing_fields)}"
+                self.logger.error(error_msg)
+                validation_report["is_valid"] = False
+                validation_report["errors"].append(error_msg)
+                validation_report["details"]["structure"]["valid"] = False
+                validation_report["details"]["structure"]["issues"].append(error_msg)
+                return validation_report
             
             # Validate symbol
             symbol = market_data.get('symbol')
             if not isinstance(symbol, str) or not symbol:
-                self.logger.error(f"Invalid symbol: {symbol} (type: {type(symbol)})")
-                return False
+                error_msg = f"Invalid symbol: {symbol} (type: {type(symbol)})"
+                self.logger.error(error_msg)
+                validation_report["is_valid"] = False
+                validation_report["errors"].append(error_msg)
+                validation_report["details"]["structure"]["valid"] = False
+                validation_report["details"]["structure"]["issues"].append(error_msg)
+                return validation_report
                 
             # Validate exchange
             if 'exchange' in market_data:
                 exchange = market_data.get('exchange')
                 if not isinstance(exchange, str) or not exchange:
-                    self.logger.warning(f"Invalid exchange identifier: {exchange} (type: {type(exchange)})")
+                    warning_msg = f"Invalid exchange identifier: {exchange} (type: {type(exchange)})"
+                    self.logger.warning(warning_msg)
+                    validation_report["warnings"].append(warning_msg)
+                    validation_report["details"]["structure"]["issues"].append(warning_msg)
                     
             # Validate timestamp
             if 'timestamp' in market_data:
                 timestamp = market_data.get('timestamp')
                 if not isinstance(timestamp, (int, float)) or timestamp <= 0:
-                    self.logger.warning(f"Invalid timestamp: {timestamp} (type: {type(timestamp)})")
+                    warning_msg = f"Invalid timestamp: {timestamp} (type: {type(timestamp)})"
+                    self.logger.warning(warning_msg)
+                    validation_report["warnings"].append(warning_msg)
+                    validation_report["details"]["structure"]["issues"].append(warning_msg)
                     # Try to fix by setting current timestamp
                     market_data['timestamp'] = int(time.time() * 1000)
                     self.logger.info(f"Set timestamp to current time: {market_data['timestamp']}")
@@ -1032,12 +1074,22 @@ class ConfluenceAnalyzer:
             self.logger.debug(f"OHLCV data type: {type(ohlcv)}")
             
             if not isinstance(ohlcv, dict):
-                self.logger.error(f"OHLCV data must be a dictionary, got {type(ohlcv)}")
-                return False
+                error_msg = f"OHLCV data must be a dictionary, got {type(ohlcv)}"
+                self.logger.error(error_msg)
+                validation_report["is_valid"] = False
+                validation_report["errors"].append(error_msg)
+                validation_report["details"]["ohlcv"]["valid"] = False
+                validation_report["details"]["ohlcv"]["issues"].append(error_msg)
+                return validation_report
             
             if not ohlcv:
-                self.logger.error("Empty OHLCV data dictionary")
-                return False
+                error_msg = "Empty OHLCV data dictionary"
+                self.logger.error(error_msg)
+                validation_report["is_valid"] = False
+                validation_report["errors"].append(error_msg)
+                validation_report["details"]["ohlcv"]["valid"] = False
+                validation_report["details"]["ohlcv"]["issues"].append(error_msg)
+                return validation_report
                 
             # Log timeframes
             self.logger.debug(f"Available timeframes: {list(ohlcv.keys())}")
@@ -1050,19 +1102,28 @@ class ConfluenceAnalyzer:
                 
                 if isinstance(data, pd.DataFrame):
                     if data.empty:
-                        self.logger.warning(f"Empty DataFrame for timeframe {tf}")
+                        warning_msg = f"Empty DataFrame for timeframe {tf}"
+                        self.logger.warning(warning_msg)
+                        validation_report["warnings"].append(warning_msg)
+                        validation_report["details"]["ohlcv"]["issues"].append(warning_msg)
                     else:
                         required_columns = ['open', 'high', 'low', 'close', 'volume']
                         missing_columns = [col for col in required_columns if col not in data.columns]
                         if missing_columns:
-                            self.logger.warning(f"Missing columns in {tf} DataFrame: {', '.join(missing_columns)}")
+                            warning_msg = f"Missing columns in {tf} DataFrame: {', '.join(missing_columns)}"
+                            self.logger.warning(warning_msg)
+                            validation_report["warnings"].append(warning_msg)
+                            validation_report["details"]["ohlcv"]["issues"].append(warning_msg)
                         else:
                             is_valid = True
                             self.logger.debug(f"Valid DataFrame for timeframe {tf}: shape {data.shape}")
                 elif isinstance(data, dict) and 'data' in data:
                     if isinstance(data['data'], pd.DataFrame):
                         if data['data'].empty:
-                            self.logger.warning(f"Empty DataFrame in dictionary for timeframe {tf}")
+                            warning_msg = f"Empty DataFrame in dictionary for timeframe {tf}"
+                            self.logger.warning(warning_msg)
+                            validation_report["warnings"].append(warning_msg)
+                            validation_report["details"]["ohlcv"]["issues"].append(warning_msg)
                         else:
                             is_valid = True
                             self.logger.debug(f"Valid DataFrame in dictionary for timeframe {tf}: shape {data['data'].shape}")
@@ -1071,16 +1132,25 @@ class ConfluenceAnalyzer:
                         # Assume list data is valid if not empty
                         is_valid = True
                 else:
-                    self.logger.warning(f"Unsupported data type for timeframe {tf}: {type(data)}")
+                    warning_msg = f"Unsupported data type for timeframe {tf}: {type(data)}"
+                    self.logger.warning(warning_msg)
+                    validation_report["warnings"].append(warning_msg)
+                    validation_report["details"]["ohlcv"]["issues"].append(warning_msg)
                 
                 if is_valid:
                     valid_timeframes.append(tf)
                 
             if not valid_timeframes:
-                self.logger.error("No valid timeframes found in OHLCV data")
-                return False
+                error_msg = "No valid timeframes found in OHLCV data"
+                self.logger.error(error_msg)
+                validation_report["is_valid"] = False
+                validation_report["errors"].append(error_msg)
+                validation_report["details"]["ohlcv"]["valid"] = False
+                validation_report["details"]["ohlcv"]["issues"].append(error_msg)
+                return validation_report
             
             self.logger.info(f"Valid timeframes found: {valid_timeframes}")
+            validation_report["details"]["ohlcv"]["timeframes"] = valid_timeframes
             
             # Validate other optional data components with detailed logging
             
@@ -1089,20 +1159,34 @@ class ConfluenceAnalyzer:
                 self.logger.debug("Validating orderbook data")
                 orderbook = market_data['orderbook']
                 if not isinstance(orderbook, dict):
-                    self.logger.warning(f"Invalid orderbook data type: {type(orderbook)}")
+                    warning_msg = f"Invalid orderbook data type: {type(orderbook)}"
+                    self.logger.warning(warning_msg)
+                    validation_report["warnings"].append(warning_msg)
+                    validation_report["details"]["orderbook"]["valid"] = False
+                    validation_report["details"]["orderbook"]["issues"].append(warning_msg)
                 else:
                     # Check required fields
                     ob_required = ['bids', 'asks', 'timestamp']
                     ob_missing = [f for f in ob_required if f not in orderbook]
                     if ob_missing:
-                        self.logger.warning(f"Missing orderbook fields: {', '.join(ob_missing)}")
+                        warning_msg = f"Missing orderbook fields: {', '.join(ob_missing)}"
+                        self.logger.warning(warning_msg)
+                        validation_report["warnings"].append(warning_msg)
+                        validation_report["details"]["orderbook"]["valid"] = False
+                        validation_report["details"]["orderbook"]["issues"].append(warning_msg)
                     else:
                         # Validate bids and asks
                         for side in ['bids', 'asks']:
                             if not isinstance(orderbook[side], list):
-                                self.logger.warning(f"Invalid {side} type: {type(orderbook[side])}")
+                                warning_msg = f"Invalid {side} type: {type(orderbook[side])}"
+                                self.logger.warning(warning_msg)
+                                validation_report["warnings"].append(warning_msg)
+                                validation_report["details"]["orderbook"]["issues"].append(warning_msg)
                             elif not orderbook[side]:
-                                self.logger.warning(f"Empty {side} list")
+                                warning_msg = f"Empty {side} list"
+                                self.logger.warning(warning_msg)
+                                validation_report["warnings"].append(warning_msg)
+                                validation_report["details"]["orderbook"]["issues"].append(warning_msg)
                             else:
                                 self.logger.debug(f"Valid {side} data: {len(orderbook[side])} levels")
                                 
@@ -1111,11 +1195,19 @@ class ConfluenceAnalyzer:
                 self.logger.debug("Validating trades data")
                 trades = market_data['trades']
                 if not isinstance(trades, list):
-                    self.logger.warning(f"Invalid trades data type: {type(trades)}")
+                    warning_msg = f"Invalid trades data type: {type(trades)}"
+                    self.logger.warning(warning_msg)
+                    validation_report["warnings"].append(warning_msg)
+                    validation_report["details"]["trades"]["valid"] = False
+                    validation_report["details"]["trades"]["issues"].append(warning_msg)
                 elif not trades:
-                    self.logger.warning("Empty trades list")
+                    warning_msg = "Empty trades list"
+                    self.logger.warning(warning_msg)
+                    validation_report["warnings"].append(warning_msg)
+                    validation_report["details"]["trades"]["issues"].append(warning_msg)
                 else:
                     self.logger.debug(f"Found {len(trades)} trades")
+                    validation_report["details"]["trades"]["count"] = len(trades)
                     # Check sample trade
                     if len(trades) > 0:
                         sample = trades[0]
@@ -1127,12 +1219,17 @@ class ConfluenceAnalyzer:
                 self.logger.debug("Validating ticker data")
                 ticker = market_data['ticker']
                 if not isinstance(ticker, dict):
-                    self.logger.warning(f"Invalid ticker data type: {type(ticker)}")
+                    warning_msg = f"Invalid ticker data type: {type(ticker)}"
+                    self.logger.warning(warning_msg)
+                    validation_report["warnings"].append(warning_msg)
+                    validation_report["details"]["ticker"]["valid"] = False
+                    validation_report["details"]["ticker"]["issues"].append(warning_msg)
                 else:
                     self.logger.debug(f"Ticker keys: {list(ticker.keys())}")
                     # Check for last price
                     if 'last' in ticker or 'last_price' in ticker:
                         self.logger.debug("Found last price in ticker data")
+                        validation_report["details"]["ticker"]["has_last_price"] = True
             
             # Summary of validation results
             self.logger.info("\n=== Market Data Validation Summary ===")
@@ -1142,15 +1239,32 @@ class ConfluenceAnalyzer:
             self.logger.info(f"Has Trades: {'Yes' if 'trades' in market_data and isinstance(market_data['trades'], list) and market_data['trades'] else 'No'}")
             self.logger.info(f"Has Ticker: {'Yes' if 'ticker' in market_data and isinstance(market_data['ticker'], dict) else 'No'}")
             
-            # Final validation result
-            validation_result = len(valid_timeframes) > 0
-            self.logger.info(f"Market data validation result: {'Success' if validation_result else 'Failed'}")
-            return validation_result
+            # Final validation summary
+            validation_report["summary"] = {
+                "symbol": symbol,
+                "timeframes_valid": f"{len(valid_timeframes)}/{len(ohlcv)}",
+                "timeframes": valid_timeframes,
+                "has_orderbook": 'orderbook' in market_data and isinstance(market_data['orderbook'], dict),
+                "has_trades": 'trades' in market_data and isinstance(market_data['trades'], list) and market_data['trades'],
+                "has_ticker": 'ticker' in market_data and isinstance(market_data['ticker'], dict)
+            }
+            
+            # Log validation result
+            self.logger.info(f"Market data validation result: {'Success' if validation_report['is_valid'] else 'Failed'}")
+            
+            # Return the full report
+            return validation_report
             
         except Exception as e:
-            self.logger.error(f"Error validating market data: {str(e)}")
+            error_msg = f"Error validating market data: {str(e)}"
+            self.logger.error(error_msg)
             self.logger.debug(f"Traceback: {traceback.format_exc()}")
-            return False
+            
+            validation_report["is_valid"] = False
+            validation_report["errors"].append(error_msg)
+            validation_report["details"]["error_details"] = traceback.format_exc()
+            
+            return validation_report
 
     def _normalize_weights(self) -> None:
         """Normalize weights to ensure they sum to 1.0."""
@@ -1968,16 +2082,42 @@ class ConfluenceAnalyzer:
             self.logger.debug(f"Traceback: {traceback.format_exc()}")
             return ohlcv_data
 
-    def _validate_market_data(self, market_data: Dict[str, Any]) -> bool:
-        """Validate market data with enhanced error handling and type validation."""
+    def _validate_market_data(self, market_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Validate market data with enhanced error handling and type validation.
+        
+        Returns:
+            A structured validation report with:
+            - is_valid: Boolean indicating if validation passed
+            - errors: List of error messages for failures
+            - warnings: List of warning messages for non-critical issues
+            - details: Dictionary with validation details by category
+        """
+        validation_report = {
+            "is_valid": True,
+            "errors": [],
+            "warnings": [],
+            "details": {
+                "structure": {"valid": True, "issues": []},
+                "ohlcv": {"valid": True, "issues": []},
+                "orderbook": {"valid": True, "issues": []},
+                "trades": {"valid": True, "issues": []},
+                "ticker": {"valid": True, "issues": []}
+            }
+        }
+        
         try:
             self.logger.debug("\n=== Validating Market Data ===")
             self.logger.debug(f"Market data type: {type(market_data)}")
             
             # Basic structure check
             if not isinstance(market_data, dict):
-                self.logger.error(f"Market data must be a dictionary, got {type(market_data)}")
-                return False
+                error_msg = f"Market data must be a dictionary, got {type(market_data)}"
+                self.logger.error(error_msg)
+                validation_report["is_valid"] = False
+                validation_report["errors"].append(error_msg)
+                validation_report["details"]["structure"]["valid"] = False
+                validation_report["details"]["structure"]["issues"].append(error_msg)
+                return validation_report
             
             # Log available keys
             self.logger.debug(f"Available keys: {list(market_data.keys())}")
@@ -1986,26 +2126,42 @@ class ConfluenceAnalyzer:
             required_fields = ['symbol', 'ohlcv']
             missing_fields = [field for field in required_fields if field not in market_data]
             if missing_fields:
-                self.logger.error(f"Missing required data: {', '.join(missing_fields)}")
-                return False
+                error_msg = f"Missing required data: {', '.join(missing_fields)}"
+                self.logger.error(error_msg)
+                validation_report["is_valid"] = False
+                validation_report["errors"].append(error_msg)
+                validation_report["details"]["structure"]["valid"] = False
+                validation_report["details"]["structure"]["issues"].append(error_msg)
+                return validation_report
             
             # Validate symbol
             symbol = market_data.get('symbol')
             if not isinstance(symbol, str) or not symbol:
-                self.logger.error(f"Invalid symbol: {symbol} (type: {type(symbol)})")
-                return False
+                error_msg = f"Invalid symbol: {symbol} (type: {type(symbol)})"
+                self.logger.error(error_msg)
+                validation_report["is_valid"] = False
+                validation_report["errors"].append(error_msg)
+                validation_report["details"]["structure"]["valid"] = False
+                validation_report["details"]["structure"]["issues"].append(error_msg)
+                return validation_report
                 
             # Validate exchange
             if 'exchange' in market_data:
                 exchange = market_data.get('exchange')
                 if not isinstance(exchange, str) or not exchange:
-                    self.logger.warning(f"Invalid exchange identifier: {exchange} (type: {type(exchange)})")
+                    warning_msg = f"Invalid exchange identifier: {exchange} (type: {type(exchange)})"
+                    self.logger.warning(warning_msg)
+                    validation_report["warnings"].append(warning_msg)
+                    validation_report["details"]["structure"]["issues"].append(warning_msg)
                     
             # Validate timestamp
             if 'timestamp' in market_data:
                 timestamp = market_data.get('timestamp')
                 if not isinstance(timestamp, (int, float)) or timestamp <= 0:
-                    self.logger.warning(f"Invalid timestamp: {timestamp} (type: {type(timestamp)})")
+                    warning_msg = f"Invalid timestamp: {timestamp} (type: {type(timestamp)})"
+                    self.logger.warning(warning_msg)
+                    validation_report["warnings"].append(warning_msg)
+                    validation_report["details"]["structure"]["issues"].append(warning_msg)
                     # Try to fix by setting current timestamp
                     market_data['timestamp'] = int(time.time() * 1000)
                     self.logger.info(f"Set timestamp to current time: {market_data['timestamp']}")
@@ -2015,12 +2171,22 @@ class ConfluenceAnalyzer:
             self.logger.debug(f"OHLCV data type: {type(ohlcv)}")
             
             if not isinstance(ohlcv, dict):
-                self.logger.error(f"OHLCV data must be a dictionary, got {type(ohlcv)}")
-                return False
+                error_msg = f"OHLCV data must be a dictionary, got {type(ohlcv)}"
+                self.logger.error(error_msg)
+                validation_report["is_valid"] = False
+                validation_report["errors"].append(error_msg)
+                validation_report["details"]["ohlcv"]["valid"] = False
+                validation_report["details"]["ohlcv"]["issues"].append(error_msg)
+                return validation_report
             
             if not ohlcv:
-                self.logger.error("Empty OHLCV data dictionary")
-                return False
+                error_msg = "Empty OHLCV data dictionary"
+                self.logger.error(error_msg)
+                validation_report["is_valid"] = False
+                validation_report["errors"].append(error_msg)
+                validation_report["details"]["ohlcv"]["valid"] = False
+                validation_report["details"]["ohlcv"]["issues"].append(error_msg)
+                return validation_report
                 
             # Log timeframes
             self.logger.debug(f"Available timeframes: {list(ohlcv.keys())}")
@@ -2033,19 +2199,28 @@ class ConfluenceAnalyzer:
                 
                 if isinstance(data, pd.DataFrame):
                     if data.empty:
-                        self.logger.warning(f"Empty DataFrame for timeframe {tf}")
+                        warning_msg = f"Empty DataFrame for timeframe {tf}"
+                        self.logger.warning(warning_msg)
+                        validation_report["warnings"].append(warning_msg)
+                        validation_report["details"]["ohlcv"]["issues"].append(warning_msg)
                     else:
                         required_columns = ['open', 'high', 'low', 'close', 'volume']
                         missing_columns = [col for col in required_columns if col not in data.columns]
                         if missing_columns:
-                            self.logger.warning(f"Missing columns in {tf} DataFrame: {', '.join(missing_columns)}")
+                            warning_msg = f"Missing columns in {tf} DataFrame: {', '.join(missing_columns)}"
+                            self.logger.warning(warning_msg)
+                            validation_report["warnings"].append(warning_msg)
+                            validation_report["details"]["ohlcv"]["issues"].append(warning_msg)
                         else:
                             is_valid = True
                             self.logger.debug(f"Valid DataFrame for timeframe {tf}: shape {data.shape}")
                 elif isinstance(data, dict) and 'data' in data:
                     if isinstance(data['data'], pd.DataFrame):
                         if data['data'].empty:
-                            self.logger.warning(f"Empty DataFrame in dictionary for timeframe {tf}")
+                            warning_msg = f"Empty DataFrame in dictionary for timeframe {tf}"
+                            self.logger.warning(warning_msg)
+                            validation_report["warnings"].append(warning_msg)
+                            validation_report["details"]["ohlcv"]["issues"].append(warning_msg)
                         else:
                             is_valid = True
                             self.logger.debug(f"Valid DataFrame in dictionary for timeframe {tf}: shape {data['data'].shape}")
@@ -2054,16 +2229,25 @@ class ConfluenceAnalyzer:
                         # Assume list data is valid if not empty
                         is_valid = True
                 else:
-                    self.logger.warning(f"Unsupported data type for timeframe {tf}: {type(data)}")
+                    warning_msg = f"Unsupported data type for timeframe {tf}: {type(data)}"
+                    self.logger.warning(warning_msg)
+                    validation_report["warnings"].append(warning_msg)
+                    validation_report["details"]["ohlcv"]["issues"].append(warning_msg)
                 
                 if is_valid:
                     valid_timeframes.append(tf)
                 
             if not valid_timeframes:
-                self.logger.error("No valid timeframes found in OHLCV data")
-                return False
+                error_msg = "No valid timeframes found in OHLCV data"
+                self.logger.error(error_msg)
+                validation_report["is_valid"] = False
+                validation_report["errors"].append(error_msg)
+                validation_report["details"]["ohlcv"]["valid"] = False
+                validation_report["details"]["ohlcv"]["issues"].append(error_msg)
+                return validation_report
             
             self.logger.info(f"Valid timeframes found: {valid_timeframes}")
+            validation_report["details"]["ohlcv"]["timeframes"] = valid_timeframes
             
             # Validate other optional data components with detailed logging
             
@@ -2072,20 +2256,34 @@ class ConfluenceAnalyzer:
                 self.logger.debug("Validating orderbook data")
                 orderbook = market_data['orderbook']
                 if not isinstance(orderbook, dict):
-                    self.logger.warning(f"Invalid orderbook data type: {type(orderbook)}")
+                    warning_msg = f"Invalid orderbook data type: {type(orderbook)}"
+                    self.logger.warning(warning_msg)
+                    validation_report["warnings"].append(warning_msg)
+                    validation_report["details"]["orderbook"]["valid"] = False
+                    validation_report["details"]["orderbook"]["issues"].append(warning_msg)
                 else:
                     # Check required fields
                     ob_required = ['bids', 'asks', 'timestamp']
                     ob_missing = [f for f in ob_required if f not in orderbook]
                     if ob_missing:
-                        self.logger.warning(f"Missing orderbook fields: {', '.join(ob_missing)}")
+                        warning_msg = f"Missing orderbook fields: {', '.join(ob_missing)}"
+                        self.logger.warning(warning_msg)
+                        validation_report["warnings"].append(warning_msg)
+                        validation_report["details"]["orderbook"]["valid"] = False
+                        validation_report["details"]["orderbook"]["issues"].append(warning_msg)
                     else:
                         # Validate bids and asks
                         for side in ['bids', 'asks']:
                             if not isinstance(orderbook[side], list):
-                                self.logger.warning(f"Invalid {side} type: {type(orderbook[side])}")
+                                warning_msg = f"Invalid {side} type: {type(orderbook[side])}"
+                                self.logger.warning(warning_msg)
+                                validation_report["warnings"].append(warning_msg)
+                                validation_report["details"]["orderbook"]["issues"].append(warning_msg)
                             elif not orderbook[side]:
-                                self.logger.warning(f"Empty {side} list")
+                                warning_msg = f"Empty {side} list"
+                                self.logger.warning(warning_msg)
+                                validation_report["warnings"].append(warning_msg)
+                                validation_report["details"]["orderbook"]["issues"].append(warning_msg)
                             else:
                                 self.logger.debug(f"Valid {side} data: {len(orderbook[side])} levels")
                                 
@@ -2094,11 +2292,19 @@ class ConfluenceAnalyzer:
                 self.logger.debug("Validating trades data")
                 trades = market_data['trades']
                 if not isinstance(trades, list):
-                    self.logger.warning(f"Invalid trades data type: {type(trades)}")
+                    warning_msg = f"Invalid trades data type: {type(trades)}"
+                    self.logger.warning(warning_msg)
+                    validation_report["warnings"].append(warning_msg)
+                    validation_report["details"]["trades"]["valid"] = False
+                    validation_report["details"]["trades"]["issues"].append(warning_msg)
                 elif not trades:
-                    self.logger.warning("Empty trades list")
+                    warning_msg = "Empty trades list"
+                    self.logger.warning(warning_msg)
+                    validation_report["warnings"].append(warning_msg)
+                    validation_report["details"]["trades"]["issues"].append(warning_msg)
                 else:
                     self.logger.debug(f"Found {len(trades)} trades")
+                    validation_report["details"]["trades"]["count"] = len(trades)
                     # Check sample trade
                     if len(trades) > 0:
                         sample = trades[0]
@@ -2110,12 +2316,17 @@ class ConfluenceAnalyzer:
                 self.logger.debug("Validating ticker data")
                 ticker = market_data['ticker']
                 if not isinstance(ticker, dict):
-                    self.logger.warning(f"Invalid ticker data type: {type(ticker)}")
+                    warning_msg = f"Invalid ticker data type: {type(ticker)}"
+                    self.logger.warning(warning_msg)
+                    validation_report["warnings"].append(warning_msg)
+                    validation_report["details"]["ticker"]["valid"] = False
+                    validation_report["details"]["ticker"]["issues"].append(warning_msg)
                 else:
                     self.logger.debug(f"Ticker keys: {list(ticker.keys())}")
                     # Check for last price
                     if 'last' in ticker or 'last_price' in ticker:
                         self.logger.debug("Found last price in ticker data")
+                        validation_report["details"]["ticker"]["has_last_price"] = True
             
             # Summary of validation results
             self.logger.info("\n=== Market Data Validation Summary ===")
@@ -2125,15 +2336,32 @@ class ConfluenceAnalyzer:
             self.logger.info(f"Has Trades: {'Yes' if 'trades' in market_data and isinstance(market_data['trades'], list) and market_data['trades'] else 'No'}")
             self.logger.info(f"Has Ticker: {'Yes' if 'ticker' in market_data and isinstance(market_data['ticker'], dict) else 'No'}")
             
-            # Final validation result
-            validation_result = len(valid_timeframes) > 0
-            self.logger.info(f"Market data validation result: {'Success' if validation_result else 'Failed'}")
-            return validation_result
+            # Final validation summary
+            validation_report["summary"] = {
+                "symbol": symbol,
+                "timeframes_valid": f"{len(valid_timeframes)}/{len(ohlcv)}",
+                "timeframes": valid_timeframes,
+                "has_orderbook": 'orderbook' in market_data and isinstance(market_data['orderbook'], dict),
+                "has_trades": 'trades' in market_data and isinstance(market_data['trades'], list) and market_data['trades'],
+                "has_ticker": 'ticker' in market_data and isinstance(market_data['ticker'], dict)
+            }
+            
+            # Log validation result
+            self.logger.info(f"Market data validation result: {'Success' if validation_report['is_valid'] else 'Failed'}")
+            
+            # Return the full report
+            return validation_report
             
         except Exception as e:
-            self.logger.error(f"Error validating market data: {str(e)}")
+            error_msg = f"Error validating market data: {str(e)}"
+            self.logger.error(error_msg)
             self.logger.debug(f"Traceback: {traceback.format_exc()}")
-            return False
+            
+            validation_report["is_valid"] = False
+            validation_report["errors"].append(error_msg)
+            validation_report["details"]["error_details"] = traceback.format_exc()
+            
+            return validation_report
 
     def _normalize_weights(self) -> None:
         """Normalize weights to ensure they sum to 1.0."""
