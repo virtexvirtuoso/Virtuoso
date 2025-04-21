@@ -2,43 +2,46 @@
 
 ## Overview
 
-The `OrderbookIndicators` class provides tools for analyzing market microstructure through orderbook data. These indicators help identify market depth, liquidity, and potential price pressure points. The class calculates a composite orderbook score (0-100) based on weighted component indicators, where scores above 50 indicate bullish bias and below 50 indicate bearish bias.
+The `OrderbookIndicators` class provides sophisticated tools for analyzing market microstructure through orderbook data. The indicators help identify market depth, liquidity, and potential price pressure points through a weighted scoring system.
 
 ## Component Weights
 
-The orderbook score is calculated using the following weighted components:
+The orderbook analysis uses the following weighted components:
 
 | Component | Weight | Description |
 |-----------|--------|-------------|
-| Imbalance | 25% | Measures the buy/sell pressure imbalance in the orderbook |
-| MPI (Market Pressure Index) | 20% | Analyzes buying/selling pressure with price sensitivity |
-| Depth | 20% | Analyzes the distribution of liquidity through orderbook depth |
-| Liquidity | 10% | Measures overall market liquidity based on depth and spread |
-| Absorption/Exhaustion | 10% | Detects supply/demand absorption and market exhaustion |
-| DOM Momentum | 5% | Depth of Market momentum analyzing order flow velocity |
-| Spread | 5% | Evaluates the bid-ask spread relative to recent price action |
-| OBPS | 5% | Order Book Pressure Score capturing overall orderbook bias |
-
-These weights prioritize the most reliable and predictive components while still maintaining a comprehensive view of orderbook dynamics.
+| Imbalance | 25% | Buy/sell pressure imbalance in orderbook |
+| MPI | 20% | Market Pressure Index with price sensitivity |
+| Depth | 20% | Liquidity distribution analysis |
+| Liquidity | 10% | Overall market liquidity metrics |
+| Absorption/Exhaustion | 10% | Supply/demand absorption patterns |
+| DOM Momentum | 5% | Depth of Market momentum |
+| Spread | 5% | Bid-ask spread analysis |
+| OBPS | 5% | Order Book Pressure Score |
 
 ## Available Indicators
 
-### 1. Order Book Imbalance
+### 1. Orderbook Imbalance
 ```python
-def calculate_imbalance(
-    bids: pd.DataFrame,
-    asks: pd.DataFrame,
-    depth: int = 10
+def _calculate_orderbook_imbalance(
+    market_data: Dict[str, Any]
 ) -> float:
-    """Calculate order book imbalance.
+    """Calculate enhanced orderbook imbalance.
     
     Args:
-        bids: Bid levels DataFrame (price, size)
-        asks: Ask levels DataFrame (price, size)
-        depth: Number of levels to consider
+        market_data: Dictionary containing orderbook data
         
     Returns:
-        Imbalance ratio (-1 to 1)
+        Score 0-100 where:
+        0 = extremely bearish (ask-heavy)
+        50 = neutral
+        100 = extremely bullish (bid-heavy)
+        
+    Calculation Methods:
+    1. Calculate volume-weighted price levels
+    2. Apply price sensitivity decay
+    3. Compare bid/ask pressure
+    4. Normalize using sigmoid transformation
     """
 ```
 
@@ -47,72 +50,58 @@ def calculate_imbalance(
 def calculate_pressure(
     orderbook: Dict[str, Any]
 ) -> Dict[str, float]:
-    """Calculate orderbook pressure with enhanced sensitivity.
+    """Calculate Market Pressure Index.
     
     Args:
-        orderbook: Dictionary containing bids and asks
-    
-    Returns:
-        Dictionary with score, pressure metrics and imbalance values
-    """
-```
-
-### 3. Market Depth Analysis
-```python
-def calculate_market_depth(
-    bids: pd.DataFrame,
-    asks: pd.DataFrame,
-    price_range: float = 0.01
-) -> pd.DataFrame:
-    """Calculate cumulative market depth.
-    
-    Args:
-        bids: Bid levels DataFrame
-        asks: Ask levels DataFrame
-        price_range: Price range as percentage
+        orderbook: Dictionary with bids and asks
         
     Returns:
-        DataFrame with cumulative depth at each level
-    """
-```
-
-### 4. Liquidity Analysis
-```python
-def calculate_liquidity_score(
-    bids: pd.DataFrame,
-    asks: pd.DataFrame,
-    target_size: float
-) -> float:
-    """Calculate liquidity score based on order book.
-    
-    Args:
-        bids: Bid levels DataFrame
-        asks: Ask levels DataFrame
-        target_size: Target transaction size
+        Dictionary containing:
+        - score: Overall MPI score (0-100)
+        - pressure: Raw pressure values
+        - imbalance: Level imbalances
         
-    Returns:
-        Liquidity score (0-100)
+    Calculation Methods:
+    1. Calculate price-weighted volume
+    2. Analyze order clustering
+    3. Measure price impact
+    4. Score based on:
+       - Volume concentration
+       - Price sensitivity
+       - Order distribution
     """
 ```
 
-### 5. Absorption/Exhaustion
+### 3. Absorption/Exhaustion Analysis
 ```python
 def calculate_absorption_exhaustion(
     bids: np.ndarray,
     asks: np.ndarray
 ) -> Dict[str, float]:
-    """Calculate absorption and exhaustion metrics.
+    """Calculate supply/demand absorption.
     
     Args:
-        bids: Numpy array of bid levels (price, size)
-        asks: Numpy array of ask levels (price, size)
+        bids: Numpy array of bid levels
+        asks: Numpy array of ask levels
         
     Returns:
-        Dictionary with absorption, exhaustion and combined scores
+        Dictionary containing:
+        - score: Overall score (0-100)
+        - absorption: Supply/demand metrics
+        - exhaustion: Market exhaustion signals
+        
+    Calculation Methods:
+    1. Analyze order replenishment
+    2. Track order removal patterns
+    3. Detect absorption zones
+    4. Score based on:
+       - Order flow patterns
+       - Volume absorption
+       - Price reaction
     """
 ```
 
-### 6. DOM Momentum
+### 4. DOM Momentum
 ```python
 def calculate_dom_momentum(
     current_bids: np.ndarray,
@@ -121,325 +110,220 @@ def calculate_dom_momentum(
     """Calculate Depth of Market momentum.
     
     Args:
-        current_bids: Current snapshot of bid levels
-        current_asks: Current snapshot of ask levels
+        current_bids: Current bid levels
+        current_asks: Current ask levels
         
     Returns:
-        Dictionary with score and flow velocity metrics
+        Dictionary containing:
+        - score: Overall momentum score
+        - velocity: Order flow metrics
+        - acceleration: Change in flow
+        
+    Calculation Methods:
+    1. Track order book changes
+    2. Calculate flow velocity
+    3. Measure flow acceleration
+    4. Score based on:
+       - Flow direction
+       - Flow strength
+       - Flow consistency
     """
 ```
 
-### 7. Spread Analysis
+### 5. Spread Analysis
 ```python
 def calculate_spread_score(
     bids: np.ndarray,
     asks: np.ndarray
 ) -> Dict[str, float]:
-    """Calculate enhanced spread score with stability metrics.
+    """Calculate spread-based score.
     
     Args:
         bids: Numpy array of bid levels
         asks: Numpy array of ask levels
         
     Returns:
-        Dictionary with score, relative spread and stability metrics
+        Dictionary containing:
+        - score: Overall spread score
+        - relative_spread: Spread metrics
+        - stability: Spread stability
+        
+    Calculation Methods:
+    1. Calculate relative spread
+    2. Compare to historical spread
+    3. Analyze spread stability
+    4. Score based on:
+       - Current vs typical spread
+       - Spread trend
+       - Spread volatility
     """
 ```
 
-### 8. Order Book Pressure Score (OBPS)
+## Configuration Parameters
+
 ```python
-def calculate_obps(
+params = {
+    # Depth parameters
+    'depth_levels': 10,
+    'imbalance_threshold': 1.5,
+    'liquidity_threshold': 1.5,
+    
+    # Spread parameters
+    'spread_factor': 2.0,
+    'max_spread_bps': 50,
+    'min_price_impact': 0.05,
+    
+    # Sigmoid transformation
+    'sigmoid_transformation': {
+        'default_sensitivity': 0.12,
+        'imbalance_sensitivity': 0.15,
+        'pressure_sensitivity': 0.18
+    },
+    
+    # Moving averages
+    'spread_ma_period': 20,
+    'obps_depth': 10,
+    'obps_decay': 0.85,
+    
+    # Alert thresholds
+    'alerts': {
+        'large_order_threshold_usd': 100000,
+        'aggressive_price_threshold': 0.002,
+        'cooldown': 60
+    }
+}
+```
+
+## Order Flow Analysis
+
+### 1. Large Order Detection
+```python
+def detect_large_aggressive_orders(
     bids: np.ndarray,
-    asks: np.ndarray
-) -> Dict[str, float]:
-    """Calculate Order Book Pressure Score (OBPS).
+    asks: np.ndarray,
+    symbol: str
+) -> Dict[str, Any]:
+    """Detect large aggressive orders.
     
-    Args:
-        bids: Numpy array of bid levels
-        asks: Numpy array of ask levels
-        
-    Returns:
-        Dictionary with score and pressure metrics
+    Process:
+    1. Track order size distribution
+    2. Identify size anomalies
+    3. Analyze price impact
+    4. Generate alerts for:
+       - Large single orders
+       - Aggressive price moves
+       - Order clustering
     """
 ```
 
-## Usage Examples
-
-### Basic Usage
+### 2. Price Impact Analysis
 ```python
-from src.indicators import OrderbookIndicators
-
-# Initialize with default config
-config = {
-    'exchange': 'binance',
-    'symbol': 'BTC/USDT',
-    'timeframes': {'1m': {'interval': 1, 'validation': {'min_candles': 10}}}
-}
-orderbook = OrderbookIndicators(config)
-
-# Calculate all indicators
-result = await orderbook.calculate(market_data)
-
-# Access the overall score and component scores
-overall_score = result['score']  # 0-100 scale (>50 bullish, <50 bearish)
-component_scores = result['components']
-
-# Access specific components
-imbalance_score = component_scores['imbalance']
-mpi_score = component_scores['mpi']
-liquidity_score = component_scores['liquidity']
-
-# Access raw underlying metrics
-raw_metrics = result['metadata']['raw_values']
-```
-
-### Advanced Usage with Custom Weights
-```python
-# Custom configuration with adjusted weights
-config = {
-    'exchange': 'binance',
-    'symbol': 'BTC/USDT',
-    'timeframes': {'1m': {'interval': 1, 'validation': {'min_candles': 10}}},
-    'analysis': {
-        'indicators': {
-            'orderbook': {
-                'components': {
-                    'imbalance': {'weight': 0.30},  # Increase imbalance weight
-                    'mpi': {'weight': 0.25},        # Increase MPI weight
-                    'depth': {'weight': 0.15},      # Reduce depth weight
-                    'liquidity': {'weight': 0.15},  # Increase liquidity weight
-                    # Other components will use default weights
-                }
-            }
-        }
-    }
-}
-
-# Initialize with custom config
-orderbook = OrderbookIndicators(config)
-
-# Calculate with the custom weights
-result = await orderbook.calculate(market_data)
-```
-
-## Signal Generation
-
-### Imbalance Signals
-```python
-def generate_imbalance_signals(
-    bids: pd.DataFrame,
-    asks: pd.DataFrame,
-    threshold: float = 0.7
-) -> int:
-    """Generate trading signals based on order book imbalance.
+def _calculate_price_impact(
+    orders: List[List[float]],
+    size: float
+) -> float:
+    """Calculate price impact of order.
     
-    Returns:
-        1: Buy signal (strong bid pressure)
-        -1: Sell signal (strong ask pressure)
-        0: No signal
+    Process:
+    1. Walk the order book
+    2. Calculate slippage
+    3. Measure market impact
+    4. Consider:
+       - Order book depth
+       - Available liquidity
+       - Price sensitivity
     """
 ```
-
-### Liquidity Signals
-```python
-def generate_liquidity_signals(
-    bids: pd.DataFrame,
-    asks: pd.DataFrame,
-    baseline_liquidity: float
-) -> pd.Series:
-    """Generate signals based on liquidity changes.
-    
-    Returns:
-        Series with liquidity state signals
-    """
-```
-
-## Performance Optimization
-
-### Caching
-```python
-# Enable caching for repeated calculations
-orderbook.enable_cache()
-
-# Cache with custom TTL
-orderbook.enable_cache(ttl=1)  # 1 second
-
-# Clear cache
-orderbook.clear_cache()
-```
-
-### Batch Processing
-```python
-# Process multiple symbols
-symbols = ['BTC-USD', 'ETH-USD']
-results = {}
-
-for symbol in symbols:
-    results[symbol] = orderbook.calculate_batch(
-        bids[symbol],
-        asks[symbol],
-        indicators=['imbalance', 'depth']
-    )
-```
-
-## Configuration Options
-
-```python
-config = {
-    'imbalance': {
-        'depth': 10,
-        'weight_decay': 'linear',  # or 'exponential'
-        'normalize': True,
-        'price_sensitivity': 1.0
-    },
-    'depth': {
-        'price_range': 0.01,
-        'aggregation': 'price_points',  # or 'levels'
-        'n_points': 20,
-        'min_size': 0.0001
-    },
-    'liquidity': {
-        'size_grid': [0.1, 0.5, 1.0, 5.0, 10.0],
-        'price_impact': True,
-        'weighted_score': True
-    },
-    'mpi': {
-        'levels_to_use': 20,
-        'concentration_factor': True
-    },
-    'absorption_exhaustion': {
-        'concentration_weight': 0.7,
-        'replenishment_weight': 0.3
-    }
-}
-```
-
-## Component Reliability
-
-The component weights have been carefully calibrated based on reliability and predictive value:
-
-1. **Highly Reliable Components (65%)**
-   - Imbalance (25%): Most reliable due to sophisticated normalization and multi-factor approach
-   - MPI (20%): Strong reliability with price/volume weighting and spread adjustment
-   - Depth (20%): Reliable with multi-level analysis and volume balance considerations
-
-2. **Moderately Reliable Components (20%)**
-   - Liquidity (10%): Good reliability combining depth and spread analysis
-   - Absorption/Exhaustion (10%): Valuable for detecting supply/demand imbalances
-
-3. **Supportive Components (15%)**
-   - DOM Momentum (5%): Good for detecting flow but more affected by noise
-   - Spread (5%): Simple but can be noisy in liquid markets
-   - OBPS (5%): Useful for trend but less reliable in choppy markets
-
-## Error Handling
-
-```python
-try:
-    result = await orderbook.calculate(market_data)
-except ValidationError as e:
-    logger.error(f"Invalid orderbook data: {e}")
-except CalculationError as e:
-    logger.error(f"Calculation failed: {e}")
-except Exception as e:
-    logger.error(f"Unexpected error: {e}")
-```
-
-## Best Practices
-
-1. **Data Preparation**
-   ```python
-   # Clean orderbook data
-   bids, asks = orderbook.clean_orderbook(bids, asks)
-   
-   # Remove crossed orders
-   bids, asks = orderbook.remove_crossed_levels(bids, asks)
-   
-   # Aggregate small orders
-   bids = orderbook.aggregate_levels(bids, min_size=0.001)
-   asks = orderbook.aggregate_levels(asks, min_size=0.001)
-   ```
-
-2. **Real-time Processing**
-   ```python
-   # Update orderbook incrementally
-   orderbook.update_level(
-       side='bids',
-       price=100.0,
-       size=1.0,
-       is_delete=False
-   )
-   
-   # Get latest indicators
-   current_state = orderbook.get_current_state()
-   ```
-
-3. **Analysis Integration**
-   ```python
-   # Combine with volume analysis
-   result = await orderbook.calculate(market_data)
-   volume_profile = volume.calculate_volume_profile(prices, volumes)
-   
-   # Generate combined signal
-   signal = indicators.combine_signals([
-       (result['score'], 0.6),
-       (volume_profile, 0.4)
-   ])
-   ```
-
-4. **Performance Monitoring**
-   ```python
-   # Track calculation time
-   with timing.measure('orderbook_calculation'):
-       result = await orderbook.calculate(market_data)
-   
-   # Get performance stats
-   stats = timing.get_stats()
-   print(f"Average calculation time: {stats['orderbook_calculation_avg']}")
-   ```
 
 ## Integration Examples
 
-### 1. With Order Flow Analysis
+### 1. With Market Making
 ```python
-# Combine orderbook and order flow
-orderbook_result = await orderbook.calculate(market_data)
-flow = await orderflow.calculate(trade_data)
+# Calculate orderbook metrics
+ob_metrics = orderbook.calculate_batch(
+    market_data,
+    indicators=['imbalance', 'pressure']
+)
 
-# Analyze order pressure
-pressure = analysis.combine_metrics(
-    orderbook_score=orderbook_result['score'],
-    flow_score=flow['score'],
-    window=20
+# Generate quotes
+quotes = market_maker.generate_quotes(
+    base_quotes=quotes,
+    ob_metrics=ob_metrics,
+    risk_factor=0.1
 )
 ```
 
-### 2. With Market Making
+### 2. With Position Sizing
 ```python
-# Use orderbook analysis for market making
-orderbook_result = await orderbook.calculate(market_data)
+# Use orderbook for position sizing
+ob_state = orderbook.get_market_state()
 
-# Generate quotes based on orderbook state
-quotes = market_maker.generate_quotes(
-    orderbook_score=orderbook_result['score'],
-    components=orderbook_result['components'],
-    raw_metrics=orderbook_result['metadata']['raw_values'],
-    risk_factor=0.5
+# Calculate position size
+position_size = position.calculate_size(
+    base_size=1.0,
+    ob_state=ob_state,
+    risk_factor=0.1
 )
 ```
 
 ### 3. With Risk Management
 ```python
-# Use orderbook metrics for risk assessment
-orderbook_result = await orderbook.calculate(market_data)
-liquidity_score = orderbook_result['components']['liquidity']
-depth_score = orderbook_result['components']['depth']
+# Monitor orderbook conditions
+ob_metrics = orderbook.calculate_batch(
+    market_data,
+    indicators=['liquidity', 'spread']
+)
 
-# Adjust position size based on orderbook metrics
-adjusted_size = risk.adjust_position_size(
-    base_size=position_size,
-    liquidity_score=liquidity_score,
-    depth_score=depth_score
+# Update risk limits
+risk_limits = risk.update_limits(
+    base_limits=default_limits,
+    ob_metrics=ob_metrics,
+    market_data=market_data
 )
 ```
+
+## Best Practices
+
+1. **Data Quality**
+   ```python
+   # Validate input data
+   if not orderbook.validate_input(market_data):
+       logger.warning("Insufficient data quality")
+       return default_values
+   ```
+
+2. **Historical Context**
+   ```python
+   # Update historical metrics
+   orderbook._update_historical_metrics(
+       spread=current_spread,
+       depth=current_depth
+   )
+   
+   # Use typical values for comparison
+   spread_ratio = current_spread / orderbook.typical_spread
+   depth_ratio = current_depth / orderbook.typical_depth
+   ```
+
+3. **Performance Monitoring**
+   ```python
+   # Track calculation time
+   with orderbook.timer('ob_analysis'):
+       score = orderbook.calculate_score(market_data)
+   
+   # Log performance metrics
+   stats = orderbook.get_performance_stats()
+   logger.info(f"Average calculation time: {stats['avg_time']}")
+   ```
+
+4. **Component Analysis**
+   ```python
+   # Get detailed component breakdown
+   components = orderbook.get_component_scores(market_data)
+   
+   # Log significant components
+   for component, score in components.items():
+       if abs(score - 50) > 20:  # Significant deviation
+           logger.info(f"{component} showing strong signal: {score}")
+   ```
 ``` 

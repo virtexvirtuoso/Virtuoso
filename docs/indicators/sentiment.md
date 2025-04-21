@@ -2,308 +2,262 @@
 
 ## Overview
 
-The `SentimentIndicators` class provides tools for analyzing market sentiment through various data sources including social media, news feeds, and market data. These indicators help identify market mood, crowd psychology, and potential trend shifts through sentiment analysis.
+The `SentimentIndicators` class provides comprehensive market sentiment analysis through multiple weighted components. Each indicator generates a score from 0 (most bearish) to 100 (most bullish), with 50 representing neutral sentiment.
+
+## Component Weights
+
+The sentiment analysis uses the following weighted components:
+
+| Component | Weight | Description |
+|-----------|--------|-------------|
+| Funding Rate | 20% | Analyzes funding rate trends and volatility |
+| Long/Short Ratio | 20% | Measures market positioning |
+| Liquidations | 20% | Tracks forced position closures |
+| Volume Sentiment | 20% | Analyzes buying/selling volume |
+| Market Mood | 20% | Overall market mood indicators |
+| Risk Score | 20% | Measures market risk |
 
 ## Available Indicators
 
-### 1. Social Media Sentiment
+### 1. Funding Rate Analysis
 ```python
-def calculate_social_sentiment(
-    posts: pd.DataFrame,
-    sources: List[str] = ['twitter', 'reddit'],
-    lookback: str = '24h'
-) -> pd.DataFrame:
-    """Calculate sentiment from social media sources.
+def calculate_funding_rate(
+    market_data: Dict[str, Any]
+) -> float:
+    """Calculate funding rate sentiment score.
     
-    Args:
-        posts: DataFrame with social media posts
-        sources: List of social media sources
-        lookback: Lookback period for analysis
-        
-    Returns:
-        DataFrame with sentiment metrics by source
+    Process:
+    1. Extract current funding rate
+    2. Compare to threshold (default ±0.0075)
+    3. Convert to sentiment score where:
+       - High positive funding = bearish (longs pay shorts)
+       - High negative funding = bullish (shorts pay longs)
+       - Score mapping:
+         * -threshold -> 100 (most bullish)
+         * 0 -> 50 (neutral)
+         * +threshold -> 0 (most bearish)
     """
 ```
 
-### 2. News Sentiment Analysis
+### 2. Long/Short Ratio
 ```python
-def analyze_news_sentiment(
-    news: pd.DataFrame,
-    keywords: List[str],
-    importance_weights: Dict[str, float] = None
-) -> pd.DataFrame:
-    """Analyze sentiment from news articles.
+def calculate_long_short_ratio(
+    market_data: Dict[str, Any]
+) -> float:
+    """Calculate long/short ratio sentiment.
     
-    Args:
-        news: DataFrame with news articles
-        keywords: List of keywords to track
-        importance_weights: Weight for each news source
-        
-    Returns:
-        DataFrame with news sentiment metrics
+    Process:
+    1. Extract long and short positions
+    2. Calculate ratio = long / (long + short)
+    3. Convert to score where:
+       - 100% long = 100 (extremely bullish)
+       - 50% long = 50 (neutral)
+       - 0% long = 0 (extremely bearish)
     """
 ```
 
-### 3. Market Sentiment Indicators
+### 3. Market Mood Analysis
 ```python
-def calculate_market_sentiment(
-    prices: pd.DataFrame,
-    volumes: pd.DataFrame,
-    volatility: pd.DataFrame
-) -> pd.DataFrame:
-    """Calculate market-based sentiment indicators.
+def _calculate_market_mood(
+    sentiment_data: Dict[str, Any]
+) -> float:
+    """Calculate overall market mood score.
     
-    Args:
-        prices: Price data
-        volumes: Volume data
-        volatility: Volatility data
-        
-    Returns:
-        DataFrame with market sentiment metrics
+    Components and weights:
+    - Social Sentiment (25%): Social media sentiment
+    - Fear & Greed Index (40%): Market psychology
+    - Search Trends (15%): Retail interest
+    - Positive Mentions (20%): News/social mentions
+    
+    Fear & Greed Index mapping:
+    - 0-24: Extreme Fear -> 0-40 score
+    - 25-44: Fear -> 41-48 score
+    - 45-55: Neutral -> 49-51 score
+    - 56-75: Greed -> 52-60 score
+    - 76-100: Extreme Greed -> 61-100 score
     """
 ```
 
-## Usage Examples
-
-### Basic Usage
+### 4. Liquidation Events
 ```python
-from src.indicators import SentimentIndicators
-
-# Initialize
-sentiment = SentimentIndicators()
-
-# Calculate social sentiment
-social = sentiment.calculate_social_sentiment(posts)
-
-# Analyze news sentiment
-news = sentiment.analyze_news_sentiment(articles, keywords)
-
-# Calculate market sentiment
-market = sentiment.calculate_market_sentiment(prices, volumes, vol)
+def calculate_liquidation_events(
+    liquidations: List[Dict[str, Any]]
+) -> float:
+    """Calculate liquidation-based sentiment.
+    
+    Process:
+    1. Analyze liquidation events
+    2. Compare long vs short liquidations
+    3. Consider liquidation sizes
+    4. Score based on:
+       - Net liquidation direction
+       - Liquidation volume
+       - Price impact
+    """
 ```
 
-### Advanced Usage
-```python
-# Custom configuration
-sentiment = SentimentIndicators(
-    config={
-        'social': {
-            'nlp_model': 'bert-base-uncased',
-            'min_confidence': 0.8
-        },
-        'news': {
-            'language_detection': True,
-            'source_weighting': True
-        }
-    }
-)
+## Configuration Parameters
 
-# Batch calculation
-results = sentiment.calculate_batch(
-    data_sources={
-        'social': posts,
-        'news': articles,
-        'market': prices
+```python
+params = {
+    # Sigmoid transformation
+    'sigmoid_transformation': {
+        'default_sensitivity': 0.12,
+        'long_short_sensitivity': 0.12,
+        'funding_sensitivity': 0.15,
+        'liquidation_sensitivity': 0.10
     },
-    indicators=['social', 'news', 'market']
-)
-```
-
-## Signal Generation
-
-### Sentiment Signals
-```python
-def generate_sentiment_signals(
-    sentiment_metrics: pd.DataFrame,
-    threshold: float = 0.7,
-    consensus_required: bool = True
-) -> pd.Series:
-    """Generate trading signals based on sentiment.
     
-    Returns:
-        Series with values:
-        1: Buy signal (positive sentiment)
-        -1: Sell signal (negative sentiment)
-        0: No signal
-    """
-```
-
-### Sentiment Divergence
-```python
-def detect_sentiment_divergence(
-    sentiment: pd.Series,
-    prices: pd.Series,
-    window: int = 20
-) -> pd.Series:
-    """Detect divergence between sentiment and price.
+    # Funding rate
+    'funding_threshold': 0.0075,
+    'funding_ma_period': 24,
     
-    Returns:
-        Series with divergence signals
-    """
-```
-
-## Performance Optimization
-
-### Caching
-```python
-# Enable caching for repeated calculations
-sentiment.enable_cache()
-
-# Cache with custom TTL
-sentiment.enable_cache(ttl=60)  # 1 minute
-
-# Clear cache
-sentiment.clear_cache()
-```
-
-### Batch Processing
-```python
-# Process multiple assets
-assets = ['BTC-USD', 'ETH-USD']
-results = {}
-
-for asset in assets:
-    results[asset] = sentiment.calculate_batch(
-        data_sources[asset],
-        indicators=['social', 'news']
-    )
-```
-
-## Configuration Options
-
-```python
-config = {
-    'social': {
-        'nlp_model': 'bert-base-uncased',
-        'min_confidence': 0.8,
-        'sources': ['twitter', 'reddit'],
-        'language': 'en',
-        'batch_size': 1000
+    # Market mood
+    'mood_weights': {
+        'social_sentiment': 0.25,
+        'fear_and_greed': 0.40,
+        'search_trends': 0.15,
+        'positive_mentions': 0.20
     },
-    'news': {
-        'sources': ['reuters', 'bloomberg'],
-        'importance_weights': {
-            'reuters': 1.0,
-            'bloomberg': 1.0
-        },
-        'update_interval': '1h'
-    },
-    'market': {
-        'indicators': ['rsi', 'volume_ratio'],
-        'lookback': '7d',
-        'smoothing': 0.1,
-        'threshold': 0.7
+    
+    # Confidence weights
+    'confidence_weights': {
+        'long_short_ratio': 0.2,
+        'funding_rate': 0.2,
+        'liquidations': 0.15,
+        'market_mood': 0.15,
+        'risk_limit': 0.15,
+        'volume': 0.15
     }
 }
 ```
 
-## Error Handling
+## Signal Generation
 
+### 1. Overall Sentiment Signals
 ```python
-try:
-    sentiment = sentiment.calculate_social_sentiment(posts)
-except ValidationError as e:
-    logger.error(f"Invalid sentiment data: {e}")
-except CalculationError as e:
-    logger.error(f"Calculation failed: {e}")
-except Exception as e:
-    logger.error(f"Unexpected error: {e}")
+def _generate_signals(
+    component_scores: Dict[str, float],
+    overall_score: float
+) -> List[Dict[str, Any]]:
+    """Generate trading signals.
+    
+    Signal thresholds:
+    - score < 30: Strong sell (0.8 confidence)
+    - score < 45: Moderate sell (0.6 confidence)
+    - score 45-55: Neutral (no signal)
+    - score > 55: Moderate buy (0.6 confidence)
+    - score > 70: Strong buy (0.8 confidence)
+    
+    Risk modifiers:
+    - High risk (< 30): Reduce confidence by 30%
+    - Low risk (> 70): Increase confidence by 20%
+    """
 ```
 
-## Best Practices
-
-1. **Data Preparation**
-   ```python
-   # Clean text data
-   posts = sentiment.clean_text(posts)
-   
-   # Remove spam/noise
-   posts = sentiment.filter_spam(posts)
-   
-   # Normalize sentiment scores
-   sentiment = sentiment.normalize_scores(sentiment)
-   ```
-
-2. **Real-time Processing**
-   ```python
-   # Process streaming data
-   sentiment.process_stream(
-       stream_type='social',
-       data=new_posts,
-       update_interval='1m'
-   )
-   
-   # Get latest sentiment
-   current_sentiment = sentiment.get_current_sentiment()
-   ```
-
-3. **Analysis Integration**
-   ```python
-   # Combine with technical analysis
-   sentiment_score = sentiment.calculate_social_sentiment(posts)
-   technical_score = technical.calculate_indicators(prices)
-   
-   # Generate combined signal
-   signal = sentiment.combine_signals([
-       (sentiment_score, 0.4),
-       (technical_score, 0.6)
-   ])
-   ```
-
-4. **Performance Monitoring**
-   ```python
-   # Track calculation time
-   with sentiment.timer('sentiment_calculation'):
-       score = sentiment.calculate_social_sentiment(posts)
-   
-   # Get performance stats
-   stats = sentiment.get_performance_stats()
-   print(f"Average sentiment calculation time: {stats['sentiment_avg_time']}")
-   ```
+### 2. Confidence Calculation
+```python
+def _calculate_confidence(
+    market_data: Dict[str, Any]
+) -> float:
+    """Calculate confidence score (0-1).
+    
+    Factors considered:
+    1. Data completeness
+    2. Data quality
+    3. Data timeliness
+    
+    Component weights:
+    - Long/Short Ratio: 20%
+    - Funding Rate: 20%
+    - Liquidations: 15%
+    - Market Mood: 15%
+    - Risk Limit: 15%
+    - Volume: 15%
+    """
+```
 
 ## Integration Examples
 
-### 1. With Trading Strategy
+### 1. With Position Sizing
 ```python
-# Use sentiment for strategy adjustment
-sentiment = sentiment.calculate_market_sentiment(prices, volumes, vol)
-social_score = sentiment.calculate_social_sentiment(posts)
+# Calculate sentiment
+sentiment = sentiment_indicators.calculate(market_data)
 
-# Adjust strategy parameters
-strategy.adjust_parameters(
-    sentiment_score=sentiment,
-    social_score=social_score,
-    adaptation_rate=0.1
-)
+# Adjust position size
+position_size = base_size * (1 + (sentiment.score - 50) / 100)
+if sentiment.confidence < 0.5:
+    position_size *= 0.5
 ```
 
 ### 2. With Risk Management
 ```python
-# Use sentiment for risk adjustment
-news_sentiment = sentiment.analyze_news_sentiment(articles, keywords)
-market_sentiment = sentiment.calculate_market_sentiment(prices, volumes, vol)
+# Get sentiment signals
+signals = sentiment.get_signals()
 
-# Adjust risk limits
-risk.adjust_limits(
-    news_sentiment=news_sentiment,
-    market_sentiment=market_sentiment,
-    base_limits=default_limits
-)
+# Update risk limits
+for signal in signals:
+    if signal.strength == 'strong':
+        risk_limits.adjust_by_factor(1.2)
+    elif signal.confidence < 0.5:
+        risk_limits.adjust_by_factor(0.8)
 ```
 
-### 3. With Position Sizing
+### 3. With Order Flow
 ```python
-# Use sentiment for position sizing
-sentiment_scores = sentiment.calculate_batch(
-    data_sources={'social': posts, 'news': articles},
-    indicators=['social', 'news']
-)
+# Combine sentiment with order flow
+sentiment_score = sentiment.calculate(market_data)
+flow_score = orderflow.calculate(market_data)
 
-# Calculate position size
-position_size = position.calculate_size(
-    base_size=1.0,
-    sentiment_scores=sentiment_scores,
-    risk_factor=0.1
-)
+# Weight by confidence
+combined_score = (
+    sentiment_score * sentiment.confidence +
+    flow_score * flow.confidence
+) / (sentiment.confidence + flow.confidence)
 ```
+
+## Best Practices
+
+1. **Data Quality**
+   ```python
+   # Validate input data
+   if not sentiment.validate_input(market_data):
+       logger.warning("Insufficient sentiment data")
+       return default_values
+   ```
+
+2. **Historical Context**
+   ```python
+   # Update historical metrics
+   sentiment.update_history(
+       funding_rate=current_funding,
+       market_mood=current_mood
+   )
+   
+   # Compare to typical values
+   funding_ratio = current_funding / sentiment.typical_funding
+   mood_ratio = current_mood / sentiment.typical_mood
+   ```
+
+3. **Performance Monitoring**
+   ```python
+   # Track calculation time
+   with sentiment.timer('sentiment_analysis'):
+       score = sentiment.calculate(market_data)
+   
+   # Log performance metrics
+   stats = sentiment.get_performance_stats()
+   logger.info(f"Average calculation time: {stats['avg_time']}")
+   ```
+
+4. **Component Analysis**
+   ```python
+   # Get detailed component breakdown
+   components = sentiment.get_component_scores()
+   
+   # Log significant components
+   for component, score in components.items():
+       if abs(score - 50) > 20:  # Significant deviation
+           logger.info(f"{component} showing strong signal: {score}")
+   ```
 ``` 
