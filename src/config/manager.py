@@ -106,13 +106,39 @@ class ConfigManager:
             }
         elif isinstance(config, list):
             return [ConfigManager._process_env_variables(item) for item in config]
-        elif isinstance(config, str) and config.startswith('${') and config.endswith('}'):
-            env_var = config[2:-1]
-            env_value = os.getenv(env_var)
-            if env_value is None:
-                logger.warning(f"Environment variable {env_var} not found")
-                return config  # Return original if env var not found
-            return env_value
+        elif isinstance(config, str):
+            # Handle ${VAR} format
+            if config.startswith('${') and config.endswith('}'):
+                env_var = config[2:-1]
+                env_value = os.getenv(env_var)
+                if env_value is None:
+                    logger.warning(f"Environment variable {env_var} not found")
+                    # Try to get from .env file
+                    env_path = Path(__file__).parent.parent.parent / "config" / ".env"
+                    if env_path.exists():
+                        with open(env_path, 'r') as f:
+                            for line in f:
+                                line = line.strip()
+                                if line and not line.startswith('#'):
+                                    try:
+                                        key, value = line.split('=', 1)
+                                        if key.strip() == env_var:
+                                            env_value = value.strip().strip('"').strip("'")
+                                            os.environ[env_var] = env_value
+                                            break
+                                    except ValueError:
+                                        continue
+                    if env_value is None:
+                        return config  # Return original if env var not found
+                return env_value
+            # Handle $VAR format
+            elif config.startswith('$') and len(config) > 1:
+                env_var = config[1:]
+                env_value = os.getenv(env_var)
+                if env_value is None:
+                    logger.warning(f"Environment variable {env_var} not found")
+                    return config  # Return original if env var not found
+                return env_value
         return config
     
     @staticmethod
