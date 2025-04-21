@@ -229,7 +229,7 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Add CORS middleware
+# Configure CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -239,7 +239,7 @@ app.add_middleware(
 )
 
 # Mount static files directory
-app.mount("/static", StaticFiles(directory="src/static"), name="static")
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 @app.get("/")
 async def root():
@@ -865,14 +865,14 @@ async def analyze_market(symbol: str):
 def load_config() -> dict:
     """Load configuration from YAML file."""
     try:
-        # Try loading from config/config.yaml first
-        config_path = Path("config/config.yaml")
+        # Try loading from ../config/config.yaml first
+        config_path = Path("../config/config.yaml")
         if not config_path.exists():
-            # Fallback to src/config/config.yaml
-            config_path = Path("src/config/config.yaml")
+            # Fallback to config/config.yaml
+            config_path = Path("config/config.yaml")
             
         if not config_path.exists():
-            raise FileNotFoundError("Config file not found in config/ or src/config/")
+            raise FileNotFoundError("Config file not found in ../config/ or config/")
             
         logger.info(f"Loading config from {config_path}")
         with open(config_path, 'r') as f:

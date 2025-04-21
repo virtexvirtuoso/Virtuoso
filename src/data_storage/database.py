@@ -85,8 +85,8 @@ class DatabaseClient:
         self.client: Optional[InfluxDBClient] = None
         self.write_api: Any = None
         self.query_api: Any = None
-        self._init_client()
         self._retry_count: int = 0
+        self._init_client()
 
     def _init_client(self) -> None:
         """Initialize InfluxDB client and APIs."""
