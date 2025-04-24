@@ -38,6 +38,10 @@ from src.monitoring.market_reporter import MarketReporter
 from src.signal_generation.signal_generator import SignalGenerator
 from src.core.validation.service import AsyncValidationService
 from src.core.market.market_data_manager import MarketDataManager
+from src.monitoring.health_monitor import HealthMonitor
+
+# Import API routes initialization
+from src.api import init_api_routes
 
 # Load environment variables
 load_dotenv()
@@ -62,6 +66,8 @@ market_monitor = None
 metrics_manager = None
 alert_manager = None
 market_reporter = None
+health_monitor = None
+validation_service = None
 
 def display_banner():
     """Display the Virtuoso ASCII art banner"""
@@ -83,7 +89,7 @@ async def lifespan(app: FastAPI):
     """Application lifespan handler."""
     global config_manager, exchange_manager, portfolio_analyzer, database_client
     global confluence_analyzer, top_symbols_manager, market_monitor
-    global metrics_manager, alert_manager, market_reporter
+    global metrics_manager, alert_manager, market_reporter, health_monitor, validation_service
 
     try:
         # Initialize config manager
@@ -237,6 +243,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Initialize API routes
+init_api_routes(app)
 
 # Mount static files directory
 app.mount("/static", StaticFiles(directory="static"), name="static")
