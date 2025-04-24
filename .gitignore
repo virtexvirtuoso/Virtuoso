@@ -96,6 +96,8 @@ tests/__pycache__/
 *.temp
 *.bak
 *.backup
+*_backup.*
+*.bak.*
 
 # Duplicate and development files
 volume_fixes.py
@@ -137,4 +139,12 @@ src/indicators/price_structure_indicators.py
 # Fix and test files in root directory
 /fix_*.py
 /fix_*.sh
-/test_*.py 
+/test_*.py
+/simple_test*.py
+/simple_*_test.py
+/*_test.py
+/check_*.py
+/run_*_test.py
+/*_alert_*.html
+/confluence_alert_*.html
+/*_test_*.html 
