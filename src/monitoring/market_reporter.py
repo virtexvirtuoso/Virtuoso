@@ -290,6 +290,33 @@ class MarketReporter:
         # Ensure the minimum score is 60 to avoid warnings
         return max(60.0, score)
         
+    def _numpy_to_native(self, value):
+        """Convert NumPy data types to native Python types for serialization."""
+        try:
+            import numpy as np
+            
+            # Check if value is a NumPy type that needs conversion
+            if hasattr(np, 'integer') and isinstance(value, np.integer):
+                return int(value)
+            elif hasattr(np, 'floating') and isinstance(value, np.floating):
+                return float(value)
+            elif hasattr(np, 'ndarray') and isinstance(value, np.ndarray):
+                return value.tolist()
+            elif hasattr(np, 'generic') and isinstance(value, np.generic):
+                return value.item()
+            elif isinstance(value, dict):
+                return {k: self._numpy_to_native(v) for k, v in value.items()}
+            elif isinstance(value, (list, tuple)):
+                return [self._numpy_to_native(x) for x in value]
+            return value
+        except ImportError:
+            # If NumPy is not available, just return the value
+            return value
+        except Exception as e:
+            # Log the error and return the value as is
+            self.logger.warning(f"Error in _numpy_to_native: {e}")
+            return value
+    
     async def _log_performance_metrics(self):
         """Log key performance metrics"""
         current_time = time.time()
@@ -297,9 +324,9 @@ class MarketReporter:
         
         metrics = {
             'api_latency': {
-                'avg': np.mean(self.api_latencies) if self.api_latencies else 0,
+                'avg': float(np.mean(self.api_latencies)) if self.api_latencies else 0,
                 'max': max(self.api_latencies) if self.api_latencies else 0,
-                'p95': np.percentile(self.api_latencies, 95) if self.api_latencies else 0
+                'p95': float(np.percentile(self.api_latencies, 95)) if self.api_latencies else 0
             },
             'error_rate': {
                 'total': sum(self.error_counts.values()),
@@ -307,11 +334,11 @@ class MarketReporter:
                 'errors_per_minute': sum(self.error_counts.values()) / (time_window / 60)
             },
             'data_quality': {
-                'avg_score': np.mean(self.data_quality_scores) if self.data_quality_scores else 100,
+                'avg_score': float(np.mean(self.data_quality_scores)) if self.data_quality_scores else 100,
                 'min_score': min(self.data_quality_scores) if self.data_quality_scores else 100
             },
             'processing_time': {
-                'avg': np.mean(self.processing_times) if self.processing_times else 0,
+                'avg': float(np.mean(self.processing_times)) if self.processing_times else 0,
                 'max': max(self.processing_times) if self.processing_times else 0
             },
             'request_rate': {
@@ -320,6 +347,9 @@ class MarketReporter:
                 'by_endpoint': dict(self.request_counts)
             }
         }
+        
+        # Convert any remaining NumPy types to native Python types
+        metrics = self._numpy_to_native(metrics)
         
         self.logger.info(f"Performance metrics: {metrics}")
         
@@ -691,28 +721,38 @@ class MarketReporter:
             return None
             
     async def _calculate_with_monitoring(self, metric_name: str, calc_func: callable, *args, **kwargs) -> Dict[str, Any]:
-        """Execute calculation with performance monitoring and improved timeouts."""
-        # Monitor execution time
+        """Execute calculation with monitoring and error handling."""
         start_time = time.time()
-        
-        # Monitor memory usage
-        memory_before = self._get_memory_usage()
-        self.logger.debug(f"Memory before {metric_name}: {memory_before:.2f}MB")
-    
-        # Apply longer timeouts for intensive calculations
-        timeout_duration = 120 if metric_name in ['smart_money_index', 'market_overview'] else 60
+        failed = False
+        result = {}
         
         try:
-            # Apply timeouts for long-running calculations
-            async with asyncio.timeout(timeout_duration):  # Extended timeout
-                result = await calc_func(*args, **kwargs)
+            # Track memory usage
+            memory_before = self._get_memory_usage()
             
-            # Check execution time
-            execution_time = time.time() - start_time
-            self.processing_times.append(execution_time)
-            self.logger.debug(f"{metric_name} calculation completed in {execution_time:.2f}s")
+            # Set timeout for calculation
+            try:
+                # Execute the actual calculation
+                result = await asyncio.wait_for(calc_func(*args, **kwargs), timeout=60)
+                
+                # Convert any NumPy types to native Python types
+                result = self._numpy_to_native(result)
+                
+            except asyncio.TimeoutError:
+                failed = True
+                self._log_error(f"{metric_name}_timeout", "Calculation timed out")
+                self.logger.error(f"Calculation timed out for {metric_name}")
+                result = {}
+                
+            # Record end time and log
+            end_time = time.time()
+            duration = end_time - start_time
+            self.processing_times.append(duration)
             
-            # Check memory usage after calculation
+            if not failed:
+                self.logger.debug(f"{metric_name} calculation completed in {duration:.2f}s")
+                
+            # Track memory after calculation
             memory_after = self._get_memory_usage()
             memory_used = memory_after - memory_before
             self.logger.debug(f"Memory after {metric_name}: {memory_after:.2f}MB (Used: {memory_used:.2f}MB)")
@@ -732,7 +772,7 @@ class MarketReporter:
             self._log_error(metric_name, str(e))
             self.logger.error(f"Error calculating {metric_name}: {str(e)}")
             return {}
-            
+    
     def _get_memory_usage(self):
         """Get current memory usage in MB"""
         try:
@@ -747,6 +787,9 @@ class MarketReporter:
         """Validate the data structure of calculation results"""
         if not isinstance(result, dict):
             return {'valid': False, 'reason': 'Result is not a dictionary'}
+            
+        # Convert any NumPy types to native Python types first
+        result = self._numpy_to_native(result)
             
         # Define expected fields for each metric type
         expected_fields = {
@@ -773,7 +816,7 @@ class MarketReporter:
         return {'valid': True}
     
     async def _calculate_market_overview(self, symbols: List[str]) -> Dict[str, Any]:
-        """Calculate overall market overview metrics with better reliability."""
+        """Calculate market overview metrics."""
         try:
             total_volume = 0
             total_turnover = 0
@@ -877,8 +920,8 @@ class MarketReporter:
             
             # Calculate market regime
             if len(price_changes) > 0:
-                avg_change = np.mean(price_changes) 
-                volatility = np.std(price_changes) if len(price_changes) > 1 else 0
+                avg_change = float(np.mean(price_changes))
+                volatility = float(np.std(price_changes)) if len(price_changes) > 1 else 0
                 
                 regime = self._determine_market_regime(avg_change, volatility)
                 trend_strength = abs(avg_change) / (volatility if volatility > 0 else 1)
@@ -1382,13 +1425,13 @@ class MarketReporter:
             }
     
     def _calculate_whale_threshold(self, order_book: Dict[str, List[List[float]]]) -> float:
-        """Calculate threshold for whale orders based on order book distribution."""
+        """Calculate threshold for whale activity based on order book."""
         all_sizes = [order[1] for order in order_book['bids'] + order_book['asks']]
         if not all_sizes:
             return 0
             
-        mean_size = np.mean(all_sizes)
-        std_size = np.std(all_sizes)
+        mean_size = float(np.mean(all_sizes))
+        std_size = float(np.std(all_sizes))
         
         return mean_size + (2 * std_size)  # Orders larger than 2 standard deviations
     
