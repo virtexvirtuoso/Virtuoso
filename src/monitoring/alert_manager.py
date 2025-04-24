@@ -1,5 +1,5 @@
 import logging
-from typing import Dict, Any, Optional, List, Callable, Awaitable, TYPE_CHECKING, Union
+from typing import Dict, Any, Optional, List, Callable, Awaitable, TYPE_CHECKING, Union, Tuple, Set
 from datetime import datetime, timezone, timedelta
 import aiohttp
 import traceback
@@ -17,6 +17,12 @@ import json
 import uuid
 import subprocess
 import hashlib
+import textwrap
+import random
+import requests
+import aiofiles
+
+from discord import SyncWebhook, File
 
 if TYPE_CHECKING:
     from monitoring.metrics_manager import MetricsManager
@@ -716,180 +722,220 @@ class AlertManager:
         buy_threshold: Optional[float] = None,
         sell_threshold: Optional[float] = None
     ) -> None:
-        """Send a confluence-based signal alert (improved format with embeds).
+        """
+        Send a confluence alert with details about the components and their scores.
         
         Args:
-            symbol: Trading pair symbol
-            confluence_score: Overall confluence score (0-100)
-            components: Component scores dictionary
-            results: Detailed result data from indicators
-            weights: Optional component weights
-            reliability: Signal reliability score (0-1)
-            buy_threshold: Buy threshold value (if different from default)
-            sell_threshold: Sell threshold value (if different from default)
+            symbol: Trading symbol
+            confluence_score: Overall confluence score
+            components: Dictionary of component scores
+            results: Detailed component results with interpretations
+            weights: Component weights
+            reliability: Reliability score (0-1)
+            buy_threshold: Buy signal threshold
+            sell_threshold: Sell signal threshold
         """
         try:
-            # CRITICAL DEBUG: Starting confluence alert
-            self.logger.critical(f"CRITICAL DEBUG: AlertManager.send_confluence_alert called for {symbol} with score {confluence_score:.2f}")
-            
-            # CRITICAL DEBUG: Verify handler state at start of confluence alert
-            self.logger.critical(f"CRITICAL DEBUG: Verifying handler state in send_confluence_alert for {symbol}")
-            debug_info = self.verify_handler_state()
-            if debug_info["status"] == "NO_HANDLERS":
-                self.logger.critical(f"CRITICAL DEBUG: No handlers registered at start of send_confluence_alert for {symbol}!")
-                # Force re-register handlers if none found
-                self.logger.critical(f"CRITICAL DEBUG: Attempting to force register Discord handler")
-                self.register_discord_handler()
-                self.logger.critical(f"CRITICAL DEBUG: After force registration, handlers: {self.handlers}")
-            
-            # CRITICAL DEBUG: Print the webhook URL and handler info
-            print(f"CRITICAL DEBUG: Discord webhook URL: {self.discord_webhook_url[:20]}...{self.discord_webhook_url[-10:] if self.discord_webhook_url else 'None'}")
-            print(f"CRITICAL DEBUG: Handlers: {self.handlers}")
-            print(f"CRITICAL DEBUG: Alert handlers: {list(self.alert_handlers.keys())}")
-            
-            # Enhanced debug logging for troubleshooting
-            self.logger.info(f"🔔 ALERT ATTEMPT: Sending confluence alert for {symbol} with score {confluence_score:.2f}")
-            self.logger.debug(f"Discord webhook URL: {self.discord_webhook_url[:20]}...{self.discord_webhook_url[-10:] if self.discord_webhook_url else 'None'}")
-            self.logger.debug(f"Handlers: {self.handlers}, alert_handlers: {list(self.alert_handlers.keys())}")
-            
-            # Log thresholds for verification
+            if not self.initialized:
+                await self.start()
+                
             if buy_threshold is None:
                 buy_threshold = self.buy_threshold
+                
             if sell_threshold is None:
                 sell_threshold = self.sell_threshold
                 
-            self.logger.info(f"Using thresholds - Buy: {buy_threshold}, Sell: {sell_threshold}")
-            self.logger.info(f"Score comparison - Score: {confluence_score:.2f}, Buy threshold: {buy_threshold}, Sell threshold: {sell_threshold}")
+            # Get current price if available
+            price = await self._get_current_price(symbol)
             
-            # Determine signal type based on score and thresholds
-            signal_type = "NEUTRAL"
+            # Determine signal type based on score
             if confluence_score >= buy_threshold:
-                signal_type = "BULLISH"
-                self.logger.info(f"✅ Score {confluence_score:.2f} >= Buy threshold {buy_threshold} - Generating BULLISH signal")
-                self.logger.critical(f"CRITICAL DEBUG: BUY CONDITION MET - Score {confluence_score:.2f} >= Buy threshold {buy_threshold}")
+                signal_type = 'BULLISH'
             elif confluence_score <= sell_threshold:
-                signal_type = "BEARISH"
-                self.logger.info(f"✅ Score {confluence_score:.2f} <= Sell threshold {sell_threshold} - Generating BEARISH signal")
-                self.logger.critical(f"CRITICAL DEBUG: SELL CONDITION MET - Score {confluence_score:.2f} <= Sell threshold {sell_threshold}")
+                signal_type = 'BEARISH'
             else:
-                self.logger.info(f"❌ Score {confluence_score:.2f} is in neutral zone - No signal generated")
-                self.logger.critical(f"CRITICAL DEBUG: NEUTRAL ZONE - Score {confluence_score:.2f} is between thresholds")
+                signal_type = 'NEUTRAL'
                 
-            # Additional check - forcibly detect if we're above or below thresholds
-            if confluence_score >= buy_threshold and signal_type != "BULLISH":
-                self.logger.critical(f"CRITICAL DEBUG: INCONSISTENCY DETECTED - Score {confluence_score:.2f} >= Buy threshold {buy_threshold} but signal is {signal_type}")
-                signal_type = "BULLISH"
-                self.logger.critical(f"CRITICAL DEBUG: CORRECTED signal type to BULLISH")
-            elif confluence_score <= sell_threshold and signal_type != "BEARISH":
-                self.logger.critical(f"CRITICAL DEBUG: INCONSISTENCY DETECTED - Score {confluence_score:.2f} <= Sell threshold {sell_threshold} but signal is {signal_type}")
-                signal_type = "BEARISH"
-                self.logger.critical(f"CRITICAL DEBUG: CORRECTED signal type to BEARISH")
-                
-            # Create a content hash using symbol and signal type
-            content_hash = f"{symbol}_{signal_type}_{int(confluence_score)}"
+            # Only send alerts for meaningful signals
+            if signal_type == 'NEUTRAL':
+                self.logger.info(f"No signal generated for {symbol}: Score {confluence_score} is in neutral zone between {sell_threshold} and {buy_threshold}")
+                return
             
-            self.logger.debug(f"ALERT TRACKING: Processing confluence alert for {symbol} with score {confluence_score:.2f}, type {signal_type}")
-            self.logger.critical(f"CRITICAL DEBUG: Creating alert with hash {content_hash}")
-                
-            # Try to get the current price
-            price = 0
-            try:
-                self.logger.critical(f"CRITICAL DEBUG: Attempting to get current price for {symbol}")
-                price = await self._get_current_price(symbol)
-                self.logger.debug(f"ALERT TRACKING: Got current price for {symbol}: {price}")
-                self.logger.critical(f"CRITICAL DEBUG: Got price for {symbol}: {price}")
-            except Exception as e:
-                self.logger.warning(f"Failed to get price for {symbol}: {str(e)}")
-                # Use reasonable fallbacks based on symbol
-                if 'BTC' in symbol:
-                    price = 60000.0
-                elif 'ETH' in symbol:
-                    price = 3000.0
-                elif 'SOL' in symbol:
-                    price = 100.0
-                elif 'DOGE' in symbol:
-                    price = 0.1
-                else:
-                    price = 50.0  # Generic fallback
-                self.logger.warning(f"Using emergency fallback price for {symbol}: ${price}")
-                self.logger.critical(f"CRITICAL DEBUG: Using fallback price for {symbol}: ${price}")
-                
-            # Prepare the signal object for formatting
-            signal = {
+            # Construct signal data
+            signal_data = {
                 'symbol': symbol,
                 'signal': signal_type,
-                'confluence_score': confluence_score,
-                'score': confluence_score,  # Alias for consistency
+                'score': confluence_score,
+                'price': price,
+                'reliability': reliability,
                 'components': components,
                 'results': results,
-                'reliability': reliability,
-                'price': price,
                 'timestamp': int(time.time() * 1000),
-                'content_hash': content_hash
+                'buy_threshold': buy_threshold,
+                'sell_threshold': sell_threshold
             }
             
-            # CRITICAL DEBUG: Log before sending alert
-            self.logger.critical(f"CRITICAL DEBUG: About to call send_signal_alert for {symbol} with score {confluence_score:.2f}, type {signal_type}")
+            # Generate hash for deduplication
+            content_hash = self._hash_signal_content(signal_data)
             
-            # First try to send using direct enhanced confluence format
-            try:
-                if self.discord_webhook_url and 'discord' in self.handlers:
-                    self.logger.info(f"📊 DIRECT ENHANCED ALERT: Sending directly using enhanced format for {symbol}")
+            # Check for duplicate alert
+            if await self._is_duplicate_alert(symbol, content_hash):
+                self.logger.info(f"Skipping duplicate alert for {symbol}")
+                return
+                
+            # Get interpretation based on components
+            interpretations = self._extract_interpretations(results)
+            signal_data['interpretations'] = interpretations
+            
+            # Prepare Discord webhook message
+            webhook_message = self._format_enhanced_confluence_alert(signal_data)
+            
+            # Log alert details 
+            self.logger.info(f"Sending confluence alert for {symbol}: {signal_type} signal with score {confluence_score:.2f}")
+            
+            # Send the alert
+            if self.discord_webhook_url:
+                try:
+                    # Generate and attach PDF report if reporting module is available
+                    try:
+                        # Try to attach PDF report
+                        await self._attach_pdf_report(signal_data, webhook_message)
+                    except Exception as e:
+                        self.logger.error(f"Error attaching PDF report: {str(e)}")
                     
-                    # Format the enhanced confluence message
-                    webhook_message = self._format_enhanced_confluence_alert(signal)
-                    
-                    # Add Discord webhook identity details
-                    webhook_message["username"] = "Virtuoso Trading Bot"
-                    
-                    # Send the webhook with the properly formatted embed structure
-                    self.logger.info(f"📤 DISCORD SEND: Sending enhanced confluence alert for {symbol}")
+                    # Send the message to Discord
                     await self.send_discord_webhook_message(webhook_message)
-                    self.logger.info(f"✅ ENHANCED SUCCESS: Successfully sent enhanced Discord alert for {symbol}")
-                    return
-                else:
-                    self.logger.info(f"⚠️ FALLBACK: No direct Discord webhook, will use standard signal_alert for {symbol}")
-            except Exception as e:
-                self.logger.warning(f"⚠️ ENHANCED ALERT FAILED: {str(e)}, falling back to standard alert method")
-                self.logger.debug(traceback.format_exc())
+                    self.logger.info(f"Successfully sent confluence alert for {symbol}")
+                except Exception as e:
+                    self.logger.error(f"Error sending Discord alert: {str(e)}")
+            else:
+                self.logger.warning("No Discord webhook URL configured")
+                
+            # Store the alert
+            alert = {
+                'level': 'info',
+                'message': f"Confluence Alert: {symbol} {signal_type} Score: {confluence_score:.2f}",
+                'details': signal_data,
+                'timestamp': time.time()
+            }
+            await self._store_alert(alert)
             
-            # Fallback: Send alert using the signal_alert method
-            self.logger.debug(f"ALERT TRACKING: Calling send_signal_alert for {symbol}")
-            success = await self.send_signal_alert(signal)
+        except Exception as e:
+            self.logger.error(f"Error sending confluence alert: {str(e)}")
+            self.logger.error(traceback.format_exc())
+
+    async def _attach_pdf_report(self, signal_data: Dict[str, Any], webhook_message: Dict[str, Any]) -> bool:
+        """
+        Generate and attach PDF report to the webhook message.
+        
+        Args:
+            signal_data: Trading signal data
+            webhook_message: Discord webhook message
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            self.logger.info(f"Attempting to generate PDF report for {signal_data.get('symbol', 'Unknown')}")
+            
+            # Import ReportManager dynamically to avoid circular imports
+            from src.core.reporting.report_manager import ReportManager
+            
+            # Get OHLCV data for the symbol if available
+            ohlcv_data = None
+            try:
+                symbol = signal_data.get('symbol', 'Unknown')
+                if hasattr(self, 'data_fetcher') and self.data_fetcher:
+                    timeframe = signal_data.get('timeframe', '1h')
+                    limit = 50  # Get last 50 candles
+                    
+                    # Try to fetch OHLCV data
+                    ohlcv_data = await self.data_fetcher.fetch_ohlcv(
+                        symbol=symbol,
+                        timeframe=timeframe,
+                        limit=limit
+                    )
+                    
+                    if ohlcv_data is not None and not ohlcv_data.empty:
+                        self.logger.info(f"Successfully fetched OHLCV data for {symbol}")
+                    else:
+                        self.logger.warning(f"OHLCV data for {symbol} is empty")
+            except Exception as e:
+                self.logger.warning(f"Error fetching OHLCV data: {str(e)}")
+            
+            # Create ReportManager
+            report_manager = ReportManager()
+            
+            # Get the webhook URL from our instance
+            webhook_url = self.discord_webhook_url
+            
+            # Add proper trading signal parameters
+            # Extract risk management parameters if available
+            if 'results' in signal_data:
+                # Extract entry_price, stop_loss, and targets if available
+                results = signal_data['results']
+                if 'entry_price' in results:
+                    signal_data['entry_price'] = results['entry_price']
+                if 'stop_loss' in results:
+                    signal_data['stop_loss'] = results['stop_loss']
+                if 'targets' in results:
+                    signal_data['targets'] = results['targets']
+                
+                # Extract insights and actionable insights if available
+                try:
+                    from src.core.analysis.interpretation_generator import InterpretationGenerator
+                    interpretation_generator = InterpretationGenerator()
+                    
+                    # Generate cross-component insights
+                    cross_insights = interpretation_generator.generate_cross_component_insights(results)
+                    if cross_insights:
+                        signal_data['insights'] = cross_insights
+                    
+                    # Generate actionable trading insights
+                    buy_threshold = signal_data.get('buy_threshold', 65)
+                    sell_threshold = signal_data.get('sell_threshold', 35)
+                    score = signal_data.get('score', 50)
+                    actionable_insights = interpretation_generator.generate_actionable_insights(
+                        results, score, buy_threshold, sell_threshold
+                    )
+                    if actionable_insights:
+                        signal_data['actionable_insights'] = actionable_insights
+                except Exception as e:
+                    self.logger.warning(f"Error generating insights: {str(e)}")
+            
+            # Generate and attach the report
+            success, pdf_path, json_path = await report_manager.generate_and_attach_report(
+                signal_data=signal_data,
+                ohlcv_data=ohlcv_data,
+                webhook_message=webhook_message,
+                webhook_url=webhook_url,
+                signal_type='alert'
+            )
             
             if success:
-                self.logger.info(f"Sent {signal_type} confluence alert for {symbol} with score {confluence_score:.2f}")
-                self.logger.critical(f"CRITICAL DEBUG: Successfully sent {signal_type} confluence alert for {symbol}")
-            else:
-                self.logger.error(f"Failed to send confluence alert for {symbol}")
-                self.logger.critical(f"CRITICAL DEBUG: FAILED to send confluence alert for {symbol}")
+                self.logger.info(f"Successfully attached PDF report for {signal_data.get('symbol', 'Unknown')}")
                 
-                # If failed but it's a significant alert, try one more time directly
-                if (signal_type == "BULLISH" and confluence_score >= buy_threshold) or \
-                   (signal_type == "BEARISH" and confluence_score <= sell_threshold):
-                    self.logger.critical(f"CRITICAL DEBUG: Trying emergency direct alert for {symbol} due to threshold condition")
+                # Add note about attached files
+                if 'content' not in webhook_message:
+                    webhook_message['content'] = ""
+                
+                if pdf_path and "PDF report attached" not in webhook_message['content']:
+                    webhook_message['content'] += "\n\n📑 PDF report attached"
                     
-                    try:
-                        # Format a simple webhook message
-                        simple_message = {
-                            "content": f"⚠️ EMERGENCY ALERT: {signal_type} signal for {symbol} with score {confluence_score:.2f}",
-                            "username": "Virtuoso Alerts"
-                        }
-                        
-                        # Try to send it directly
-                        if self.discord_webhook_url:
-                            self.logger.critical(f"CRITICAL DEBUG: Sending emergency direct webhook for {symbol}")
-                            await self.send_discord_webhook_message(simple_message)
-                            self.logger.critical(f"CRITICAL DEBUG: Emergency direct webhook sent for {symbol}")
-                    except Exception as e:
-                        self.logger.error(f"Error in emergency direct alert: {str(e)}")
-                        self.logger.critical(f"CRITICAL DEBUG: Error in emergency direct alert: {str(e)}")
-                
+                if json_path and "JSON data attached" not in webhook_message['content']:
+                    webhook_message['content'] += " | 📊 JSON data attached"
+            else:
+                self.logger.warning(f"Failed to attach PDF report for {signal_data.get('symbol', 'Unknown')}")
+            
+            return success
+            
+        except ImportError as e:
+            self.logger.warning(f"ReportManager module not available: {str(e)}")
+            return False
         except Exception as e:
-            self.logger.error(f"Error in send_confluence_alert: {str(e)}")
+            self.logger.error(f"Error attaching PDF report: {str(e)}")
             self.logger.error(traceback.format_exc())
-            self.logger.critical(f"CRITICAL DEBUG: Exception in send_confluence_alert: {str(e)}")
-            self.logger.critical(traceback.format_exc())
+            return False
 
     async def _init_client_session(self):
         """Initialize aiohttp client session if needed."""
@@ -1207,14 +1253,21 @@ class AlertManager:
         """Check if Discord webhook is configured."""
         return bool(self.discord_webhook_url)
 
-    async def send_discord_webhook_message(self, webhook_message: Dict[str, Any]) -> None:
-        """Send a message directly to Discord webhook.
+    async def send_discord_webhook_message(self, webhook_message: Dict[str, Any], files: Optional[List[Dict[str, Any]]] = None) -> Tuple[bool, Optional[Dict[str, Any]]]:
+        """Send a message directly to Discord webhook with optional file attachments.
         
         This method is specifically designed for sending pre-formatted webhook messages
         like those used in the market reporter.
         
         Args:
             webhook_message: A dictionary containing the webhook payload to send to Discord
+            files: Optional list of file dictionaries with keys:
+                - path: Path to the file to send
+                - filename: Optional custom filename to use
+                - description: Optional description for the file
+        
+        Returns:
+            Tuple of (success, response_data)
         """
         try:
             # CRITICAL DEBUG: Starting Discord webhook send
@@ -1223,15 +1276,15 @@ class AlertManager:
             # ALERT PIPELINE DEBUG: Verify we have content before attempting to send
             if not webhook_message:
                 self.logger.error("ALERT DEBUG: Empty webhook message provided to send_discord_webhook_message")
-                return
+                return False, None
                 
             if not isinstance(webhook_message, dict):
                 self.logger.error(f"ALERT DEBUG: Invalid webhook message type: {type(webhook_message)}")
-                return
+                return False, None
                 
             if "content" not in webhook_message and "embeds" not in webhook_message:
                 self.logger.error(f"ALERT DEBUG: Webhook message missing both content and embeds: {webhook_message}")
-                return
+                return False, None
                 
             # Verify Discord webhook URL validity
             if not self.discord_webhook_url:
@@ -1243,7 +1296,7 @@ class AlertManager:
                     "error": "NO_WEBHOOK_URL",
                     "message_keys": list(webhook_message.keys())
                 })
-                return
+                return False, None
                 
             self.logger.info(f"DISCORD WEBHOOK: Starting webhook message to Discord")
             self.logger.debug(f"DISCORD DEBUG: Webhook URL: {self.discord_webhook_url[:20]}...{self.discord_webhook_url[-10:]}")
@@ -1261,6 +1314,12 @@ class AlertManager:
             self.logger.critical(f"CRITICAL DEBUG: Using webhook URL: {webhook_url[:20]}...{webhook_url[-10:]}")
             self.logger.critical(f"CRITICAL DEBUG: Message has keys: {list(webhook_message.keys())}")
             
+            # Log file attachments if any
+            if files:
+                self.logger.info(f"DISCORD WEBHOOK: Attaching {len(files)} files to message")
+                for i, file_info in enumerate(files):
+                    self.logger.debug(f"File {i+1}: {file_info.get('path', 'No path')} ({file_info.get('filename', 'No name')})")
+            
             # Clean the URL again just to be sure
             webhook_url = self.discord_webhook_url.strip().replace('\n', '')
             
@@ -1273,7 +1332,7 @@ class AlertManager:
                     "error": "EMPTY_WEBHOOK_URL_AFTER_CLEANING",
                     "original_url_length": len(self.discord_webhook_url) if self.discord_webhook_url else 0
                 })
-                return
+                return False, None
                 
             self.logger.info(f"DISCORD WEBHOOK: URL length after cleaning: {len(webhook_url)}")
             
@@ -1296,128 +1355,203 @@ class AlertManager:
             # CRITICAL DEBUG: Attempting webhook send
             self.logger.critical(f"CRITICAL DEBUG: Starting HTTP request to Discord webhook")
             
-            # Implement a retry loop to handle temporary network issues
             while retry_count < max_retries:
-                self.logger.critical(f"CRITICAL DEBUG: Discord webhook attempt {retry_count+1}/{max_retries}")
                 try:
-                    # CRITICAL DEBUG: Creating HTTP session
-                    self.logger.critical(f"CRITICAL DEBUG: Creating aiohttp session (attempt {retry_count+1}/{max_retries})")
-                    
-                    # Create a new session for each attempt
-                    async with aiohttp.ClientSession() as session:
-                        # Add proper content-type header to avoid 405 errors
-                        headers = {
-                            'Content-Type': 'application/json',
-                            'User-Agent': 'VirtuosoTradingBot/1.0'
-                        }
-                        
-                        self.logger.debug(f"DISCORD DEBUG: Created client session with headers {headers}")
-                        
-                        # Log the status of the webhook URL
-                        webhook_url_masked = f"{webhook_url[:20]}...{webhook_url[-10:]}"
-                        self.logger.info(f"DISCORD WEBHOOK: Sending to webhook URL: {webhook_url_masked}")
-                        
-                        # Prepare the webhook message
-                        if isinstance(webhook_message, dict):
-                            self.logger.info(f"DISCORD WEBHOOK: Sending webhook request as JSON")
+                    # Check if we have files to attach
+                    if files:
+                        # Use aiohttp with multipart/form-data for files
+                        async with aiohttp.ClientSession() as session:
+                            # Prepare the form data
+                            data = aiohttp.FormData()
                             
-                            # CRITICAL DEBUG: About to send POST request
-                            self.logger.critical(f"CRITICAL DEBUG: About to send POST request to Discord webhook")
+                            # Add the payload as a JSON field named 'payload_json'
+                            data.add_field(
+                                name='payload_json',
+                                value=json.dumps(webhook_message),
+                                content_type='application/json'
+                            )
                             
-                            # Dump JSON for debugging - Added for troubleshooting
-                            try:
-                                import json
-                                json_str = json.dumps(webhook_message)
-                                self.logger.debug(f"WEBHOOK JSON: {json_str[:200]}...")
-                            except Exception as json_err:
-                                self.logger.warning(f"Error dumping webhook JSON: {str(json_err)}")
+                            # Add each file to the form
+                            for i, file_info in enumerate(files):
+                                file_path = file_info.get('path')
+                                filename = file_info.get('filename', os.path.basename(file_path))
+                                description = file_info.get('description', '')
+                                
+                                if os.path.exists(file_path):
+                                    # Open and add the file to the form
+                                    async with aiofiles.open(file_path, 'rb') as f:
+                                        file_content = await f.read()
+                                        data.add_field(
+                                            name=f'file{i}',
+                                            value=file_content,
+                                            filename=filename,
+                                            content_type='application/octet-stream'
+                                        )
+                                else:
+                                    self.logger.error(f"File not found: {file_path}")
+                                
+                            # Add proper headers
+                            headers = {
+                                'User-Agent': 'VirtuosoTradingBot/1.0'
+                            }
                             
-                            # Actually send the webhook
-                            self.logger.info(f"DISCORD WEBHOOK: Sending webhook request...")
+                            # Send the request
+                            async with session.post(
+                                webhook_url,
+                                data=data,
+                                headers=headers
+                            ) as response:
+                                response_data = None
+                                response_status = response.status
+                                
+                                # Try to get response data if available
+                                try:
+                                    if response.content_type == 'application/json':
+                                        response_data = await response.json()
+                                    else:
+                                        response_data = {'text': await response.text()}
+                                except:
+                                    response_data = {'error': 'Failed to parse response data'}
+                                
+                                # Check if the response was successful
+                                if response.status not in (200, 204):
+                                    self.logger.error(f"Discord API error: {response.status} - {response_data}")
+                                    
+                                    # Add to error tracking
+                                    self._discord_errors.append({
+                                        "timestamp": time.time(),
+                                        "error": f"HTTP_{response.status}",
+                                        "retry": retry_count,
+                                        "response": str(response_data)
+                                    })
+                                    
+                                    # For 429 rate limit errors, retry after suggested delay
+                                    if response.status == 429:
+                                        retry_after = int(response_data.get('retry_after', 5))
+                                        self.logger.warning(f"Rate limited, retrying after {retry_after}s")
+                                        await asyncio.sleep(retry_after)
+                                        retry_count += 1
+                                        continue
+                                        
+                                    # For other errors, we'll retry with backoff
+                                    if retry_count < max_retries - 1:
+                                        retry_count += 1
+                                        # Exponential backoff: 1s, 2s, 4s, etc.
+                                        await asyncio.sleep(2 ** retry_count)
+                                        continue
+                                        
+                                    return False, response_data
+                                else:
+                                    self.logger.info(f"Discord webhook sent successfully (with {len(files)} files). Status: {response.status}")
+                                    return True, response_data
+                    else:
+                        # No files, use regular JSON payload
+                        async with aiohttp.ClientSession() as session:
+                            # Add proper content-type header to avoid 405 errors
+                            headers = {
+                                'Content-Type': 'application/json',
+                                'User-Agent': 'VirtuosoTradingBot/1.0'
+                            }
+                            
+                            # Send the request
                             async with session.post(
                                 webhook_url,
                                 json=webhook_message,
-                                headers=headers,
-                                timeout=10.0  # Add a timeout to prevent hanging
+                                headers=headers
                             ) as response:
+                                response_data = None
                                 response_status = response.status
-                                response_text = await response.text()
-                                self.logger.info(f"DISCORD WEBHOOK: Got response status {response_status}")
-                                self.logger.debug(f"DISCORD DEBUG: Response text: {response_text[:100]}")
                                 
-                                # CRITICAL DEBUG: Got response
-                                self.logger.critical(f"CRITICAL DEBUG: Got Discord API response - status: {response_status}")
-                                self.logger.critical(f"CRITICAL DEBUG: Response text: {response_text[:200]}")
+                                # Try to get response data if available
+                                try:
+                                    if response.content_type == 'application/json':
+                                        response_data = await response.json()
+                                    else:
+                                        response_data = {'text': await response.text()}
+                                except:
+                                    response_data = {'error': 'Failed to parse response data'}
                                 
-                                if response.status in (200, 204):
-                                    self.logger.info(f"DISCORD WEBHOOK: Successfully sent Discord webhook message")
-                                    self.logger.critical(f"CRITICAL DEBUG: Discord webhook message sent SUCCESSFULLY")
-                                    return  # Success! Exit the function
+                                # Check if the response was successful
+                                if response.status not in (200, 204):
+                                    self.logger.error(f"Discord API error: {response.status} - {response_data}")
+                                    
+                                    # Add to error tracking
+                                    self._discord_errors.append({
+                                        "timestamp": time.time(),
+                                        "error": f"HTTP_{response.status}",
+                                        "retry": retry_count,
+                                        "response": str(response_data)
+                                    })
+                                    
+                                    # For 429 rate limit errors, retry after suggested delay
+                                    if response.status == 429:
+                                        retry_after = int(response_data.get('retry_after', 5))
+                                        self.logger.warning(f"Rate limited, retrying after {retry_after}s")
+                                        await asyncio.sleep(retry_after)
+                                        retry_count += 1
+                                        continue
+                                        
+                                    # For other errors, we'll retry with backoff
+                                    if retry_count < max_retries - 1:
+                                        retry_count += 1
+                                        # Exponential backoff: 1s, 2s, 4s, etc.
+                                        await asyncio.sleep(2 ** retry_count)
+                                        continue
+                                    
+                                    return False, response_data
                                 else:
-                                    self.logger.error(f"DISCORD ERROR: Discord API error ({response.status}): {response_text}")
-                                    
-                                    # CRITICAL DEBUG: API error details
-                                    self.logger.critical(f"CRITICAL DEBUG: Discord API ERROR: {response.status} - {response_text}")
-                                    
-                                    # Store the error for potential retry
-                                    last_error = f"HTTP {response.status}: {response_text}"
-                                    
-                                    # Don't retry if it's a 4xx error other than 429 (rate limit)
-                                    if response.status >= 400 and response.status < 500 and response.status != 429:
-                                        self.logger.error(f"DISCORD ERROR: Not retrying due to client error: {response.status}")
-                                        break  # Exit the retry loop
-                except aiohttp.ClientConnectorError as conn_err:
-                    self.logger.error(f"DISCORD ERROR: Connection error: {str(conn_err)}")
-                    last_error = f"Connection error: {str(conn_err)}"
-                    self.logger.critical(f"CRITICAL DEBUG: Connection error in Discord webhook: {str(conn_err)}")
-                except aiohttp.ClientError as client_err:
-                    self.logger.error(f"DISCORD ERROR: Client error: {str(client_err)}")
-                    last_error = f"Client error: {str(client_err)}"
-                    self.logger.critical(f"CRITICAL DEBUG: Client error in Discord webhook: {str(client_err)}")
-                except asyncio.TimeoutError:
-                    self.logger.error("DISCORD ERROR: Request timed out")
-                    last_error = "Request timed out"
-                    self.logger.critical("CRITICAL DEBUG: Timeout error in Discord webhook")
-                except Exception as e:
-                    self.logger.error(f"DISCORD ERROR: Unexpected error: {str(e)}")
-                    self.logger.error(traceback.format_exc())
-                    last_error = f"Unexpected error: {str(e)}"
-                    self.logger.critical(f"CRITICAL DEBUG: Unexpected error in Discord webhook: {str(e)}")
-                    self.logger.critical(traceback.format_exc())
+                                    self.logger.info(f"Discord webhook sent successfully. Status: {response.status}")
+                                    return True, response_data
                 
-                # Increment retry counter
-                retry_count += 1
-                
-                # Log the retry attempt
-                if retry_count < max_retries:
-                    self.logger.info(f"DISCORD WEBHOOK: Retrying webhook request (attempt {retry_count+1}/{max_retries})")
-                    await asyncio.sleep(1)  # Short delay before retry
-                else:
-                    self.logger.error(f"DISCORD ERROR: Failed to send webhook after {max_retries} attempts")
+                except aiohttp.ClientConnectorError as e:
+                    self.logger.error(f"Connection error to Discord: {str(e)}")
                     
                     # Add to error tracking
                     self._discord_errors.append({
                         "timestamp": time.time(),
-                        "error": "MAX_RETRIES_EXCEEDED",
-                        "last_error": last_error
+                        "error": "CONNECTION_ERROR",
+                        "retry": retry_count,
+                        "exception": str(e)
                     })
                     
-                    # CRITICAL DEBUG: Log failure after max retries
-                    self.logger.critical(f"CRITICAL DEBUG: Discord webhook failed after {max_retries} attempts: {last_error}")
+                    last_error = e
+                    retry_count += 1
+                    # Exponential backoff: 1s, 2s, 4s, etc.
+                    await asyncio.sleep(2 ** retry_count)
+                
+                except aiohttp.ClientError as e:
+                    self.logger.error(f"Client error with Discord: {str(e)}")
+                    
+                    # Add to error tracking
+                    self._discord_errors.append({
+                        "timestamp": time.time(),
+                        "error": "CLIENT_ERROR",
+                        "retry": retry_count,
+                        "exception": str(e)
+                    })
+                    
+                    last_error = e
+                    retry_count += 1
+                    # Exponential backoff: 1s, 2s, 4s, etc.
+                    await asyncio.sleep(2 ** retry_count)
+            
+            # We've exhausted all retries
+            self.logger.error(f"Failed to send Discord webhook after {max_retries} attempts: {str(last_error)}")
+            return False, {"error": f"Failed after {max_retries} retries: {str(last_error)}"}
             
         except Exception as e:
-            self.logger.error(f"DISCORD ERROR: Failed to send Discord webhook: {str(e)}")
+            self.logger.error(f"CRITICAL ERROR in send_discord_webhook_message: {str(e)}")
             self.logger.error(traceback.format_exc())
-            
-            # CRITICAL DEBUG: Log the critical error
-            self.logger.critical(f"CRITICAL DEBUG: Critical error in send_discord_webhook_message: {str(e)}")
             
             # Add to error tracking
             self._discord_errors.append({
                 "timestamp": time.time(),
                 "error": "CRITICAL_ERROR",
-                "exception": str(e)
+                "exception": str(e),
+                "traceback": traceback.format_exc()
             })
+            
+            return False, {"error": str(e)}
 
     async def process_signals(self, signals: List[Dict[str, Any]]) -> None:
         """Process trading signals and send alerts."""
@@ -2485,411 +2619,604 @@ class AlertManager:
         return debug_info
 
     def _format_enhanced_confluence_alert(self, signal: Dict[str, Any]) -> Dict[str, Any]:
-        """Format signal using Enhanced Confluence Style alert with Discord embeds
+        """Format an enhanced alert message for confluence analysis.
+        
+        Args:
+            signal: The signal data dictionary
         
         Returns:
-            Dict containing the formatted Discord webhook payload with embeds
+            A dictionary containing the formatted webhook message
         """
-        # Initialize the base embed structure (similar to existing code)
-        symbol = signal.get('symbol', 'Unknown')
-        signal_type = signal.get('signal', 'Unknown').upper()
-        score = signal.get('confluence_score', signal.get('score', 0))
-        reliability = signal.get('reliability', 100)
-        
-        # Ensure reliability is displayed as percentage (not decimal)
-        if reliability <= 1.0:
-            reliability = reliability * 100
-        
-        price = signal.get('price', 0)
-        
-        # Log signal structure for debugging
-        self.logger.debug(f"ENHANCED ALERT DEBUG: Signal keys: {list(signal.keys())}")
-        if 'metadata' in signal:
-            self.logger.debug(f"ENHANCED ALERT DEBUG: Metadata keys: {list(signal.get('metadata', {}).keys())}")
-        
-        # Color coding
-        if signal_type.lower() in ['buy', 'bullish']:
-            color = 3066993  # Green
-            emoji = "🟢"
-        elif signal_type.lower() in ['sell', 'bearish']:
-            color = 15158332  # Red
-            emoji = "🔴"
-        else:
-            color = 16776960  # Yellow
-            emoji = "🟡"
-        
-        # Build enhanced embed with confluence details
-        embed = {
-            "title": f"{emoji} {symbol} CONFLUENCE ANALYSIS {emoji}",
-            "description": (
-                f"**OVERALL SCORE: {score:.2f} ({signal_type})**\n"
-                f"**RELIABILITY: {reliability:.0f}% (HIGH)**\n\n"
-                f"Current Price: ${price:.4f}\n"
-                f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}"
-            ),
-            "color": color,
-            "fields": [],
-            "footer": {
-                "text": "Virtuoso Trading Bot"
-            },
-            "timestamp": datetime.utcnow().isoformat()
-        }
-        
-        # Handle price text formatting similar to risk_management_alert
-        if price <= 0:
-            self.logger.warning(f"Invalid price (${price}) for {symbol} in enhanced confluence format, using cached or estimated price")
+        try:
+            # Extract key signal information
+            symbol = signal.get('symbol', 'UNKNOWN')
+            score = signal.get('score', 0.0)
+            results = signal.get('results', {})
+            components = signal.get('components', {})
+            reliability = signal.get('reliability', 0.0)
+            interpretations = signal.get('interpretations', {})
+            buy_threshold = signal.get('buy_threshold', 65.0)
+            sell_threshold = signal.get('sell_threshold', 35.0)
+            price = signal.get('price', 0.0)
+            timestamp = signal.get('timestamp', datetime.now().timestamp())
             
-            # Try to use cached price if available and recent (last 5 minutes)
-            if hasattr(self, '_price_cache') and symbol in self._price_cache:
-                cache_time = getattr(self, '_price_cache_time', {}).get(symbol, 0)
-                # Use cache if less than 5 minutes old
-                if time.time() - cache_time < 300:  
-                    price = self._price_cache[symbol]
-                    self.logger.info(f"Using cached price for {symbol}: ${price}")
-                else:
-                    self.logger.info(f"Cached price for {symbol} is too old, using fallback price")
-                    price = 100.0
+            # Determine signal type
+            signal_type = "NEUTRAL"
+            if score >= buy_threshold:
+                signal_type = "BULLISH"
+            elif score <= sell_threshold:
+                signal_type = "BEARISH"
+            
+            # Set emoji and color based on signal type
+            if signal_type == "BULLISH":
+                emoji = "🟢"
+                color = 3066993  # Green
+            elif signal_type == "BEARISH":
+                emoji = "🔴"
+                color = 15158332  # Red
             else:
-                # Initialize cache if not exists
-                if not hasattr(self, '_price_cache'):
-                    self._price_cache = {}
-                    self._price_cache_time = {}
-                
-                # Use a reasonable default for calculations
-                self.logger.info(f"No cached price available for {symbol}, using fallback price")
-                price = 100.0
+                emoji = "⚪"
+                color = 10070709  # Gray
             
-            # If price is still zero, use placeholder
-            if price <= 0:
-                price_text = "UNKNOWN (price unavailable)"
-            else:
-                price_text = f"${price:.4f}"
-        else:
-            price_text = f"${price:.4f}"
+            # Format current price
+            price_str = f"${price:.5f}" if price < 1 else f"${price:.2f}"
             
-        # Update description with correct price
-        embed["description"] = (
-            f"**OVERALL SCORE: {score:.2f} ({signal_type})**\n"
-            f"**RELIABILITY: {reliability:.0f}% (HIGH)**\n\n"
-            f"Current Price: {price_text}\n"
-            f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}"
-        )
-        
-        # Extract components and their impact values
-        components = signal.get('components', {})
-        
-        # Check if we have components and log for debugging
-        if components:
-            self.logger.debug(f"ENHANCED ALERT DEBUG: Components: {components}")
-        
-        # Look for impact values in multiple potential locations
-        component_impacts = {}
-        
-        # 1. Check for direct impact values in signal data (component_name_impact format)
-        for key in signal:
-            if key.endswith('_impact') and key.replace('_impact', '') in components:
-                component_name = key.replace('_impact', '')
-                component_impacts[component_name] = signal[key]
-                self.logger.debug(f"ENHANCED ALERT DEBUG: Found impact for {component_name}: {signal[key]}")
-        
-        # 2. Check for impact values in a dedicated impacts dictionary
-        impacts = signal.get('impacts', signal.get('component_impacts', {}))
-        if isinstance(impacts, dict):
-            for component_name, impact_value in impacts.items():
-                if component_name in components:
-                    component_impacts[component_name] = impact_value
-                    self.logger.debug(f"ENHANCED ALERT DEBUG: Found impact in impacts dict for {component_name}: {impact_value}")
-        
-        # 3. Check for weights and calculate impacts
-        weights = signal.get('weights', {})
-        if weights and isinstance(weights, dict):
-            for component_name, weight in weights.items():
-                if component_name in components and component_name not in component_impacts:
-                    # Calculate impact from weight and score
-                    comp_score = components.get(component_name, 0)
-                    impact = (comp_score / 100) * weight * 100
-                    component_impacts[component_name] = impact
-                    self.logger.debug(f"ENHANCED ALERT DEBUG: Calculated impact from weight for {component_name}: {impact}")
-        
-        # 4. Check in metadata if available
-        metadata = signal.get('metadata', {})
-        if metadata and isinstance(metadata, dict):
-            # Look for component impacts or weights in metadata
-            meta_impacts = metadata.get('impacts', metadata.get('component_impacts', {}))
-            if meta_impacts and isinstance(meta_impacts, dict):
-                for component_name, impact_value in meta_impacts.items():
-                    if component_name in components:
-                        component_impacts[component_name] = impact_value
-                        self.logger.debug(f"ENHANCED ALERT DEBUG: Found impact in metadata for {component_name}: {impact_value}")
+            # Format reliability string
+            reliability_text = "LOW"
+            if reliability >= 80:
+                reliability_text = "HIGH"
+            elif reliability >= 50:
+                reliability_text = "MEDIUM"
             
-            # Also check for weights in metadata
-            meta_weights = metadata.get('weights', {})
-            if meta_weights and isinstance(meta_weights, dict):
-                for component_name, weight in meta_weights.items():
-                    if component_name in components and component_name not in component_impacts:
-                        # Calculate impact from weight and score
-                        comp_score = components.get(component_name, 0)
-                        impact = (comp_score / 100) * weight * 100
-                        component_impacts[component_name] = impact
-                        self.logger.debug(f"ENHANCED ALERT DEBUG: Calculated impact from metadata weight for {component_name}: {impact}")
-        
-        # 5. Last resort: If no impacts found, calculate based on component scores
-        if not component_impacts and components:
-            total_score = sum(components.values())
-            for component_name, comp_score in components.items():
-                if total_score > 0:
-                    # Simple proportional impact based on score contribution
-                    impact = (comp_score / total_score) * 100
-                    component_impacts[component_name] = impact
-                    self.logger.debug(f"ENHANCED ALERT DEBUG: Generated fallback impact for {component_name}: {impact}")
-        
-        # Log impact values for debugging
-        self.logger.debug(f"ENHANCED ALERT DEBUG: Final component impacts: {component_impacts}")
-        
-        # Add component breakdown field
-        if components:
+            # Format date/time
+            dt_obj = datetime.fromtimestamp(timestamp)
+            date_str = dt_obj.strftime("%Y-%m-%d %H:%M:%S UTC")
+            
+            # Create Discord embed header
+            header = f"## {emoji} CONFLUENCE ALERT: {symbol} ({signal_type})\n\n"
+            header += f"**Overall Score:** {score:.2f}/100 ({signal_type})\n"
+            header += f"**Reliability:** {reliability:.1f}% ({reliability_text})\n"
+            header += f"**Current Price:** {price_str}\n"
+            header += f"**Time:** {date_str}\n\n"
+            
+            # Initialize Discord embed
+            embed = {
+                "title": f"{emoji} CONFLUENCE ALERT: {symbol} ({signal_type})",
+                "description": header,
+                "color": color,
+                "fields": []
+            }
+            
+            # -----------------------------------------------------------------
+            # Extract components and their impacts
+            # -----------------------------------------------------------------
+            self.logger.debug(f"Extracting components for {symbol}")
+            
+            # Prepare for components table
+            max_name_length = 24  # Max length for component names
             component_text = "```\n"
-            component_text += "COMPONENT          | SCORE  | IMPACT \n"
-            component_text += "------------------ | ------ | ------\n"
+            component_text += f"{'Component':{max_name_length}} {'Score':>5} {'Gauge':<10} {'Impact':<5}\n"
+            component_text += f"{'-' * max_name_length} {'-'*5} {'-'*10} {'-'*5}\n"
             
-            # Create a list of tuples with component name, score, and impact
-            component_list = []
-            for comp_name, comp_score in components.items():
-                # Get impact from our collected impacts or default to 0
-                comp_impact = component_impacts.get(comp_name, 0)
-                component_list.append((comp_name, comp_score, comp_impact))
+            # Extract components data
+            components_data = []
             
-            # Sort components by impact (if available) or by score
-            sorted_components = sorted(
-                component_list,
-                key=lambda x: x[2] if x[2] != 0 else x[1],  # Sort by impact if available, otherwise by score
-                reverse=True
-            )
+            # Check if components are correctly structured
+            if components and isinstance(components, dict):
+                for name, score_value in components.items():
+                    # Skip any non-numeric components
+                    if not isinstance(score_value, (int, float)):
+                        continue
+                    
+                    # Calculate impact (absolute deviation from neutral 50)
+                    impact = abs(score_value - 50) * 2
+                    
+                    components_data.append({
+                        'name': name,
+                        'score': score_value,
+                        'impact': impact
+                    })
             
-            for comp_name, comp_score, comp_impact in sorted_components:
-                # Format the name with proper spacing
-                display_name = comp_name.replace('_', ' ').title()
-                display_name = display_name.ljust(18)[:18]
+            # Sort components by absolute impact (highest first)
+            if components_data:
+                components_data.sort(key=lambda x: x['impact'], reverse=True)
                 
-                # Format score and impact values
-                component_text += f"{display_name} | {comp_score:.2f}  | {comp_impact:.1f}\n"
+                # Add each component with gauges
+                for comp in components_data[:10]:  # Limit to top 10
+                    name = comp['name'].replace('_', ' ').title()
+                    comp_score = comp['score']
+                    impact = comp['impact']
+                    
+                    # Format the component name (fixed width)
+                    name_formatted = f"{name[:max_name_length-2]:<{max_name_length}}"
+                    
+                    # Create gauges for score and impact
+                    score_gauge = self._build_gauge(comp_score, is_impact=False, width=10)
+                    impact_gauge = self._build_gauge(impact, is_impact=True, width=5)
+                    
+                    # Add to component text
+                    component_text += f"{name_formatted} {comp_score:5.1f} {score_gauge} {impact_gauge}\n"
+                
+                component_text += "```"
             
-            component_text += "```"
+            # -----------------------------------------------------------------
+            # Extract top influential individual components from results
+            # -----------------------------------------------------------------
+            individual_component_text = ""
             
+            # Extract individual components from results structure
+            individual_components = {}
+            
+            # First try to extract from results structure if it has the expected format
+            for component_name, component_data in results.items():
+                if isinstance(component_data, dict) and 'components' in component_data:
+                    # This is a main component with sub-components
+                    main_comp_score = component_data.get('score', 0.0)
+                    sub_components = component_data.get('components', {})
+                    
+                    # Format individual components for this category
+                    comp_items = []
+                    for sub_name, sub_value in sub_components.items():
+                        if isinstance(sub_value, (int, float)):
+                            # Simple numeric value
+                            comp_items.append({
+                                'name': sub_name,
+                                'score': float(sub_value),
+                                'main_component': component_name
+                            })
+                        elif isinstance(sub_value, dict) and 'score' in sub_value:
+                            # Dictionary with score
+                            comp_items.append({
+                                'name': sub_name,
+                                'score': float(sub_value['score']),
+                                'main_component': component_name
+                            })
+                    
+                    # Sort sub-components by score
+                    comp_items.sort(key=lambda x: x['score'], reverse=True)
+                    
+                    # Take top 3 sub-components for each main component
+                    individual_components[component_name] = {
+                        'score': main_comp_score,
+                        'sub_components': comp_items[:3]
+                    }
+            
+            # Format the individual components section
+            if individual_components:
+                individual_component_text = "```\n"
+                individual_component_text += "TOP INFLUENTIAL INDIVIDUAL COMPONENTS\n"
+                individual_component_text += "----------------------------------------\n\n"
+                
+                # Add each main component and its sub-components
+                for main_name, main_data in individual_components.items():
+                    main_score = main_data['score']
+                    sub_components = main_data['sub_components']
+                    
+                    # Format the main component name
+                    formatted_name = main_name.replace('_', ' ').title()
+                    individual_component_text += f"{formatted_name} ({main_score:.2f})\n"
+                    
+                    # Add the sub-components
+                    for sub in sub_components:
+                        sub_name = sub['name'].replace('_', ' ').title()
+                        sub_score = sub['score']
+                        
+                        # Determine direction indicator
+                        direction = "→"
+                        if sub_score >= 65:
+                            direction = "↑"
+                        elif sub_score <= 35:
+                            direction = "↓"
+                                    
+                        # Create a small gauge
+                        gauge = self._build_gauge(sub_score, is_impact=False, width=15)
+                        
+                        # Add sub-component line
+                        individual_component_text += f"  • {sub_name:<20}: {sub_score:5.2f} {direction} {gauge}\n"
+                    
+                    individual_component_text += "\n"
+                
+                individual_component_text += "```"
+            
+            # -----------------------------------------------------------------
+            # Market interpretations section
+            # -----------------------------------------------------------------
+            interp_text = ""
+                
+            # Add market interpretations
+            # First check if interpretations is populated
+            if interpretations:
+                interp_text = "```\n"
+                interp_text += "MARKET INTERPRETATIONS\n"
+                interp_text += "----------------------\n\n"
+                
+                for component, interpretation in interpretations.items():
+                    if interpretation:
+                        # Format component name
+                        component_name = component.replace('_', ' ').title()
+                        
+                        # Add component interpretation
+                        interp_text += f"• {component_name}: {interpretation}\n\n"
+                
+                interp_text += "```"
+            # If no direct interpretations, try to extract from results
+            elif results:
+                extracted_interp = self._extract_interpretations(results)
+                if extracted_interp:
+                    interp_text = "```\n"
+                    interp_text += "MARKET INTERPRETATIONS\n"
+                    interp_text += "----------------------\n\n"
+                    
+                    for component, interpretation in extracted_interp.items():
+                        if interpretation:
+                            # Format component name
+                            component_name = component.replace('_', ' ').title()
+                            
+                            # Add component interpretation with wrapping
+                            wrapped_text = textwrap.wrap(interpretation, width=70)
+                            interp_text += f"• {component_name}: {wrapped_text[0]}\n"
+                            for line in wrapped_text[1:]:
+                                interp_text += f"  {line}\n"
+                            interp_text += "\n"
+                    
+                    interp_text += "```"
+            
+            # -----------------------------------------------------------------
+            # Cross-component insights section
+            # -----------------------------------------------------------------
+            cross_insights_text = ""
+            
+            # Try to extract cross-component insights if available
+            if 'cross_component_insights' in signal:
+                insights = signal.get('cross_component_insights', [])
+                if insights:
+                    cross_insights_text = "```\n"
+                    cross_insights_text += "CROSS-COMPONENT INSIGHTS\n"
+                    cross_insights_text += "------------------------\n\n"
+                    
+                    for insight in insights:
+                        # Process each insight with wrapping
+                        wrapped_text = textwrap.wrap(insight, width=70)
+                        cross_insights_text += f"• {wrapped_text[0]}\n"
+                        for line in wrapped_text[1:]:
+                            cross_insights_text += f"  {line}\n"
+                        cross_insights_text += "\n"
+                    
+                    cross_insights_text += "```"
+            
+            # -----------------------------------------------------------------
+            # Actionable trading insights section
+            # -----------------------------------------------------------------
+            actionable_text = ""
+            
+            # Try to extract actionable insights if available
+            if 'actionable_insights' in signal:
+                actionable = signal.get('actionable_insights', [])
+                if actionable:
+                    actionable_text = "```\n"
+                    actionable_text += "ACTIONABLE TRADING INSIGHTS\n"
+                    actionable_text += "---------------------------\n\n"
+                    
+                    for insight in actionable:
+                        # Process each insight with wrapping
+                        wrapped_text = textwrap.wrap(insight, width=70)
+                        actionable_text += f"• {wrapped_text[0]}\n"
+                        for line in wrapped_text[1:]:
+                            actionable_text += f"  {line}\n"
+                        actionable_text += "\n"
+                    
+                    actionable_text += "```"
+            # If no direct actionable insights, generate some
+            else:
+                try:
+                    from src.core.analysis.interpretation_generator import InterpretationGenerator
+                    interpretation_generator = InterpretationGenerator()
+                    
+                    # Generate actionable insights
+                    actionable_insights = interpretation_generator.generate_actionable_insights(
+                        results, score, buy_threshold, sell_threshold
+                    )
+                    
+                    if actionable_insights:
+                        actionable_text = "```\n"
+                        actionable_text += "ACTIONABLE TRADING INSIGHTS\n"
+                        actionable_text += "---------------------------\n\n"
+                        
+                        for insight in actionable_insights:
+                            # Process each insight with wrapping
+                            wrapped_text = textwrap.wrap(insight, width=70)
+                            actionable_text += f"• {wrapped_text[0]}\n"
+                            for line in wrapped_text[1:]:
+                                actionable_text += f"  {line}\n"
+                            actionable_text += "\n"
+                        
+                        actionable_text += "```"
+                except Exception as e:
+                    self.logger.warning(f"Error generating actionable insights: {str(e)}")
+            
+            # -----------------------------------------------------------------
+            # Risk management section (if available)
+            # -----------------------------------------------------------------
+            risk_text = ""
+            
+            # Calculate default targets if not provided
+            price_for_calcs = price if price > 0 else 100.0
+            
+            # Get entry price if available
+            entry_price = signal.get('entry_price', price_for_calcs)
+            
+            # Risk parameters - use defaults if not provided
+            stop_loss = signal.get('stop_loss', None)
+            if stop_loss is None and 'risk_management' in signal and isinstance(signal['risk_management'], dict):
+                stop_loss = signal['risk_management'].get('stop_loss', None)
+            
+            if stop_loss is None:
+                # Calculate default stop loss as 3% from entry price based on direction
+                stop_loss = entry_price * 0.97 if signal_type.lower() in ['buy', 'bullish'] else entry_price * 1.03
+            
+            # Get targets if available
+            targets = {}
+            
+            # Check various locations for targets
+            if 'targets' in signal and isinstance(signal['targets'], dict):
+                targets = signal['targets']
+            elif 'risk_management' in signal and isinstance(signal['risk_management'], dict):
+                if 'targets' in signal['risk_management'] and isinstance(signal['risk_management']['targets'], dict):
+                    targets = signal['risk_management']['targets']
+            
+            # If no targets found, generate default ones
+            if not targets:
+                # Generate 3 default targets at 1:1, 1:2, and 1:3 risk-reward
+                risk_amount = abs(entry_price - stop_loss)
+                if signal_type.lower() in ['buy', 'bullish']:
+                    targets = {
+                        "T1": {"price": entry_price + risk_amount, "size": 0.3},
+                        "T2": {"price": entry_price + (2 * risk_amount), "size": 0.3},
+                        "T3": {"price": entry_price + (3 * risk_amount), "size": 0.4}
+                    }
+                else:
+                    targets = {
+                        "T1": {"price": entry_price - risk_amount, "size": 0.3},
+                        "T2": {"price": entry_price - (2 * risk_amount), "size": 0.3},
+                        "T3": {"price": entry_price - (3 * risk_amount), "size": 0.4}
+                    }
+
+            # Only show risk management if we have targets or other risk parameters
+            risk_text = "```\n"
+            risk_text += "RISK MANAGEMENT\n"
+            risk_text += "---------------\n\n"
+            
+            # Add entry price
+            risk_text += f"ENTRY PRICE: ${entry_price:.4f}\n"
+            
+            # Stop loss
+            sl_pct = abs((stop_loss / entry_price) - 1) * 100
+            risk_text += f"STOP LOSS:   ${stop_loss:.4f} ({sl_pct:.2f}%)\n\n"
+            
+            # Targets
+            if targets:
+                risk_text += "TARGETS:\n"
+                for target_name, target_data in targets.items():
+                    if isinstance(target_data, dict):
+                        target_price = target_data.get("price", 0)
+                        target_size = target_data.get("size", 0)
+                        
+                        if target_price > 0:
+                            pct_change = abs((target_price / entry_price) - 1) * 100
+                            risk_text += f"  {target_name}: ${target_price:.4f} ({pct_change:.2f}%) - {target_size * 100:.0f}%\n"
+            
+            risk_text += "```"
+
+            # Add component breakdown
             embed["fields"].append({
-                "name": "🧩 COMPONENT BREAKDOWN",
+                "name": "🔍 COMPONENT BREAKDOWN",
                 "value": component_text,
                 "inline": False
             })
-        
-        # Add top influential components
-        results = signal.get('results', {})
-        if results:
-            influential_text = ""
             
-            for comp_name, comp_data in results.items():
-                # Add check to ensure comp_data is a dictionary
-                if comp_name in components:  # Only process if in components list
-                    comp_score = components.get(comp_name, 0)
-                    influential_text += f"**{comp_name.replace('_', ' ').title()} ({comp_score:.2f})**\n"
-                    
-                    # Check if comp_data is a dictionary with components
-                    if isinstance(comp_data, dict) and 'components' in comp_data and isinstance(comp_data['components'], dict):
-                        # Sort subcomponents by value
-                        subcomps = comp_data['components']
-                        sorted_subcomps = sorted(subcomps.items(), key=lambda x: abs(float(x[1])) if isinstance(x[1], (int, float)) else 0, reverse=True)
-                        
-                        # Take top 3
-                        for i, (sub_name, sub_value) in enumerate(sorted_subcomps[:3]):
-                            if isinstance(sub_value, (int, float)):
-                                # Direction indicator
-                                if sub_value >= 70:
-                                    direction = "↑"
-                                elif sub_value >= 50:
-                                    direction = "→"
-                                else:
-                                    direction = "↓"
-                                    
-                                sub_display = sub_name.replace('_', ' ').title()
-                                influential_text += f"• {sub_display}: {sub_value:.2f} {direction}\n"
-                    
-                    influential_text += "\n"
-            
-            if influential_text:
+            # Add individual component breakdown if available
+            if individual_component_text:
                 embed["fields"].append({
-                    "name": "🔝 TOP INFLUENTIAL COMPONENTS",
-                    "value": influential_text[:1024],
+                    "name": "🧩 TOP INFLUENTIAL INDIVIDUAL COMPONENTS",
+                    "value": individual_component_text,
                     "inline": False
                 })
-                
-        # Add market interpretations
-        interpretations = self._extract_interpretations(results)
-        if interpretations:
-            interp_text = ""
-            for component, text in interpretations.items():
-                if text:
-                    interp_text += f"**{component.upper()}**: {text}\n\n"
             
+            # Add market interpretations if available
             if interp_text:
                 embed["fields"].append({
-                    "name": "🔍 MARKET INTERPRETATIONS",
-                    "value": interp_text[:1024],
+                    "name": "📊 MARKET INTERPRETATIONS",
+                    "value": interp_text,
                     "inline": False
                 })
-                
-        # Add actionable insights
-        try:
-            from src.core.analysis.interpretation_generator import InterpretationGenerator
-            interpretation_generator = InterpretationGenerator()
             
-            # Check if results structure is suitable for interpretation generation
-            has_valid_results = False
-            if isinstance(results, dict):
-                # Check if at least one component has a valid dictionary structure
-                for comp_key, comp_value in results.items():
-                    if isinstance(comp_value, dict) and 'components' in comp_value:
-                        has_valid_results = True
-                        break
-            
-            # Only generate insights if we have valid results structure
-            if has_valid_results:
-                buy_threshold = signal.get('buy_threshold', 65)
-                sell_threshold = signal.get('sell_threshold', 35)
-                
-                actionable_insights = interpretation_generator.generate_actionable_insights(
-                    results, score, buy_threshold, sell_threshold
-                )
-                
-                if actionable_insights:
-                    insights_text = "• " + "\n• ".join(actionable_insights)
-                    embed["fields"].append({
-                        "name": "🎯 ACTIONABLE TRADING INSIGHTS",
-                        "value": insights_text[:1024],
-                        "inline": False
-                    })
-            else:
-                # Add basic actionable insights based on score
-                basic_insights = []
-                
-                if score >= 65:
-                    basic_insights.append(f"BULLISH BIAS: Overall confluence score ({score:.2f}) above buy threshold (65)")
-                    basic_insights.append("RISK ASSESSMENT: MODERATE - Standard position sizing recommended with normal stop distances")
-                    basic_insights.append("STRATEGY: Consider bullish strategies: swing longs or breakouts with defined risk")
-                elif score <= 35:
-                    basic_insights.append(f"BEARISH BIAS: Overall confluence score ({score:.2f}) below sell threshold (35)")
-                    basic_insights.append("RISK ASSESSMENT: MODERATE - Standard position sizing recommended with normal stop distances")
-                    basic_insights.append("STRATEGY: Consider bearish strategies: swing shorts or breakdown entries with defined risk")
-                else:
-                    basic_insights.append(f"NEUTRAL BIAS: Overall confluence score ({score:.2f}) within neutral zone")
-                    basic_insights.append("RISK ASSESSMENT: ELEVATED - Reduced position sizing recommended")
-                    basic_insights.append("STRATEGY: Consider range-bound strategies or wait for stronger signals")
-                
-                insights_text = "• " + "\n• ".join(basic_insights)
+            # Add cross-component insights if available
+            if cross_insights_text:
                 embed["fields"].append({
-                    "name": "🎯 ACTIONABLE TRADING INSIGHTS",
-                    "value": insights_text[:1024],
+                    "name": "🔄 CROSS-COMPONENT INSIGHTS",
+                    "value": cross_insights_text,
                     "inline": False
                 })
-        except Exception as e:
-            self.logger.warning(f"Error generating actionable insights: {str(e)}")
             
-            # Fallback to basic actionable insights
-            basic_insights = []
+            # Add actionable trading insights if available
+            if actionable_text:
+                embed["fields"].append({
+                    "name": "💡 ACTIONABLE TRADING INSIGHTS",
+                    "value": actionable_text,
+                    "inline": False
+                })
             
-            if score >= 65:
-                basic_insights.append(f"BULLISH BIAS: Overall confluence score ({score:.2f}) above buy threshold (65)")
-                basic_insights.append("RISK ASSESSMENT: MODERATE - Standard position sizing recommended with normal stop distances")
-                basic_insights.append("STRATEGY: Consider bullish strategies: swing longs or breakouts with defined risk")
-            elif score <= 35:
-                basic_insights.append(f"BEARISH BIAS: Overall confluence score ({score:.2f}) below sell threshold (35)")
-                basic_insights.append("RISK ASSESSMENT: MODERATE - Standard position sizing recommended with normal stop distances")
-                basic_insights.append("STRATEGY: Consider bearish strategies: swing shorts or breakdown entries with defined risk")
-            else:
-                basic_insights.append(f"NEUTRAL BIAS: Overall confluence score ({score:.2f}) within neutral zone")
-                basic_insights.append("RISK ASSESSMENT: ELEVATED - Reduced position sizing recommended")
-                basic_insights.append("STRATEGY: Consider range-bound strategies or wait for stronger signals")
-            
-            insights_text = "• " + "\n• ".join(basic_insights)
+            # Add risk management
             embed["fields"].append({
-                "name": "🎯 ACTIONABLE TRADING INSIGHTS",
-                "value": insights_text[:1024],
+                "name": "⚖️ RISK MANAGEMENT",
+                "value": risk_text,
                 "inline": False
             })
             
-        # Add risk management section from existing code
-        # Calculate default targets if not provided
-        price_for_calcs = price if price > 0 else 100.0
-        
-        # Risk parameters - use defaults if not provided
-        stop_loss = results.get('stop_loss', price_for_calcs * 0.97 if signal_type.lower() in ['buy', 'bullish'] else price_for_calcs * 1.03)
-        
-        targets = results.get('targets', {})
-        if not targets and signal_type.lower() in ['buy', 'bullish']:
-            t1_pct = 0.02  # 2%
-            t2_pct = 0.045  # 4.5%
-            t3_pct = 0.07  # 7%
-            targets = {
-                "T1": {"price": price_for_calcs * (1 + t1_pct), "size": 0.25},
-                "T2": {"price": price_for_calcs * (1 + t2_pct), "size": 0.5},
-                "T3": {"price": price_for_calcs * (1 + t3_pct), "size": 0.25}
-            }
-        elif not targets:
-            t1_pct = 0.02  # 2%
-            t2_pct = 0.045  # 4.5%
-            t3_pct = 0.07  # 7%
-            targets = {
-                "T1": {"price": price_for_calcs * (1 - t1_pct), "size": 0.25},
-                "T2": {"price": price_for_calcs * (1 - t2_pct), "size": 0.5},
-                "T3": {"price": price_for_calcs * (1 - t3_pct), "size": 0.25}
-            }
-        
-        # Format targets text
-        targets_text = ""
-        for target_name, target_data in targets.items():
-            target_price = target_data.get("price", 0)
-            target_size = target_data.get("size", 0)
-            pct_change = abs((target_price / price_for_calcs) - 1) * 100
-            targets_text += f"{target_name}: ${target_price:.4f} ({pct_change:.2f}%) - {target_size * 100:.0f}%\n"
-        
-        # Add entry and exits field
-        embed["fields"].append({
-            "name": "📊 ENTRY & EXITS",
-            "value": f"**Stop Loss:** ${stop_loss:.4f} ({abs((stop_loss / price_for_calcs) - 1) * 100:.2f}%)\n**Targets:**\n{targets_text}",
-            "inline": True
-        })
-        
-        # Add risk/reward calculation
-        risk_reward = "N/A"
-        try:
-            t3_price = targets.get("T3", {}).get("price", 0)
-            if t3_price > 0 and stop_loss > 0:
-                if signal_type.lower() in ['buy', 'bullish']:
-                    risk = price_for_calcs - stop_loss
-                    reward = t3_price - price_for_calcs
-                else:
-                    risk = stop_loss - price_for_calcs
-                    reward = price_for_calcs - t3_price
-                
-                if risk > 0:
-                    risk_reward = f"{reward / risk:.2f}"
-                    
-            leverage = signal.get('recommended_leverage', 1.0)
-            position_size = signal.get('position_size', 5.0)  # Default 5% of account
+            # Add timestamp
+            embed["timestamp"] = datetime.now().isoformat()
             
-            embed["fields"].append({
-                "name": "⚖️ RISK MANAGEMENT",
-                "value": f"**Risk/Reward Ratio:** {risk_reward}\n**Recommended Leverage:** {leverage:.1f}x\n**Position Size:** {position_size:.1f}%",
-                "inline": True
-            })
+            # Check for Discord's 4096 character limit for description
+            total_length = len(header)
+            for field in embed["fields"]:
+                total_length += len(field["name"]) + len(field["value"])
+            
+            # If over character limit, trim content
+            if total_length > 4000:
+                self.logger.warning(f"Alert for {symbol} exceeds Discord character limit ({total_length}/4096), trimming content")
+                
+                # Trim components section to top 5
+                component_text = "```\n"
+                component_text += f"{'Component':<20} {'Score':>5} {'Gauge':<10}\n"
+                component_text += f"{'-' * 20} {'-'*5} {'-'*10}\n"
+                
+                for comp in components_data[:5]:  # Reduced from 10 to 5
+                    name = comp['name'].replace('_', ' ').title()
+                    comp_score = comp['score']
+                    
+                    # Format the component name (fixed width)
+                    name_formatted = f"{name[:18]:<20}"  # Reduced from 24 to 20
+                    
+                    # Create gauges for score and impact
+                    score_gauge = self._build_gauge(comp_score, is_impact=False, width=8)  # Reduced from 10 to 8
+                    
+                    # Add to component text
+                    component_text += f"{name_formatted} {comp_score:5.1f} {score_gauge}\n"
+                
+                component_text += "```"
+                
+                # Update component field
+                for field in embed["fields"]:
+                    if field["name"] == "🔍 COMPONENT BREAKDOWN":
+                        field["value"] = component_text
+                        break
+                
+                # Remove individual components section if present
+                embed["fields"] = [field for field in embed["fields"] if field["name"] != "🧩 TOP INFLUENTIAL INDIVIDUAL COMPONENTS"]
+                
+                # Trim market interpretations if present
+                for field in embed["fields"]:
+                    if field["name"] == "📊 MARKET INTERPRETATIONS":
+                        # Just show first few lines
+                        lines = field["value"].split("\n")
+                        field["value"] = "\n".join(lines[:10]) + "\n```"
+                        break
+            
+            # Construct the final webhook message
+            webhook_message = {
+                "username": "Virtuoso Trading Bot",
+                "embeds": [embed]
+            }
+            
+            self.logger.debug(f"Created Discord embed for {symbol}")
+            
+            return webhook_message
         except Exception as e:
-            self.logger.error(f"Error calculating risk values: {str(e)}")
+            self.logger.error(f"Error formatting enhanced confluence alert: {str(e)}")
+            # Return a simplified error message
+            return {
+                "username": "Virtuoso Trading Bot",
+                "embeds": [{
+                    "title": "⚠️ Error Formatting Alert",
+                    "description": f"Failed to format alert for {signal.get('symbol', 'UNKNOWN')}: {str(e)}",
+                    "color": 16711680  # Red
+                }]
+            }
+
+    def _build_gauge(self, score: float, is_impact: bool = False, width: int = 15) -> str:
+        """Build a gauge visualization for a component score or impact using Discord-compatible characters.
         
-        # Finalize webhook message
-        webhook_message = {
-            "username": "Virtuoso Trading Bot",
-            "embeds": [embed]
-        }
+        Args:
+            score: The score value (0-100)
+            is_impact: If True, treat this as an impact gauge (different character set)
+            width: The width of the gauge in characters
+            
+        Returns:
+            A string containing the gauge visualization
+        """
+        # Normalize score to gauge width
+        filled_width = int(round(score / 100 * width))
+        unfilled_width = width - filled_width
         
-        self.logger.debug(f"Created Enhanced Confluence Discord embed for {symbol}")
+        # Use different block characters based on the score ranges
+        if is_impact:
+            # For impact gauges, use different character based on impact level
+            if score >= 80:
+                filled_char = "█"  # Full block for high impact
+            elif score >= 60:
+                filled_char = "▓"  # Dark shade for medium-high impact
+            elif score >= 40:
+                filled_char = "▒"  # Medium shade for medium impact
+            else:
+                filled_char = "░"  # Light shade for low impact
+        else:
+            # For score gauges, use a full block regardless of score
+            filled_char = "█"  # Full block
+            
+        # Use a light shade for unfilled portions
+        unfilled_char = "░"
         
-        return webhook_message
+        # Build the gauge
+        filled_part = filled_char * filled_width
+        unfilled_part = unfilled_char * unfilled_width
+        
+        # Return the gauge without ANSI coloring
+        return f"{filled_part}{unfilled_part}"
+
+    def _add_gauge_indicator(self, gauge_line: str, position: float, indicator: str = "○", width: int = 15) -> str:
+        """Add an indicator to a gauge line at the specified position using Discord-compatible characters.
+        
+        Args:
+            gauge_line: The gauge line to add the indicator to
+            position: The position to add the indicator at (0-100)
+            indicator: The indicator character to add
+            width: The width of the gauge
+            
+        Returns:
+            The gauge line with the indicator added
+        """
+        # Calculate position in gauge
+        pos = min(width - 1, max(0, int(round(position / 100 * width))))
+        
+        # Convert gauge line to list for easier character replacement
+        gauge_chars = list(gauge_line)
+        
+        # Replace character at position with indicator
+        if 0 <= pos < len(gauge_chars):
+            gauge_chars[pos] = indicator
+            
+        # Convert back to string
+        return ''.join(gauge_chars)
+
+    def _add_threshold_markers(self, gauge_line: str, buy_threshold: float, sell_threshold: float, width: int = 15) -> str:
+        """Add buy and sell threshold markers to a gauge line using Discord-compatible characters.
+        
+        Args:
+            gauge_line: The gauge line to add the markers to
+            buy_threshold: The buy threshold (0-100)
+            sell_threshold: The sell threshold (0-100)
+            width: The width of the gauge
+            
+        Returns:
+            The gauge line with threshold markers added
+        """
+        # Calculate positions in gauge
+        buy_pos = min(width - 1, max(0, int(round(buy_threshold / 100 * width))))
+        sell_pos = min(width - 1, max(0, int(round(sell_threshold / 100 * width))))
+        
+        # Create threshold indicator lines
+        threshold_line = ' ' * width
+        threshold_chars = list(threshold_line)
+        
+        # Add buy and sell markers
+        if 0 <= buy_pos < width:
+            threshold_chars[buy_pos] = '↑'  # Up arrow for buy threshold
+            
+        if 0 <= sell_pos < width and sell_pos != buy_pos:
+            threshold_chars[sell_pos] = '↓'  # Down arrow for sell threshold
+            
+        # Add thresholds to gauge
+        threshold_indicator = ''.join(threshold_chars)
+        
+        # Return combined gauge with threshold indicators
+        return f"{gauge_line}\n{threshold_indicator}"

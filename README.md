@@ -11,6 +11,12 @@
 - [Development](#development)
 - [Documentation](#documentation)
 - [Advanced System Features](#advanced-system-features)
+  - [Atomic Data Fetching](#1-atomic-data-fetching)
+  - [Enhanced Divergence Visualization](#2-enhanced-divergence-visualization)
+  - [Advanced Open Interest Analysis](#3-advanced-open-interest-analysis)
+  - [Real-time Market Monitoring](#4-real-time-market-monitoring)
+  - [Machine Learning Signal Validation](#5-machine-learning-signal-validation)
+  - [Signals API](#6-signals-api)
 - [System Architecture](#system-architecture)
 - [System Requirements](#system-requirements)
 - [Quick Start Guide](#quick-start-guide)
@@ -142,6 +148,7 @@ Detailed documentation is available in the `docs/` directory:
   - [Market Data API](docs/api/market.md)
   - [Trading API](docs/api/trading.md)
   - [System API](docs/api/system.md)
+  - [Signals API](docs/api/signals.md)
   - [WebSocket API](docs/api/websocket.md)
   - [Authentication](docs/api/authentication.md)
 - [User Guides](docs/guides/)
@@ -361,6 +368,168 @@ Virtuoso incorporates advanced machine learning models to validate trading signa
 - **Regime Classification**: Automatic market regime detection and classification
 - **Signal Strength Prediction**: ML-enhanced prediction of signal strength and reliability
 - **Adaptive Learning**: Continuous model improvement based on market feedback
+
+### 6. Signals API
+
+Virtuoso provides a comprehensive REST API for retrieving trading signals, which can be integrated with trading platforms, dashboards, or custom applications.
+
+#### Available Endpoints:
+
+- **/api/signals/latest**: Retrieves the latest signals across all symbols (default limit: 5, max: 20)
+- **/api/signals/symbol/{symbol}**: Gets signals for a specific symbol (default limit: 10, max: 100)
+- **/api/signals**: Retrieves all signals with pagination and filtering options (by symbol, signal type, date range, minimum score)
+- **/api/signals/file/{filename}**: Gets a specific signal by its filename
+
+#### Signal Structure:
+
+Each signal includes comprehensive metadata and analysis:
+
+```json
+{
+  "symbol": "BTCUSDT",           // Trading pair
+  "signal": "BULLISH",           // BULLISH, BEARISH, or NEUTRAL
+  "score": 75.4,                 // Confluence score (0-100)
+  "reliability": 0.85,           // Signal reliability score (0-1)
+  "price": 55000.0,              // Price at signal generation
+  "timestamp": 1678234567000,    // UTC timestamp
+  "components": {                // Component scores
+    "price_action": {
+      "score": 80,
+      "impact": 4.0,
+      "interpretation": "Strong bullish price action"
+    },
+    "momentum": {
+      "score": 70,
+      "impact": 3.0
+    },
+    "technical": { /*...*/ },
+    "volume": { /*...*/ },
+    "orderbook": { /*...*/ },
+    "orderflow": { /*...*/ },
+    "sentiment": { /*...*/ },
+    "price_structure": { /*...*/ }
+  },
+  "entry_price": 54800.0,        // Recommended entry level
+  "stop_loss": 53500.0,          // Suggested stop loss
+  "targets": {                   // Price targets
+    "target1": { "price": 57500.0 },
+    "target2": { "price": 60000.0 }
+  },
+  "insights": [                  // Key market observations
+    "Volume increasing with price breakout",
+    "Multi-timeframe momentum alignment"
+  ],
+  "actionable_insights": [       // Specific trading recommendations
+    "Consider entry on retest of 54800 level",
+    "Scale out at first target (57500)"
+  ]
+}
+```
+
+#### Implementation:
+
+Signals are stored as JSON files in the `reports/json` directory and served through FastAPI endpoints. The system provides extensive filtering and pagination capabilities for efficient data retrieval:
+
+```python
+@router.get("/", response_model=SignalList)
+async def get_all_signals(
+    page: int = Query(1, ge=1),
+    size: int = Query(10, ge=1, le=100),
+    symbol: Optional[str] = None,
+    signal_type: Optional[str] = None,
+    min_score: Optional[float] = None,
+    from_date: Optional[str] = None,
+    to_date: Optional[str] = None
+):
+    """
+    Get paginated list of signals with filtering options
+    """
+    # Implementation with filters, pagination, and sorting
+```
+
+For quick testing and development, a standalone test script (`test_signals_api.py`) is provided that creates a minimal FastAPI app with only the signals router:
+
+```python
+# Run with: python test_signals_api.py
+from fastapi import FastAPI
+import uvicorn
+from src.api.routes.signals import router as signals_router
+
+app = FastAPI(title="Signals API Test")
+app.include_router(signals_router, tags=["signals"])
+
+if __name__ == "__main__":
+    # Opens browser to the API docs automatically
+    uvicorn.run(app, host="0.0.0.0", port=8000)
+```
+
+This script automatically creates sample signals if none exist and opens the Swagger UI documentation in your browser, making it easy to explore and test the API endpoints.
+
+#### Signal Reports and Visualizations
+
+In addition to JSON data, Virtuoso generates comprehensive PDF reports and charts for each trading signal:
+
+- **PDF Reports**: Detailed analysis documents containing signal data, market context, component breakdowns, and trading recommendations
+- **Chart Images**: Technical charts with entry/exit levels, targets, and key indicators visualized
+
+These files are automatically generated alongside JSON signals and stored in organized directories:
+- JSON files: `reports/json/`
+- PDF reports: `reports/pdfs/`
+- Chart images: `reports/charts/`
+
+The report generation system includes:
+
+1. **Candlestick Charts with Annotations**:
+   - Entry and exit levels
+   - Stop-loss visualization
+   - Target price levels 
+   - Color-coded zones for risk/reward
+
+2. **Component Breakdowns**:
+   - Visual representation of each analysis component
+   - Score contribution charts
+   - Pattern identification graphics
+
+3. **PDF Organization**:
+   - Signal summary
+   - Market context
+   - Trading recommendations
+   - Risk management guidelines
+
+File naming follows a consistent pattern: `{SYMBOL}_{TIMESTAMP}_{TYPE}.{EXTENSION}` for easy reference and retrieval.
+
+#### Accessing PDF Reports and Charts
+
+The Signals API provides access to PDF reports and chart images through dedicated endpoints:
+
+- **/api/signals/file/{filename}/pdf**: Retrieves the PDF report associated with a specific signal
+- **/api/signals/file/{filename}/chart**: Gets the chart image associated with a signal
+
+Each signal in the API response includes references to its associated files:
+
+```json
+{
+  "symbol": "BTCUSDT",
+  "signal": "BULLISH",
+  "score": 78.5,
+  // ... other signal data ...
+  "file_references": {
+    "json": "/reports/json/BTCUSDT_20230401_123045_data.json",
+    "pdf": "/reports/pdfs/BTCUSDT_20230401_123045_report.pdf",
+    "chart": "/reports/charts/BTCUSDT_20230401_123045_chart.png"
+  }
+}
+```
+
+For integration with external systems, Base64-encoded versions of PDFs and charts can be requested:
+
+```
+GET /api/signals/file/{filename}/pdf?format=base64
+```
+
+This makes it easy to embed reports and visualizations directly into web applications, trading platforms, or notification systems.
+
+The signals API serves as the core output interface for the Virtuoso trading system, allowing seamless integration with downstream applications and trading interfaces.
 
 ---
 
