@@ -19,6 +19,8 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+virtuoso_trading.egg-info/
+virtuoso.egg-info/
 
 # Virtual environments
 venv/
@@ -60,6 +62,16 @@ src/logs/
 *.sqlite
 *.db
 cache/
+*_reporter.log
+*_report.json
+*_report.log
+*_test.log
+enhanced_report.json
+trading.log
+indicators.log
+websocket.log
+market_monitor.log
+data_processor.log
 
 # OS specific files
 .DS_Store
@@ -76,6 +88,9 @@ Thumbs.db
 *.swp
 *.swo
 *~
+.cursor/
+.cursorignore
+.cursorrules
 
 # Test files
 *.test
@@ -98,6 +113,8 @@ tests/__pycache__/
 *.backup
 *_backup.*
 *.bak.*
+temp/
+path/
 
 # Duplicate and development files
 volume_fixes.py
@@ -116,9 +133,33 @@ volume_indicators_new.py
 !tsconfig.json
 !requirements.json
 !configuration.json
+*.png
+
+# Reports and exports
+reports/pdf/
+reports/pdfs/
+reports/json/
+reports/charts/
+reports/session_reports/
+exports/
+test-reports/
+# Keep the directories but not their contents
+!reports/pdf/.gitkeep
+!reports/json/.gitkeep
+!reports/charts/.gitkeep
+!reports/session_reports/.gitkeep
+!exports/.gitkeep
+
+# Generated report files
+*_report.pdf
+*_data.json
+*_chart.png
+*_report_*.pdf
+*_report_*.html
+*_report_*.json
+profiling_summary.md
 
 # Test reports
-test-reports/
 coverage/
 .coverage
 .pytest_cache/
@@ -126,6 +167,11 @@ htmlcov/
 
 # Jupyter Notebook
 .ipynb_checkpoints
+
+# Backup and profiling
+backup/
+profiling/
+!profiling/.gitkeep
 
 # Proprietary algorithms - KEEP PRIVATE
 src/core/analysis/confluence.py
