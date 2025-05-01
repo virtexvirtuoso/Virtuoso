@@ -2,6 +2,7 @@ from typing import Dict, Optional
 import logging
 from .base import BaseExchange
 from .bybit import BybitExchange
+from .bybit_demo import BybitDemoExchange
 from .coinbase import CoinbaseExchange
 from .hyperliquid import HyperliquidExchange
 
@@ -12,6 +13,7 @@ class ExchangeFactory:
     
     EXCHANGE_MAP = {
         'bybit': BybitExchange,
+        'bybit_demo': BybitDemoExchange,
         'coinbase': CoinbaseExchange,
         'hyperliquid': HyperliquidExchange
     }
@@ -28,6 +30,11 @@ class ExchangeFactory:
             Initialized exchange instance or None if initialization fails
         """
         try:
+            # Check if we're using demo mode
+            if exchange_id == 'bybit' and config.get('demo_mode', False):
+                exchange_id = 'bybit_demo'
+                logger.info("Creating Bybit Demo exchange instance")
+            
             # Get exchange class
             exchange_class = cls.EXCHANGE_MAP.get(exchange_id)
             if not exchange_class:
@@ -48,6 +55,10 @@ class ExchangeFactory:
                 
                 if 'testnet_endpoint' not in config['websocket']:
                     config['websocket']['testnet_endpoint'] = config.get('testnet_endpoint', 'wss://stream-testnet.bybit.com/v5/public')
+                
+                # Add demo endpoint if needed
+                if 'demo_endpoint' not in config['websocket'] and exchange_id == 'bybit_demo':
+                    config['websocket']['demo_endpoint'] = 'wss://stream-demo.bybit.com/v5/public'
             
             # Create and initialize exchange instance
             logger.info(f"Creating {exchange_id} exchange instance...")

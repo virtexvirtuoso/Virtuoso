@@ -49,6 +49,23 @@ market:
     top_symbols_update_interval_hours: 8 # Update interval for dynamic top symbols
     use_static_list: false          # Use only static symbol list
 
+# Reporting Configuration
+# --------------------
+# Settings for report generation and PDF attachments
+reporting:
+  enabled: true                     # Enable report generation
+  attach_pdf: true                  # Attach PDF reports to Discord alerts
+  attach_json: true                 # Attach JSON data to Discord alerts
+  template_dir: templates           # Directory containing report templates
+  base_dir: reports                 # Base directory for storing reports
+  # Report types enabled
+  types:
+    signals: true                   # Enable reports for trading signals
+    market_reports: true            # Enable market overview reports
+  # PDF customization
+  pdf:
+    use_dark_mode: true             # Use dark mode for PDFs
+    include_charts: true            # Include price and indicator charts
 
 # Timeframes Configuration
 # ---------------------
@@ -94,7 +111,7 @@ timeframes:
 confluence:
   # Thresholds for signal generation
   thresholds:
-    buy: 68                         # Score at or above this value generates a bullish signal
+    buy: 65                         # Score at or above this value generates a bullish signal
     neutral_buffer: 5               # Buffer zone around thresholds to prevent signal flipping
     sell: 35                        # Score at or below this value generates a bearish signal
   # Weight configurations for all components and sub-components

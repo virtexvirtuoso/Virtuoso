@@ -20,6 +20,7 @@
 - [System Architecture](#system-architecture)
 - [System Requirements](#system-requirements)
 - [Quick Start Guide](#quick-start-guide)
+- [API Endpoints Reference](#api-endpoints-reference)
 - [Performance Optimization](#performance-optimization)
 - [Contributing](#contributing)
 - [License](#license)
@@ -700,6 +701,65 @@ curl http://localhost:8000/health
 # View API docs
 open http://localhost:8000/docs
 ```
+
+---
+
+## API Endpoints Reference
+
+Virtuoso provides a comprehensive suite of REST API endpoints and WebSocket connections for integrating with trading platforms, dashboards, or custom applications.
+
+### Signals API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/signals/latest` | GET | Get the latest signals across all symbols |
+| `/api/signals/symbol/{symbol}` | GET | Get signals for a specific symbol |
+| `/api/signals` | GET | Get all signals with filtering and pagination |
+| `/api/signals/{filename}` | GET | Get a specific signal by its filename |
+
+### Market Data API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/market/exchanges` | GET | List all available exchanges |
+| `/api/market/{exchange_id}/{symbol}/data` | GET | Get market data for a symbol from a specific exchange |
+| `/api/market/{exchange_id}/{symbol}/orderbook` | GET | Get orderbook data for a symbol |
+| `/api/market/{exchange_id}/{symbol}/trades` | GET | Get recent trades for a symbol |
+| `/api/market/compare/{symbol}` | GET | Compare market data across all exchanges for a symbol |
+| `/api/market/{exchange_id}/{symbol}/analysis` | GET | Get technical analysis for a symbol |
+
+### System API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/system/status` | GET | Get overall system status including CPU, memory, disk usage and exchange status |
+| `/api/system/config` | GET | Get system configuration (excluding sensitive data) |
+| `/api/system/exchanges/status` | GET | Get detailed status for each exchange |
+| `/api/system/performance` | GET | Get system performance metrics |
+
+### Trading API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/trading/{exchange_id}/order` | POST | Place a new order on a specific exchange |
+| `/api/trading/{exchange_id}/orders` | GET | Get orders from a specific exchange |
+| `/api/trading/{exchange_id}/positions` | GET | Get open positions from a specific exchange |
+| `/api/trading/{exchange_id}/position/update` | POST | Update position parameters (stop loss, take profit) |
+| `/api/trading/portfolio/summary` | GET | Get portfolio summary across all exchanges |
+
+### WebSocket API Endpoints
+
+| Endpoint | Description |
+|----------|-------------|
+| `/ws/{client_id}` | WebSocket connection for real-time data |
+
+#### WebSocket Message Types
+
+- `subscribe` - Subscribe to real-time updates for a symbol
+- `unsubscribe` - Unsubscribe from updates for a symbol
+- `market_update` - Real-time market data and analysis updates (sent from server to client)
+
+For detailed API documentation including request parameters, response formats, and example usage, see the [API Documentation](docs/api/) section.
 
 ---
 

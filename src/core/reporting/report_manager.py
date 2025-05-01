@@ -16,6 +16,7 @@ from typing import Dict, Any, List, Tuple, Optional, Union
 from pathlib import Path
 import pandas as pd
 from datetime import datetime
+import numpy as np
 
 # Local imports
 from src.core.reporting.pdf_generator import ReportGenerator
@@ -79,8 +80,9 @@ class ReportManager:
         ohlcv_data: Optional[pd.DataFrame] = None,
         webhook_message: Optional[Dict[str, Any]] = None,
         webhook_url: Optional[str] = None,
-        signal_type: str = 'alert'
-    ) -> Tuple[bool, Optional[str], Optional[str]]:
+        signal_type: Optional[str] = None,
+        output_path: Optional[str] = None
+    ) -> Tuple[bool, str, str]:
         """
         Generate PDF report and attach it to webhook message.
         
@@ -90,102 +92,121 @@ class ReportManager:
             webhook_message: Discord webhook message to modify
             webhook_url: Discord webhook URL
             signal_type: Type of signal ('alert', 'report', etc.)
+            output_path: Optional explicit output path for the PDF
             
         Returns:
             Tuple of (success, pdf_path, json_path)
         """
+        if not signal_data:
+            return False, "", ""
+            
         try:
-            # Start session if needed
-            await self.start()
-            
-            # Get symbol from signal data
-            symbol = signal_data.get('symbol', 'Unknown')
-            
-            # Create timestamp and filename
+            # Get timestamp of signal for filename
             timestamp = signal_data.get('timestamp', int(time.time() * 1000))
+            if isinstance(timestamp, str):
+                try:
+                    timestamp = int(timestamp)
+                except ValueError:
+                    timestamp = int(time.time() * 1000)
             
-            # Handle different timestamp formats
-            if isinstance(timestamp, datetime):
-                # Convert datetime to milliseconds since epoch
-                timestamp_ms = int(timestamp.timestamp() * 1000)
-                dt = timestamp
+            # Convert to datetime for filename
+            dt = datetime.fromtimestamp(timestamp / 1000)
+            timestamp_str = dt.strftime("%Y%m%d_%H%M%S")
+            
+            # Generate filenames for reports
+            if signal_type is None or signal_type == 'signal':
+                base_filename = f"{signal_data.get('symbol', 'UNKNOWN')}_{timestamp_str}"
+            elif signal_type == 'market_report':
+                base_filename = f"market_report_{timestamp_str}"
             else:
-                # Assume it's milliseconds since epoch
-                timestamp_ms = int(timestamp)
-                dt = datetime.fromtimestamp(timestamp_ms / 1000)
+                base_filename = f"{signal_type}_{signal_data.get('symbol', 'UNKNOWN')}_{timestamp_str}"
                 
-            date_str = dt.strftime('%Y%m%d_%H%M%S')
+            # Determine export directory
+            if signal_type == 'market_report':
+                export_dir = os.path.join('exports', 'market_reports')
+            else:
+                export_dir = os.path.join('exports')
+                
+            os.makedirs(export_dir, exist_ok=True)
             
-            # Generate filenames
-            base_filename = f"{symbol}_{signal_data.get('signal', 'SIGNAL')}_{date_str}"
-            pdf_filename = f"{base_filename}.pdf"
-            json_filename = f"{base_filename}.json"
-            
-            # File paths
-            pdf_path = os.path.join(self.pdf_dir, pdf_filename)
-            json_path = os.path.join(self.json_dir, json_filename)
-            
-            # Make a copy of signal_data to avoid modifying the original
-            json_data = signal_data.copy()
-            
-            # Convert datetime objects to ISO format strings for JSON serialization
-            def convert_datetimes(obj):
-                if isinstance(obj, dict):
-                    return {k: convert_datetimes(v) for k, v in obj.items()}
-                elif isinstance(obj, list):
-                    return [convert_datetimes(item) for item in obj]
-                elif isinstance(obj, datetime):
-                    return obj.isoformat()
-                else:
-                    return obj
-                    
-            json_data = convert_datetimes(json_data)
-            
+            # If output_path is provided, use it instead of generating one
+            if output_path:
+                pdf_path = output_path
+            else:
+                pdf_path = os.path.join(export_dir, f"{base_filename}.pdf")
+                
             # Export JSON data
-            with open(json_path, 'w') as f:
-                json.dump(json_data, f, indent=2)
-            
-            self.logger.info(f"Exported JSON data to {json_path}")
-            
-            # Generate PDF report
-            success = await self.pdf_generator.generate_report(
-                signal_data=signal_data,
-                ohlcv_data=ohlcv_data,
-                output_path=pdf_path
-            )
-            
-            if not success:
-                self.logger.warning(f"Failed to generate PDF report for {symbol}")
-                return False, None, json_path
-            
-            self.logger.info(f"Generated PDF report at {pdf_path}")
-            
-            # If webhook message is provided, attach files
-            if webhook_message is not None and webhook_url is not None:
-                self.logger.info(f"Attempting to attach files to webhook message for {symbol}")
+            json_path = os.path.join(export_dir, f"{base_filename}.json")
+            try:
+                # Define custom JSON serializer function to handle non-serializable types
+                def json_serializer(obj):
+                    if isinstance(obj, (datetime, pd.Timestamp)):
+                        return obj.isoformat()
+                    elif hasattr(pd, 'Timestamp') and isinstance(obj, pd.Timestamp):
+                        return obj.isoformat()
+                    elif isinstance(obj, (np.int64, np.int32, np.int16, np.int8)):
+                        return int(obj)
+                    elif isinstance(obj, (np.float64, np.float32, np.float16)):
+                        return float(obj)
+                    elif isinstance(obj, np.ndarray):
+                        return obj.tolist()
+                    elif isinstance(obj, pd.DataFrame):
+                        return obj.to_dict(orient='records')
+                    elif isinstance(obj, pd.Series):
+                        return obj.to_dict()
+                    return str(obj)  # Default: convert to string for any other type
                 
-                # Attach files to webhook
-                files_attached = await self._attach_files_to_webhook(
-                    webhook_message=webhook_message,
-                    webhook_url=webhook_url,
-                    files=[pdf_path, json_path],
-                    file_descriptions=["PDF Report", "JSON Data"]
-                )
+                with open(json_path, 'w') as f:
+                    json.dump(signal_data, f, indent=2, default=json_serializer)
+                self.logger.info(f"JSON report saved to {json_path}")
+            except Exception as e:
+                self.logger.error(f"Failed to save JSON report: {str(e)}")
+                self.logger.debug(traceback.format_exc())
                 
-                if not files_attached:
-                    self.logger.warning(f"Failed to attach files to webhook for {symbol}")
-                    return False, pdf_path, json_path
-                
-                self.logger.info(f"Successfully attached files to webhook for {symbol}")
+            # Get PDF generator instance
+            generator = self.pdf_generator
+            
+            # Generate the PDF
+            if signal_type == 'market_report':
+                self.logger.info(f"Generating market report PDF for {signal_data.get('symbol', 'MARKET')}")
+                success = await generator.generate_market_html_report(signal_data, output_path=pdf_path)
             else:
-                self.logger.debug("No webhook message provided, skipping attachment")
-            
-            return True, pdf_path, json_path
-        
+                self.logger.info(f"Generating signal report PDF for {signal_data.get('symbol', 'UNKNOWN')}")
+                # Default to regular signal report generation
+                success = await generator.generate_report(signal_data, ohlcv_data, output_path=pdf_path)
+                
+            if success:
+                self.logger.info(f"PDF report generated successfully: {pdf_path}")
+                
+                # If webhook message is provided, attach the file to it
+                if webhook_message and os.path.exists(pdf_path):
+                    if 'files' not in webhook_message:
+                        webhook_message['files'] = []
+                        
+                    webhook_message['files'].append({
+                        'path': pdf_path,
+                        'filename': os.path.basename(pdf_path),
+                        'description': f"Report for {signal_data.get('symbol', 'UNKNOWN')}"
+                    })
+                    
+                    # If webhook URL is provided, send the message directly
+                    if webhook_url and self.discord_webhook_url:
+                        await self._attach_files_to_webhook(
+                            webhook_message=webhook_message,
+                            webhook_url=webhook_url,
+                            files=[pdf_path],
+                            file_descriptions=["PDF Report"]
+                        )
+                        
+                return True, pdf_path, json_path
+            else:
+                self.logger.error("Failed to generate PDF report")
+                return False, "", json_path
+                
         except Exception as e:
-            self.logger.error(f"Error generating and attaching report: {str(e)}")
-            self.logger.error(traceback.format_exc())
-            return False, None, None
+            self.logger.error(f"Error generating report: {str(e)}")
+            self.logger.debug(traceback.format_exc())
+            return False, "", ""
     
     async def _attach_files_to_webhook(
         self,
@@ -398,4 +419,5 @@ class ReportManager:
         
         except Exception as e:
             self.logger.error(f"Error cleaning up old reports: {str(e)}")
+            self.logger.error(traceback.format_exc())
             return 0, 0 
