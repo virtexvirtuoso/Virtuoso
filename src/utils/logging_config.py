@@ -192,7 +192,12 @@ def configure_logging(config: Dict[str, Any] = None) -> None:
             'urllib3': {'level': 'WARNING'},
             'websockets': {'level': 'WARNING'},
             'asyncio': {'level': 'WARNING'},
-            'ccxt': {'level': 'WARNING'}
+            'ccxt': {'level': 'WARNING'},
+            # Silence matplotlib's verbose debug logs
+            'matplotlib': {'level': 'WARNING'},
+            'matplotlib.font_manager': {'level': 'INFO'},
+            'matplotlib.backends': {'level': 'WARNING'},
+            'matplotlib.ticker': {'level': 'WARNING'}
         }
     }
     

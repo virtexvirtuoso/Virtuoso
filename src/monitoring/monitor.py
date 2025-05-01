@@ -28,6 +28,11 @@ from typing import Dict, List, Any, Optional, Callable, Union, Tuple
 from datetime import datetime, timezone, timedelta
 import pandas as pd
 import numpy as np
+
+# Import and apply matplotlib silencing before matplotlib imports
+from src.utils.matplotlib_utils import silence_matplotlib_logs
+silence_matplotlib_logs()
+
 import matplotlib
 import psutil
 matplotlib.use('Agg')
@@ -2613,128 +2618,127 @@ class MarketMonitor:
             self.logger.debug(traceback.format_exc())
 
     async def _generate_signal(self, symbol: str, analysis_result: Dict[str, Any]) -> None:
-        """Generate trading signal based on analysis results"""
+        """Generate trading signal based on analysis results with enhanced validation and tracking.
+        
+        Args:
+            symbol: Trading pair symbol
+            analysis_result: Analysis results dictionary
+        """
         try:
-            self.logger.debug("\n=== Generating Signal ===")
+            # Generate unique transaction ID to trace this signal through the system
+            transaction_id = str(uuid.uuid4())[:8]
+            signal_id = str(uuid.uuid4())[:8]
             
-            # CRITICAL DEBUG: Log start of signal generation with complete details
-            self.logger.critical(f"CRITICAL DEBUG: Starting signal generation for {symbol} in _generate_signal")
-            self.logger.critical(f"CRITICAL DEBUG: Analysis result keys: {list(analysis_result.keys())}")
+            self.logger.debug(f"\n=== Generating Signal [TXN:{transaction_id}][SIG:{signal_id}] ===")
+            self.logger.debug(f"Processing signal for {symbol} with {len(analysis_result.keys())} analysis components")
             
-            # Create signal data
-            current_time = pd.Timestamp.now()
+            # Extract and validate core components
+            confluence_score = float(analysis_result.get('score', analysis_result.get('confluence_score', 0)))
+            reliability = float(analysis_result.get('reliability', 100.0))  # Default to full reliability, keep 0-100 scale
+            
+            # Get components and results
+            components = analysis_result.get('components', {})
+            results = analysis_result.get('results', {})
+            
+            # Get current price with fallbacks
+            price = None
+            if 'current_price' in analysis_result:
+                price = float(analysis_result['current_price'])
+            elif 'price' in analysis_result:
+                price = float(analysis_result['price'])
+            elif 'metadata' in analysis_result and 'price' in analysis_result['metadata']:
+                price = float(analysis_result['metadata']['price'])
+            
+            if price is None and hasattr(self, 'market_data_manager'):
+                try:
+                    market_data = await self.market_data_manager.get_market_data(symbol)
+                    if market_data and 'ticker' in market_data:
+                        price = float(market_data['ticker'].get('last', market_data['ticker'].get('close', 0)))
+                except Exception as e:
+                    self.logger.warning(f"[TXN:{transaction_id}][SIG:{signal_id}] Error getting price from market data: {str(e)}")
+            
+            # Get thresholds from config
+            config = self.config.get('confluence', {}).get('thresholds', {})
+            buy_threshold = float(config.get('buy', 70))
+            sell_threshold = float(config.get('sell', 30))
+            
+            # Create enhanced signal data
             signal_data = {
                 'symbol': symbol,
-                'timestamp': int(current_time.timestamp() * 1000),  # Numeric timestamp in milliseconds
-                'timestamp_iso': current_time.isoformat(),  # Keep ISO format as backup
-                'confluence_score': analysis_result.get('score', analysis_result.get('confluence_score', 0)),
-                'reliability': analysis_result.get('reliability', 0),
-                'components': analysis_result.get('components', {}),
-                'metadata': analysis_result.get('metadata', {})
+                'confluence_score': confluence_score,
+                'components': components,
+                'results': results,
+                'weights': analysis_result.get('metadata', {}).get('weights', {}),
+                'reliability': reliability,
+                'price': price,
+                'transaction_id': transaction_id,
+                'signal_id': signal_id,
+                'buy_threshold': buy_threshold,
+                'sell_threshold': sell_threshold
             }
             
-            # CRITICAL DEBUG: Log signal data created
-            self.logger.critical(f"CRITICAL DEBUG: Created signal_data with confluence_score: {signal_data['confluence_score']:.2f}")
-
-            # Add signal direction
-            score = signal_data['confluence_score']
+            # Add enhanced analysis data if available
+            if 'market_interpretations' in analysis_result:
+                signal_data['market_interpretations'] = analysis_result['market_interpretations']
             
-            # Use thresholds from config.confluence section for consistency
-            confluence_config = self.config.get('confluence', {})
-            threshold_config = confluence_config.get('thresholds', {})
-            buy_threshold = float(threshold_config.get('buy', 60))
-            sell_threshold = float(threshold_config.get('sell', 40))
-            
-            # CRITICAL DEBUG: Log thresholds
-            self.logger.critical(f"CRITICAL DEBUG: Using thresholds - buy: {buy_threshold}, sell: {sell_threshold}")
-            
-            # Add thresholds to signal data for downstream processors
-            signal_data['buy_threshold'] = buy_threshold
-            signal_data['sell_threshold'] = sell_threshold
-            
-            # Add current price if available
-            if 'current_price' in analysis_result:
-                signal_data['current_price'] = analysis_result['current_price']
-            
-            # Add required fields for SignalGenerator validation
-            if 'technical_score' in analysis_result or 'momentum_score' in analysis_result:
-                signal_data['momentum_score'] = analysis_result.get('technical_score', analysis_result.get('momentum_score', 50))
-            else:
-                # Extract from components if available
-                components = analysis_result.get('components', {})
-                signal_data['momentum_score'] = components.get('technical', components.get('momentum', 50))
+            if 'actionable_insights' in analysis_result:
+                signal_data['actionable_insights'] = analysis_result['actionable_insights']
                 
-            if 'volume_score' in analysis_result:
-                signal_data['volume_score'] = analysis_result['volume_score']
-            else:
-                # Extract from components if available
-                components = analysis_result.get('components', {})
-                signal_data['volume_score'] = components.get('volume', 50)
+            if 'influential_components' in analysis_result:
+                signal_data['influential_components'] = analysis_result['influential_components']
                 
-            if 'orderflow_score' in analysis_result:
-                signal_data['orderflow_score'] = analysis_result['orderflow_score']
-            else:
-                # Extract from components if available
-                components = analysis_result.get('components', {})
-                signal_data['orderflow_score'] = components.get('orderflow', 50)
+            if 'top_weighted_subcomponents' in analysis_result:
+                signal_data['top_weighted_subcomponents'] = analysis_result['top_weighted_subcomponents']
             
-            if score >= buy_threshold:
-                signal_data['direction'] = 'buy'
-                signal_data['signal'] = 'BUY'  # Add signal field for compatibility
-                self.logger.critical(f"CRITICAL DEBUG: Generated BUY signal for {symbol} with score {score:.2f} (threshold: {buy_threshold})")
-            elif score <= sell_threshold:
-                signal_data['direction'] = 'sell'
-                signal_data['signal'] = 'SELL'  # Add signal field for compatibility
-                self.logger.critical(f"CRITICAL DEBUG: Generated SELL signal for {symbol} with score {score:.2f} (threshold: {sell_threshold})")
-            else:
-                signal_data['direction'] = 'neutral'
-                signal_data['signal'] = 'NEUTRAL'  # Add signal field for compatibility
-                self.logger.critical(f"CRITICAL DEBUG: Generated NEUTRAL signal for {symbol} with score {score:.2f} (thresholds: buy={buy_threshold}, sell={sell_threshold})")
-
-            # CRITICAL DEBUG: Check if signal generator is available
-            if hasattr(self, 'signal_generator') and self.signal_generator:
-                self.logger.critical(f"CRITICAL DEBUG: Signal generator is available - class: {self.signal_generator.__class__.__name__}")
-                
-                # Check if signal_generator has necessary methods
-                if hasattr(self.signal_generator, 'process_signal'):
-                    self.logger.critical(f"CRITICAL DEBUG: Will call signal_generator.process_signal() for {symbol}")
+            # Determine signal direction
+            if confluence_score >= buy_threshold:
+                signal_data['signal'] = 'BUY'
+                self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}] Generated BUY signal for {symbol} " +
+                               f"with score {confluence_score:.2f} (threshold: {buy_threshold})")
+                           
+                # Process signal through SignalGenerator
+                if hasattr(self, 'signal_generator') and self.signal_generator:
                     try:
-                        # Check inner alert manager in signal generator
-                        if hasattr(self.signal_generator, 'alert_manager') and self.signal_generator.alert_manager:
-                            self.logger.critical(f"CRITICAL DEBUG: AlertManager in signal_generator has handlers: {self.signal_generator.alert_manager.handlers}")
-                        
-                        self.logger.critical(f"CRITICAL DEBUG: Calling signal_generator.process_signal() NOW")
                         await self.signal_generator.process_signal(signal_data)
-                        self.logger.critical(f"CRITICAL DEBUG: signal_generator.process_signal() completed successfully")
                     except Exception as e:
-                        self.logger.critical(f"CRITICAL DEBUG: Error in signal_generator.process_signal(): {str(e)}")
-                        self.logger.critical(traceback.format_exc())
-                else:
-                    self.logger.critical(f"CRITICAL DEBUG: signal_generator.process_signal() method NOT FOUND")
-                    
-                    # Try generate_signal as alternative
-                    if hasattr(self.signal_generator, 'generate_signal'):
-                        self.logger.critical(f"CRITICAL DEBUG: Trying alternative signal_generator.generate_signal()")
-                        try:
-                            await self.signal_generator.generate_signal(signal_data)
-                            self.logger.critical(f"CRITICAL DEBUG: signal_generator.generate_signal() completed successfully")
-                        except Exception as e:
-                            self.logger.critical(f"CRITICAL DEBUG: Error in signal_generator.generate_signal(): {str(e)}")
-                            self.logger.critical(traceback.format_exc())
-                    else:
-                        self.logger.critical(f"CRITICAL DEBUG: No process_signal or generate_signal methods found in signal_generator")
+                        self.logger.error(f"[TXN:{transaction_id}][SIG:{signal_id}] Error in signal_generator: {str(e)}")
+                        self.logger.debug(traceback.format_exc())
+                        
+            elif confluence_score <= sell_threshold:
+                signal_data['signal'] = 'SELL'
+                self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}] Generated SELL signal for {symbol} " +
+                               f"with score {confluence_score:.2f} (threshold: {sell_threshold})")
+                           
+                # Process signal through SignalGenerator
+                if hasattr(self, 'signal_generator') and self.signal_generator:
+                    try:
+                        await self.signal_generator.process_signal(signal_data)
+                    except Exception as e:
+                        self.logger.error(f"[TXN:{transaction_id}][SIG:{signal_id}] Error in signal_generator: {str(e)}")
+                        self.logger.debug(traceback.format_exc())
             else:
-                self.logger.critical(f"CRITICAL DEBUG: No signal_generator available in MarketMonitor")
+                signal_data['signal'] = 'NEUTRAL'
+                self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] No signal generated - " +
+                                f"score {confluence_score:.2f} in neutral zone ({sell_threshold}-{buy_threshold})")
+                return
+                
+            # Update metrics if available
+            if hasattr(self, 'metrics_manager') and self.metrics_manager:
+                try:
+                    await self.metrics_manager.update_signal_metrics(symbol, signal_data)
+                except Exception as e:
+                    self.logger.warning(f"[TXN:{transaction_id}][SIG:{signal_id}] Error updating metrics: {str(e)}")
             
-            # Removed fallback direct alert manager call to prevent duplicate alerts
-            
-            # Log signal summary
-            self.logger.debug(f"Signal generated for {symbol}: {signal_data['direction']}")
-            self.logger.info(f"Generated {signal_data['signal']} signal for {symbol} with score {signal_data['confluence_score']:.2f} (threshold: {signal_data['buy_threshold'] if signal_data['direction'] == 'buy' else signal_data['sell_threshold']})")
-            
+            # Store signal data if database available
+            if hasattr(self, 'database_client') and self.database_client:
+                try:
+                    await self.database_client.store_signal(symbol, signal_data)
+                except Exception as e:
+                    self.logger.warning(f"[TXN:{transaction_id}][SIG:{signal_id}] Error storing signal: {str(e)}")
+                
         except Exception as e:
-            self.logger.critical(f"CRITICAL DEBUG: Error in _generate_signal: {str(e)}")
-            self.logger.critical(traceback.format_exc())
+            self.logger.error(f"Error generating signal for {symbol}: {str(e)}")
+            self.logger.debug(traceback.format_exc())
 
     async def _monitor_volume(self, symbol: str, current: Dict[str, Any], previous: Optional[float], market_data: Dict[str, Any]) -> None:
         """Monitor volume indicators for significant changes."""
@@ -5462,11 +5466,11 @@ class MarketMonitor:
         except Exception as e:
             return {'status': 'error', 'message': str(e)}
 
-    def analyze_market(self, formatted_data: Dict[str, Any]) -> Dict[str, Any]:
+    async def analyze_market(self, formatted_data: Dict[str, Any]) -> Dict[str, Any]:
         """Analyze market data and generate signals.
         
         This method is called from main.py and serves as the entry point for market analysis.
-        It handles the analysis and alert sending directly to ensure alerts are triggered.
+        It delegates to the async analysis pipeline to ensure consistent alert handling.
         
         Args:
             formatted_data: Dictionary containing formatted market data
@@ -5476,144 +5480,16 @@ class MarketMonitor:
         """
         try:
             symbol = formatted_data.get('symbol', 'UNKNOWN')
-            self.logger.info(f"ANALYZE_MARKET: Processing data for {symbol}")
+            self.logger.info(f"ANALYZE_MARKET: Starting analysis for {symbol}")
             
-            # Check if alert manager is available
-            if not hasattr(self, 'alert_manager') or self.alert_manager is None:
-                self.logger.error(f"ANALYZE_MARKET: Alert manager not available for {symbol} - signals won't be sent")
-            else:
-                self.logger.info(f"ANALYZE_MARKET: Alert manager available for {symbol}")
-                
-                # Log alert manager handlers
-                if hasattr(self.alert_manager, 'handlers'):
-                    self.logger.info(f"ANALYZE_MARKET: Alert manager handlers: {self.alert_manager.handlers}")
-                
-                # Directly check webhook URL
-                if hasattr(self.alert_manager, 'discord_webhook_url'):
-                    webhook_url = self.alert_manager.discord_webhook_url
-                    if webhook_url:
-                        self.logger.info(f"ANALYZE_MARKET: Discord webhook URL available: {webhook_url[:20]}...{webhook_url[-10:]}")
-                    else:
-                        self.logger.error(f"ANALYZE_MARKET: Discord webhook URL is not set")
-            
-            # Run analysis to get the confluence score
-            # Use a try-except block to catch any errors
-            try:
-                # Get analysis from confluence analyzer
-                self.logger.info(f"ANALYZE_MARKET: Running confluence analysis for {symbol}")
-                analysis_result = self.confluence_analyzer.analyze(formatted_data)
-                
-                # Extract the confluence score
-                confluence_score = 0
-                if isinstance(analysis_result, dict) and 'confluence_score' in analysis_result:
-                    confluence_score = analysis_result['confluence_score']
-                elif isinstance(analysis_result, dict) and 'score' in analysis_result:
-                    confluence_score = analysis_result['score']
-                
-                self.logger.info(f"ANALYZE_MARKET: Confluence score for {symbol}: {confluence_score}")
-                
-                # Check if the score exceeds the buy threshold
-                if hasattr(self.alert_manager, 'buy_threshold'):
-                    buy_threshold = self.alert_manager.buy_threshold
-                    self.logger.info(f"ANALYZE_MARKET: Buy threshold: {buy_threshold}")
-                    
-                    if confluence_score >= buy_threshold:
-                        self.logger.info(f"ANALYZE_MARKET: Score {confluence_score} exceeds buy threshold {buy_threshold} for {symbol}")
-                        
-                        # Directly send the alert using the alert manager
-                        if hasattr(self.alert_manager, 'send_confluence_alert'):
-                            self.logger.info(f"ANALYZE_MARKET: Sending confluence alert for {symbol}")
-                            
-                            # Create components dictionary
-                            components = {}
-                            if isinstance(analysis_result, dict) and 'components' in analysis_result:
-                                components = analysis_result['components']
-                            else:
-                                # Extract components from analysis result
-                                for key in ['technical', 'volume', 'orderbook', 'orderflow', 'sentiment', 'price_structure']:
-                                    if key in analysis_result:
-                                        components[key] = analysis_result[key].get('score', 50)
-                            
-                            # Create results dictionary
-                            results = {}
-                            if isinstance(analysis_result, dict) and 'results' in analysis_result:
-                                results = analysis_result['results']
-                            else:
-                                # Use the analysis result as results
-                                results = analysis_result
-                            
-                            # Import needed packages
-                            import asyncio
-                            
-                            # Get the event loop
-                            try:
-                                loop = asyncio.get_event_loop()
-                            except RuntimeError:
-                                # Create a new event loop if there isn't one
-                                loop = asyncio.new_event_loop()
-                                asyncio.set_event_loop(loop)
-                            
-                            # Send the alert synchronously using run_until_complete
-                            try:
-                                self.logger.info(f"ANALYZE_MARKET: Sending direct alert for {symbol}")
-                                loop.run_until_complete(
-                                    self.alert_manager.send_confluence_alert(
-                                        symbol=symbol,
-                                        confluence_score=confluence_score,
-                                        components=components,
-                                        results=results
-                                    )
-                                )
-                                self.logger.info(f"ANALYZE_MARKET: Direct alert sent for {symbol}")
-                            except Exception as e:
-                                self.logger.error(f"ANALYZE_MARKET: Failed to send direct alert: {str(e)}")
-                                self.logger.error(traceback.format_exc())
-                                
-                                # Try a fallback approach using low-level Discord webhook
-                                try:
-                                    self.logger.info(f"ANALYZE_MARKET: Using fallback webhook for {symbol}")
-                                    # Simple webhook message
-                                    webhook_message = {
-                                        "content": f"🚨 SIGNAL ALERT: {symbol} BUY {confluence_score:.2f}/100",
-                                        "username": "Virtuoso Alerts",
-                                        "avatar_url": "https://i.imgur.com/4M34hi2.png"
-                                    }
-                                    
-                                    # Send the webhook using curl
-                                    import subprocess
-                                    curl_cmd = [
-                                        "curl", "-X", "POST",
-                                        "-H", "Content-Type: application/json",
-                                        "-d", f'{{"content": "🚨 SIGNAL ALERT: {symbol} BUY {confluence_score:.2f}/100"}}',
-                                        self.alert_manager.discord_webhook_url
-                                    ]
-                                    result = subprocess.run(curl_cmd, capture_output=True, text=True)
-                                    self.logger.info(f"ANALYZE_MARKET: Fallback curl result: {result.returncode}")
-                                    if result.stdout:
-                                        self.logger.info(f"ANALYZE_MARKET: Curl output: {result.stdout[:100]}")
-                                    if result.stderr:
-                                        self.logger.info(f"ANALYZE_MARKET: Curl error: {result.stderr[:100]}")
-                                except Exception as e:
-                                    self.logger.error(f"ANALYZE_MARKET: Fallback webhook failed: {str(e)}")
-                        else:
-                            self.logger.error(f"ANALYZE_MARKET: send_confluence_alert method not found on alert_manager")
-                    else:
-                        self.logger.info(f"ANALYZE_MARKET: Score {confluence_score} does not exceed buy threshold {buy_threshold}")
-                else:
-                    self.logger.error(f"ANALYZE_MARKET: buy_threshold not found on alert_manager")
-            except Exception as e:
-                self.logger.error(f"ANALYZE_MARKET: Failed to run analysis: {str(e)}")
-                self.logger.error(traceback.format_exc())
-            
-            # Fallback to the traditional async approach
+            # Create task for async analysis pipeline
             import asyncio
             loop = asyncio.get_event_loop()
             try:
-                # Create the task anyway as a backup
                 task = loop.create_task(self.analyze_confluence_and_generate_signals(formatted_data))
-                self.logger.info(f"ANALYZE_MARKET: Created backup task for {symbol}")
+                self.logger.info(f"ANALYZE_MARKET: Created analysis task for {symbol}")
             except Exception as e:
-                self.logger.error(f"ANALYZE_MARKET: Error creating backup task: {str(e)}")
+                self.logger.error(f"ANALYZE_MARKET: Error creating analysis task: {str(e)}")
             
             # Return the formatted data as the analysis result
             # The actual signal generation and alerts happen asynchronously

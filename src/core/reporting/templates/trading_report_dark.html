@@ -320,7 +320,6 @@
             font-size: 10px;
             color: #999;
         }
-        
         /* Market interpretation callout */
         .market-interpretation {
             background-color: #252525;
@@ -328,6 +327,17 @@
             padding: 10px 15px;
             margin-bottom: 15px;
             font-style: italic;
+        }
+        
+        /* Reliability value colors */
+        .reliability-high {
+            color: #4CAF50;
+        }
+        .reliability-medium {
+            color: #FFC107;
+        }
+        .reliability-low {
+            color: #F44336;
         }
     </style>
 </head>
@@ -341,7 +351,8 @@
             </div>
             <div>
                 <div class="signal-badge" style="background-color: {{ signal_color }};">{{ signal_type }}</div>
-                <div class="date">{{ timestamp }}</div>
+                <div class="date">{{ timestamp
+                     }}</div>
             </div>
         </div>
         
@@ -351,7 +362,7 @@
                 <div class="label">Overall Score</div>
                 <div class="value" style="color: {{ signal_color }};">{{ score|format_number }}</div>
                 <div class="score-gauge">
-                    <div class="score-gauge-fill" style="width: {{ score }}%; background-color: {{ signal_color }};"></div>
+                    <div class="score-gauge-fill" style="width: {{ score_width_pct }}; background-color: {{ signal_color }};"></div>
                 </div>
                 <div class="score-gauge-markers">
                     <span>0</span>
@@ -500,4 +511,4 @@
         </div>
     </div>
 </body>
-</html> 
+</html>

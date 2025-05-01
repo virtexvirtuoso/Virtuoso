@@ -1328,3 +1328,60 @@ class MetricsManager:
         self.last_metrics_time = time.time()
         
         self.logger.info("Metrics reset completed")
+
+    async def update_signal_metrics(self, symbol: str, signal_data: Dict[str, Any]) -> None:
+        """Update signal metrics for a symbol.
+        
+        Args:
+            symbol: Trading symbol
+            signal_data: Signal data dictionary
+        """
+        try:
+            # Extract signal information
+            signal_type = signal_data.get('signal', 'NEUTRAL')
+            score = signal_data.get('confluence_score', signal_data.get('score', 0))
+            reliability = signal_data.get('reliability', 100)
+            
+            # Create metrics dictionary
+            metrics = {
+                'signal_score': float(score),
+                'signal_reliability': float(reliability),
+                'signal_generated': 1.0
+            }
+            
+            # Add signal type flag (1 for the detected type, 0 for others)
+            if signal_type == 'BUY':
+                metrics['signal_buy'] = 1.0
+                metrics['signal_sell'] = 0.0
+                metrics['signal_neutral'] = 0.0
+            elif signal_type == 'SELL':
+                metrics['signal_buy'] = 0.0
+                metrics['signal_sell'] = 1.0
+                metrics['signal_neutral'] = 0.0
+            else:
+                metrics['signal_buy'] = 0.0
+                metrics['signal_sell'] = 0.0
+                metrics['signal_neutral'] = 1.0
+            
+            # Add component scores if available
+            components = signal_data.get('components', {})
+            if components and isinstance(components, dict):
+                for name, value in components.items():
+                    try:
+                        metrics[f'component_{name}'] = float(value)
+                    except (ValueError, TypeError):
+                        self.logger.warning(f"Non-numeric component value: {name}={value}")
+            
+            # Add tags
+            tags = {
+                'symbol': symbol,
+                'signal_type': signal_type
+            }
+            
+            # Update metrics
+            await self.update_metrics(metrics, tags)
+            self.logger.debug(f"Updated signal metrics for {symbol}: {signal_type} with score {score}")
+            
+        except Exception as e:
+            self.logger.error(f"Error updating signal metrics for {symbol}: {str(e)}")
+            self.logger.debug(traceback.format_exc())

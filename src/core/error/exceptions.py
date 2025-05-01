@@ -12,6 +12,14 @@ class InitializationError(ComponentError):
     """Error during component initialization."""
     pass
 
+class ComponentInitializationError(InitializationError):
+    """Error during specific component initialization."""
+    pass
+
+class ComponentCleanupError(ComponentError):
+    """Error during component cleanup."""
+    pass
+
 class DependencyError(ComponentError):
     """Error related to component dependencies."""
     pass

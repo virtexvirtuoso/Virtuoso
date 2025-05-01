@@ -1291,35 +1291,68 @@ class DataProcessor:
             self.logger.error(f"Error aggregating data: {str(e)}")
             return data
 
-    async def process_trades(self, trades: List[Dict[str, Any]]) -> pd.DataFrame:
-        """Process raw trade data into DataFrame."""
+    async def fetch_ohlcv(self, symbol: str, timeframe: str = '1h', limit: int = 50) -> Optional[pd.DataFrame]:
+        """Fetch OHLCV (candlestick) data for a symbol.
+        
+        Args:
+            symbol: Trading pair symbol
+            timeframe: Chart timeframe (e.g., '1m', '5m', '1h', '1d')
+            limit: Number of candles to fetch
+            
+        Returns:
+            DataFrame with OHLCV data or None if error
+        """
         try:
-            if not trades:
-                self.logger.warning("Empty trades list received")
-                return pd.DataFrame()
-                
-            # Convert list of trades to DataFrame
-            df = pd.DataFrame(trades)
+            self.logger.debug(f"Fetching OHLCV data for {symbol} ({timeframe}, {limit} candles)")
             
-            # Ensure required columns exist
-            required_columns = ['timestamp', 'price', 'amount', 'side']
-            missing_columns = [col for col in required_columns if col not in df.columns]
+            # Get the configuration
+            config = self.config
+            if not config:
+                raise ValueError("Configuration not available")
             
-            if missing_columns:
-                self.logger.error(f"Missing required columns: {missing_columns}")
-                return pd.DataFrame()
-                
+            # Initialize exchange manager if not already passed
+            exchange_manager = getattr(self, 'exchange_manager', None)
+            
+            if not exchange_manager:
+                # Import here dynamically to avoid circular imports
+                # but don't re-import on every function call
+                if not hasattr(self, '_exchange_manager_module'):
+                    # Store the module reference on the instance to avoid reimporting
+                    from src.core.exchanges.manager import ExchangeManager
+                    self._exchange_manager_module = ExchangeManager
+                    
+                    if not hasattr(self, '_config_manager_module'):
+                        from src.core.config.config_manager import ConfigManager
+                        self._config_manager_module = ConfigManager
+                    
+                    config_manager = self._config_manager_module(config)
+                    exchange_manager = self._exchange_manager_module(config_manager)
+                    # Store for future use
+                    self.exchange_manager = exchange_manager
+            await exchange_manager.initialize()
+            
+            # Fetch the OHLCV data
+            ohlcv_data = await exchange_manager.fetch_ohlcv(symbol, timeframe, limit)
+            
+            if not ohlcv_data:
+                self.logger.warning(f"No OHLCV data returned for {symbol}")
+                return None
+            
+            # Convert to DataFrame
+            df = pd.DataFrame(ohlcv_data, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+            
             # Convert timestamp to datetime
             df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+            df['datetime'] = df['timestamp']
             
-            # Set timestamp as index
+            # Set index
             df.set_index('timestamp', inplace=True)
             
-            # Sort by timestamp
-            df.sort_index(inplace=True)
-            
+            self.logger.debug(f"Retrieved {len(df)} OHLCV candles for {symbol}")
             return df
             
         except Exception as e:
-            self.logger.error(f"Error processing trades: {str(e)}")
-            return pd.DataFrame()
+            self.logger.error(f"Error fetching OHLCV data for {symbol}: {str(e)}")
+            import traceback
+            self.logger.debug(traceback.format_exc())
+            return None

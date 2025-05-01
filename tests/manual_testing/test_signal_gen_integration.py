@@ -157,6 +157,36 @@ async def test_signal_integration():
     
     logger.info("All integration tests completed successfully!")
 
+class TestSignalGenerator:
+    def __init__(self, config, alert_manager=None):
+        self.config = config
+        self.alert_manager = alert_manager
+        self.thresholds = config.get('thresholds', {'buy': 70, 'sell': 30})
+        
+    async def process_signal(self, signal_data):
+        """Test implementation that simulates processing a signal."""
+        symbol = signal_data.get('symbol', 'UNKNOWN')
+        score = signal_data.get('score', 0)
+        price = signal_data.get('price')
+        components = signal_data.get('components', {})
+        results = signal_data.get('results', {})
+        reliability = signal_data.get('reliability', 0.8)
+        
+        # Only process BUY or SELL signals
+        if score >= self.thresholds['buy'] or score <= self.thresholds['sell']:
+            if self.alert_manager and hasattr(self.alert_manager, 'send_confluence_alert'):
+                await self.alert_manager.send_confluence_alert(
+                    symbol=symbol,
+                    confluence_score=score,
+                    components=components,
+                    results=results,
+                    reliability=reliability if reliability <= 1 else reliability / 100.0,  # Match new normalization
+                    buy_threshold=self.thresholds['buy'],
+                    sell_threshold=self.thresholds['sell'],
+                    price=price
+                )
+        return None
+
 if __name__ == "__main__":
     # Load environment variables
     load_dotenv()
