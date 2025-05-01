@@ -784,21 +784,25 @@ class InterpretationGenerator:
         trend_signal = signals.get('trend', {})
         trend_value = float(trend_signal.get('value', 50))
         trend_type = trend_signal.get('signal', 'neutral')
-        trend_strength = float(trend_signal.get('strength', 0.5))
+        # Handle the case where strength might be a string
+        trend_strength_val = trend_signal.get('strength', 0.5)
+        trend_strength = float(trend_strength_val) if isinstance(trend_strength_val, (int, float, str)) and not isinstance(trend_strength_val, bool) else 0.5
         
         # Get support/resistance signals with enhanced context
         sr_signal = signals.get('support_resistance', {})
         sr_value = float(sr_signal.get('value', 50))
         sr_type = sr_signal.get('signal', 'neutral')
         sr_bias = sr_signal.get('bias', 'neutral')
-        sr_distance = float(sr_signal.get('distance', 0))
+        sr_distance_val = sr_signal.get('distance', 0)
+        sr_distance = float(sr_distance_val) if isinstance(sr_distance_val, (int, float, str)) and not isinstance(sr_distance_val, bool) else 0
         
         # Get order block signals with enhanced detail
         ob_signal = signals.get('orderblock', {})
         ob_value = float(ob_signal.get('value', 50))
         ob_type = ob_signal.get('signal', 'neutral')
         ob_bias = ob_signal.get('bias', 'neutral')
-        ob_strength = float(ob_signal.get('strength', 0.5))
+        ob_strength_val = ob_signal.get('strength', 0.5)
+        ob_strength = float(ob_strength_val) if isinstance(ob_strength_val, (int, float, str)) and not isinstance(ob_strength_val, bool) else 0.5
         
         # Start with detailed trend description
         if trend_type == 'uptrend':
@@ -814,7 +818,8 @@ class InterpretationGenerator:
         elif trend_type == 'sideways':
             message = "Price structure indicates sideways consolidation within a defined range"
             # Add range characterization
-            range_width = float(components.get('range_width', 50))
+            range_width_val = components.get('range_width', 50)
+            range_width = float(range_width_val) if isinstance(range_width_val, (int, float, str)) and not isinstance(range_width_val, bool) else 50
             if range_width > 65:
                 message += ", showing wide choppy price action suggesting accumulation/distribution"
             elif range_width < 35:
@@ -864,7 +869,8 @@ class InterpretationGenerator:
             message += f". Weak {ob_bias} order block detected with minor significance"
         
         # Add VWAP insight with enhanced intraday context
-        vwap = float(components.get('vwap', 50))
+        vwap_val = components.get('vwap', 50)
+        vwap = float(vwap_val) if isinstance(vwap_val, (int, float, str)) and not isinstance(vwap_val, bool) else 50
         if vwap > 65:
             message += ". Price well above VWAP showing strong intraday buying pressure"
             if trend_type == 'uptrend':
@@ -877,14 +883,19 @@ class InterpretationGenerator:
             message += ". Price oscillating near VWAP indicating equilibrium between buyers and sellers"
         
         # Add market structure insight with swing analysis
-        ms = float(components.get('market_structure', 50))
+        ms_val = components.get('market_structure', 50)
+        ms = float(ms_val) if isinstance(ms_val, (int, float, str)) and not isinstance(ms_val, bool) else 50
         if ms > 65:
             message += ". Higher highs and higher lows confirming bullish structure"
-            if float(components.get('swing_strength', 50)) > 65:
+            swing_strength_val = components.get('swing_strength', 50)
+            swing_strength = float(swing_strength_val) if isinstance(swing_strength_val, (int, float, str)) and not isinstance(swing_strength_val, bool) else 50
+            if swing_strength > 65:
                 message += " with strong swing momentum, suggesting trend continuation"
         elif ms < 35:
             message += ". Lower highs and lower lows confirming bearish structure"
-            if float(components.get('swing_strength', 50)) > 65:
+            swing_strength_val = components.get('swing_strength', 50)
+            swing_strength = float(swing_strength_val) if isinstance(swing_strength_val, (int, float, str)) and not isinstance(swing_strength_val, bool) else 50
+            if swing_strength > 65:
                 message += " with strong swing momentum, suggesting trend continuation"
         elif 45 <= ms <= 55:
             message += ". Mixed swing structure without clear directional bias"
@@ -895,7 +906,8 @@ class InterpretationGenerator:
             top_pattern = patterns[0]
             pattern_name = top_pattern.get('name', '')
             pattern_type = top_pattern.get('type', '')
-            pattern_reliability = float(top_pattern.get('reliability', 0.5))
+            pattern_reliability_val = top_pattern.get('reliability', 0.5)
+            pattern_reliability = float(pattern_reliability_val) if isinstance(pattern_reliability_val, (int, float, str)) and not isinstance(pattern_reliability_val, bool) else 0.5
             
             if pattern_name and pattern_type:
                 pattern_desc = f". {pattern_name} pattern detected"
@@ -916,7 +928,8 @@ class InterpretationGenerator:
             top_zone = liquidity_zones[0]
             if isinstance(top_zone, dict):
                 zone_type = top_zone.get('type', '')
-                zone_distance = float(top_zone.get('distance', 0))
+                zone_distance_val = top_zone.get('distance', 0)
+                zone_distance = float(zone_distance_val) if isinstance(zone_distance_val, (int, float, str)) and not isinstance(zone_distance_val, bool) else 0
                 
                 if zone_type == 'buy_side' and zone_distance < 0.1:
                     message += ". Buy-side liquidity zone detected below current price, potential target for price discovery"
@@ -931,7 +944,8 @@ class InterpretationGenerator:
             max_strength = 0
             
             for div_name, div_data in divergences.items():
-                strength = float(div_data.get('strength', 0))
+                strength_val = div_data.get('strength', 0)
+                strength = float(strength_val) if isinstance(strength_val, (int, float, str)) and not isinstance(strength_val, bool) else 0
                 if strength > max_strength:
                     max_strength = strength
                     strongest_div = div_data
@@ -952,17 +966,22 @@ class InterpretationGenerator:
         # Add key level confluence if multiple supports/resistances align
         key_level_confluence = components.get('key_level_confluence', None)
         if key_level_confluence is not None:
-            if float(key_level_confluence) > 65:
+            key_level_val = key_level_confluence
+            key_level_float = float(key_level_val) if isinstance(key_level_val, (int, float, str)) and not isinstance(key_level_val, bool) else 0
+            if key_level_float > 65:
                 message += ". Multiple technical levels aligning at similar price points, creating a high-significance zone"
         
         # Add breakout/breakdown potential assessment
         if (trend_type == 'sideways' or trend_type == 'neutral') and sr_type == 'strong_level':
-            range_compression = float(components.get('range_compression', 50))
+            range_compression_val = components.get('range_compression', 50)
+            range_compression = float(range_compression_val) if isinstance(range_compression_val, (int, float, str)) and not isinstance(range_compression_val, bool) else 50
             if range_compression > 65:
                 message += ". Price compressed near range boundary, suggesting imminent breakout potential"
             volatility_contraction = components.get('volatility_contraction', None)
             if volatility_contraction is not None:
-                if float(volatility_contraction) > 65:
+                volatility_val = volatility_contraction
+                volatility_float = float(volatility_val) if isinstance(volatility_val, (int, float, str)) and not isinstance(volatility_val, bool) else 0
+                if volatility_float > 65:
                     message += ". Significant volatility contraction observed, often preceding explosive moves"
         
         return message
@@ -1225,32 +1244,50 @@ class InterpretationGenerator:
         
         # Support/Resistance
         sr_signal = signals.get('support_resistance', {})
-        if isinstance(sr_signal, dict) and 'value' in sr_signal and sr_signal['value'] > 50:
-            level_type = sr_signal.get('bias', 'neutral')
-            strength = sr_signal.get('strength', 'moderate')
-            
-            if level_type == 'bullish':
-                key_levels.append(f"Support level ({strength} strength)")
-            elif level_type == 'bearish':
-                key_levels.append(f"Resistance level ({strength} strength)")
+        if isinstance(sr_signal, dict) and 'value' in sr_signal:
+            try:
+                sr_value = float(sr_signal['value'])
+                if sr_value > 50:
+                    level_type = sr_signal.get('bias', 'neutral')
+                    strength = sr_signal.get('strength', 'moderate')  # This can be a string like 'moderate'
+                    
+                    if level_type == 'bullish':
+                        key_levels.append(f"Support level ({strength} strength)")
+                    elif level_type == 'bearish':
+                        key_levels.append(f"Resistance level ({strength} strength)")
+            except (ValueError, TypeError):
+                # Handle case where value can't be converted to float
+                pass
         
         # Order blocks
         ob_signal = signals.get('orderblock', {})
-        if isinstance(ob_signal, dict) and 'value' in ob_signal and ob_signal['value'] > 60:
-            ob_type = ob_signal.get('bias', 'neutral')
-            
-            if ob_type == 'bullish':
-                key_levels.append(f"Bullish order block (potential support)")
-            elif ob_type == 'bearish':
-                key_levels.append(f"Bearish order block (potential resistance)")
+        if isinstance(ob_signal, dict) and 'value' in ob_signal:
+            try:
+                ob_value = float(ob_signal['value'])
+                if ob_value > 60:
+                    ob_type = ob_signal.get('bias', 'neutral')
+                    
+                    if ob_type == 'bullish':
+                        key_levels.append(f"Bullish order block (potential support)")
+                    elif ob_type == 'bearish':
+                        key_levels.append(f"Bearish order block (potential resistance)")
+            except (ValueError, TypeError):
+                # Handle case where value can't be converted to float
+                pass
         
         # Orderbook liquidity levels
         orderbook = results.get('orderbook', {})
         components = orderbook.get('components', {})
         
-        if 'liquidity' in components and components['liquidity'] > 65:
-            liquidity_type = "bid" if orderbook.get('score', 50) > 55 else "ask"
-            key_levels.append(f"Strong {liquidity_type} liquidity cluster")
+        if 'liquidity' in components:
+            try:
+                liquidity = float(components['liquidity'])
+                if liquidity > 65:
+                    liquidity_type = "bid" if orderbook.get('score', 50) > 55 else "ask"
+                    key_levels.append(f"Strong {liquidity_type} liquidity cluster")
+            except (ValueError, TypeError):
+                # Handle case where liquidity can't be converted to float
+                pass
         
         if not key_levels:
             return ""
