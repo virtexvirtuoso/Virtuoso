@@ -24,6 +24,7 @@ The API is organized into the following sections:
 1. [Market Data](./market.md) - Access market data, order books, and technical analysis
 2. [Trading](./trading.md) - Place and manage orders, track positions
 3. [System](./system.md) - System status, performance metrics, and configuration
+4. [Signals](./signals.md) - Access trading signals and signal reports
 
 ## Response Format
 
@@ -57,6 +58,7 @@ The API implements rate limiting to ensure system stability:
 - Public endpoints: 60 requests per minute
 - Private endpoints: 20 requests per minute
 - Trading endpoints: 10 requests per minute
+- Signals endpoints: 60 requests per minute
 
 Rate limit headers are included in each response:
 - `X-RateLimit-Limit`: Total requests allowed in the time window

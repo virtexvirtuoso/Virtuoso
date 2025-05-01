@@ -17,16 +17,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Chart image generation with entry/exit levels and price targets
 - Base64 encoding option for PDF and chart attachments in API responses
 - Test script (`test_signals_api.py`) for simplified Signals API testing
+- Confluence analysis log image integration in PDF reports
+- Dynamic trading symbol management based on incoming signals
+- Signal monitoring system in DemoTradingRunner for automated trade execution
+- Environment variable management script for InfluxDB credentials
 
 ### Enhanced
 - README.md updated with comprehensive Signals API documentation
 - Improved signal generation with multi-component analysis
 - Added file organization structure for reports (JSON, PDF, charts)
+- Enhanced market interpretations in trading alerts with more detailed insights
+- Improved Discord alert formatting for better readability
+- Enhanced interpretation methods for all market components:
+  - Sentiment analysis with detailed market psychology insights
+  - Technical analysis with pattern recognition improvements
+  - Orderbook analysis with supply/demand dynamics
+  - Volume analysis with participation and conviction metrics
+  - Price structure analysis with market positioning details
+  - Orderflow analysis with institutional activity tracking
 
 ### Fixed
 - JSON serialization for datetime objects in signal responses
 - Error handling for missing files in the signals directory
 - Directory creation logic for reports folder structure
+- Signal contributor impact calculation to prevent inflated values
+- Reliability score display discrepancy between logs and alerts
+- Consistency in market interpretations between different components
 
 ## [1.0.0] - 2023-06-01
 
