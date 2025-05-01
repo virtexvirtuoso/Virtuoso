@@ -6,6 +6,11 @@ import sys
 import json
 import logging
 import asyncio
+
+# Import and silence matplotlib logs before importing matplotlib
+from src.utils.matplotlib_utils import silence_matplotlib_logs
+silence_matplotlib_logs()
+
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt

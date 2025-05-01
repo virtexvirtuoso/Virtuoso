@@ -16,6 +16,9 @@ import json
 from collections import defaultdict
 from cachetools import TTLCache
 
+# Import for PDF report generation
+from src.core.reporting.report_manager import ReportManager
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -653,6 +656,33 @@ class MarketReporter:
             section_end = time.time()
             section_duration = section_end - section_start
             section_times['compilation'] = section_duration
+            self.logger.info(f"Section completed in {section_duration:.3f}s")
+            
+            # SECTION: Save JSON for API
+            section_start = time.time()
+            self.logger.info("-" * 60)
+            self.logger.info("REPORT SECTION: Saving JSON for API")
+            
+            # Ensure exports directory exists
+            exports_dir = os.path.join(os.getcwd(), 'exports', 'market_reports')
+            json_dir = os.path.join(exports_dir, 'json')
+            os.makedirs(json_dir, exist_ok=True)
+            
+            # Generate filename with timestamp
+            timestamp_str = datetime.now().strftime('%Y%m%d_%H%M%S')
+            json_filename = f"market_report_{timestamp_str}.json"
+            json_path = os.path.join(json_dir, json_filename)
+            
+            # Save JSON report
+            with open(json_path, 'w') as f:
+                json.dump(report, f, indent=2)
+                
+            self.logger.info(f"Market report JSON saved to {json_path}")
+            report['json_path'] = json_path  # Store path for reference
+            
+            section_end = time.time()
+            section_duration = section_end - section_start
+            section_times['json_export'] = section_duration
             self.logger.info(f"Section completed in {section_duration:.3f}s")
             
             # SECTION: Performance Metrics
@@ -1497,6 +1527,18 @@ class MarketReporter:
     async def run_scheduled_reports(self):
         """Run scheduled market reports at specified times."""
         self.logger.info("Starting scheduled market reports service...")
+        
+        # Verify alert_manager is configured
+        if not self.alert_manager:
+            self.logger.error("No alert_manager configured - market reports will be generated but not sent to Discord")
+        else:
+            self.logger.info("Alert manager is configured and ready for sending reports")
+            # Check if Discord webhook is available
+            if hasattr(self.alert_manager, 'send_discord_webhook_message'):
+                self.logger.info("Discord webhook method is available")
+            else:
+                self.logger.error("Discord webhook method is NOT available on alert_manager")
+        
         try:
             while True:
                 try:
@@ -1510,6 +1552,53 @@ class MarketReporter:
                             report = await self.generate_market_summary()
                             if report:
                                 self.logger.info("Scheduled market report generated successfully")
+                                
+                                # Ensure export directories exist
+                                exports_dir = os.path.join(os.getcwd(), 'exports', 'market_reports')
+                                pdf_dir = os.path.join(exports_dir, 'pdf')
+                                os.makedirs(pdf_dir, exist_ok=True)
+                                
+                                # Generate PDF report
+                                timestamp_str = datetime.now().strftime('%Y%m%d_%H%M%S')
+                                pdf_filename = f"market_report_{timestamp_str}.pdf"
+                                pdf_path = os.path.join(pdf_dir, pdf_filename)
+                                
+                                # Initialize ReportManager
+                                try:
+                                    report_manager = ReportManager()
+                                    self.logger.info("Generating PDF report for market summary")
+                                    
+                                    # Create a signal-like structure from the market report for the PDF generator
+                                    market_pdf_data = {
+                                        'symbol': 'MARKET',
+                                        'timestamp': report['timestamp'],
+                                        'signal': report['market_overview'].get('regime', 'NEUTRAL'),
+                                        'score': float(report['market_overview'].get('trend_strength', '0.0%').replace('%', '')),
+                                        'type': 'market_report',
+                                        'results': report,
+                                        'components': {
+                                            'market_overview': {'score': float(report['market_overview'].get('trend_strength', '0.0%').replace('%', ''))},
+                                            'smart_money': {'score': report['smart_money_index'].get('index', 50.0)},
+                                            'futures_premium': {'score': 50.0}  # Default neutral score
+                                        }
+                                    }
+                                    
+                                    # Generate the PDF report
+                                    pdf_success, pdf_path, _ = await report_manager.generate_and_attach_report(
+                                        signal_data=market_pdf_data,
+                                        output_path=pdf_path,
+                                        signal_type='market_report'
+                                    )
+                                    
+                                    if pdf_success:
+                                        self.logger.info(f"PDF report generated at {pdf_path}")
+                                        report['pdf_path'] = pdf_path  # Store PDF path for reference
+                                    else:
+                                        self.logger.warning("Failed to generate PDF report")
+                                except ImportError:
+                                    self.logger.warning("ReportManager not available for PDF generation")
+                                except Exception as pdf_err:
+                                    self.logger.error(f"Error generating PDF: {str(pdf_err)}")
                                 
                                 if self.alert_manager:
                                     # First, send a simple alert notification
@@ -1546,10 +1635,51 @@ class MarketReporter:
                                         
                                         # Send the formatted report via webhook
                                         self.logger.info("Sending enhanced market report via Discord webhook")
-                                        await self.alert_manager.send_discord_webhook_message(formatted_report)
+                                        self.logger.info(f"Webhook message content length: {len(formatted_report.get('content', ''))}")
+                                        self.logger.info(f"Webhook message has embeds: {len(formatted_report.get('embeds', []))}")
+                                        
+                                        # Check if webhook message is well-formed
+                                        if 'embeds' in formatted_report and isinstance(formatted_report['embeds'], list) and len(formatted_report['embeds']) > 0:
+                                            self.logger.info("Webhook message structure looks valid")
+                                        else:
+                                            self.logger.warning("Webhook message structure may be invalid - missing embeds")
+                                        
+                                        # Add PDF attachment if available
+                                        if 'pdf_path' in report and os.path.exists(report['pdf_path']):
+                                            # Create files list for attachment
+                                            files = [
+                                                {
+                                                    'path': report['pdf_path'],
+                                                    'filename': os.path.basename(report['pdf_path']),
+                                                    'description': 'Market Report PDF'
+                                                }
+                                            ]
+                                            
+                                            # Add JSON file if available
+                                            if 'json_path' in report and os.path.exists(report['json_path']):
+                                                files.append({
+                                                    'path': report['json_path'],
+                                                    'filename': os.path.basename(report['json_path']),
+                                                    'description': 'Market Report JSON'
+                                                })
+                                                
+                                            # Add note about attachments
+                                            if 'content' in formatted_report:
+                                                formatted_report['content'] += "\n\n📑 PDF report attached"
+                                            else:
+                                                formatted_report['content'] = "📑 PDF report attached"
+                                                
+                                            # Send with file attachments
+                                            await self.alert_manager.send_discord_webhook_message(formatted_report, files=files)
+                                        else:
+                                            # Send without attachments
+                                            await self.alert_manager.send_discord_webhook_message(formatted_report)
+                                            
                                         self.logger.info("Enhanced market report sent successfully")
+                                else:
+                                    self.logger.warning("Discord webhook message method not available on alert manager")
                             else:
-                                        self.logger.warning("Discord webhook message method not available on alert manager")
+                                self.logger.warning("No report was generated to send to Discord")
                         except Exception as e:
                             self.logger.error(f"Error generating scheduled report: {str(e)}")
                             self.logger.debug(traceback.format_exc())
@@ -1576,6 +1706,7 @@ class MarketReporter:
     async def format_market_report(self, overview, top_pairs, market_regime=None, smart_money=None, whale_activity=None):
         """Format market report for Discord webhook with optimized layout."""
         try:
+            self.logger.info("Starting market report formatting")
             # Get current time for timestamps
             utc_now = datetime.utcnow()
             
@@ -1585,6 +1716,11 @@ class MarketReporter:
             
             # Format the report into Discord-friendly embeds
             embeds = []
+            
+            # Log incoming data for debugging
+            self.logger.info(f"Overview data available: {bool(overview)}")
+            self.logger.info(f"Smart money data available: {bool(smart_money)}")
+            self.logger.info(f"Whale activity data available: {bool(whale_activity)}")
             
             # --- Market Overview Embed (Blue) - Optimized layout ---
             if overview:

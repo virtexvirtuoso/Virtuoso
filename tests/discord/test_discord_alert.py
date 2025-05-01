@@ -1,387 +1,380 @@
 #!/usr/bin/env python3
 """
-Test Discord Alert Functionality with Confluence Scores
+Test script to send a market report alert to Discord with PDF attachment only.
 
-This script tests the AlertManager's ability to send Discord alerts when
-a confluence score meets the buy or sell threshold.
+Usage: python test_discord_alert.py [discord_webhook_url]
 """
 
 import asyncio
-import logging
+import json
 import os
-import yaml
+import sys
 import time
-from typing import Dict, Any
-import dotenv
-
-# Load environment variables from .env file
-dotenv.load_dotenv()
-
-# Import local modules
-from src.monitoring.alert_manager import AlertManager
-from src.signal_generation.signal_generator import SignalGenerator
+import logging
+from datetime import datetime
+from typing import Dict, Any, Optional
 
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('discord_alert_test')
 
-async def load_config() -> Dict[str, Any]:
-    """Load configuration from YAML files."""
+async def generate_sample_market_data() -> Dict[str, Any]:
+    """Generate sample market data for testing."""
+    
+    # Create a sample market report data structure
+    market_data = {
+        'timestamp': int(time.time() * 1000),
+        'market_overview': {
+            'total_market_cap': '$1.92T',
+            'btc_dominance': '49.2%',
+            'daily_volume': '$78.5B',
+            'market_trend': 'Bullish',
+            'volatility': 'Moderate',
+            'risk_level': 'Medium'
+        },
+        'market_sentiment': {
+            'overall_sentiment': 'Bullish',
+            'fear_greed_index': 72,
+            'social_sentiment': 'Positive',
+            'institutional_activity': 'Accumulation',
+            'futures_sentiment': 'Long-biased'
+        },
+        'top_performers': [
+            {'symbol': 'ETH/USDT', 'price': 3245.78, 'change_percent': '+5.2%', 'volume': '$2.1B'},
+            {'symbol': 'SOL/USDT', 'price': 132.45, 'change_percent': '+4.7%', 'volume': '$1.5B'},
+            {'symbol': 'BNB/USDT', 'price': 447.32, 'change_percent': '+3.8%', 'volume': '$1.1B'}
+        ],
+        'trading_signals': [
+            {'symbol': 'BTC/USDT', 'direction': 'Buy', 'strength': 'Strong', 'timeframe': '4h'},
+            {'symbol': 'ETH/USDT', 'direction': 'Buy', 'strength': 'Moderate', 'timeframe': '1h'},
+            {'symbol': 'SOL/USDT', 'direction': 'Buy', 'strength': 'Strong', 'timeframe': '1d'}
+        ],
+        'notable_news': [
+            {
+                'title': 'SEC Approves Spot Ethereum ETF Applications',
+                'source': 'Bloomberg',
+                'impact': 'Highly Bullish'
+            },
+            {
+                'title': 'Federal Reserve Signals No Rate Hikes in Next Meeting',
+                'source': 'Wall Street Journal',
+                'impact': 'Moderately Bullish'
+            }
+        ]
+    }
+    
+    return market_data
+
+async def format_market_report_for_discord(market_data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Format the market data into a Discord webhook message with embeds following the MarketReporter format.
+    
+    Args:
+        market_data: The market data to format
+    
+    Returns:
+        Discord webhook message with embeds
+    """
+    # Create a timestamp for the report
+    utc_now = datetime.now()
+    timestamp = utc_now.isoformat() + 'Z'
+    
+    # Virtuoso branding
+    virtuoso_logo_url = "https://example.com/icon.png"  # Replace with your logo URL
+    dashboard_base_url = "https://virtuoso.internal-dashboard.com"
+    
+    # Create the Discord webhook message structure
+    message = {
+        "content": f"📊 **Market Summary Report** - {utc_now.strftime('%Y-%m-%d %H:%M UTC')}",
+        "embeds": []
+    }
+    
+    # --- Market Overview Embed (Blue) ---
+    overview = market_data.get('market_overview', {})
+    market_desc = (
+        f"**Global Market Overview | {utc_now.strftime('%B %d, %Y')}**\n\n"
+        f"{'📈' if overview.get('market_trend', '') == 'Bullish' else '📉'} "
+        f"BTC 24h: **{overview.get('btc_dominance', '0.0')}%** | "
+        f"💰 Vol: **${overview.get('daily_volume', '0')}** | "
+        f"📊 BTC Dom: **{overview.get('btc_dominance', '0.0')}%**"
+    )
+    
+    overview_embed = {
+        "title": "🌍 Market Overview",
+        "color": 3447003,  # Blue
+        "url": f"{dashboard_base_url}/overview",
+        "description": market_desc,
+        "fields": []
+    }
+    
+    # Add fields for Market Overview
+    overview_embed["fields"].append({
+        "name": "💪 Strength",
+        "value": f"**{overview.get('strength', '0')}%**\n{overview.get('market_trend', 'Neutral')}",
+        "inline": True
+    })
+    
+    overview_embed["fields"].append({
+        "name": "📊 Volatility",
+        "value": f"**{overview.get('volatility', '0')}%**\nNormal",
+        "inline": True
+    })
+    
+    overview_embed["fields"].append({
+        "name": "💧 Liquidity",
+        "value": f"**{overview.get('liquidity', '0')}**\n{'High' if int(overview.get('liquidity', 0)) > 75 else 'Medium' if int(overview.get('liquidity', 0)) > 50 else 'Low'}",
+        "inline": True
+    })
+    
+    # Add Risk Level field
+    overview_embed["fields"].append({
+        "name": "⚠️ Risk Level",
+        "value": f"**{overview.get('risk_level', 'Medium')}**",
+        "inline": True
+    })
+    
+    # Add Footer
+    overview_embed["footer"] = {
+        "text": f"Virtuoso Trading System | Data as of {utc_now.strftime('%H:%M:%S UTC')}",
+        "icon_url": virtuoso_logo_url
+    }
+    overview_embed["timestamp"] = timestamp
+    
+    message["embeds"].append(overview_embed)
+    
+    # --- Top Performers Embed (Green) ---
+    performers = market_data.get('top_performers', [])
+    performers_text = ""
+    for performer in performers:
+        symbol = performer.get('symbol', 'N/A')
+        price = performer.get('price', 'N/A')
+        change = performer.get('change_percent', 'N/A')
+        volume = performer.get('volume', 'N/A')
+        performers_text += f"**{symbol}** • ${price} • {change} • Vol: {volume}\n"
+    
+    performers_embed = {
+        "title": "🚀 Top Performers",
+        "color": 5763719,  # Green
+        "url": f"{dashboard_base_url}/markets",
+        "description": performers_text or "No data available",
+        "fields": [],
+        "footer": {
+            "text": f"Virtuoso Trading System | Data as of {utc_now.strftime('%H:%M:%S UTC')}",
+            "icon_url": virtuoso_logo_url
+        },
+        "timestamp": timestamp
+    }
+    
+    message["embeds"].append(performers_embed)
+    
+    # --- Trading Signals Embed (Purple) ---
+    signals = market_data.get('trading_signals', [])
+    signals_text = ""
+    for signal in signals:
+        symbol = signal.get('symbol', 'N/A')
+        direction = signal.get('direction', 'N/A')
+        strength = signal.get('strength', 'N/A')
+        timeframe = signal.get('timeframe', 'N/A')
+        
+        # Add emoji based on direction
+        emoji = "🟢" if direction.lower() == "buy" else "🔴"
+        signals_text += f"{emoji} **{symbol}** • {direction} • {strength} • {timeframe}\n"
+    
+    signals_embed = {
+        "title": "📈 Trading Signals",
+        "color": 10181046,  # Purple
+        "url": f"{dashboard_base_url}/signals",
+        "description": signals_text or "No signals available",
+        "fields": [],
+        "footer": {
+            "text": f"Virtuoso Trading System | Data as of {utc_now.strftime('%H:%M:%S UTC')}",
+            "icon_url": virtuoso_logo_url
+        },
+        "timestamp": timestamp
+    }
+    
+    message["embeds"].append(signals_embed)
+    
+    # --- Notable News Embed (Yellow) ---
+    news_items = market_data.get('notable_news', [])
+    if news_items:
+        news_text = ""
+        for item in news_items:
+            title = item.get('title', 'N/A')
+            source = item.get('source', 'N/A')
+            impact = item.get('impact', 'N/A')
+            
+            # Add emoji based on impact
+            emoji = "🟢" if "bullish" in impact.lower() else "🔴" if "bearish" in impact.lower() else "⚪"
+            news_text += f"{emoji} **{title}**\n   Source: {source} | Impact: {impact}\n\n"
+        
+        news_embed = {
+            "title": "📰 Notable News",
+            "color": 16776960,  # Yellow
+            "url": f"{dashboard_base_url}/news",
+            "description": news_text or "No news available",
+            "fields": [],
+            "footer": {
+                "text": f"Virtuoso Trading System | Data as of {utc_now.strftime('%H:%M:%S UTC')}",
+                "icon_url": virtuoso_logo_url
+            },
+            "timestamp": timestamp
+        }
+        
+        message["embeds"].append(news_embed)
+    
+    return message
+
+async def test_discord_alert(webhook_url: Optional[str] = None):
+    """
+    Test sending a market report alert to Discord with PDF attachment only.
+    
+    Args:
+        webhook_url: Discord webhook URL to use for testing
+    """
+    # Use provided webhook URL or get from environment
+    if not webhook_url:
+        # Try different environment variable names that might contain the webhook URL
+        webhook_url = (
+            os.environ.get('DISCORD_WEBHOOK_URL') or 
+            os.environ.get('DISCORD_WEBHOOK') or 
+            os.environ.get('DISCORD_WEBHOOK_URL_VIRTUOSO') or
+            os.environ.get('DISCORD_NETWORK_WEBHOOK')
+        )
+        
+        if webhook_url:
+            logger.info(f"Found Discord webhook URL in environment variable: {webhook_url[:20]}...")
+    
+    if not webhook_url:
+        logger.error("Discord webhook URL not provided")
+        print("Error: Discord webhook URL not provided.")
+        print("Please set with one of these environment variables:")
+        print("  export DISCORD_WEBHOOK_URL='your_webhook_url'")
+        print("  export DISCORD_WEBHOOK='your_webhook_url'")
+        print("  export DISCORD_WEBHOOK_URL_VIRTUOSO='your_webhook_url'")
+        print("  export DISCORD_NETWORK_WEBHOOK='your_webhook_url'")
+        print("Or pass as argument: python test_discord_alert.py 'your_webhook_url'")
+        sys.exit(1)
+    
     try:
-        with open('config/alert_config.yaml', 'r') as f:
-            config = yaml.safe_load(f)
-        return config
-    except Exception as e:
-        logger.error(f"Error loading config: {str(e)}")
-        # Fall back to default config if file not found
-        return {
-            "monitoring": {
-                "alerts": {
-                    "max_alerts_per_minute": 10,
-                    "history_size": 1000,
-                    "throttle_interval": 60,
-                    "min_interval": 5,
-                    "discord": {
-                        "enabled": True,
-                        "webhook_url": os.getenv("DISCORD_WEBHOOK_URL", "")
-                    }
-                }
-            },
-            "analysis": {
-                "confluence_thresholds": {
-                    "buy": 60,
-                    "sell": 40
-                }
-            },
-            # Add required configuration for SignalGenerator and TechnicalIndicators
-            "timeframes": {
-                "1m": {"interval": 60, "periods": 30},
-                "5m": {"interval": 300, "periods": 30},
-                "15m": {"interval": 900, "periods": 30},
-                "1h": {"interval": 3600, "periods": 24},
-                "4h": {"interval": 14400, "periods": 24},
-                "1d": {"interval": 86400, "periods": 30}
-            },
-            "indicators": {
-                "technical": {
-                    "rsi": {"period": 14, "overbought": 70, "oversold": 30},
-                    "macd": {"fast_period": 12, "slow_period": 26, "signal_period": 9}
+        # Import required modules
+        sys.path.append('.')
+        from src.monitoring.alert_manager import AlertManager
+        from src.core.reporting.report_manager import ReportManager
+        from src.core.reporting.pdf_generator import ReportGenerator
+        
+        logger.info("Starting Discord alert test")
+        
+        # Create minimal config with the webhook URL
+        config = {
+            'monitoring': {
+                'discord': {
+                    'webhook_url': webhook_url,
+                    'enabled': True
                 },
-                "volume": {
-                    "vwap": {"period": 14}
-                },
-                "orderflow": {
-                    "imbalance_threshold": 1.5
-                },
-                "orderbook": {
-                    "depth": 10
-                }
-            },
-            "signal": {
-                "weights": {
-                    "volume": 0.2,
-                    "technical": 0.2,
-                    "orderflow": 0.2,
-                    "orderbook": 0.15,
-                    "sentiment": 0.1,
-                    "price_structure": 0.15
+                'alerts': {
+                    'handlers': ['discord'],
+                    'levels': ['info', 'warning', 'error']
                 }
             }
         }
-
-async def test_bullish_alert():
-    """Test sending a bullish alert when confluence score is high."""
-    config = await load_config()
-    
-    # Verify Discord webhook URL is set
-    webhook_url = os.getenv("DISCORD_WEBHOOK_URL")
-    if not webhook_url:
-        logger.error("DISCORD_WEBHOOK_URL environment variable is not set!")
-        logger.info("Please set it in your .env file or environment variables")
-        return
-    
-    # Initialize AlertManager
-    alert_manager = AlertManager(config)
-    
-    # Initialize the discord webhook
-    alert_manager._init_discord_webhook()
-    
-    # Check if Discord is properly configured
-    if not alert_manager._has_discord_config():
-        logger.error("Discord webhook is not properly configured!")
-        return
-    
-    # Skip SignalGenerator and directly send a confluence alert for a bullish scenario
-    symbol = "BTC/USDT"
-    confluence_score = 75.0  # High score (above buy threshold)
-    
-    components = {
-        'volume': 80.0,
-        'technical': 70.0,
-        'orderflow': 65.0,
-        'orderbook': 75.0,
-        'sentiment': 80.0,
-        'price_structure': 75.0
-    }
-    
-    results = {
-        'volume': {
-            'score': 80.0,
-            'components': {'volume_change': 2.3, 'relative_volume': 1.5},
-            'interpretation': 'Strong buying volume detected'
-        },
-        'technical': {
-            'score': 70.0,
-            'components': {'rsi': 62, 'macd': 'bullish'},
-            'interpretation': 'Bullish momentum indicators'
-        },
-        'orderflow': {
-            'score': 65.0,
-            'components': {'buy_pressure': 1.2},
-            'interpretation': 'Moderate buying pressure'
-        },
-        'orderbook': {
-            'score': 75.0,
-            'components': {'bid_ask_ratio': 1.3},
-            'interpretation': 'More bids than asks, bullish bias'
-        },
-        'sentiment': {
-            'score': 80.0,
-            'components': {'social_sentiment': 0.75},
-            'interpretation': 'Very positive market sentiment'
-        },
-        'price_structure': {
-            'score': 75.0,
-            'components': {'support_strength': 0.85},
-            'interpretation': 'Price holding above key support'
-        }
-    }
-    
-    # Send confluence alert directly
-    logger.info(f"Sending bullish confluence alert for {symbol} with score {confluence_score}")
-    
-    # This should trigger the Discord alert
-    await alert_manager.send_confluence_alert(
-        symbol=symbol,
-        confluence_score=confluence_score,
-        components=components,
-        results=results,
-        reliability=0.85
-    )
-    
-    logger.info("Bullish confluence alert sent. Please check your Discord channel.")
-    
-    # Allow some time for async operations to complete
-    await asyncio.sleep(2)
-
-async def test_bearish_alert():
-    """Test sending a bearish alert when confluence score is low."""
-    config = await load_config()
-    
-    # Verify Discord webhook URL is set
-    webhook_url = os.getenv("DISCORD_WEBHOOK_URL")
-    if not webhook_url:
-        logger.error("DISCORD_WEBHOOK_URL environment variable is not set!")
-        return
-    
-    # Initialize AlertManager
-    alert_manager = AlertManager(config)
-    
-    # Initialize the discord webhook
-    alert_manager._init_discord_webhook()
-    
-    # Check if Discord is properly configured
-    if not alert_manager._has_discord_config():
-        logger.error("Discord webhook is not properly configured!")
-        return
-    
-    # Skip SignalGenerator and directly send a confluence alert for a bearish scenario
-    symbol = "BTC/USDT"
-    confluence_score = 25.0  # Low score (below sell threshold)
-    
-    components = {
-        'volume': 30.0,
-        'technical': 20.0,
-        'orderflow': 35.0,
-        'orderbook': 25.0,
-        'sentiment': 20.0,
-        'price_structure': 30.0
-    }
-    
-    results = {
-        'volume': {
-            'score': 30.0,
-            'components': {'volume_change': -1.8, 'relative_volume': 1.2},
-            'interpretation': 'Increasing selling volume detected'
-        },
-        'technical': {
-            'score': 20.0,
-            'components': {'rsi': 30, 'macd': 'bearish'},
-            'interpretation': 'Strong bearish momentum indicators'
-        },
-        'orderflow': {
-            'score': 35.0,
-            'components': {'buy_pressure': 0.7},
-            'interpretation': 'Increased selling pressure'
-        },
-        'orderbook': {
-            'score': 25.0,
-            'components': {'bid_ask_ratio': 0.75},
-            'interpretation': 'More asks than bids, bearish bias'
-        },
-        'sentiment': {
-            'score': 20.0,
-            'components': {'social_sentiment': -0.6},
-            'interpretation': 'Negative market sentiment'
-        },
-        'price_structure': {
-            'score': 30.0,
-            'components': {'resistance_strength': 0.8},
-            'interpretation': 'Price struggling below resistance'
-        }
-    }
-    
-    # Send confluence alert directly
-    logger.info(f"Sending bearish confluence alert for {symbol} with score {confluence_score}")
-    
-    # This should trigger the Discord alert
-    await alert_manager.send_confluence_alert(
-        symbol=symbol,
-        confluence_score=confluence_score,
-        components=components,
-        results=results,
-        reliability=0.80
-    )
-    
-    logger.info("Bearish confluence alert sent. Please check your Discord channel.")
-    
-    # Allow some time for async operations to complete
-    await asyncio.sleep(2)
-
-async def test_direct_confluence_alert():
-    """Test sending a confluence alert directly through the AlertManager."""
-    config = await load_config()
-    
-    # Verify Discord webhook URL is set
-    webhook_url = os.getenv("DISCORD_WEBHOOK_URL")
-    if not webhook_url:
-        logger.error("DISCORD_WEBHOOK_URL environment variable is not set!")
-        return
-    
-    # Initialize AlertManager
-    alert_manager = AlertManager(config)
-    
-    # Initialize the discord webhook
-    alert_manager._init_discord_webhook()
-    
-    # Check if Discord is properly configured
-    if not alert_manager._has_discord_config():
-        logger.error("Discord webhook is not properly configured!")
-        return
-    
-    # Create test data
-    symbol = "ETH/USDT"
-    confluence_score = 80.0
-    
-    components = {
-        'volume': 85.0,
-        'technical': 75.0,
-        'orderflow': 80.0,
-        'orderbook': 70.0,
-        'sentiment': 85.0,
-        'price_structure': 80.0
-    }
-    
-    results = {
-        'volume': {
-            'score': 85.0,
-            'components': {'volume_change': 2.5, 'relative_volume': 1.8},
-            'interpretation': 'Strong buying volume detected'
-        },
-        'technical': {
-            'score': 75.0,
-            'components': {'rsi': 65, 'macd': 'bullish'},
-            'interpretation': 'Bullish momentum indicators'
-        },
-        'orderflow': {
-            'score': 80.0,
-            'components': {'buy_pressure': 1.4},
-            'interpretation': 'Strong buying pressure'
-        },
-        'orderbook': {
-            'score': 70.0,
-            'components': {'bid_ask_ratio': 1.2},
-            'interpretation': 'More bids than asks, bullish bias'
-        },
-        'sentiment': {
-            'score': 85.0,
-            'components': {'social_sentiment': 0.8},
-            'interpretation': 'Very positive market sentiment'
-        },
-        'price_structure': {
-            'score': 80.0,
-            'components': {'support_strength': 0.9},
-            'interpretation': 'Price holding above key support'
-        }
-    }
-    
-    # Send confluence alert directly
-    logger.info(f"Sending direct confluence alert for {symbol} with score {confluence_score}")
-    
-    # This should trigger the Discord alert
-    await alert_manager.send_confluence_alert(
-        symbol=symbol,
-        confluence_score=confluence_score,
-        components=components,
-        results=results,
-        reliability=0.9
-    )
-    
-    logger.info("Direct confluence alert sent. Please check your Discord channel.")
-    
-    # Allow some time for async operations to complete
-    await asyncio.sleep(2)
-
-async def main():
-    """Run all tests."""
-    try:
-        # Check if the webhook URL is set
-        webhook_url = os.getenv("DISCORD_WEBHOOK_URL")
-        if not webhook_url:
-            logger.error("DISCORD_WEBHOOK_URL environment variable is not set!")
-            logger.info("Please set it in your .env file or environment variables")
-            logger.info("Example: DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/your-webhook-url")
-            return
+        
+        # Initialize AlertManager with the webhook URL
+        logger.info("Initializing AlertManager with webhook URL")
+        alert_manager = AlertManager(config)
+        await alert_manager.start()
+        
+        # Initialize ReportManager
+        logger.info("Initializing ReportManager")
+        report_manager = ReportManager()
+        await report_manager.start()
+        
+        # Generate sample market data
+        logger.info("Generating sample market data")
+        market_data = await generate_sample_market_data()
+        
+        # Format the market report for Discord
+        logger.info("Formatting market report for Discord")
+        formatted_report = await format_market_report_for_discord(market_data)
+        
+        # Create an exports directory if it doesn't exist
+        exports_dir = 'exports'
+        os.makedirs(exports_dir, exist_ok=True)
+        
+        # Generate timestamp for filename
+        timestamp_str = datetime.now().strftime('%Y%m%d_%H%M%S')
+        pdf_filename = f"discord_alert_{timestamp_str}.pdf"
+        pdf_path = os.path.join(exports_dir, pdf_filename)
+        
+        # Generate the PDF report
+        logger.info(f"Generating PDF report at path: {pdf_path}")
+        
+        try:
+            # Create a ReportGenerator instance directly
+            report_generator = ReportGenerator()
             
-        logger.info(f"Using Discord webhook URL: {webhook_url[:20]}...{webhook_url[-10:]}")
+            # Generate the PDF market report
+            await report_generator.generate_market_html_report(
+                market_data=market_data,
+                output_path=pdf_path
+            )
             
-        # Test bullish alert via direct AlertManager call
-        logger.info("\n=== Testing Bullish Alert ===")
-        await test_bullish_alert()
+            # Check if PDF file was created successfully
+            if os.path.exists(pdf_path):
+                logger.info(f"Successfully generated PDF report: {pdf_path}")
+                pdf_file_size = os.path.getsize(pdf_path)
+                logger.info(f"PDF file size: {pdf_file_size} bytes")
+                
+                # Initialize content if not present
+                if 'content' not in formatted_report:
+                    formatted_report['content'] = ""
+                
+                # Only mention PDF attachment
+                formatted_report['content'] += "\n\n📑 PDF report attached"
+                
+                # Set up files list with only the PDF
+                files = [{
+                    'path': pdf_path,
+                    'filename': os.path.basename(pdf_path),
+                    'description': "Market Report PDF"
+                }]
+                
+                logger.info(f"Added PDF file to attachment list: {pdf_path}")
+                
+                # Send the market report to Discord
+                logger.info(f"Sending market report to Discord with PDF attachment")
+                send_success, response = await alert_manager.send_discord_webhook_message(formatted_report, files)
+                
+                if send_success:
+                    logger.info("Successfully sent market report to Discord")
+                    print("Market report with PDF attachment sent successfully to Discord!")
+                    print(f"PDF: {pdf_path}")
+                else:
+                    logger.error(f"Failed to send market report to Discord: {response}")
+                    print(f"Error sending market report to Discord: {response}")
+            else:
+                logger.error(f"PDF file not found at {pdf_path}")
+                print(f"Error: PDF file not found at {pdf_path}")
+        except Exception as e:
+            logger.error(f"Error generating PDF report: {e}", exc_info=True)
+            print(f"Error generating PDF report: {e}")
         
-        # Short pause between tests
-        await asyncio.sleep(2)
-        
-        # Test bearish alert via direct AlertManager call
-        logger.info("\n=== Testing Bearish Alert ===")
-        await test_bearish_alert()
-        
-        # Short pause between tests
-        await asyncio.sleep(2)
-        
-        # Test direct confluence alert via AlertManager
-        logger.info("\n=== Testing Direct Confluence Alert ===")
-        await test_direct_confluence_alert()
-        
-        logger.info("\n=== All tests completed ===")
-        logger.info("Please check your Discord channel for the test alerts.")
+        # Clean up
+        await alert_manager.stop()
+        await report_manager.stop()
+        logger.info("Test completed")
         
     except Exception as e:
-        logger.error(f"Error in main: {str(e)}")
-        logger.error(traceback.format_exc())
+        logger.error(f"Error during testing: {str(e)}", exc_info=True)
+        import traceback
+        traceback.print_exc()
 
 if __name__ == "__main__":
-    asyncio.run(main()) 
+    # Check if webhook URL provided as argument
+    webhook_url = sys.argv[1] if len(sys.argv) > 1 else None
+    
+    # Run the test
+    asyncio.run(test_discord_alert(webhook_url)) 

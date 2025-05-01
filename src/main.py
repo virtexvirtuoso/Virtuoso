@@ -226,7 +226,6 @@ async def lifespan(app: FastAPI):
 
 # Initialize FastAPI app
 # Display banner when app is initialized
-display_banner()
 
 app = FastAPI(
     title="Virtuoso Trading System",
