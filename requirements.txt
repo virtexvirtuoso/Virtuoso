@@ -30,6 +30,8 @@ discord-webhook>=1.4.1
 scipy>=1.12.0
 pycryptodome>=3.22.0
 humanfriendly>=10.0
+ccxt>=4.4.0  # Added for cryptocurrency exchange integration
+GPUtil>=1.4.0
 
 # PDF generation and templating dependencies
 weasyprint>=65.0           # For HTML to PDF conversion

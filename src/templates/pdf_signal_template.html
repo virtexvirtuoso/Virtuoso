@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trading Signal Report</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            margin: 0;
+            padding: 0;
+            background-color: #f8f9fa;
+        }
+        .container {
+            width: 100%;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .card {
+            background-color: #fff;
+            border-radius: 5px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24);
+            margin-bottom: 20px;
+        }
+        .card-header {
+            background-color: #f0f0f0;
+            padding: 10px 15px;
+            border-bottom: 1px solid #ddd;
+        }
+        .card-body {
+            padding: 15px;
+        }
+        .card-title {
+            margin: 0;
+            font-size: 18px;
+        }
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .table th, .table td {
+            padding: 8px;
+            border-bottom: 1px solid #ddd;
+            text-align: left;
+        }
+        .text-center {
+            text-align: center;
+        }
+        .img-fluid {
+            max-width: 100%;
+            height: auto;
+        }
+        .progress {
+            height: 30px;
+            width: 100%;
+            background-color: #f0f0f0;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .progress-bar {
+            height: 100%;
+            color: white;
+            text-align: center;
+            line-height: 30px;
+        }
+        .bg-success {
+            background-color: #28a745;
+        }
+        .bg-warning {
+            background-color: #ffc107;
+        }
+        .bg-danger {
+            background-color: #dc3545;
+        }
+        .row {
+            display: flex;
+            flex-wrap: wrap;
+            margin-right: -15px;
+            margin-left: -15px;
+        }
+        .col-md-6 {
+            flex: 0 0 50%;
+            max-width: 50%;
+            padding-right: 15px;
+            padding-left: 15px;
+        }
+        .col-md-12 {
+            flex: 0 0 100%;
+            max-width: 100%;
+            padding-right: 15px;
+            padding-left: 15px;
+        }
+        .mb-4 {
+            margin-bottom: 1.5rem;
+        }
+        .mb-5 {
+            margin-bottom: 3rem;
+        }
+        .table-sm th,
+        .table-sm td {
+            padding: 4px;
+        }
+        .table-hover tbody tr:hover {
+            background-color: rgba(0,0,0,0.075);
+        }
+    </style>
+</head>
+<body>
+
+<!-- Header Section -->
+<div class="container">
+    <div class="header">
+        <h1>{{ symbol }} Trading Signal Report</h1>
+        <p>Generated on {{ timestamp }}</p>
+    </div>
+</div>
+
+<!-- Signal Details Section -->
+<div class="container mb-5">
+    <h2 class="text-center mb-4">Signal Details</h2>
+    <div class="card">
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <table class="table">
+                        <tr>
+                            <th>Symbol:</th>
+                            <td>{{ symbol }}</td>
+                        </tr>
+                        <tr>
+                            <th>Signal Type:</th>
+                            <td>{{ signal_type }}</td>
+                        </tr>
+                        <tr>
+                            <th>Confidence Score:</th>
+                            <td>{{ score|float|round(2) }}/100</td>
+                        </tr>
+                        <tr>
+                            <th>Price:</th>
+                            <td>${{ price|float|round(2) }}</td>
+                        </tr>
+                        <tr>
+                            <th>Reliability:</th>
+                            <td>{{ (reliability * 100)|float|round(0) }}%</td>
+                        </tr>
+                    </table>
+                </div>
+                <div class="col-md-6">
+                    <!-- Placeholders for position data, etc. -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Price Chart Section -->
+<div class="container mb-5">
+    <h2 class="text-center mb-4">Price Chart</h2>
+    {% if candlestick_chart %}
+    <div class="card">
+        <div class="card-body text-center">
+            <img src="{{ candlestick_chart }}" alt="Price Chart" class="img-fluid" />
+        </div>
+    </div>
+    {% else %}
+    <div class="card">
+        <div class="card-body text-center">
+            <p>No price chart available</p>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Confluence Analysis Section -->
+<div class="container mb-5">
+    <h2 class="text-center mb-4">Confluence Analysis</h2>
+    
+    <!-- Confluence Score -->
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <div class="progress">
+                <div class="progress-bar 
+                    {% if score < 35 %}bg-danger{% elif score < 65 %}bg-warning{% else %}bg-success{% endif %}" 
+                    role="progressbar" 
+                    style="width: {{ score }}%;" 
+                    aria-valuenow="{{ score }}" 
+                    aria-valuemin="0" 
+                    aria-valuemax="100">
+                    {{ score|float|round(2) }}/100 ({% if score < 35 %}Bearish{% elif score < 65 %}Neutral{% else %}Bullish{% endif %})
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Confluence Visualization -->
+    {% if confluence_visualization %}
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header">
+                    <h4 class="card-title">Confluence Model Visualization</h4>
+                </div>
+                <div class="card-body text-center">
+                    <img src="data:image/png;base64,{{ confluence_visualization }}" alt="Confluence Model Visualization" class="img-fluid" style="max-height: 500px;"/>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+    
+    <!-- Component Breakdown -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h4 class="card-title">Component Breakdown</h4>
+                </div>
+                <div class="card-body">
+                    <table class="table table-sm table-hover">
+                        <thead>
+                            <tr>
+                                <th>Component</th>
+                                <th>Score</th>
+                                <th>Impact</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for component in component_data %}
+                            <tr>
+                                <td>{{ component.name }}</td>
+                                <td>
+                                    <div class="progress">
+                                        <div class="progress-bar 
+                                            {% if component.score < 35 %}bg-danger{% elif component.score < 65 %}bg-warning{% else %}bg-success{% endif %}" 
+                                            role="progressbar" 
+                                            style="width: {{ component.score }}%;" 
+                                            aria-valuenow="{{ component.score }}" 
+                                            aria-valuemin="0" 
+                                            aria-valuemax="100">
+                                            {{ component.score|float|round(1) }}
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>{{ component.impact|float|round(1) }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Component Chart -->
+        {% if component_chart %}
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h4 class="card-title">Component Weights</h4>
+                </div>
+                <div class="card-body text-center">
+                    <img src="{{ component_chart }}" alt="Component Chart" class="img-fluid" style="max-height: 300px;"/>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+    
+    <!-- Confluence Analysis Text -->
+    {% if confluence_analysis %}
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header">
+                    <h4 class="card-title">Detailed Analysis</h4>
+                </div>
+                <div class="card-body text-center">
+                    <img src="{{ confluence_analysis }}" alt="Confluence Analysis" class="img-fluid" style="max-width: 100%;"/>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Footer Section -->
+<div class="container">
+    <div class="card">
+        <div class="card-body text-center">
+            <p>© Virtuoso Trading - Powered by Advanced AI Analysis</p>
+        </div>
+    </div>
+</div>
+
+</body>
+</html> 

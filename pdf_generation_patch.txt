@@ -1,0 +1,31 @@
+
+# Add this to src/monitoring/monitor.py in the _generate_signal method
+# After generating the signal data but before sending the alert
+
+if signal_data and not signal_data.get('pdf_path') and hasattr(self.signal_generator, 'report_manager') and self.signal_generator.report_manager:
+    try:
+        # Get cached OHLCV data for the report
+        ohlcv_data = self.get_ohlcv_for_report(symbol)
+        
+        # Generate timestamp for filenames
+        timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+        symbol_safe = symbol.replace('/', '')
+        pdf_path = os.path.join('exports', f"{symbol_safe}_{timestamp_str}.pdf")
+        
+        # Generate the report
+        self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}][REPORT] Generating PDF report to {pdf_path}...")
+        success, pdf_path, _ = await self.signal_generator.report_manager.generate_and_attach_report(
+            signal_data=signal_data,
+            ohlcv_data=ohlcv_data,
+            signal_type='signal',
+            output_path=pdf_path
+        )
+        
+        if success and pdf_path and os.path.exists(pdf_path):
+            self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}][REPORT] PDF generated successfully: {pdf_path}")
+            signal_data['pdf_path'] = pdf_path
+        else:
+            self.logger.warning(f"[TXN:{transaction_id}][SIG:{signal_id}][REPORT] Failed to generate PDF report")
+    except Exception as e:
+        self.logger.error(f"[TXN:{transaction_id}][SIG:{signal_id}][REPORT] Error generating PDF: {str(e)}")
+        self.logger.debug(traceback.format_exc())

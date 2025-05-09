@@ -64,7 +64,7 @@ async def test_signal_alert():
     
     # Verify handler registration
     logger.info(f"Handlers after registration: {alert_manager.handlers}")
-    logger.info(f"Has Discord config: {alert_manager._has_discord_config()}")
+    logger.info(f"Has Discord webhook URL: {bool(alert_manager.discord_webhook_url)}")
     
     # Initialize SignalGenerator
     signal_generator = SignalGenerator(config, alert_manager)

@@ -7,6 +7,7 @@ import time
 from src.core.logger import Logger
 from .base_indicator import BaseIndicator
 from src.core.analysis.indicator_utils import log_score_contributions, log_component_analysis, log_final_score, log_calculation_details
+import traceback
 
 class SentimentIndicators(BaseIndicator):
     """
@@ -132,70 +133,57 @@ class SentimentIndicators(BaseIndicator):
             self.logger.warning(f"Component weights sum to {comp_total}, normalizing")
             self.component_weights = {k: v/comp_total for k, v in self.component_weights.items()}
             self.logger.debug(f"Normalized weights: {self.component_weights}")
-
     def calculate_long_short_ratio(self, market_data: Dict[str, Any]) -> float:
-        """Calculate sentiment score based on long/short ratio."""
+        """Calculate long/short ratio score from market data.
+        
+        Args:
+            market_data: Dictionary containing market and sentiment data
+        
+        Returns:
+            float: Score between 0-100 indicating bullish/bearish bias
+        """
+        self.logger.debug("\n=== [LSR] Calculating Long/Short Ratio Score ===")
         try:
-            sentiment_data = market_data.get('sentiment', {})
-            long_short_data = sentiment_data.get('long_short_ratio')
-            
-            self.logger.debug(f"Long/Short raw data: {long_short_data}")
-            
-            if not long_short_data:
-                self.logger.debug("No long/short data available, returning neutral score")
-                return 50.0
-
-            # Extract long/short ratio from the data
-            if isinstance(long_short_data, dict):
-                # Try various expected formats
-                # Format 1: {long: 0.xx, short: 0.xx}
-                if 'long' in long_short_data and 'short' in long_short_data:
-                    long_ratio = float(long_short_data.get('long', 0))
-                    short_ratio = float(long_short_data.get('short', 0))
-                    self.logger.debug(f"Using long/short format - Long ratio: {long_ratio}, Short ratio: {short_ratio}")
-                # Format 2: {buyRatio: 0.xx, sellRatio: 0.xx}
-                elif 'buyRatio' in long_short_data and 'sellRatio' in long_short_data:
-                    long_ratio = float(long_short_data.get('buyRatio', 0))
-                    short_ratio = float(long_short_data.get('sellRatio', 0))
-                    self.logger.debug(f"Using buyRatio/sellRatio format - Long ratio: {long_ratio}, Short ratio: {short_ratio}")
-                else:
-                    # Try to find any keys that might contain ratio information
-                    ratio_keys = [k for k in long_short_data.keys() if any(term in k.lower() for term in ['long', 'buy', 'short', 'sell', 'ratio'])]
-                    self.logger.debug(f"Looking for ratio keys, found: {ratio_keys}")
-                    
-                    if len(ratio_keys) >= 2:
-                        # Take first two keys that might represent long/short
-                        key1, key2 = ratio_keys[:2]
-                        long_ratio = float(long_short_data.get(key1, 0))
-                        short_ratio = float(long_short_data.get(key2, 0))
-                        self.logger.debug(f"Using detected keys {key1}/{key2} - Values: {long_ratio}/{short_ratio}")
-                    else:
-                        self.logger.warning(f"Could not identify long/short keys in data: {list(long_short_data.keys())}")
-                        return 50.0
-                
-                if long_ratio == 0 and short_ratio == 0:
-                    self.logger.debug("Both ratios are 0, returning neutral score")
-                    return 50.0
-                    
-                total = long_ratio + short_ratio
-                long_percentage = (long_ratio / total) if total > 0 else 0.5
-                self.logger.debug(f"Calculated long percentage: {long_percentage} from {long_ratio}/{total}")
+            # Check for various data formats
+            long_short_data = None
+            self.logger.debug(f"[LSR] Market data keys: {list(market_data.keys())}")
+            if 'sentiment' in market_data and 'long_short_ratio' in market_data['sentiment']:
+                long_short_data = market_data['sentiment']['long_short_ratio']
+                self.logger.debug(f"[LSR] Found long_short_ratio in sentiment: {type(long_short_data)}")
+            elif 'long_short_ratio' in market_data:
+                long_short_data = market_data['long_short_ratio']
+                self.logger.debug(f"[LSR] Found long_short_ratio at top level: {type(long_short_data)}")
             else:
-                # If it's a single value, assume it's already a percentage
-                long_percentage = float(long_short_data)
-                self.logger.debug(f"Direct long percentage: {long_percentage}")
+                self.logger.warning("[LSR] No long_short_ratio found in market_data, defaulting to 50/50")
+                return 50.0
+                
+            self.logger.debug(f"[LSR] Long/Short raw data: {long_short_data}")
             
-            # Convert ratio to score (0.5 ratio = 50 score)
-            score = long_percentage * 100
+            if isinstance(long_short_data, dict):
+                long_ratio = float(long_short_data.get('long', 50.0))
+                short_ratio = float(long_short_data.get('short', 50.0))
+                self.logger.info(f"[LSR] Using long/short format - Long: {long_ratio}, Short: {short_ratio}")
+            elif isinstance(long_short_data, (list, tuple)) and len(long_short_data) == 2:
+                long_ratio, short_ratio = map(float, long_short_data)
+                self.logger.info(f"[LSR] Using tuple/list format - Long: {long_ratio}, Short: {short_ratio}")
+            else:
+                self.logger.warning(f"[LSR] Unrecognized long_short_data format: {type(long_short_data)}, defaulting to 50/50")
+                return 50.0
+                
+            total = long_ratio + short_ratio
+            self.logger.debug(f"[LSR] Sum of ratios: {total}")
             
-            # Bound the score between 0 and 100
-            score = max(0, min(100, score))
-            
-            self.logger.debug(f"Long percentage: {long_percentage:.3f}, Final Score: {score:.2f}")
-            return float(score)
-            
+            if total == 0:
+                self.logger.warning("[LSR] Both long and short ratios are zero, defaulting to 50.0")
+                return 50.0
+                
+            long_percentage = (long_ratio / total) * 100
+            self.logger.info(f"[LSR] Calculated long percentage: {long_percentage:.2f}% from {long_ratio}/{total}")
+            score = max(0, min(100, long_percentage))
+            self.logger.debug(f"[LSR] Final LSR Score: {score}")
+            return score
         except Exception as e:
-            self.logger.error(f"Error calculating long/short ratio: {str(e)}", exc_info=True)
+            self.logger.error(f"[LSR] Exception in calculate_long_short_ratio: {e}")
             return 50.0
 
     def calculate_funding_rate(self, market_data: Dict[str, Any]) -> float:
@@ -527,37 +515,148 @@ class SentimentIndicators(BaseIndicator):
             return raw_score
 
     def _calculate_funding_score(self, sentiment_data: Dict[str, Any]) -> float:
-        """Calculate score based on funding rate."""
+        """Calculate sentiment score based on funding rate.
+        
+        Funding rate is a key sentiment indicator in perpetual futures markets.
+        Negative funding rates typically indicate bullish sentiment (longs paying shorts)
+        Positive funding rates typically indicate bearish sentiment (shorts paying longs)
+        
+        Note: Based on testing with Bybit API, funding rate is available in the 
+        ticker data as 'fundingRate' field, and is provided as a decimal value (e.g. -0.0001382)
+        which represents a percentage (-0.01382%).
+        """
         try:
-            self.logger.debug(f"Funding rate input: {sentiment_data.get('funding_rate')}")
+            self.logger.debug("\n=== Calculating Funding Rate Score ===")
+            self.logger.debug(f"Input data type: {type(sentiment_data)}")
             
-            # Try different ways to extract funding rate
-            funding_rate = None
-            
-            # Check if funding_rate is directly available as a number
-            if isinstance(sentiment_data.get('funding_rate'), (int, float)):
-                funding_rate = float(sentiment_data.get('funding_rate', 0))
-                self.logger.debug(f"Found direct funding rate value: {funding_rate}")
-            # Check if funding_rate is in dict format
-            elif isinstance(sentiment_data.get('funding_rate'), dict):
-                funding_data = sentiment_data.get('funding_rate', {})
-                self.logger.debug(f"Funding rate dict: {funding_data}")
+            # Log top-level keys for debugging
+            if isinstance(sentiment_data, dict):
+                self.logger.debug(f"Input data keys: {list(sentiment_data.keys())}")
                 
-                # Try common keys for funding rate
-                for key in ['rate', 'fundingRate', 'value']:
-                    if key in funding_data:
-                        funding_rate = float(funding_data.get(key, 0))
-                        self.logger.debug(f"Found funding rate in key '{key}': {funding_rate}")
-                        break
-            # Check ticker for funding rate (common in exchange data)
+                # Log specific funding-related data if available
+                if 'funding_rate' in sentiment_data:
+                    self.logger.debug(f"funding_rate data type: {type(sentiment_data['funding_rate'])}")
+                    self.logger.debug(f"funding_rate value: {sentiment_data['funding_rate']}")
+                if 'sentiment' in sentiment_data and isinstance(sentiment_data['sentiment'], dict):
+                    self.logger.debug(f"sentiment keys: {list(sentiment_data['sentiment'].keys())}")
+                    if 'funding_rate' in sentiment_data['sentiment']:
+                        self.logger.debug(f"sentiment.funding_rate type: {type(sentiment_data['sentiment']['funding_rate'])}")
+                        self.logger.debug(f"sentiment.funding_rate value: {sentiment_data['sentiment']['funding_rate']}")
+            
+            # Initialize funding rate to None
+            funding_rate = None
+            self.logger.debug("Starting funding rate extraction attempts...")
+            
+            # First check if funding_rate is directly available as a field
+            if 'funding_rate' in sentiment_data:
+                self.logger.debug("ATTEMPT 1: Direct funding_rate key found")
+                # Handle if funding_rate is a dictionary
+                if isinstance(sentiment_data['funding_rate'], dict):
+                    self.logger.debug(f"funding_rate is a dict with keys: {list(sentiment_data['funding_rate'].keys())}")
+                    if 'rate' in sentiment_data['funding_rate']:
+                        try:
+                            funding_rate = float(sentiment_data['funding_rate']['rate'])
+                            self.logger.debug(f"SUCCESS: Found funding_rate['rate']: {funding_rate}")
+                        except (ValueError, TypeError) as e:
+                            self.logger.debug(f"CONVERSION ERROR: funding_rate['rate'] = {sentiment_data['funding_rate']['rate']}, error: {str(e)}")
+                    elif 'fundingRate' in sentiment_data['funding_rate']:
+                        try:
+                            funding_rate = float(sentiment_data['funding_rate']['fundingRate'])
+                            self.logger.debug(f"SUCCESS: Found funding_rate['fundingRate']: {funding_rate}")
+                        except (ValueError, TypeError) as e:
+                            self.logger.debug(f"CONVERSION ERROR: funding_rate['fundingRate'] = {sentiment_data['funding_rate']['fundingRate']}, error: {str(e)}")
+                    else:
+                        # Dictionary without 'rate' key - use a default value
+                        self.logger.debug(f"WARNING: Found funding_rate dict without 'rate' or 'fundingRate' key: {sentiment_data['funding_rate']}")
+                        funding_rate = 0.0001  # Default value
+                        self.logger.debug(f"Using default funding_rate: {funding_rate}")
+                else:
+                    # Not a dictionary, try to convert directly
+                    self.logger.debug(f"funding_rate is not a dict, type: {type(sentiment_data['funding_rate'])}")
+                    try:
+                        funding_rate = float(sentiment_data.get('funding_rate', 0))
+                        self.logger.debug(f"SUCCESS: Found direct funding_rate: {funding_rate}")
+                    except (ValueError, TypeError) as e:
+                        self.logger.warning(f"CONVERSION ERROR: Could not convert funding_rate to float: {sentiment_data['funding_rate']}, error: {str(e)}")
+                        funding_rate = 0.0001  # Default value
+                        self.logger.debug(f"Using default funding_rate: {funding_rate}")
+            # Then look for it in nested structures
+            elif 'sentiment' in sentiment_data and 'funding_rate' in sentiment_data['sentiment']:
+                self.logger.debug("ATTEMPT 2: Checking sentiment.funding_rate")
+                # Handle if nested funding_rate is a dictionary
+                if isinstance(sentiment_data['sentiment']['funding_rate'], dict):
+                    self.logger.debug(f"sentiment.funding_rate is a dict with keys: {list(sentiment_data['sentiment']['funding_rate'].keys())}")
+                    if 'rate' in sentiment_data['sentiment']['funding_rate']:
+                        try:
+                            funding_rate = float(sentiment_data['sentiment']['funding_rate']['rate'])
+                            self.logger.debug(f"SUCCESS: Found sentiment.funding_rate['rate']: {funding_rate}")
+                        except (ValueError, TypeError) as e:
+                            self.logger.debug(f"CONVERSION ERROR: sentiment.funding_rate['rate'] = {sentiment_data['sentiment']['funding_rate']['rate']}, error: {str(e)}")
+                    elif 'fundingRate' in sentiment_data['sentiment']['funding_rate']:
+                        try:
+                            funding_rate = float(sentiment_data['sentiment']['funding_rate']['fundingRate'])
+                            self.logger.debug(f"SUCCESS: Found sentiment.funding_rate['fundingRate']: {funding_rate}")
+                        except (ValueError, TypeError) as e:
+                            self.logger.debug(f"CONVERSION ERROR: sentiment.funding_rate['fundingRate'] = {sentiment_data['sentiment']['funding_rate']['fundingRate']}, error: {str(e)}")
+                    else:
+                        # Dictionary without 'rate' key - use a default value
+                        self.logger.debug(f"WARNING: Found nested funding_rate dict without 'rate' or 'fundingRate' key: {sentiment_data['sentiment']['funding_rate']}")
+                        funding_rate = 0.0001  # Default value
+                        self.logger.debug(f"Using default funding_rate: {funding_rate}")
+                else:
+                    self.logger.debug(f"sentiment.funding_rate is not a dict, type: {type(sentiment_data['sentiment']['funding_rate'])}")
+                    try:
+                        funding_rate = float(sentiment_data['sentiment']['funding_rate'])
+                        self.logger.debug(f"SUCCESS: Found funding_rate in sentiment: {funding_rate}")
+                    except (ValueError, TypeError) as e:
+                        self.logger.warning(f"CONVERSION ERROR: Could not convert nested funding_rate to float: {sentiment_data['sentiment']['funding_rate']}, error: {str(e)}")
+                        funding_rate = 0.0001  # Default value
+                        self.logger.debug(f"Using default funding_rate: {funding_rate}")
+            # Try to find it in funding history if available
+            elif 'sentiment' in sentiment_data and 'funding_history' in sentiment_data['sentiment']:
+                self.logger.debug("ATTEMPT 3: Checking sentiment.funding_history")
+                funding_history = sentiment_data['sentiment']['funding_history']
+                self.logger.debug(f"funding_history type: {type(funding_history)}, length: {len(funding_history) if isinstance(funding_history, list) else 'N/A'}")
+                if isinstance(funding_history, list) and funding_history:
+                    # Get the most recent entry
+                    latest_funding = funding_history[0]
+                    self.logger.debug(f"latest_funding type: {type(latest_funding)}")
+                    if isinstance(latest_funding, dict):
+                        self.logger.debug(f"latest_funding keys: {list(latest_funding.keys())}")
+                    if isinstance(latest_funding, dict) and 'fundingRate' in latest_funding:
+                        try:
+                            funding_rate = float(latest_funding['fundingRate'])
+                            self.logger.debug(f"SUCCESS: Found funding rate in history: {funding_rate}")
+                        except (ValueError, TypeError) as e:
+                            self.logger.debug(f"CONVERSION ERROR: history fundingRate = {latest_funding['fundingRate']}, error: {str(e)}")
+            # Look in general data dictionaries
+            elif isinstance(sentiment_data, dict):
+                self.logger.debug("ATTEMPT 4: Searching through all keys for funding-related fields")
+                for key in sentiment_data.keys():
+                    if 'funding' in key.lower():
+                        self.logger.debug(f"Found potential funding key: {key}, type: {type(sentiment_data[key])}")
+                        if isinstance(sentiment_data[key], (int, float, str)):
+                            try:
+                                funding_rate = float(sentiment_data[key])
+                                self.logger.debug(f"SUCCESS: Found funding rate in key '{key}': {funding_rate}")
+                                break
+                            except (ValueError, TypeError) as e:
+                                self.logger.debug(f"CONVERSION ERROR: key '{key}' value = {sentiment_data[key]}, error: {str(e)}")
+            # Check ticker for funding rate (common in exchange data from Bybit API)
             elif 'ticker' in sentiment_data:
+                self.logger.debug("ATTEMPT 5: Checking ticker data")
                 ticker = sentiment_data.get('ticker', {})
-                if isinstance(ticker, dict) and 'fundingRate' in ticker:
-                    funding_rate = float(ticker.get('fundingRate', 0))
-                    self.logger.debug(f"Found funding rate in ticker: {funding_rate}")
+                if isinstance(ticker, dict):
+                    self.logger.debug(f"ticker keys: {list(ticker.keys())}")
+                    if 'fundingRate' in ticker:
+                        try:
+                            funding_rate = float(ticker.get('fundingRate', 0))
+                            self.logger.debug(f"SUCCESS: Found funding rate in ticker: {funding_rate}")
+                        except (ValueError, TypeError) as e:
+                            self.logger.debug(f"CONVERSION ERROR: ticker.fundingRate = {ticker.get('fundingRate')}, error: {str(e)}")
             
             if funding_rate is None:
-                self.logger.debug("No valid funding rate found, returning neutral score")
+                self.logger.debug("No valid funding rate found after all attempts, returning neutral score")
                 return 50.0
                 
             # Normalize funding rate to 0-100 scale
@@ -565,24 +664,28 @@ class SentimentIndicators(BaseIndicator):
             # Convert to percentage for easier calculation
             funding_pct = funding_rate * 100
             
-            self.logger.debug(f"Funding rate: {funding_rate}, as percentage: {funding_pct}%")
+            self.logger.debug(f"SCORE CALCULATION: Funding rate: {funding_rate}, as percentage: {funding_pct}%")
             
             # Clip to reasonable range (-0.2% to 0.2%)
-            funding_pct = max(-0.2, min(0.2, funding_pct))
+            funding_pct_clipped = max(-0.2, min(0.2, funding_pct))
+            if funding_pct != funding_pct_clipped:
+                self.logger.debug(f"Clipped funding percentage from {funding_pct}% to {funding_pct_clipped}%")
             
             # Map to 0-100 scale (inverted: negative funding = bullish)
             # -0.2% -> 100, 0% -> 50, 0.2% -> 0
-            raw_score = 50 - (funding_pct * 250)
+            raw_score = 50 - (funding_pct_clipped * 250)
+            self.logger.debug(f"Raw score calculation: 50 - ({funding_pct_clipped} * 250) = {raw_score}")
             
             # Apply sigmoid transformation with specific sensitivity for funding
             score = self._apply_sigmoid_transformation(raw_score, sensitivity=self.funding_sensitivity)
             
-            self.logger.debug(f"Funding rate score: {score:.2f} (rate: {funding_rate:.6f}, raw: {raw_score:.2f})")
+            self.logger.debug(f"FINAL: Funding rate score: {score:.2f} (rate: {funding_rate:.6f}, raw: {raw_score:.2f})")
             
             return float(score)
             
         except Exception as e:
-            self.logger.error(f"Error calculating funding rate score: {str(e)}")
+            self.logger.error(f"Error calculating funding rate score: {str(e)}", exc_info=True)
+            self.logger.error(f"Input data that caused error: {sentiment_data}")
             return 50.0
 
     def calculate_market_mood(self, market_data: Dict[str, Any]) -> float:
@@ -1039,7 +1142,7 @@ class SentimentIndicators(BaseIndicator):
             self.logger.error(f"Error in sigmoid transformation: {str(e)}")
             return value  # Return original value on error
 
-    def _log_component_breakdown(self, components: Dict[str, float]) -> None:
+    def _log_component_breakdown(self, components: Dict[str, float], symbol: str = "") -> None:
         """Log detailed breakdown of sentiment components."""
         try:
             # First log the raw component details for debugging
@@ -1070,9 +1173,6 @@ class SentimentIndicators(BaseIndicator):
             
             # Sort by contribution (highest first)
             contributions.sort(key=lambda x: x[3], reverse=True)
-            
-            # Generate title with symbol if available
-            symbol = ""  # We'll leave this empty as we don't have it in the method signature
             
             # Use the fancy formatter
             from src.core.formatting.formatter import LogFormatter
@@ -1339,7 +1439,7 @@ class SentimentIndicators(BaseIndicator):
                 sentiment_score = 50.0
             
             # Log component breakdown
-            self._log_component_breakdown(components)
+            self._log_component_breakdown(components, market_data.get('symbol', ''))
             
             # Add sentinel to components dictionary
             components['sentiment'] = sentiment_score
@@ -1474,15 +1574,18 @@ class SentimentIndicators(BaseIndicator):
                 from src.core.analysis.indicator_utils import log_score_contributions, log_final_score
                 
                 # Explicitly log the component breakdown details
-                self._log_component_breakdown(component_scores)
+                self._log_component_breakdown(component_scores, market_data.get('symbol', ''))
+                
+                # Get symbol from market data
+                symbol = market_data.get('symbol', '')
                 
                 # Log component contributions
                 log_score_contributions(
                     self.logger, 
-                    "Sentiment Score Contribution Breakdown", 
+                    f"{symbol} Sentiment Score Contribution Breakdown", 
                     component_scores, 
                     self.component_weights,
-                    symbol=market_data.get('symbol', ''),
+                    symbol=symbol,
                     final_score=score
                 )
                 
@@ -1491,7 +1594,7 @@ class SentimentIndicators(BaseIndicator):
                     self.logger,
                     "Sentiment",
                     score,
-                    symbol=market_data.get('symbol', '')
+                    symbol=symbol
                 )
             
             return float(score)
@@ -1996,26 +2099,39 @@ class SentimentIndicators(BaseIndicator):
             return default
 
     def _calculate_lsr_score(self, long_short_data: Any) -> float:
-        """Wrapper method that calls calculate_long_short_ratio.
-        
-        This resolves the method name mismatch in the calculation flow.
-        """
-        self.logger.debug(f"_calculate_lsr_score called with data: {long_short_data}")
-        
-        # Get the market data structure needed by calculate_long_short_ratio
-        if isinstance(long_short_data, dict):
-            market_data = {'sentiment': {'long_short_ratio': long_short_data}}
-        else:
-            # Handle the case where long_short_data is a simple value
-            market_data = {'sentiment': {'long_short_ratio': long_short_data}}
+        self.logger.debug(f"[LSR] _calculate_lsr_score called with data: {long_short_data}")
+        try:
+            if not long_short_data:
+                self.logger.warning("[LSR] No data provided to _calculate_lsr_score, returning 50.0")
+                return 50.0
+                
+            if isinstance(long_short_data, dict):
+                long_ratio = float(long_short_data.get('long', 50.0))
+                short_ratio = float(long_short_data.get('short', 50.0))
+                self.logger.info(f"[LSR] _calculate_lsr_score using dict - Long: {long_ratio}, Short: {short_ratio}")
+            elif isinstance(long_short_data, (list, tuple)) and len(long_short_data) == 2:
+                long_ratio, short_ratio = map(float, long_short_data)
+                self.logger.info(f"[LSR] _calculate_lsr_score using tuple/list - Long: {long_ratio}, Short: {short_ratio}")
+            else:
+                self.logger.warning(f"[LSR] _calculate_lsr_score unrecognized format: {type(long_short_data)}, returning 50.0")
+                return 50.0
+                
+            total = long_ratio + short_ratio
+            self.logger.debug(f"[LSR] _calculate_lsr_score sum of ratios: {total}")
             
-        self.logger.debug(f"Constructed market_data for LSR calculation: {market_data}")
-        
-        # Call the existing method
-        result = self.calculate_long_short_ratio(market_data)
-        self.logger.debug(f"Long/short ratio calculation result: {result}")
-        
-        return result
+            if total == 0:
+                self.logger.warning("[LSR] _calculate_lsr_score both ratios zero, returning 50.0")
+                return 50.0
+                
+            long_percentage = (long_ratio / total) * 100
+            self.logger.info(f"[LSR] _calculate_lsr_score calculated long percentage: {long_percentage:.2f}% from {long_ratio}/{total}")
+            
+            score = max(0, min(100, long_percentage))
+            self.logger.debug(f"[LSR] _calculate_lsr_score final score: {score}")
+            return score
+        except Exception as e:
+            self.logger.error(f"[LSR] Exception in _calculate_lsr_score: {e}")
+            return 50.0
 
     def _calculate_open_interest_score(self, sentiment_data: Dict[str, Any]) -> float:
         """Calculate score based on open interest trend.

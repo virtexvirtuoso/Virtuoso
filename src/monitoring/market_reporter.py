@@ -15,9 +15,11 @@ import gc
 import json
 from collections import defaultdict
 from cachetools import TTLCache
+import shutil
 
 # Import for PDF report generation
 from src.core.reporting.report_manager import ReportManager
+from src.core.reporting.pdf_generator import ReportGenerator
 
 # Configure logging
 logging.basicConfig(
@@ -25,7 +27,7 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
         logging.StreamHandler(sys.stdout),
-        logging.FileHandler('market_reporter.log')
+        logging.FileHandler('logs/market_reporter.log')
     ]
 )
 logger = logging.getLogger(__name__)
@@ -39,6 +41,50 @@ class MarketReporter:
         self.logger = logger or logging.getLogger(__name__)
         self.top_symbols_manager = top_symbols_manager
         self.alert_manager = alert_manager
+        
+        # Initialize PDF generator and report manager
+        try:
+            # Check for centralized template configuration first
+            template_dir = None
+            config_file = os.path.join(os.getcwd(), "config", "templates_config.json")
+            if os.path.exists(config_file):
+                try:
+                    with open(config_file, 'r') as f:
+                        config_data = json.load(f)
+                        if 'template_directory' in config_data:
+                            template_dir = config_data['template_directory']
+                            self.logger.info(f"Using template directory from config file: {template_dir}")
+                except Exception as e:
+                    self.logger.warning(f"Error loading template config: {str(e)}")
+            
+            # Fall back to default locations if needed
+            if not template_dir or not os.path.exists(template_dir):
+                template_dir = os.path.join(os.getcwd(), "src/core/reporting/templates")
+                if not os.path.exists(template_dir):
+                    template_dir = os.path.join(os.getcwd(), "templates")
+            
+            if os.path.exists(template_dir):
+                self.logger.info(f"Initializing PDF generator with template directory: {template_dir}")
+                self.pdf_generator = ReportGenerator(template_dir=template_dir)
+                self.report_manager = ReportManager()
+                self.report_manager.pdf_generator = self.pdf_generator
+                
+                # Explicitly set the template_dir on both objects to ensure it's available
+                self.pdf_generator.template_dir = template_dir
+                if hasattr(self.report_manager.pdf_generator, 'template_dir'):
+                    self.report_manager.pdf_generator.template_dir = template_dir
+                
+                # Enable PDF generation
+                self.pdf_enabled = True
+            else:
+                self.logger.warning(f"Template directory not found: {template_dir}")
+                self.pdf_enabled = False
+                
+        except Exception as e:
+            self.logger.error(f"Failed to initialize PDF generator: {str(e)}")
+            self.pdf_enabled = False
+            self.pdf_generator = None
+            self.report_manager = None
         
         # Initialize symbols (either from manager or default list)
         self.symbols = ['BTC/USDT:USDT', 'ETH/USDT:USDT', 'SOL/USDT:USDT', 'XRP/USDT:USDT']
@@ -184,7 +230,7 @@ class MarketReporter:
         """Update trading symbols from top symbols manager if available."""
         try:
             if self.top_symbols_manager:
-                top_pairs = await self.top_symbols_manager.get_symbols()
+                top_pairs = await self.top_symbols_manager.get_top_traded_symbols()
                 if top_pairs:
                     self.symbols = top_pairs
                     self.logger.info(f"Updated symbols list from manager: {len(self.symbols)} pairs")
@@ -469,11 +515,148 @@ class MarketReporter:
         except Exception as e:
             self.logger.error(f"Error checking alert conditions: {str(e)}")
             self.logger.error(f"Report structure that caused error: {json.dumps(self._sanitize_for_logging(report))}")
+        return report
+
+    async def generate_market_pdf_report(self, report_data: Dict[str, Any]) -> Optional[str]:
+        """Generate a PDF report from the market data.
+        
+        Args:
+            report_data: The market report data.
+        Returns:
+            Optional[str]: The path to the generated PDF file, or None if PDF generation failed.
+        """
+        pdf_path = None
+
+        # Enhanced error handling and logging
+        try:
+            # Check if PDF generator is available
+            if not hasattr(self, 'pdf_generator') or not self.pdf_generator:
+                self.logger.warning("PDF generator not available, skipping PDF generation")
+                return None
+                
+            # Create directories if they don't exist
+            reports_base_dir = os.path.join(os.getcwd(), 'reports')
+            reports_html_dir = os.path.join(reports_base_dir, 'html')
+            reports_pdf_dir = os.path.join(reports_base_dir, 'pdf')
+            exports_dir = os.path.join(os.getcwd(), 'exports', 'market_reports')
             
+            os.makedirs(reports_html_dir, exist_ok=True)
+            os.makedirs(reports_pdf_dir, exist_ok=True)
+            os.makedirs(exports_dir, exist_ok=True)
+                
+            # Use timestamp from report data if available, otherwise generate a new one
+            timestamp = report_data.get('timestamp', int(time.time() * 1000))
+            if isinstance(timestamp, str):
+                try:
+                    timestamp = int(timestamp)
+                except ValueError:
+                    timestamp = int(time.time() * 1000)
+            
+            # Convert to MS timestamp if needed for consistency
+            if timestamp < 10000000000:  # If in seconds, convert to milliseconds
+                timestamp = timestamp * 1000
+                    
+            # Create more descriptive filenames
+            time_str = datetime.fromtimestamp(timestamp / 1000).strftime("%Y%m%d_%H%M%S")
+            
+            # Get market regime for filename
+            regime = report_data.get('market_overview', {}).get('regime', 'NEUTRAL').upper()
+            regime_short = regime[:3]  # First 3 chars of regime (BUL, BEA, NEU, RAN)
+            
+            # Create filenames with consistent pattern
+            base_name = f"market_report_{regime_short}_{time_str}"
+            html_filename = f"{base_name}.html"
+            pdf_filename = f"{base_name}.pdf"
+            
+            html_path = os.path.join(reports_html_dir, html_filename)
+            pdf_path = os.path.join(reports_pdf_dir, pdf_filename)
+            export_pdf_path = os.path.join(exports_dir, pdf_filename)
+            
+            self.logger.info(f"Generating HTML report: {html_path}")
+            
+            # Get template path for error logging
+            template_path = ""
+            if hasattr(self.pdf_generator, 'template_dir'):
+                template_path = os.path.join(self.pdf_generator.template_dir, "market_report_dark.html")
+                self.logger.debug(f"Template path: {template_path}")
+            
+            # Use generate_market_html_report method directly which uses the correct market template
+            try:
+                html_success = await self.pdf_generator.generate_market_html_report(
+                    market_data=report_data,
+                    output_path=html_path,
+                    generate_pdf=True
+                )
+            except Exception as html_err:
+                # Log detailed template error information
+                self._log_template_error(
+                    error_message=str(html_err),
+                    template_path=template_path,
+                    data=report_data
+                )
+                return None
+            
+            if html_success:
+                # The PDF should have been generated by generate_market_html_report
+                pdf_path = html_path.replace('.html', '.pdf')
+                
+                if os.path.exists(pdf_path):
+                    self.logger.info(f"PDF report generated successfully at {pdf_path}")
+                    
+                    # Also copy to exports directory for easier access
+                    try:
+                        shutil.copy2(pdf_path, export_pdf_path)
+                        self.logger.info(f"Copied PDF report to exports: {export_pdf_path}")
+                    except Exception as copy_err:
+                        self.logger.warning(f"Failed to copy PDF to exports: {str(copy_err)}")
+                    
+                    return pdf_path
+                else:
+                    self.logger.error(f"PDF file not found at expected path: {pdf_path}")
+                    
+                    # Try to regenerate PDF directly as fallback
+                    try:
+                        self.logger.info("Attempting direct PDF generation as fallback")
+                        pdf_success = await self.pdf_generator.generate_pdf(html_path, pdf_path)
+                        if pdf_success and os.path.exists(pdf_path):
+                            self.logger.info(f"Fallback PDF generation successful: {pdf_path}")
+                            return pdf_path
+                    except Exception as fallback_err:
+                        self.logger.error(f"Fallback PDF generation failed: {str(fallback_err)}")
+                    
+                    return None
+            else:
+                self.logger.error("Failed to generate HTML for market report")
+                
+                # Check if HTML file was partially created and might have useful error info
+                if os.path.exists(html_path) and os.path.getsize(html_path) > 0:
+                    try:
+                        with open(html_path, 'r') as f:
+                            html_content = f.read(500)  # Read first 500 chars
+                            if "Error" in html_content or "Exception" in html_content:
+                                self.logger.error(f"Error in HTML template: {html_content}")
+                    except Exception as read_err:
+                        self.logger.debug(f"Could not read HTML file for error info: {str(read_err)}")
+                        
+                return None
+            
+        except KeyError as key_err:
+            self.logger.error(f"Missing key in report data: {str(key_err)}")
+            self.logger.debug(f"Report data keys: {list(report_data.keys())}")
+            # Print first level of nested keys for debugging
+            for key, value in report_data.items():
+                if isinstance(value, dict):
+                    self.logger.debug(f"Keys in {key}: {list(value.keys())}")
+            return None
+        except Exception as e:
+            self.logger.error(f"Error generating PDF report: {str(e)}")
+            self.logger.debug(traceback.format_exc())
+            return None
+
     def _sanitize_for_logging(self, data, max_length=500):
-        """Sanitize data for logging to prevent huge log entries"""
+        """Sanitize data for logging to prevent huge log entries."""
         if isinstance(data, dict):
-            return {k: self._sanitize_for_logging(v) for k, v in data.items()}
+            return {k: self._sanitize_for_logging(v) for k, v in list(data.items())[:10]}
         elif isinstance(data, list):
             if len(data) > 10:
                 return f"[List with {len(data)} items]"
@@ -517,239 +700,6 @@ class MarketReporter:
         except (ValueError, TypeError):
             return "0"
     
-    async def generate_market_summary(self) -> Dict[str, Any]:
-        """Generate comprehensive market summary report with monitoring."""
-        start_time = time.time()
-        section_times = {}
-        
-        try:
-            self.logger.info(f"Starting market report generation at {datetime.now()}")
-            
-            # SECTION: Update Symbols
-            section_start = time.time()
-            self.logger.info("-" * 60)
-            self.logger.info("REPORT SECTION: Updating Symbols")
-            await self.update_symbols()
-            section_end = time.time()
-            section_duration = section_end - section_start
-            section_times['update_symbols'] = section_duration
-            self.logger.info(f"Section completed in {section_duration:.3f}s")
-            
-            # SECTION: Get Top Pairs
-            section_start = time.time()
-            self.logger.info("-" * 60)
-            self.logger.info("REPORT SECTION: Getting Top Traded Pairs")
-            top_pairs = self.symbols[:10]
-            self.logger.info(f"Found {len(top_pairs)} top traded pairs: {top_pairs[:5]}...")
-            section_end = time.time()
-            section_duration = section_end - section_start
-            section_times['get_top_pairs'] = section_duration
-            self.logger.info(f"Section completed in {section_duration:.3f}s")
-            
-            # SECTION: Parallel Market Calculations
-            section_start = time.time()
-            self.logger.info("-" * 60)
-            self.logger.info("REPORT SECTION: Running Market Calculations")
-            tasks = [
-                self._calculate_with_monitoring('market_overview', self._calculate_market_overview, top_pairs),
-                self._calculate_with_monitoring('futures_premium', self._calculate_futures_premium, top_pairs),
-                self._calculate_with_monitoring('smart_money_index', self._calculate_smart_money_index, top_pairs),
-                self._calculate_with_monitoring('whale_activity', self._calculate_whale_activity, top_pairs),
-                self._calculate_with_monitoring('performance_metrics', self._calculate_performance_metrics, top_pairs)
-            ]
-            
-            self.logger.info("Gathering results from parallel calculations...")
-            results = await asyncio.gather(*tasks)
-            market_overview, futures_premium, smi_data, whale_data, performance = results
-            section_end = time.time()
-            section_duration = section_end - section_start
-            section_times['parallel_calculations'] = section_duration
-            self.logger.info(f"All calculations completed in {section_duration:.3f}s")
-            
-            # SECTION: Validation and Fallbacks
-            section_start = time.time()
-            self.logger.info("-" * 60)
-            self.logger.info("REPORT SECTION: Validation and Fallbacks")
-            
-            # Ensure we have valid data for each component
-            validations = []
-            
-            if not market_overview:
-                self.logger.warning("Market overview calculation failed, using fallback")
-                market_overview = {
-                    'regime': 'UNKNOWN',
-                    'trend_strength': '0.0%',
-                    'total_volume': 0,
-                    'total_turnover': 0,
-                    'total_open_interest': 0,
-                    'timestamp': int(datetime.now().timestamp() * 1000)
-                }
-                validations.append("market_overview: FAILED")
-            else:
-                validations.append("market_overview: OK")
-            
-            if not futures_premium:
-                self.logger.warning("Futures premium calculation failed, using fallback")
-                futures_premium = {
-                    'premiums': {},
-                    'timestamp': int(datetime.now().timestamp() * 1000)
-                }
-                validations.append("futures_premium: FAILED")
-            else:
-                validations.append("futures_premium: OK")
-            
-            if not smi_data:
-                self.logger.warning("Smart money index calculation failed, using fallback")
-                smi_data = {
-                    'index': 50.0,
-                    'signals': [],
-                    'timestamp': int(datetime.now().timestamp() * 1000)
-                }
-                validations.append("smart_money_index: FAILED")
-            else:
-                validations.append("smart_money_index: OK")
-            
-            if not whale_data:
-                self.logger.warning("Whale activity calculation failed, using fallback")
-                whale_data = {
-                    'whale_activity': {},
-                    'timestamp': int(datetime.now().timestamp() * 1000)
-                }
-                validations.append("whale_activity: FAILED")
-            else:
-                validations.append("whale_activity: OK")
-            
-            if not performance:
-                self.logger.warning("Performance metrics calculation failed, using fallback")
-                performance = {
-                    'metrics': {},
-                    'timestamp': int(datetime.now().timestamp() * 1000)
-                }
-                validations.append("performance_metrics: FAILED")
-            else:
-                validations.append("performance_metrics: OK")
-                
-            self.logger.info(f"Component validations: {', '.join(validations)}")
-            section_end = time.time()
-            section_duration = section_end - section_start
-            section_times['validation'] = section_duration
-            self.logger.info(f"Section completed in {section_duration:.3f}s")
-            
-            # SECTION: Report Compilation
-            section_start = time.time()
-            self.logger.info("-" * 60)
-            self.logger.info("REPORT SECTION: Compiling Final Report")
-            # Compile report
-            report = {
-                'timestamp': int(datetime.now().timestamp() * 1000),
-                'generated_at': datetime.now().isoformat(),
-                'market_overview': market_overview,
-                'futures_premium': futures_premium,
-                'smart_money_index': smi_data,
-                'whale_activity': whale_data,
-                'performance_metrics': performance
-            }
-            
-            # Calculate report size for logging
-            report_size = len(json.dumps(report))
-            self.logger.info(f"Report compiled: {report_size} bytes, {len(report)} sections")
-            section_end = time.time()
-            section_duration = section_end - section_start
-            section_times['compilation'] = section_duration
-            self.logger.info(f"Section completed in {section_duration:.3f}s")
-            
-            # SECTION: Save JSON for API
-            section_start = time.time()
-            self.logger.info("-" * 60)
-            self.logger.info("REPORT SECTION: Saving JSON for API")
-            
-            # Ensure exports directory exists
-            exports_dir = os.path.join(os.getcwd(), 'exports', 'market_reports')
-            json_dir = os.path.join(exports_dir, 'json')
-            os.makedirs(json_dir, exist_ok=True)
-            
-            # Generate filename with timestamp
-            timestamp_str = datetime.now().strftime('%Y%m%d_%H%M%S')
-            json_filename = f"market_report_{timestamp_str}.json"
-            json_path = os.path.join(json_dir, json_filename)
-            
-            # Save JSON report
-            with open(json_path, 'w') as f:
-                json.dump(report, f, indent=2)
-                
-            self.logger.info(f"Market report JSON saved to {json_path}")
-            report['json_path'] = json_path  # Store path for reference
-            
-            section_end = time.time()
-            section_duration = section_end - section_start
-            section_times['json_export'] = section_duration
-            self.logger.info(f"Section completed in {section_duration:.3f}s")
-            
-            # SECTION: Performance Metrics
-            section_start = time.time()
-            self.logger.info("-" * 60)
-            self.logger.info("REPORT SECTION: Logging Performance Metrics")
-            # Log performance metrics
-            processing_time = time.time() - start_time
-            self.processing_times.append(processing_time)
-            await self._log_performance_metrics()
-            section_end = time.time()
-            section_duration = section_end - section_start
-            section_times['performance_logging'] = section_duration
-            self.logger.info(f"Section completed in {section_duration:.3f}s")
-            
-            # SECTION: Report Validation and Alerts
-            section_start = time.time()
-            self.logger.info("-" * 60)
-            self.logger.info("REPORT SECTION: Validation and Alerts")
-            # Validate report
-            validation = self._validate_report_data(report)
-            quality_score = validation.get('quality_score', 0)
-            report['quality_score'] = quality_score
-            
-            if not validation['valid']:
-                self.logger.error(f"Report validation failed: {validation}")
-                self._log_error('report_validation', 'Invalid report generated')
-                await self._send_alert(
-                    "report_validation",
-                    f"Market report validation failed: {validation}",
-                    "error"
-                )
-            else:
-                self.logger.info(f"Report validation passed with quality score: {quality_score}")
-                # Check for alert conditions
-                await self._check_and_alert_conditions(report)
-            
-            section_end = time.time()
-            section_duration = section_end - section_start
-            section_times['report_validation'] = section_duration
-            self.logger.info(f"Section completed in {section_duration:.3f}s")
-            
-            # SECTION: Summary
-            total_duration = time.time() - start_time
-            self.logger.info("-" * 60)
-            self.logger.info("REPORT GENERATION SUMMARY")
-            self.logger.info(f"Total time: {total_duration:.3f}s")
-            
-            # Display section timings
-            for section, duration in section_times.items():
-                percentage = (duration / total_duration) * 100
-                self.logger.info(f"  - {section}: {duration:.3f}s ({percentage:.1f}%)")
-            
-            return report
-            
-        except Exception as e:
-            self._log_error('report_generation', str(e))
-            self.logger.error(f"Error generating market summary: {str(e)}")
-            self.logger.error(f"Stack trace:\n{traceback.format_exc()}")
-            if self.alert_manager:
-                await self._send_alert(
-                    "report_generation",
-                    f"Failed to generate market report: {str(e)}",
-                    "error"
-                )
-            return None
-            
     async def _calculate_with_monitoring(self, metric_name: str, calc_func: callable, *args, **kwargs) -> Dict[str, Any]:
         """Execute calculation with monitoring and error handling."""
         start_time = time.time()
@@ -1013,25 +963,65 @@ class MarketReporter:
             }
     
     def _determine_market_regime(self, avg_change: float, volatility: float) -> str:
-        """Determine market regime based on price action and volatility."""
-        high_vol_threshold = 2.0
-        trend_threshold = 1.0
+        """
+        Determine market regime based on price change and volatility.
         
-        # Create more nuanced regime naming to match enhanced report
-        if volatility > high_vol_threshold:
-            if avg_change > trend_threshold:
-                return "BULLISH_VOLATILE"
-            elif avg_change < -trend_threshold:
-                return "BEARISH_VOLATILE"
-            return "CHOPPY_VOLATILE"
+        This method ensures consistent market regime classifications that match
+        the template expectations for styling and conditional rendering.
+        
+        Args:
+            avg_change: Average price change percentage
+            volatility: Market volatility measure
+            
+        Returns:
+            Standardized market regime classification
+        """
+        # Enhanced regime determination with more categories and standardized values
+        # Output will be limited to: BULLISH, BEARISH, NEUTRAL, RANGING
+        
+        # Log inputs for debugging
+        self.logger.debug(f"Determining market regime - avg_change: {avg_change:.2f}%, volatility: {volatility:.2f}")
+        
+        # Adjust thresholds based on current volatility level
+        # In high volatility markets, require larger moves to confirm a trend
+        volatility_factor = min(1.0, max(0.5, volatility / 2.0))
+        
+        if volatility > 3.0:
+            # High volatility market - higher thresholds
+            if avg_change > 1.5 * volatility_factor:
+                regime = "BULLISH"  # Strong bullish in high volatility
+            elif avg_change < -1.5 * volatility_factor:
+                regime = "BEARISH"  # Strong bearish in high volatility
+            elif abs(avg_change) < 0.5 * volatility_factor:
+                regime = "RANGING"  # Ranging with high volatility
+            else:
+                regime = "NEUTRAL"  # Neutral with high volatility
+                
+        elif volatility < 1.0:
+            # Low volatility market - lower thresholds
+            if avg_change > 0.5:
+                regime = "BULLISH"  # Bullish in low volatility
+            elif avg_change < -0.5:
+                regime = "BEARISH"  # Bearish in low volatility
+            elif abs(avg_change) < 0.2:
+                regime = "RANGING"  # Ranging with low volatility
+            else:
+                regime = "NEUTRAL"  # Neutral with low volatility
+                
         else:
-            if avg_change > trend_threshold:
-                return "BULLISH_STABLE"
-            elif avg_change < -trend_threshold:
-                return "BEARISH_STABLE"
-            elif abs(avg_change) < 0.5:
-                return "Bearish Sideways"
-            return "RANGING"
+            # Normal volatility market
+            if avg_change > 1.0:
+                regime = "BULLISH"  # Standard bullish threshold
+            elif avg_change < -1.0:
+                regime = "BEARISH"  # Standard bearish threshold
+            elif abs(avg_change) < 0.3:
+                regime = "RANGING"  # Standard ranging threshold
+            else:
+                regime = "NEUTRAL"  # Standard neutral case
+        
+        # Log the determined regime
+        self.logger.debug(f"Market regime determined as: {regime}")
+        return regime
     
     async def _calculate_futures_premium(self, symbols: List[str]) -> Dict[str, Any]:
         """Calculate futures premium metrics with improved reliability and fallbacks."""
@@ -1226,14 +1216,24 @@ class MarketReporter:
                     
                     # Sort by delivery time if available
                     try:
-                        sorted_futures = sorted(
-                            [m for m in futures_markets if 'info' in m and 'deliveryTime' in m['info']], 
-                            key=lambda m: int(m['info'].get('deliveryTime', '99999999999999'))
-                        )
-                        
-                        # If no delivery time info, use the original list
-                        if not sorted_futures:
-                            sorted_futures = futures_markets
+                        # Sort futures markets by expiry
+                        # Check if futures_markets is a list or a dictionary
+                        if isinstance(futures_markets, list):
+                            # It's already a list, sort it directly
+                            sorted_futures = sorted(
+                                futures_markets,
+                                key=lambda x: x.get('expiry', 0)
+                            )
+                        elif isinstance(futures_markets, dict):
+                            # Convert from dict to list, then sort
+                            sorted_futures = sorted(
+                                futures_markets.values(),
+                                key=lambda x: x.get('expiry', 0)
+                            )
+                        else:
+                            # Initialize as empty list if it's neither
+                            sorted_futures = []
+                            self.logger.warning(f"Unexpected type for futures_markets: {type(futures_markets)}")
                         
                         # Try to get ticker for the nearest expiry with timeout
                         try:
@@ -1526,18 +1526,6 @@ class MarketReporter:
 
     async def run_scheduled_reports(self):
         """Run scheduled market reports at specified times."""
-        self.logger.info("Starting scheduled market reports service...")
-        
-        # Verify alert_manager is configured
-        if not self.alert_manager:
-            self.logger.error("No alert_manager configured - market reports will be generated but not sent to Discord")
-        else:
-            self.logger.info("Alert manager is configured and ready for sending reports")
-            # Check if Discord webhook is available
-            if hasattr(self.alert_manager, 'send_discord_webhook_message'):
-                self.logger.info("Discord webhook method is available")
-            else:
-                self.logger.error("Discord webhook method is NOT available on alert_manager")
         
         try:
             while True:
@@ -1554,14 +1542,26 @@ class MarketReporter:
                                 self.logger.info("Scheduled market report generated successfully")
                                 
                                 # Ensure export directories exist
-                                exports_dir = os.path.join(os.getcwd(), 'exports', 'market_reports')
-                                pdf_dir = os.path.join(exports_dir, 'pdf')
-                                os.makedirs(pdf_dir, exist_ok=True)
+                                reports_base_dir = os.path.join(os.getcwd(), 'reports')
+                                reports_json_dir = os.path.join(reports_base_dir, 'json')
+                                reports_html_dir = os.path.join(reports_base_dir, 'html')
+                                reports_pdf_dir = os.path.join(reports_base_dir, 'pdf')
                                 
-                                # Generate PDF report
-                                timestamp_str = datetime.now().strftime('%Y%m%d_%H%M%S')
-                                pdf_filename = f"market_report_{timestamp_str}.pdf"
-                                pdf_path = os.path.join(pdf_dir, pdf_filename)
+                                os.makedirs(reports_json_dir, exist_ok=True)
+                                os.makedirs(reports_html_dir, exist_ok=True)
+                                os.makedirs(reports_pdf_dir, exist_ok=True)
+                                
+                                # Generate timestamp for consistent naming across all files
+                                timestamp = int(time.time())
+                                
+                                # Define consistent filenames for all report types
+                                json_filename = f"market_report_{timestamp}.json"
+                                html_filename = f"market_report_{timestamp}.html"
+                                pdf_filename = f"market_report_{timestamp}.pdf"
+                                
+                                pdf_path = os.path.join(reports_pdf_dir, pdf_filename)
+                                html_path = os.path.join(reports_html_dir, html_filename)
+                                json_path = os.path.join(reports_json_dir, json_filename)
                                 
                                 # Initialize ReportManager
                                 try:
@@ -1574,7 +1574,7 @@ class MarketReporter:
                                         'timestamp': report['timestamp'],
                                         'signal': report['market_overview'].get('regime', 'NEUTRAL'),
                                         'score': float(report['market_overview'].get('trend_strength', '0.0%').replace('%', '')),
-                                        'type': 'market_report',
+                                        'type': 'market_report',  # Ensure the type is set to market_report
                                         'results': report,
                                         'components': {
                                             'market_overview': {'score': float(report['market_overview'].get('trend_strength', '0.0%').replace('%', ''))},
@@ -1583,22 +1583,39 @@ class MarketReporter:
                                         }
                                     }
                                     
-                                    # Generate the PDF report
-                                    pdf_success, pdf_path, _ = await report_manager.generate_and_attach_report(
-                                        signal_data=market_pdf_data,
-                                        output_path=pdf_path,
-                                        signal_type='market_report'
-                                    )
-                                    
-                                    if pdf_success:
-                                        self.logger.info(f"PDF report generated at {pdf_path}")
-                                        report['pdf_path'] = pdf_path  # Store PDF path for reference
+                                    # Generate the PDF report directly using the market template
+                                    if hasattr(report_manager, 'pdf_generator') and report_manager.pdf_generator:
+                                        # Use generate_market_html_report instead of generate_and_attach_report
+                                        pdf_success = await report_manager.pdf_generator.generate_market_html_report(
+                                            market_data=market_pdf_data,
+                                            output_path=html_path,
+                                            generate_pdf=True
+                                        )
+                                        
+                                        if pdf_success:
+                                            self.logger.info(f"Market PDF report generated successfully at {pdf_path}")
+                                            report['pdf_path'] = pdf_path.replace('.html', '.pdf')  # Store PDF path for reference
+                                        else:
+                                            self.logger.warning("Failed to generate market PDF report")
                                     else:
-                                        self.logger.warning("Failed to generate PDF report")
+                                        # Fallback to using generate_and_attach_report (which uses trading signal template)
+                                        self.logger.warning("Using fallback PDF generation method")
+                                        pdf_success, pdf_path, _ = await report_manager.generate_and_attach_report(
+                                            signal_data=market_pdf_data,
+                                            output_path=pdf_path,
+                                            signal_type='market_report'
+                                        )
+                                        
+                                        if pdf_success:
+                                            self.logger.info(f"PDF report generated at {pdf_path}")
+                                            report['pdf_path'] = pdf_path  # Store PDF path for reference
+                                        else:
+                                            self.logger.warning("Failed to generate PDF report")
                                 except ImportError:
                                     self.logger.warning("ReportManager not available for PDF generation")
                                 except Exception as pdf_err:
                                     self.logger.error(f"Error generating PDF: {str(pdf_err)}")
+                                    self.logger.debug(traceback.format_exc())
                                 
                                 if self.alert_manager:
                                     # First, send a simple alert notification
@@ -1701,7 +1718,7 @@ class MarketReporter:
         except Exception as e:
             self.logger.error(f"Fatal error in scheduled reports service: {str(e)}")
             self.logger.debug(traceback.format_exc())
-            raise 
+            raise
 
     async def format_market_report(self, overview, top_pairs, market_regime=None, smart_money=None, whale_activity=None):
         """Format market report for Discord webhook with optimized layout."""
@@ -2231,3 +2248,550 @@ class MarketReporter:
                 "content": f"Error generating market report: {str(e)}",
                 "embeds": [{"title": "Error Report", "color": 15158332, "description": "Failed to format report."}]
             } 
+
+    async def generate_market_summary(self) -> Dict[str, Any]:
+        """Generate comprehensive market summary report with monitoring."""
+        start_time = time.time()
+        section_times = {}
+        
+        try:
+            self.logger.info(f"Starting market report generation at {datetime.now()}")
+            
+            # SECTION: Update Symbols
+            section_start = time.time()
+            self.logger.info("-" * 60)
+            self.logger.info("REPORT SECTION: Updating Symbols")
+            await self.update_symbols()
+            section_end = time.time()
+            section_duration = section_end - section_start
+            section_times['update_symbols'] = section_duration
+            self.logger.info(f"Section completed in {section_duration:.3f}s")
+            
+            # SECTION: Get Top Pairs
+            section_start = time.time()
+            self.logger.info("-" * 60)
+            self.logger.info("REPORT SECTION: Getting Top Traded Pairs")
+            top_pairs = self.symbols[:10]
+            self.logger.info(f"Found {len(top_pairs)} top traded pairs: {top_pairs[:5]}...")
+            section_end = time.time()
+            section_duration = section_end - section_start
+            section_times['get_top_pairs'] = section_duration
+            self.logger.info(f"Section completed in {section_duration:.3f}s")
+            
+            # SECTION: Parallel Market Calculations
+            section_start = time.time()
+            self.logger.info("-" * 60)
+            self.logger.info("REPORT SECTION: Running Market Calculations")
+            tasks = [
+                self._calculate_with_monitoring('market_overview', self._calculate_market_overview, top_pairs),
+                self._calculate_with_monitoring('futures_premium', self._calculate_futures_premium, top_pairs),
+                self._calculate_with_monitoring('smart_money_index', self._calculate_smart_money_index, top_pairs),
+                self._calculate_with_monitoring('whale_activity', self._calculate_whale_activity, top_pairs),
+                self._calculate_with_monitoring('performance_metrics', self._calculate_performance_metrics, top_pairs)
+            ]
+            
+            self.logger.info("Gathering results from parallel calculations...")
+            results = await asyncio.gather(*tasks)
+            market_overview, futures_premium, smi_data, whale_data, performance = results
+            section_end = time.time()
+            section_duration = section_end - section_start
+            section_times['parallel_calculations'] = section_duration
+            self.logger.info(f"All calculations completed in {section_duration:.3f}s")
+            
+            # SECTION: Validation and Fallbacks
+            section_start = time.time()
+            self.logger.info("-" * 60)
+            self.logger.info("REPORT SECTION: Validation and Fallbacks")
+            
+            # Ensure we have valid data for each component
+            validations = []
+            
+            if not market_overview:
+                self.logger.warning("Market overview calculation failed, using fallback")
+                market_overview = {
+                    'regime': 'UNKNOWN',
+                    'trend_strength': '0.0%',
+                    'total_volume': 0,
+                    'total_turnover': 0,
+                    'total_open_interest': 0,
+                    'timestamp': int(datetime.now().timestamp() * 1000)
+                }
+                validations.append("market_overview: FAILED")
+            else:
+                validations.append("market_overview: OK")
+            
+            if not futures_premium:
+                self.logger.warning("Futures premium calculation failed, using fallback")
+                futures_premium = {
+                    'premiums': {},
+                    'timestamp': int(datetime.now().timestamp() * 1000)
+                }
+                validations.append("futures_premium: FAILED")
+            else:
+                validations.append("futures_premium: OK")
+            
+            if not smi_data:
+                self.logger.warning("Smart money index calculation failed, using fallback")
+                smi_data = {
+                    'index': 50.0,
+                    'signals': [],
+                    'timestamp': int(datetime.now().timestamp() * 1000)
+                }
+                validations.append("smart_money_index: FAILED")
+            else:
+                validations.append("smart_money_index: OK")
+            
+            if not whale_data:
+                self.logger.warning("Whale activity calculation failed, using fallback")
+                whale_data = {
+                    'whale_activity': {},
+                    'timestamp': int(datetime.now().timestamp() * 1000)
+                }
+                validations.append("whale_activity: FAILED")
+            else:
+                validations.append("whale_activity: OK")
+            
+            if not performance:
+                self.logger.warning("Performance metrics calculation failed, using fallback")
+                performance = {
+                    'metrics': {},
+                    'timestamp': int(datetime.now().timestamp() * 1000)
+                }
+                validations.append("performance_metrics: FAILED")
+            else:
+                validations.append("performance_metrics: OK")
+                
+            self.logger.info(f"Component validations: {', '.join(validations)}")
+            section_end = time.time()
+            section_duration = section_end - section_start
+            section_times['validation'] = section_duration
+            self.logger.info(f"Section completed in {section_duration:.3f}s")
+            
+            # SECTION: Report Compilation
+            section_start = time.time()
+            self.logger.info("-" * 60)
+            self.logger.info("REPORT SECTION: Compiling Final Report")
+            # Compile report
+            report = {
+                'timestamp': int(datetime.now().timestamp() * 1000),
+                'generated_at': datetime.now().isoformat(),
+                'market_overview': market_overview,
+                'futures_premium': futures_premium,
+                'smart_money_index': smi_data,
+                'whale_activity': whale_data,
+                'performance_metrics': performance
+            }
+            
+            # Calculate report size for logging
+            report_size = len(json.dumps(report))
+            self.logger.info(f"Report compiled: {report_size} bytes, {len(report)} sections")
+            section_end = time.time()
+            section_duration = section_end - section_start
+            section_times['compilation'] = section_duration
+            self.logger.info(f"Section completed in {section_duration:.3f}s")
+            
+            # SECTION: Save JSON for API Access
+            section_start = time.time()
+            self.logger.info("-" * 60)
+            self.logger.info("REPORT SECTION: Saving JSON for API")
+            
+            # Save report to JSON for API access
+            try:
+                # Create necessary directories
+                reports_base_dir = os.path.join(os.getcwd(), 'reports')
+                reports_json_dir = os.path.join(reports_base_dir, 'json')
+                reports_html_dir = os.path.join(reports_base_dir, 'html')
+                reports_pdf_dir = os.path.join(reports_base_dir, 'pdf')
+                
+                # Create export directory for backward compatibility
+                export_dir = os.path.join(os.getcwd(), 'exports', 'market_reports', 'json')
+                
+                # Ensure all directories exist
+                os.makedirs(reports_json_dir, exist_ok=True)
+                os.makedirs(reports_html_dir, exist_ok=True)
+                os.makedirs(reports_pdf_dir, exist_ok=True)
+                os.makedirs(export_dir, exist_ok=True)
+                
+                # Get epoch timestamp for consistent naming across all files
+                timestamp = int(time.time())
+                
+                # Define consistent filenames for all report types
+                json_filename = f"market_report_{timestamp}.json"
+                html_filename = f"market_report_{timestamp}.html"
+                pdf_filename = f"market_report_{timestamp}.pdf"
+                
+                # Define full paths
+                reports_json_path = os.path.join(reports_json_dir, json_filename)
+                reports_html_path = os.path.join(reports_html_dir, html_filename)
+                reports_pdf_path = os.path.join(reports_pdf_dir, pdf_filename)
+                
+                # Also save in the traditional location with date-based filename for backward compatibility
+                timestamp_str = datetime.now().strftime('%Y%m%d_%H%M%S')
+                export_json_path = os.path.join(export_dir, f"market_report_{timestamp_str}.json")
+                
+                # Write the JSON content
+                json_content = json.dumps(report, indent=2, default=str)
+                
+                with open(reports_json_path, 'w') as f:
+                    f.write(json_content)
+                
+                with open(export_json_path, 'w') as f:
+                    f.write(json_content)
+                    
+                self.logger.info(f"Market report JSON saved to {reports_json_path} and {export_json_path}")
+                
+                # Add paths to report for reference
+                report['json_path'] = reports_json_path
+                report['export_json_path'] = export_json_path
+                report['html_path'] = reports_html_path
+                report['pdf_path'] = reports_pdf_path
+                report['timestamp'] = timestamp
+                
+            except Exception as e:
+                self.logger.error(f"Error saving JSON report: {str(e)}")
+                
+            section_end = time.time()
+            section_duration = section_end - section_start
+            section_times['json_export'] = section_duration
+            self.logger.info(f"Section completed in {section_duration:.3f}s")
+            
+            # SECTION: Performance Metrics
+            section_start = time.time()
+            self.logger.info("-" * 60)
+            self.logger.info("REPORT SECTION: Logging Performance Metrics")
+            # Log performance metrics
+            processing_time = time.time() - start_time
+            self.processing_times.append(processing_time)
+            await self._log_performance_metrics()
+            section_end = time.time()
+            section_duration = section_end - section_start
+            section_times['performance_logging'] = section_duration
+            self.logger.info(f"Section completed in {section_duration:.3f}s")
+            
+            # SECTION: Report Validation and Alerts
+            section_start = time.time()
+            self.logger.info("-" * 60)
+            self.logger.info("REPORT SECTION: Validation and Alerts")
+            # Validate report
+            validation = self._validate_report_data(report)
+            quality_score = validation.get('quality_score', 0)
+            report['quality_score'] = quality_score
+            
+            if not validation['valid']:
+                self.logger.error(f"Report validation failed: {validation}")
+                self._log_error('report_validation', 'Invalid report generated')
+                await self._send_alert(
+                    "report_validation",
+                    f"Market report validation failed: {validation}",
+                    "error"
+                )
+            else:
+                self.logger.info(f"Report validation passed with quality score: {quality_score}")
+                # Check for alert conditions
+                await self._check_and_alert_conditions(report)
+            
+            section_end = time.time()
+            section_duration = section_end - section_start
+            section_times['report_validation'] = section_duration
+            self.logger.info(f"Section completed in {section_duration:.3f}s")
+            
+            # SECTION: Summary
+            total_duration = time.time() - start_time
+            self.logger.info("-" * 60)
+            self.logger.info("REPORT GENERATION SUMMARY")
+            self.logger.info(f"Total time: {total_duration:.3f}s")
+            
+            # Display section timings
+            for section, duration in section_times.items():
+                percentage = (duration / total_duration) * 100
+                self.logger.info(f"  - {section}: {duration:.3f}s ({percentage:.1f}%)")
+            
+            return report
+            
+        except Exception as e:
+            self._log_error('report_generation', str(e))
+            self.logger.error(f"Error generating market summary: {str(e)}")
+            self.logger.error(f"Stack trace:\n{traceback.format_exc()}")
+            if self.alert_manager:
+                await self._send_alert(
+                    "report_generation",
+                    f"Failed to generate market report: {str(e)}",
+                    "error"
+                )
+            return None
+
+    def _normalize_report_data(self, report: dict) -> dict:
+        """Normalize and validate report data to ensure consistency for templates.
+        
+        This method ensures all expected fields exist with proper data types and formats,
+        especially for template rendering.
+        
+        Args:
+            report: Raw report data
+            
+        Returns:
+            Normalized report data with fallbacks for missing fields
+        """
+        report = report.copy()  # Create a copy to avoid modifying the original
+        
+        # Process timestamp and add formatted versions for templates
+        if 'timestamp' in report:
+            timestamp = report['timestamp']
+            # Convert string timestamp to int if needed
+            if isinstance(timestamp, str):
+                try:
+                    timestamp = int(timestamp)
+                    report['timestamp'] = timestamp
+                except ValueError:
+                    timestamp = int(time.time())
+                    report['timestamp'] = timestamp
+                    
+            # Ensure timestamp is in milliseconds for consistency
+            if timestamp < 10000000000:  # If in seconds, convert to milliseconds
+                timestamp = timestamp * 1000
+                report['timestamp'] = timestamp
+                
+            # Add properly formatted date strings for templates
+            dt = datetime.fromtimestamp(timestamp / 1000)
+            report['report_date'] = dt.strftime("%Y-%m-%d %H:%M:%S UTC")
+            report['formatted_date'] = dt.strftime("%B %d, %Y")
+            report['formatted_time'] = dt.strftime("%H:%M:%S UTC")
+            report['year'] = dt.year  # Used in footer
+        else:
+            # Add current timestamp if missing
+            timestamp = int(time.time() * 1000)
+            report['timestamp'] = timestamp
+            dt = datetime.now()
+            report['report_date'] = dt.strftime("%Y-%m-%d %H:%M:%S UTC")
+            report['formatted_date'] = dt.strftime("%B %d, %Y")
+            report['formatted_time'] = dt.strftime("%H:%M:%S UTC")
+            report['year'] = dt.year
+        
+        # Standard fallbacks for missing sections or fields
+        fallbacks = {
+            'market_overview': {
+                'regime': 'NEUTRAL',
+                'trend_strength': '0.0%',
+                'daily_change': 0.0,
+                'weekly_change': 0.0,
+                'btc_price': 0.0,
+                'eth_price': 0.0,
+                'total_volume': 0,
+                'btc_dominance': '0.0%',
+                'volatility': 'LOW',
+                'strength': 50.0,
+                'volume_change': 0.0,
+            },
+            'futures_premium': {
+                'average_premium': '0.0%',
+                'contango_status': 'NEUTRAL',
+                'max_premium': '0.0%',
+                'min_premium': '0.0%',
+                'data': []
+            },
+            'smart_money_index': {
+                'index': 50.0,
+                'sentiment': 'NEUTRAL',
+                'institutional_flow': '+0.0%',
+                'funding_rates_classification': 'NEUTRAL',
+                'key_zones': []
+            },
+            'whale_activity': {
+                'has_significant_activity': False,
+                'significant_activity': {},
+                'large_transactions': []
+            },
+            'performance_metrics': {
+                'api_latency': {'avg': 0, 'max': 0, 'p95': 0},
+                'error_rate': {'total': 0, 'by_type': {}, 'errors_per_minute': 0},
+                'data_quality': {'avg_score': 100, 'min_score': 100},
+                'processing_time': {'avg': 0, 'max': 0}
+            }
+        }
+        
+        # Ensure all sections exist with proper formatting and nested fields
+        for key, fallback in fallbacks.items():
+            if key not in report or not isinstance(report[key], dict):
+                self.logger.warning(f"Missing or invalid section '{key}' in report, using fallback")
+                report[key] = fallback.copy()
+            else:
+                # Ensure all expected fields exist in each section
+                for subkey, value in fallback.items():
+                    if subkey not in report[key]:
+                        self.logger.debug(f"Adding missing field '{key}.{subkey}' with fallback value")
+                        report[key][subkey] = value
+        
+        # Special handling for market regime to ensure consistent classification
+        if 'market_overview' in report and 'regime' in report['market_overview']:
+            # Normalize regime values to one of the standard classifications
+            regime = report['market_overview']['regime'].upper()
+            if regime in ['BULL', 'BULLISH', 'UP', 'UPTREND']:
+                report['market_overview']['regime'] = 'BULLISH'
+            elif regime in ['BEAR', 'BEARISH', 'DOWN', 'DOWNTREND']:
+                report['market_overview']['regime'] = 'BEARISH'
+            elif regime in ['NEUTRAL', 'SIDEWAYS']:
+                report['market_overview']['regime'] = 'NEUTRAL'
+            elif regime in ['RANGE', 'RANGING', 'CONSOLIDATION']:
+                report['market_overview']['regime'] = 'RANGING'
+            else:
+                report['market_overview']['regime'] = 'NEUTRAL'
+                
+            # Add descriptive regime text for templates
+            regime_map = {
+                'BULLISH': 'Bullish market conditions with upward momentum',
+                'BEARISH': 'Bearish market conditions with downward pressure',
+                'NEUTRAL': 'Neutral market conditions with balanced forces',
+                'RANGING': 'Ranging market with defined support and resistance'
+            }
+            report['market_overview']['regime_description'] = regime_map.get(
+                report['market_overview']['regime'], 'Neutral market conditions'
+            )
+            
+        # Ensure additional sections exist for template compatibility
+        if 'additional_sections' not in report:
+            report['additional_sections'] = {}
+            
+        # Add derived market sentiment section based on available data
+        if 'market_sentiment' not in report['additional_sections']:
+            # Create market sentiment summary from existing data
+            market_regime = report['market_overview'].get('regime', 'NEUTRAL')
+            volume_change = report['market_overview'].get('volume_change', 0)
+            funding_rates = report['smart_money_index'].get('funding_rates_classification', 'NEUTRAL')
+            
+            report['additional_sections']['market_sentiment'] = {
+                'overall': "Bullish" if market_regime == 'BULLISH' else 
+                           "Bearish" if market_regime == 'BEARISH' else 
+                           "Ranging" if market_regime == 'RANGING' else "Neutral",
+                'volume_sentiment': "Increasing" if volume_change > 0 else "Decreasing",
+                'funding_rates': funding_rates,
+                'btc_support': report['market_overview'].get('btc_support', 0),
+                'btc_resistance': report['market_overview'].get('btc_resistance', 0)
+            }
+            
+        # Add futures premium analysis if not present
+        if 'futures_premium_analysis' not in report['additional_sections']:
+            report['additional_sections']['futures_premium_analysis'] = {
+                'btc_premium': report['futures_premium'].get('average_premium', '0.00%'),
+                'contango_status': report['futures_premium'].get('contango_status', 'NEUTRAL'),
+                'funding_situation': f"Current funding rates are {report['smart_money_index'].get('funding_rates_classification', 'neutral').lower()}"
+            }
+            
+        # Add template flags to control conditional sections
+        report['has_smart_money_data'] = report['smart_money_index']['index'] != 50.0 or len(report['smart_money_index'].get('key_zones', [])) > 0
+        report['has_whale_activity'] = report['whale_activity']['has_significant_activity']
+        report['has_futures_data'] = len(report['futures_premium'].get('data', [])) > 0
+        
+        return report
+
+    async def generate_market_report(self, report_data: Dict[str, Any]) -> bool:
+        """Generate a market report (PDF) from the provided data.
+        
+        Args:
+            report_data: The market report data dictionary.
+        Returns:
+            bool: True if the PDF was generated successfully, False otherwise.
+        """
+        # Normalize and validate the report data
+        report_data = self._normalize_report_data(report_data)
+        
+        # Call the generate_market_pdf_report method which now uses the correct market template
+        pdf_path = await self.generate_market_pdf_report(report_data)
+        
+        if pdf_path:
+            self.logger.info(f"Market report PDF generated at {pdf_path}")
+            
+            # Save path to JSON report for convenience
+            reports_base_dir = os.path.join(os.getcwd(), 'reports')
+            reports_json_dir = os.path.join(reports_base_dir, 'json')
+            os.makedirs(reports_json_dir, exist_ok=True)
+            
+            timestamp = int(time.time())
+            json_filename = f"market_report_{timestamp}.json"
+            json_path = os.path.join(reports_json_dir, json_filename)
+            
+            try:
+                with open(json_path, 'w') as f:
+                    json.dump(report_data, f, indent=2, default=str)
+                self.logger.info(f"Market report JSON saved to {json_path}")
+            except Exception as json_err:
+                self.logger.error(f"Failed to save JSON report: {str(json_err)}")
+            
+            return True
+        else:
+            self.logger.error("Failed to generate market report PDF")
+            return False
+
+    def _log_template_error(self, error_message: str, template_path: str, data: Dict[str, Any]) -> None:
+        """Log detailed errors related to template rendering to help diagnose issues.
+        
+        Args:
+            error_message: The error message
+            template_path: Path to the template that failed
+            data: The data that was being rendered
+        """
+        # Log the basic error
+        self.logger.error(f"Template error: {error_message}")
+        
+        # Try to extract useful information about the template
+        try:
+            # Verify template exists
+            if not os.path.exists(template_path):
+                self.logger.error(f"Template file not found: {template_path}")
+                
+                # Check template directory
+                template_dir = os.path.dirname(template_path)
+                if not os.path.exists(template_dir):
+                    self.logger.error(f"Template directory does not exist: {template_dir}")
+                else:
+                    # List available templates
+                    templates = [f for f in os.listdir(template_dir) if f.endswith('.html')]
+                    self.logger.info(f"Available templates in {template_dir}: {templates}")
+            else:
+                # Get template size
+                template_size = os.path.getsize(template_path)
+                self.logger.info(f"Template exists: {template_path}, size: {template_size} bytes")
+                
+                # Check template content (first few lines)
+                try:
+                    with open(template_path, 'r') as f:
+                        first_lines = [next(f) for _ in range(10)]
+                        self.logger.debug(f"Template first 10 lines: {first_lines}")
+                except Exception as read_err:
+                    self.logger.error(f"Error reading template: {str(read_err)}")
+        except Exception as template_check_err:
+            self.logger.error(f"Error checking template: {str(template_check_err)}")
+        
+        # Log data structure for debugging
+        try:
+            # Log top-level keys
+            self.logger.info(f"Data keys: {list(data.keys())}")
+            
+            # Specifically check for keys used in market_report_dark.html
+            required_template_keys = [
+                'timestamp', 'report_date', 'market_overview', 'futures_premium', 
+                'smart_money_index', 'whale_activity', 'performance_metrics'
+            ]
+            
+            missing_keys = [k for k in required_template_keys if k not in data]
+            if missing_keys:
+                self.logger.error(f"Missing required template keys: {missing_keys}")
+                
+            # Log specific nested keys that might be referenced in the template
+            if 'market_overview' in data:
+                market_keys = list(data['market_overview'].keys())
+                self.logger.info(f"market_overview keys: {market_keys}")
+                
+                # Check specific fields that might cause template errors
+                if 'regime' in data['market_overview']:
+                    self.logger.info(f"market_overview.regime = {data['market_overview']['regime']}")
+                    
+            # Similar checks for other key sections
+            for section in ['futures_premium', 'smart_money_index', 'whale_activity']:
+                if section in data and isinstance(data[section], dict):
+                    section_keys = list(data[section].keys())
+                    self.logger.info(f"{section} keys: {section_keys}")
+        except Exception as data_check_err:
+            self.logger.error(f"Error checking data structure: {str(data_check_err)}")
+            
+        # Add stack trace for context
+        self.logger.error(traceback.format_exc())

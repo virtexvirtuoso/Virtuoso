@@ -133,12 +133,22 @@ class TopSymbolsManager:
         """Check if cache needs refresh based on TTL"""
         return time.time() - self._last_update > self._cache_ttl
 
-    async def get_symbols(self, force_refresh: bool = False) -> List[str]:
-        """Get symbols with cache validation"""
+    async def get_symbols(self, force_refresh: bool = False, limit: Optional[int] = None) -> List[str]:
+        """Get symbols with cache validation.
+        
+        Args:
+            force_refresh (bool): Whether to force refresh the cache.
+            limit (Optional[int]): Maximum number of symbols to return. If None, return all.
+        Returns:
+            List[str]: List of symbol strings, limited if specified.
+        """
         if force_refresh or self._cache_expired() or not self._symbols_cache:
             await self.update_top_symbols()
             self._last_update = time.time()
-        return self._symbols_cache.get('symbols', [])
+        symbols = self._symbols_cache.get('symbols', [])
+        if limit is not None:
+            return symbols[:limit]
+        return symbols
 
     async def update_top_symbols(self) -> None:
         """Update the list of top symbols based on configured criteria."""
@@ -560,15 +570,17 @@ class TopSymbolsManager:
                 try:
                     # Try to get tickers from exchange
                     self.logger.debug("Fetching tickers from exchange")
-                    tickers = await exchange.fetch_tickers()
+                    tickers = await exchange.fetch_market_tickers()
                     
-                    for symbol, data in tickers.items():
+                    # Process the list of ticker dictionaries
+                    for ticker in tickers:
+                        symbol = ticker.get('symbol', '')
                         # Skip symbols that don't match our criteria
                         if not self._should_include_symbol({'symbol': symbol}):
                             continue
                             
                         # Normalize the data
-                        normalized = self._normalize_market_data(data, symbol)
+                        normalized = self._normalize_market_data(ticker, symbol)
                         if normalized:
                             markets.append(normalized)
                 except Exception as e:
