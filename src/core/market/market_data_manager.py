@@ -946,7 +946,7 @@ class MarketDataManager:
                 self.data_cache[symbol] = {}
             
             # Initialize ticker if it doesn't exist
-            if 'ticker' not in self.data_cache[symbol]:
+            if 'ticker' not in self.data_cache[symbol] or self.data_cache[symbol]['ticker'] is None:
                 self.data_cache[symbol]['ticker'] = {
                     'bid': 0, 'ask': 0, 'last': 0, 'high': 0, 'low': 0, 
                     'volume': 0, 'timestamp': int(time.time() * 1000)
@@ -1477,21 +1477,137 @@ class MarketDataManager:
             )
     
     async def get_market_data(self, symbol: str) -> Dict[str, Any]:
-        """Get complete market data for a symbol
+        """Get all available market data for a symbol.
         
         Args:
-            symbol: Trading pair symbol
+            symbol: The symbol to get market data for
             
         Returns:
-            Dictionary containing all market data
+            Dict containing market data components (ticker, orderbook, trades, etc.)
         """
         if symbol not in self.data_cache:
-            # Symbol not in cache, fetch data
-            logger.warning(f"Symbol {symbol} not in cache, fetching data")
-            return await self._fetch_symbol_data_atomically(symbol)
+            self.logger.warning(f"Symbol {symbol} not in cache, initializing")
+            self.data_cache[symbol] = {}
+            
+        # First ensure we have refreshed data
+        try:
+            # Add 'kline' to the components to refresh
+            await self.refresh_components(symbol, components=['ticker', 'orderbook', 'trades', 'kline'])
+        except Exception as e:
+            self.logger.error(f"Error refreshing market data for {symbol}: {str(e)}")
+            
+        # Build the result dict with all available data
+        market_data = {}
         
-        # Return cached data with WebSocket updates applied
-        return self.data_cache[symbol]
+        # Always initialize ticker to avoid NoneType errors in validation
+        if 'ticker' not in self.data_cache[symbol] or self.data_cache[symbol]['ticker'] is None:
+            self.logger.warning(f"Ticker data missing for {symbol}, initializing with defaults")
+            self.data_cache[symbol]['ticker'] = {
+                'bid': 0,
+                'ask': 0,
+                'last': 0,
+                'high': 0,
+                'low': 0,
+                'volume': 0,
+                'timestamp': int(time.time() * 1000)
+            }
+            
+        # Include basic market data components
+        market_data['ticker'] = self.data_cache[symbol].get('ticker')
+        market_data['orderbook'] = self.data_cache[symbol].get('orderbook')
+        market_data['trades'] = self.data_cache[symbol].get('trades', [])
+        
+        # OHLCV data - required for market reports
+        market_data['ohlcv'] = {}
+        
+        # Check if ohlcv data exists directly in the symbol's cache
+        if 'ohlcv' in self.data_cache[symbol] and isinstance(self.data_cache[symbol]['ohlcv'], dict):
+            # Use the ohlcv data directly from the cache
+            market_data['ohlcv'] = self.data_cache[symbol]['ohlcv']
+            self.logger.debug(f"Retrieved OHLCV data from symbol cache: {len(market_data['ohlcv'])} timeframes")
+        else:
+            # If no ohlcv data in symbol cache, try to get it from _ohlcv_cache
+            self.logger.debug(f"No OHLCV data in symbol cache, fetching from main cache")
+            
+            # Try to retrieve from _ohlcv_cache using different key formats
+            for tf in ['base', 'ltf', 'mtf', 'htf']:
+                # Check different formats of cache keys
+                possible_keys = [
+                    f"{symbol}_{tf}",  # Format: BTCUSDT_base
+                    f"{symbol.replace('/', '')}_{tf}"  # Format: BTCUSDT_base (removing / if present)
+                ]
+                
+                # Try each possible key
+                for key in possible_keys:
+                    if key in self._ohlcv_cache and 'data' in self._ohlcv_cache[key]:
+                        market_data['ohlcv'][tf] = self._ohlcv_cache[key]['data']
+                        self.logger.debug(f"Found {tf} timeframe data in cache with key: {key}")
+                        break
+        
+            # If still no data, try to fetch it
+            if not market_data['ohlcv']:
+                self.logger.warning(f"No OHLCV data in cache for {symbol}, fetching from API")
+                try:
+                    # Fetch timeframes
+                    timeframes = await self._fetch_timeframes(symbol)
+                    if timeframes:
+                        # Store in result
+                        market_data['ohlcv'] = timeframes
+                        # Also update symbol cache for future use
+                        if symbol in self.data_cache:
+                            self.data_cache[symbol]['ohlcv'] = timeframes
+                        self.logger.info(f"Fetched and stored OHLCV data for {symbol}: {len(timeframes)} timeframes")
+                except Exception as e:
+                    self.logger.error(f"Error fetching OHLCV data: {str(e)}")
+                    self.logger.debug(traceback.format_exc())
+        
+        # Log summary of what we're returning
+        ohlcv_summary = ', '.join([f"{tf}: {len(df)}" for tf, df in market_data.get('ohlcv', {}).items()])
+        self.logger.debug(f"Market data for {symbol} includes: ticker={bool(market_data.get('ticker'))}, "
+                         f"orderbook={bool(market_data.get('orderbook'))}, "
+                         f"trades={len(market_data.get('trades', []))}, "
+                         f"ohlcv=[{ohlcv_summary}]")
+        
+        # Add open interest data if available
+        market_data['open_interest'] = self.get_open_interest_data(symbol)
+        
+        # --- FIX: Propagate sentiment dict (including long_short_ratio) ---
+        sentiment = {}
+        # Copy over any sentiment fields from the data cache if present
+        if 'sentiment' in self.data_cache[symbol] and isinstance(self.data_cache[symbol]['sentiment'], dict):
+            sentiment = self.data_cache[symbol]['sentiment'].copy()
+        # If long_short_ratio is present at the top level, add it to sentiment
+        if 'long_short_ratio' in self.data_cache[symbol]:
+            sentiment['long_short_ratio'] = self.data_cache[symbol]['long_short_ratio']
+        # Add other possible sentiment fields as needed (e.g., funding_rate, liquidations)
+        for key in ['funding_rate', 'liquidations', 'market_mood', 'risk', 'open_interest']:
+            if key in self.data_cache[symbol]:
+                sentiment[key] = self.data_cache[symbol][key]
+        # Log the sentiment dict for debugging
+        self.logger.info(f"[FIX] get_market_data: Sentiment dict keys: {list(sentiment.keys())}")
+        if 'long_short_ratio' in sentiment:
+            self.logger.info(f"[FIX] get_market_data: long_short_ratio: {sentiment['long_short_ratio']}")
+        market_data['sentiment'] = sentiment
+        
+        # Ensure OHLCV data is fetched if missing
+        if 'ohlcv' not in market_data or not market_data['ohlcv']:
+            self.logger.info(f"OHLCV data missing for {symbol}, fetching now")
+            try:
+                timeframes = await self._fetch_timeframes(symbol)
+                if timeframes:
+                    market_data['ohlcv'] = timeframes
+                    # Also update symbol cache for future use
+                    if symbol in self.data_cache:
+                        self.data_cache[symbol]['ohlcv'] = timeframes
+                    self.logger.info(f"Successfully fetched OHLCV data for {symbol}")
+                else:
+                    self.logger.warning(f"Failed to fetch OHLCV data for {symbol}")
+            except Exception as e:
+                self.logger.error(f"Error fetching OHLCV data for {symbol}: {str(e)}")
+                import traceback
+                self.logger.debug(traceback.format_exc())
+        
+        return market_data
     
     async def stop(self) -> None:
         """Stop the market data manager and cleanup resources"""
@@ -1706,3 +1822,110 @@ class MarketDataManager:
         except Exception as e:
             self.logger.error(f"Error updating open interest history: {str(e)}")
             self.logger.debug(traceback.format_exc()) 
+
+    def get_open_interest_data(self, symbol: str) -> Dict[str, Any]:
+        """Get open interest data for a symbol.
+        
+        Args:
+            symbol: Symbol to get open interest data for
+            
+        Returns:
+            Dict containing open interest data or None if not available
+        """
+        try:
+            if symbol not in self.data_cache:
+                return None
+                
+            if 'open_interest' not in self.data_cache[symbol]:
+                return None
+                
+            return self.data_cache[symbol]['open_interest']
+        except Exception as e:
+            self.logger.error(f"Error getting open interest data: {str(e)}")
+            return None
+            
+    async def refresh_components(self, symbol: str, components: List[str] = None) -> None:
+        """Refresh specific components for a symbol.
+        
+        Args:
+            symbol: Symbol to refresh components for
+            components: List of component names to refresh, or None for all
+        """
+        try:
+            if symbol not in self.data_cache:
+                self.data_cache[symbol] = {}
+                
+            if components is None:
+                components = ['ticker', 'orderbook', 'trades', 'kline']
+                
+            # Track new fetches
+            fetched_data = {}
+            
+            # Fetch each component
+            for component in components:
+                try:
+                    if component == 'ticker':
+                        # Try to find exchange
+                        exchange = await self.exchange_manager.get_primary_exchange()
+                        if exchange:
+                            ticker = await exchange.fetch_ticker(symbol)
+                            if ticker:
+                                fetched_data['ticker'] = ticker
+                        else:
+                            self.logger.error("No exchange available for ticker fetch")
+                    
+                    elif component == 'orderbook':
+                        # Try to find exchange
+                        exchange = await self.exchange_manager.get_primary_exchange()
+                        if exchange:
+                            orderbook = await exchange.fetch_order_book(symbol)
+                            if orderbook:
+                                fetched_data['orderbook'] = orderbook
+                        else:
+                            self.logger.error("No exchange available for orderbook fetch")
+                    
+                    elif component == 'trades':
+                        # Try to find exchange
+                        exchange = await self.exchange_manager.get_primary_exchange()
+                        if exchange:
+                            trades = await exchange.fetch_trades(symbol, 100)
+                            if trades:
+                                fetched_data['trades'] = trades
+                        else:
+                            self.logger.error("No exchange available for trades fetch")
+                        
+                    elif component == 'kline':
+                        # Fetch OHLCV data using _fetch_timeframes method
+                        try:
+                            self.logger.info(f"Fetching OHLCV data for {symbol}")
+                            timeframes = await self._fetch_timeframes(symbol)
+                            if timeframes:
+                                # Initialize ohlcv in data_cache if needed
+                                if 'ohlcv' not in self.data_cache[symbol]:
+                                    self.data_cache[symbol]['ohlcv'] = {}
+                                
+                                # Store each timeframe
+                                for tf, data in timeframes.items():
+                                    self.data_cache[symbol]['ohlcv'][tf] = data
+                                
+                                self.logger.info(f"Successfully fetched OHLCV data for {symbol} with {len(timeframes)} timeframes")
+                                fetched_data['kline'] = True
+                            else:
+                                self.logger.warning(f"No OHLCV data returned for {symbol}")
+                        except Exception as e:
+                            self.logger.error(f"Error fetching OHLCV data for {symbol}: {str(e)}")
+                            self.logger.debug(traceback.format_exc())
+                        
+                except Exception as e:
+                    self.logger.error(f"Error refreshing {component} for {symbol}: {str(e)}")
+            
+            # Update cache with fetched data
+            for component, data in fetched_data.items():
+                if data:
+                    if component != 'kline':  # Skip kline as it's handled separately above
+                        self.data_cache[symbol][component] = data
+                        
+            self.logger.debug(f"Refreshed components for {symbol}: {list(fetched_data.keys())}")
+            
+        except Exception as e:
+            self.logger.error(f"Error refreshing components for {symbol}: {str(e)}")

@@ -18,6 +18,6 @@ from src.core.formatting.formatter import format_analysis_result
 from src.core.formatting.formatter import LogFormatter
 
 # Re-export the EnhancedFormatter class
-from src.core.formatting.enhanced_formatter import EnhancedFormatter
+from src.core.formatting.formatter import EnhancedFormatter
 
 __all__ = ['AnalysisFormatter', 'format_analysis_result', 'LogFormatter', 'EnhancedFormatter'] 

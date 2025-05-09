@@ -492,17 +492,37 @@ class MetricsManager:
             scores: Dictionary of analysis scores
         """
         try:
+            # Debug info about the scores object
+            self.logger.debug(f"Processing {len(scores)} metrics for {symbol}")
+            
             # Update individual scores
             for indicator, score in scores.items():
                 if indicator != 'confluence_score' and indicator != 'timestamp':
                     try:
-                        # Skip non-numeric values
-                        if isinstance(score, (int, float)):
+                        # Detailed type debugging
+                        score_type = type(score).__name__
+                        is_numpy = hasattr(score, 'dtype')
+                        numpy_type = getattr(score, 'dtype', None)
+                        
+                        # Skip non-numeric values with enhanced diagnostics
+                        if isinstance(score, (int, float, np.number)):
                             value = float(score)
+                            self.logger.debug(f"Converting {indicator} from {score_type} to float: {value}")
                         elif isinstance(score, str) and score.replace('.', '', 1).isdigit():
                             value = float(score)
+                            self.logger.debug(f"Converting {indicator} from string '{score}' to float: {value}")
+                        elif is_numpy:
+                            # Detailed numpy type handling
+                            self.logger.debug(f"Processing numpy value for {indicator}: type={score_type}, numpy_type={numpy_type}")
+                            try:
+                                value = float(score)
+                                self.logger.debug(f"Successfully converted numpy {indicator} to float: {value}")
+                            except Exception as numpy_err:
+                                self.logger.warning(f"Failed to convert numpy {indicator} to float: {str(numpy_err)}")
+                                continue
                         else:
-                            self.logger.debug(f"Skipping non-numeric score for {indicator}: {score}")
+                            # More detailed diagnostics for skipped values
+                            self.logger.debug(f"Skipping non-numeric score for {indicator}: {score} (type: {score_type}, is_numpy: {is_numpy}, numpy_type: {numpy_type})")
                             continue
                             
                         await self.update_metric(
@@ -512,6 +532,7 @@ class MetricsManager:
                         )
                     except (ValueError, TypeError) as e:
                         self.logger.warning(f"Could not convert {indicator} score '{score}' to float: {str(e)}")
+                        self.logger.debug(f"Score type: {type(score).__name__}, dir(score): {dir(score) if hasattr(score, '__dict__') else 'N/A'}")
             
             # Update confluence score separately
             if 'confluence_score' in scores:
@@ -524,6 +545,7 @@ class MetricsManager:
                     )
                 except (ValueError, TypeError) as e:
                     self.logger.warning(f"Could not convert confluence_score '{scores['confluence_score']}' to float: {str(e)}")
+                    self.logger.debug(f"Type: {type(scores['confluence_score']).__name__}")
                 
         except Exception as e:
             self.logger.error(f"Error updating analysis metrics: {str(e)}")

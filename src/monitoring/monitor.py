@@ -24,6 +24,7 @@ import os
 import signal
 import sys
 import uuid
+import hashlib
 from typing import Dict, List, Any, Optional, Callable, Union, Tuple
 from datetime import datetime, timezone, timedelta
 import pandas as pd
@@ -84,6 +85,8 @@ from src.core.exchanges.websocket_manager import WebSocketManager  # Import WebS
 
 # Add import for liquidation cache
 from src.utils.liquidation_cache import liquidation_cache
+
+import gc
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -884,12 +887,20 @@ class LoggingUtility:
                     self.logger.debug(f"  Total: {total_volume}, Avg: {avg_volume:.4f}")
                 
                 # Count buy vs sell trades if side is available
-                buy_count = sum(1 for trade in data if trade.get('side') == 'buy')
-                sell_count = sum(1 for trade in data if trade.get('side') == 'sell')
+                if data and len(data) > 0 and 'side' in data[0]:
+                    # Count trades by side in one pass through the data
+                    buy_count = 0
+                    sell_count = 0
+                    for trade in data:
+                        side = trade.get('side')
+                        if side == 'buy':
+                            buy_count += 1
+                        elif side == 'sell':
+                            sell_count += 1
                 
-                self.logger.debug(f"\nTrade directions:")
-                self.logger.debug(f"  Buy: {buy_count} ({buy_count/len(data)*100:.1f}%)")
-                self.logger.debug(f"  Sell: {sell_count} ({sell_count/len(data)*100:.1f}%)")
+                    self.logger.debug(f"\nTrade directions:")
+                    self.logger.debug(f"  Buy: {buy_count} ({buy_count/len(data)*100:.1f}%)")
+                    self.logger.debug(f"  Sell: {sell_count} ({sell_count/len(data)*100:.1f}%)")
             
             except Exception as e:
                 self.logger.debug(f"Error calculating trade statistics: {str(e)}")
@@ -1222,6 +1233,23 @@ class MarketMonitor:
         })
         self._last_check = {}
         
+        # Initialize whale activity monitoring with default thresholds
+        self.whale_activity_config = self.config.get('monitoring', {}).get('whale_activity', {
+            'enabled': True,
+            'accumulation_threshold': 1000000,  # $1M default threshold for significant accumulation
+            'distribution_threshold': 1000000,  # $1M default threshold for significant distribution
+            'cooldown': 900,           # 15 minutes between alerts for same symbol
+            'imbalance_threshold': 0.2, # 20% order book imbalance threshold
+            'min_order_count': 5,      # Minimum number of whale orders to consider
+            'market_percentage': 0.02, # 2% of market volume to be considered significant
+            'excluded_symbols': [],    # No excluded symbols
+            'included_symbols': []     # Monitor all symbols
+        })
+        
+        # Store the last whale activity calculations
+        self._last_whale_activity = {}
+        self._last_whale_alert = {}
+        
         # Initialize WebSocket if enabled and we have a symbol
         if self.websocket_config.get('enabled', True) and self.symbol_str:
             self._initialize_websocket()
@@ -1230,6 +1258,14 @@ class MarketMonitor:
         self._market_data_cache = {}
         self._cache_ttl = 300  # 5 minutes default cache TTL
         self._last_ohlcv_update = {}
+        
+        # Initialize OHLCV cache for reports
+        self._ohlcv_cache = {}
+        
+        # Flag to track if the first monitoring cycle has completed
+        self.first_cycle_completed = False
+        # Flag to indicate if initial market report is pending
+        self.initial_report_pending = True
         
         self.logger.info(f"Initialized MarketMonitor for {self.exchange_id}")
         
@@ -1709,15 +1745,8 @@ class MarketMonitor:
                 self._market_report_task = asyncio.create_task(self.market_reporter.run_scheduled_reports())
                 self.logger.info("Scheduled market reports service started")
                 
-            # Generate initial market report on startup, regardless of scheduled times
-            self.logger.info("Generating initial market report...")
-            try:
-                await self._generate_market_report()
-                self.last_report_time = datetime.now(timezone.utc)
-                self.logger.info("Initial market report generated successfully")
-            except Exception as e:
-                self.logger.error(f"Error generating initial market report: {str(e)}")
-                self.logger.debug(traceback.format_exc())
+            # Delay initial market report generation until after first monitoring cycle
+            self.logger.info("Initial market report generation will be delayed until after first monitoring cycle")
                 
             self.logger.info("Market monitor started successfully")
             
@@ -1729,17 +1758,17 @@ class MarketMonitor:
     async def _monitoring_cycle(self):
         """Run a single monitoring cycle."""
         try:
-            logger.debug("=== Starting Monitoring Cycle ===")
+            self.logger.debug("=== Starting Monitoring Cycle ===")
             
             # Get symbols to monitor
             symbols = await self.top_symbols_manager.get_symbols()
             symbol_display = [s['symbol'] if isinstance(s, dict) and 'symbol' in s else s for s in symbols[:5]]
             if len(symbols) > 5:
                 symbol_display.append('...')
-            logger.debug(f"Symbol manager returned {len(symbols)} symbols: {symbol_display}")
+            self.logger.debug(f"Symbol manager returned {len(symbols)} symbols: {symbol_display}")
             
             if not symbols:
-                logger.warning("Empty symbol list detected!")
+                self.logger.warning("Empty symbol list detected!")
                 return
             
             # Process each symbol - now using MarketDataManager for efficient data fetching
@@ -1749,20 +1778,37 @@ class MarketMonitor:
                 except Exception as e:
                     self.logger.error(f"Error processing {symbol}: {str(e)}")
                     continue
-                
-            # Check if it's time for a report
-            current_time = datetime.now(timezone.utc)
-            should_generate_report = (
-                # Generate a report if none has been generated yet
-                not self.last_report_time or
-                # Or if it's a scheduled report time and enough time has passed
-                (self._is_report_time() and 
-                 (current_time - self.last_report_time).total_seconds() > 300)
-            )
             
-            if should_generate_report:
-                await self._generate_market_report()
-                self.last_report_time = current_time
+            # Check if this is the first completed cycle
+            if not self.first_cycle_completed:
+                self.first_cycle_completed = True
+                self.logger.info("First monitoring cycle completed")
+                
+                # Generate initial market report if it was pending
+                if self.initial_report_pending:
+                    self.logger.info("Generating initial market report after first monitoring cycle...")
+                    try:
+                        await self._generate_market_report()
+                        self.last_report_time = datetime.now(timezone.utc)
+                        self.initial_report_pending = False
+                        self.logger.info("Initial market report generated successfully")
+                    except Exception as e:
+                        self.logger.error(f"Error generating initial market report: {str(e)}")
+                        self.logger.debug(traceback.format_exc())
+            else:
+                # Check if it's time for a regular report
+                current_time = datetime.now(timezone.utc)
+                should_generate_report = (
+                    # Generate a report if none has been generated yet
+                    not self.last_report_time or
+                    # Or if it's a scheduled report time and enough time has passed
+                    (self._is_report_time() and 
+                    (current_time - self.last_report_time).total_seconds() > 300)
+                )
+                
+                if should_generate_report:
+                    await self._generate_market_report()
+                    self.last_report_time = current_time
             
         except Exception as e:
             self.logger.error(f"Monitoring cycle error: {str(e)}")
@@ -1787,6 +1833,11 @@ class MarketMonitor:
             if not market_data:
                 self.logger.error(f"No market data available for {symbol_str}")
                 return
+
+            # Ensure symbol field is set correctly
+            if 'symbol' not in market_data:
+                self.logger.debug(f"Adding missing 'symbol' field to market data before analysis for {symbol_str}")
+                market_data['symbol'] = symbol_str
 
             # Log what data we have
             data_components = []
@@ -1844,9 +1895,12 @@ class MarketMonitor:
                 
                 # Log analysis results
                 if analysis_result:
-                    score = analysis_result.get('score', analysis_result.get('confluence_score', 0))
+                    score = analysis_result.get('confluence_score', 0)
                     reliability = analysis_result.get('reliability', 0)
-                    self.logger.info(f"Confluence score: {score:.2f} (reliability: {reliability:.2f})")
+                    # Format safely before using in f-string
+                    score_str = f"{score:.2f}" if score is not None else "N/A"
+                    reliability_str = f"{reliability:.2f}" if reliability is not None else "N/A"
+                    self.logger.info(f"Confluence score: {score_str} (reliability: {reliability_str})")
                     
                     # Log component scores if available
                     components = analysis_result.get('components', {})
@@ -1870,13 +1924,15 @@ class MarketMonitor:
             # Process the analysis result (generate signals, etc.)
             self.logger.info(f"Processing analysis results for {symbol_str}")
             await self._process_analysis_result(symbol_str, analysis_result)
+            
+            # Monitor for whale activity
+            self.logger.info(f"Monitoring whale activity for {symbol_str}")
+            await self._monitor_whale_activity(symbol_str, market_data)
+            
             self.logger.info(f"=== Completed analysis process for {symbol_str} ===")
-
-        except AttributeError as e:
-            self.logger.error(f"Missing component: {str(e)}")
+            
         except Exception as e:
-            self.logger.error(f"Processing failed for {symbol}: {str(e)}")
-            self.logger.debug(traceback.format_exc())
+            self.logger.error(f"Error processing symbol {symbol}: {str(e)}", exc_info=True)
 
     async def stop(self) -> None:
         """Stop the market monitor."""
@@ -2563,36 +2619,141 @@ class MarketMonitor:
     async def _process_analysis_result(self, symbol: str, result: Dict[str, Any]) -> None:
         """Process analysis result and generate signals if appropriate."""
         try:
+            # Generate a transaction ID for tracking this analysis throughout the system
+            transaction_id = str(uuid.uuid4())
+            signal_id = str(uuid.uuid4())[:8]
+            result['transaction_id'] = transaction_id
+            result['signal_id'] = signal_id
+            
             # Extract key information
-            confluence_score = result.get('score', result.get('confluence_score', 0))
+            confluence_score = result.get('confluence_score', 0)
             reliability = result.get('reliability', 0)
             components = result.get('components', {})
             
-            # Get thresholds from config.confluence section for consistency
+            
+            # Get thresholds from config
             confluence_config = self.config.get('confluence', {})
             threshold_config = confluence_config.get('thresholds', {})
-            buy_threshold = float(threshold_config.get('buy', 60))
-            sell_threshold = float(threshold_config.get('sell', 40))
+            buy_threshold = float(threshold_config.get('buy', 60.0))
+            sell_threshold = float(threshold_config.get('sell', 40.0))
             neutral_buffer = float(threshold_config.get('neutral_buffer', 5))
             
             # Log component scores
             self.logger.debug("\n=== Component Scores ===")
             for component, score in components.items():
                 self.logger.debug(f"{component}: {score}")
+            
+            # Get formatter results directly from the ConfluenceAnalyzer output
+            formatter_results = result.get('results', {})
+            
+            # Ensure market_interpretations are properly formatted for PDF generation
+            if 'market_interpretations' in result:
+                market_interpretations = result['market_interpretations']
                 
-            # Display comprehensive confluence score table with top components and interpretations
+                # Check if interpretations are simple strings instead of properly structured objects
+                if market_interpretations and (isinstance(market_interpretations[0], str) or 
+                                             (isinstance(market_interpretations[0], dict) and 'component' not in market_interpretations[0])):
+                    self.logger.debug(f"Converting market interpretations to structured format for {symbol}")
+                    
+                    # Create properly structured interpretations
+                    structured_interpretations = []
+                    
+                    # Component name mapping
+                    component_mappings = {
+                        'technical': 'Technical',
+                        'volume': 'Volume',
+                        'orderbook': 'Orderbook',
+                        'orderflow': 'Orderflow',
+                        'sentiment': 'Sentiment',
+                        'price_structure': 'Price Structure',
+                        'structure': 'Price Structure'
+                    }
+                    
+                    for interp in market_interpretations:
+                        # If it's a string, identify which component it belongs to
+                        if isinstance(interp, str):
+                            # Try to identify component from the text
+                            identified_component = None
+                            for comp_key, comp_name in component_mappings.items():
+                                if comp_key.lower() in interp.lower() or comp_name.lower() in interp.lower():
+                                    identified_component = comp_name
+                                    break
+                            
+                            # Default to Unknown if no component identified
+                            if not identified_component:
+                                # Try to extract from first few words
+                                first_words = interp.split(':', 1)[0] if ':' in interp else interp.split(' ', 1)[0]
+                                identified_component = component_mappings.get(first_words.strip().lower(), 'Analysis')
+                            
+                            # Create structured object
+                            structured_interpretations.append({
+                                'component': identified_component,
+                                'display_name': identified_component,
+                                'interpretation': interp
+                            })
+                        elif isinstance(interp, dict):
+                            # It's already a dict but might be missing the required structure
+                            if 'interpretation' in interp:
+                                # Already has interpretation field
+                                if 'component' not in interp or 'display_name' not in interp:
+                                    # Add missing fields
+                                    component_text = interp.get('component', 'Unknown')
+                                    display_name = component_mappings.get(component_text.lower(), component_text)
+                                    
+                                    # Update with formatted fields
+                                    interp['component'] = component_text
+                                    interp['display_name'] = display_name
+                                
+                                structured_interpretations.append(interp)
+                            else:
+                                # Doesn't have interpretation field - reconstruct
+                                component_text = next(iter(interp.keys())) if interp else 'Unknown'
+                                interpretation_text = interp.get(component_text, str(interp))
+                                
+                                display_name = component_mappings.get(component_text.lower(), component_text)
+                                
+                                structured_interpretations.append({
+                                    'component': component_text,
+                                    'display_name': display_name,
+                                    'interpretation': interpretation_text
+                                })
+                    
+                    # Replace original interpretations with structured ones
+                    result['market_interpretations'] = structured_interpretations
+                    self.logger.debug(f"Converted {len(structured_interpretations)} market interpretations to structured format")
+            
+            # Only generate enhanced data if it's missing
+            if not result.get('market_interpretations') and hasattr(self, 'signal_generator') and self.signal_generator:
+                try:
+                    self.logger.debug(f"Generating enhanced formatted data for {symbol} (interpretations missing)")
+                    enhanced_data = self.signal_generator._generate_enhanced_formatted_data(
+                        symbol,
+                        confluence_score,
+                        components,
+                        formatter_results,
+                        reliability,
+                        buy_threshold,
+                        sell_threshold
+                    )
+                    # Add enhanced data to the result
+                    if enhanced_data:
+                        result.update(enhanced_data)
+                        self.logger.debug(f"Successfully added enhanced data: market_interpretations={len(enhanced_data.get('market_interpretations', []))}, actionable_insights={len(enhanced_data.get('actionable_insights', []))}")
+                except Exception as e:
+                    self.logger.error(f"Error generating enhanced data: {str(e)}")
+                    self.logger.debug(traceback.format_exc())
+            
+            # Display comprehensive confluence score table with all the data
             from src.core.formatting import LogFormatter
             formatted_table = LogFormatter.format_enhanced_confluence_score_table(
                 symbol=symbol,
                 confluence_score=confluence_score,
                 components=components,
-                results=result.get('results', {}),
+                results=formatter_results,
                 weights=result.get('metadata', {}).get('weights', {}),
                 reliability=reliability
             )
             self.logger.info(formatted_table)
-            
-            # Log detailed market interpretations separately to ensure they appear in the logs
             
             # Generate signal if score meets thresholds
             self.logger.debug(f"=== Generating Signal ===")
@@ -2600,14 +2761,23 @@ class MarketMonitor:
             result['buy_threshold'] = buy_threshold
             result['sell_threshold'] = sell_threshold
             
+            # Determine signal type based on thresholds
+            signal_type = "NEUTRAL"
             if confluence_score >= buy_threshold:
-                await self._generate_signal(symbol, result)
-                self.logger.info(f"Generated BUY signal for {symbol} with score {confluence_score:.2f} (threshold: {buy_threshold})")
+                signal_type = "BUY"
             elif confluence_score <= sell_threshold:
+                signal_type = "SELL"
+                
+            result['signal_type'] = signal_type
+            
+            # Only pass to signal generator if it's a BUY or SELL signal
+            if signal_type in ["BUY", "SELL"]:
                 await self._generate_signal(symbol, result)
-                self.logger.info(f"Generated SELL signal for {symbol} with score {confluence_score:.2f} (threshold: {sell_threshold})")
+                self.logger.info(f"Generated {signal_type} signal for {symbol} with score {confluence_score:.2f} (threshold: {buy_threshold if signal_type == 'BUY' else sell_threshold})")
             else:
-                self.logger.debug(f"No signal generated - score {confluence_score:.2f} in neutral zone (buy: {buy_threshold}, sell: {sell_threshold})")
+                self.logger.info(f"Generated NEUTRAL signal for {symbol} with score {confluence_score:.2f} in neutral zone (buy: {buy_threshold}, sell: {sell_threshold})")
+                # Skip sending NEUTRAL alerts
+                # No longer sending neutral alerts to alert manager
 
             # Update metrics
             if self.metrics_manager:
@@ -2618,36 +2788,39 @@ class MarketMonitor:
             self.logger.debug(traceback.format_exc())
 
     async def _generate_signal(self, symbol: str, analysis_result: Dict[str, Any]) -> None:
-        """Generate trading signal based on analysis results with enhanced validation and tracking.
-        
-        Args:
-            symbol: Trading pair symbol
-            analysis_result: Analysis results dictionary
-        """
+        """Generate trading signal based on analysis results with enhanced validation and tracking."""
+        if not hasattr(self, 'signal_generator') or self.signal_generator is None:
+            self.logger.error(f"Signal generator not available for {symbol}")
+            return
+
         try:
-            # Generate unique transaction ID to trace this signal through the system
-            transaction_id = str(uuid.uuid4())[:8]
-            signal_id = str(uuid.uuid4())[:8]
+            # Generate transaction and signal IDs for tracking, or reuse existing ones
+            transaction_id = analysis_result.get('transaction_id', str(uuid.uuid4()))
+            signal_id = analysis_result.get('signal_id', str(uuid.uuid4())[:8])
             
-            self.logger.debug(f"\n=== Generating Signal [TXN:{transaction_id}][SIG:{signal_id}] ===")
-            self.logger.debug(f"Processing signal for {symbol} with {len(analysis_result.keys())} analysis components")
+            # Log the start of signal generation with transaction ID
+            self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}] Generating signal for {symbol}")
             
-            # Extract and validate core components
-            confluence_score = float(analysis_result.get('score', analysis_result.get('confluence_score', 0)))
-            reliability = float(analysis_result.get('reliability', 100.0))  # Default to full reliability, keep 0-100 scale
-            
-            # Get components and results
+            # Extract critical information
+            if not analysis_result or not isinstance(analysis_result, dict):
+                self.logger.error(f"[TXN:{transaction_id}][SIG:{signal_id}] Invalid analysis result for {symbol}")
+                return
+                
+            # Extract data from analysis result
+            confluence_score = analysis_result.get('confluence_score', 0)
             components = analysis_result.get('components', {})
             results = analysis_result.get('results', {})
             
-            # Get current price with fallbacks
+            # Get reliability score
+            reliability = analysis_result.get('reliability', 0.5)
+            
+            # Get price information
             price = None
-            if 'current_price' in analysis_result:
-                price = float(analysis_result['current_price'])
-            elif 'price' in analysis_result:
-                price = float(analysis_result['price'])
-            elif 'metadata' in analysis_result and 'price' in analysis_result['metadata']:
-                price = float(analysis_result['metadata']['price'])
+            if 'price' in analysis_result:
+                price = analysis_result['price']
+            elif 'market_data' in analysis_result and 'ticker' in analysis_result['market_data']:
+                ticker = analysis_result['market_data']['ticker']
+                price = ticker.get('last', ticker.get('close', None))
             
             if price is None and hasattr(self, 'market_data_manager'):
                 try:
@@ -2659,8 +2832,8 @@ class MarketMonitor:
             
             # Get thresholds from config
             config = self.config.get('confluence', {}).get('thresholds', {})
-            buy_threshold = float(config.get('buy', 70))
-            sell_threshold = float(config.get('sell', 30))
+            buy_threshold = float(config.get('buy', 60.0))
+            sell_threshold = float(config.get('sell', 40.0))
             
             # Create enhanced signal data
             signal_data = {
@@ -2686,59 +2859,405 @@ class MarketMonitor:
                 
             if 'influential_components' in analysis_result:
                 signal_data['influential_components'] = analysis_result['influential_components']
-                
-            if 'top_weighted_subcomponents' in analysis_result:
-                signal_data['top_weighted_subcomponents'] = analysis_result['top_weighted_subcomponents']
             
-            # Determine signal direction
+            # Determine signal type based on thresholds
+            signal_type = "NEUTRAL"
             if confluence_score >= buy_threshold:
-                signal_data['signal'] = 'BUY'
-                self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}] Generated BUY signal for {symbol} " +
-                               f"with score {confluence_score:.2f} (threshold: {buy_threshold})")
-                           
-                # Process signal through SignalGenerator
-                if hasattr(self, 'signal_generator') and self.signal_generator:
-                    try:
-                        await self.signal_generator.process_signal(signal_data)
-                    except Exception as e:
-                        self.logger.error(f"[TXN:{transaction_id}][SIG:{signal_id}] Error in signal_generator: {str(e)}")
-                        self.logger.debug(traceback.format_exc())
-                        
+                signal_type = "BUY"
             elif confluence_score <= sell_threshold:
-                signal_data['signal'] = 'SELL'
-                self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}] Generated SELL signal for {symbol} " +
-                               f"with score {confluence_score:.2f} (threshold: {sell_threshold})")
-                           
-                # Process signal through SignalGenerator
-                if hasattr(self, 'signal_generator') and self.signal_generator:
-                    try:
-                        await self.signal_generator.process_signal(signal_data)
-                    except Exception as e:
-                        self.logger.error(f"[TXN:{transaction_id}][SIG:{signal_id}] Error in signal_generator: {str(e)}")
-                        self.logger.debug(traceback.format_exc())
-            else:
-                signal_data['signal'] = 'NEUTRAL'
-                self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] No signal generated - " +
-                                f"score {confluence_score:.2f} in neutral zone ({sell_threshold}-{buy_threshold})")
-                return
-                
-            # Update metrics if available
-            if hasattr(self, 'metrics_manager') and self.metrics_manager:
-                try:
-                    await self.metrics_manager.update_signal_metrics(symbol, signal_data)
-                except Exception as e:
-                    self.logger.warning(f"[TXN:{transaction_id}][SIG:{signal_id}] Error updating metrics: {str(e)}")
+                signal_type = "SELL"
             
-            # Store signal data if database available
-            if hasattr(self, 'database_client') and self.database_client:
-                try:
-                    await self.database_client.store_signal(symbol, signal_data)
-                except Exception as e:
-                    self.logger.warning(f"[TXN:{transaction_id}][SIG:{signal_id}] Error storing signal: {str(e)}")
+            signal_data['signal_type'] = signal_type
+            
+            # Log signal data before setting trade parameters
+            # Enhanced debugging for value types and formatting issues
+            try:
+                # Log the raw values and their types for debugging
+                self.logger.debug(f"[FORMAT_DEBUG] Value types - confluence_score: {type(confluence_score).__name__}, " 
+                                 f"reliability: {type(reliability).__name__}, price: {type(price).__name__}")
                 
+                # Check for numpy types which might need special handling
+                if hasattr(confluence_score, 'dtype'):
+                    self.logger.debug(f"[FORMAT_DEBUG] confluence_score is numpy type: {confluence_score.dtype}")
+                    confluence_score = float(confluence_score)
+                if hasattr(reliability, 'dtype'):
+                    self.logger.debug(f"[FORMAT_DEBUG] reliability is numpy type: {reliability.dtype}")
+                    reliability = float(reliability)
+                if hasattr(price, 'dtype'):
+                    self.logger.debug(f"[FORMAT_DEBUG] price is numpy type: {price.dtype}")
+                    price = float(price)
+                
+                # Format values with proper handling of None values
+                score_str = "N/A" if confluence_score is None else f"{confluence_score:.2f}"
+                reliability_str = "N/A" if reliability is None else f"{reliability:.2f}"
+                price_str = "N/A" if price is None else f"${price:.2f}"
+                
+                signal_log = (
+                    f"[TXN:{transaction_id}][SIG:{signal_id}] {symbol} - "
+                    f"Score: {score_str} ({signal_type}) - "
+                    f"Reliability: {reliability_str} - "
+                    f"Price: {price_str}"
+                )
+                self.logger.info(signal_log)
+            except Exception as format_error:
+                # Fallback to simple formatting if any errors occur
+                self.logger.error(f"Error formatting signal log: {format_error}")
+                self.logger.debug(traceback.format_exc())
+                # Safe fallback that doesn't use f-string formatting for values
+                self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}] {symbol} - Generated {signal_type} signal")
+            
+            # Set trade parameters based on config
+            try:
+                signal_data['trade_params'] = self._calculate_trade_parameters(
+                    symbol=symbol,
+                    price=price,
+                    signal_type=signal_type,
+                    score=confluence_score,
+                    reliability=reliability
+                )
+            except Exception as e:
+                self.logger.error(f"[TXN:{transaction_id}][SIG:{signal_id}] Error calculating trade parameters: {str(e)}")
+                self.logger.debug(traceback.format_exc())
+                # Set default trade parameters on error
+                signal_data['trade_params'] = {
+                    'entry_price': price,
+                    'stop_loss': None,
+                    'take_profit': None,
+                    'position_size': None,
+                    'risk_reward_ratio': None,
+                    'risk_percentage': None,
+                    'confidence': min(confluence_score / 100, 1.0) if confluence_score is not None else 0.5,
+                    'timeframe': 'auto'
+                }
+            # Add timestamp
+            signal_data['timestamp'] = int(time.time() * 1000)
+            
+            # Make sure only confluence_score is set (no 'score' key)
+            # This ensures compatibility with alert_manager which should be updated
+            # to only expect 'confluence_score'
+
+            # Generate enhanced formatted data if signal_generator is available
+            if hasattr(self, 'signal_generator') and self.signal_generator:
+                try:
+                    self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] Generating enhanced formatted data for {symbol}")
+                    enhanced_data = self.signal_generator._generate_enhanced_formatted_data(
+                        symbol,
+                        confluence_score,
+                        components,
+                        results,
+                        reliability,
+                        buy_threshold,
+                        sell_threshold
+                    )
+                    # Add enhanced data to signal_data
+                    if enhanced_data:
+                        # Process market interpretations to ensure they're properly structured
+                        if 'market_interpretations' in enhanced_data:
+                            market_interpretations = enhanced_data['market_interpretations']
+                            
+                            # Check if interpretations are simple strings instead of properly structured objects
+                            if market_interpretations and (isinstance(market_interpretations[0], str) or 
+                                                        (isinstance(market_interpretations[0], dict) and 'component' not in market_interpretations[0])):
+                                self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] Converting market interpretations to structured format")
+                                
+                                # Create properly structured interpretations
+                                structured_interpretations = []
+                                
+                                # Component name mapping
+                                component_mappings = {
+                                    'technical': 'Technical',
+                                    'volume': 'Volume',
+                                    'orderbook': 'Orderbook',
+                                    'orderflow': 'Orderflow',
+                                    'sentiment': 'Sentiment',
+                                    'price_structure': 'Price Structure',
+                                    'structure': 'Price Structure'
+                                }
+                                
+                                for interp in market_interpretations:
+                                    # If it's a string, identify which component it belongs to
+                                    if isinstance(interp, str):
+                                        # Try to identify component from the text
+                                        identified_component = None
+                                        for comp_key, comp_name in component_mappings.items():
+                                            if comp_key.lower() in interp.lower() or comp_name.lower() in interp.lower():
+                                                identified_component = comp_name
+                                                break
+                                        
+                                        # Default to Unknown if no component identified
+                                        if not identified_component:
+                                            # Try to extract from first few words
+                                            first_words = interp.split(':', 1)[0] if ':' in interp else interp.split(' ', 1)[0]
+                                            identified_component = component_mappings.get(first_words.strip().lower(), 'Analysis')
+                                        
+                                        # Create structured object
+                                        structured_interpretations.append({
+                                            'component': identified_component,
+                                            'display_name': identified_component,
+                                            'interpretation': interp
+                                        })
+                                    elif isinstance(interp, dict):
+                                        # It's already a dict but might be missing the required structure
+                                        if 'interpretation' in interp:
+                                            # Already has interpretation field
+                                            if 'component' not in interp or 'display_name' not in interp:
+                                                # Add missing fields
+                                                component_text = interp.get('component', 'Unknown')
+                                                display_name = component_mappings.get(component_text.lower(), component_text)
+                                                
+                                                # Update with formatted fields
+                                                interp['component'] = component_text
+                                                interp['display_name'] = display_name
+                                            
+                                            structured_interpretations.append(interp)
+                                        else:
+                                            # Doesn't have interpretation field - reconstruct
+                                            component_text = next(iter(interp.keys())) if interp else 'Unknown'
+                                            interpretation_text = interp.get(component_text, str(interp))
+                                            
+                                            display_name = component_mappings.get(component_text.lower(), component_text)
+                                            
+                                            structured_interpretations.append({
+                                                'component': component_text,
+                                                'display_name': display_name,
+                                                'interpretation': interpretation_text
+                                            })
+                                
+                                # Replace original interpretations with structured ones
+                                enhanced_data['market_interpretations'] = structured_interpretations
+                                self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] Converted {len(structured_interpretations)} market interpretations to structured format")
+                        
+                        # Now update signal_data with the enhanced data
+                        signal_data.update(enhanced_data)
+                        self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] Successfully added enhanced data: market_interpretations={len(enhanced_data.get('market_interpretations', []))}, actionable_insights={len(enhanced_data.get('actionable_insights', []))}")
+                except Exception as e:
+                    self.logger.error(f"[TXN:{transaction_id}][SIG:{signal_id}] Error generating enhanced data: {str(e)}")
+                    self.logger.debug(traceback.format_exc())
+            
+            # Generate report if enabled
+            if self.signal_generator and hasattr(self.signal_generator, 'report_manager'):
+                try:
+                    self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}][REPORT] Generating report for {symbol}")
+                    
+                    # Get cached OHLCV data for different timeframes for improved VWAP calculations
+                    ltf_ohlcv = self.get_ohlcv_for_report(symbol, 'ltf')    # For daily VWAP (lower timeframe)
+                    htf_ohlcv = self.get_ohlcv_for_report(symbol, 'htf')    # For weekly VWAP (higher timeframe)
+                    
+                    # Use ltf timeframe as the primary OHLCV dataset
+                    ohlcv_data = ltf_ohlcv
+                    
+                    # Add HTF data as metadata if available (for the PDF generator to use for calculating weekly VWAP)
+                    if ltf_ohlcv is not None and htf_ohlcv is not None:
+                        if 'metadata' not in getattr(ltf_ohlcv, 'attrs', {}):
+                            ltf_ohlcv.attrs['metadata'] = {}
+                        ltf_ohlcv.attrs['metadata']['htf_data'] = htf_ohlcv
+                        self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}][REPORT] Added HTF data ({len(htf_ohlcv)} records) for weekly VWAP calculation")
+                    
+                    # Generate a safe filename for the PDF
+                    symbol_safe = symbol.lower().replace('/', '_')
+                    timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    pdf_filename = f"{symbol_safe}_{timestamp_str}.pdf"
+                    pdf_path = os.path.join('exports', pdf_filename)
+                    
+                    self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}][REPORT] Will save PDF to {pdf_path}")
+                    
+                    if ohlcv_data is not None:
+                        self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}][REPORT] Using cached OHLCV data for report ({len(ohlcv_data)} records)")
+                        
+                        # Use generate_and_attach_report method directly with explicit output_path
+                        # Ensure output_path is a full file path with .pdf extension
+                        success, generated_path, _ = await self.signal_generator.report_manager.generate_and_attach_report(
+                            signal_data=signal_data,
+                            ohlcv_data=ohlcv_data,
+                            signal_type=signal_type.lower(),
+                            output_path=pdf_path
+                        )
+                        
+                        if success and generated_path and os.path.exists(generated_path) and not os.path.isdir(generated_path):
+                            self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}][REPORT] PDF generated successfully: {generated_path}")
+                            signal_data['pdf_path'] = generated_path
+                        else:
+                            self.logger.warning(f"[TXN:{transaction_id}][SIG:{signal_id}][REPORT] Failed to generate PDF at {pdf_path}")
+                    else:
+                        self.logger.warning(f"[TXN:{transaction_id}][SIG:{signal_id}][REPORT] No OHLCV data available for report")
+                        
+                        # Try generating without OHLCV data
+                        success, generated_path, _ = await self.signal_generator.report_manager.generate_and_attach_report(
+                            signal_data=signal_data,
+                            signal_type=signal_type.lower(),
+                            output_path=pdf_path
+                        )
+                        
+                        if success and generated_path and os.path.exists(generated_path) and not os.path.isdir(generated_path):
+                            self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}][REPORT] PDF generated without OHLCV data: {generated_path}")
+                            signal_data['pdf_path'] = generated_path
+                        else:
+                            self.logger.warning(f"[TXN:{transaction_id}][SIG:{signal_id}][REPORT] Failed to generate PDF without OHLCV data")
+                        
+                    # Final validation of PDF path
+                    pdf_path = signal_data.get('pdf_path')
+                    if pdf_path:
+                        if os.path.exists(pdf_path) and not os.path.isdir(pdf_path) and os.path.getsize(pdf_path) > 0:
+                            self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}][REPORT] Final PDF validation successful: {pdf_path}")
+                        else:
+                            self.logger.error(f"[TXN:{transaction_id}][SIG:{signal_id}][REPORT] PDF path failed validation: {pdf_path}")
+                            signal_data.pop('pdf_path', None)
+                    else:
+                        self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}][REPORT] No PDF path set after report generation")
+                        
+                except Exception as e:
+                    self.logger.error(f"[TXN:{transaction_id}][SIG:{signal_id}] Error generating report: {str(e)}")
+                    self.logger.error(traceback.format_exc())
+            
+            # Now send the alert (after PDF path is set)
+            if self.alert_manager:
+                await self.alert_manager.send_signal_alert(signal_data)
+            else:
+                self.logger.warning(f"[TXN:{transaction_id}][SIG:{signal_id}] Alert manager not available for {symbol}")
+            
+            # Return generated signal
+            return signal_data
+            
         except Exception as e:
             self.logger.error(f"Error generating signal for {symbol}: {str(e)}")
+            self.logger.error(traceback.format_exc())
+            return None
+
+    def _calculate_trade_parameters(self, symbol: str, price: float, signal_type: str, score: float, reliability: float) -> Dict[str, Any]:
+        """
+        Calculate trade parameters based on signal data and configuration.
+        
+        Args:
+            symbol: Trading symbol
+            price: Current price
+            signal_type: Signal type (BUY, SELL, NEUTRAL)
+            score: Confluence score (0-100)
+            reliability: Signal reliability (0-1)
+            
+        Returns:
+            Dict with calculated trade parameters
+        """
+        try:
+            # Handle None values gracefully
+            if price is None:
+                self.logger.warning(f"Price is None for {symbol}, using default trade parameters")
+                return {
+                    'entry_price': None,
+                    'stop_loss': None,
+                    'take_profit': None,
+                    'position_size': None,
+                    'risk_reward_ratio': None,
+                    'risk_percentage': None,
+                    'confidence': min(score / 100, 1.0) if score is not None else None,
+                    'timeframe': 'auto'
+                }
+                
+            if score is None:
+                score = 50.0  # Default to neutral score
+                self.logger.warning(f"Score is None for {symbol}, using default value of {score}")
+                
+            if reliability is None:
+                reliability = 0.5  # Default to medium reliability
+                self.logger.warning(f"Reliability is None for {symbol}, using default value of {reliability}")
+            
+            # Default trade parameters
+            trade_params = {
+                'entry_price': price,
+                'stop_loss': None,
+                'take_profit': None,
+                'position_size': None,
+                'risk_reward_ratio': None,
+                'risk_percentage': None,
+                'confidence': min(score / 100, 1.0) if score is not None else 0.5,
+                'timeframe': 'auto'
+            }
+            
+            # If neutral signal, return default params
+            if signal_type == "NEUTRAL":
+                self.logger.debug(f"Neutral signal for {symbol}, using default trade parameters")
+                return trade_params
+                
+            # Get trading config
+            trading_config = self.config.get('trading', {})
+            risk_config = trading_config.get('risk', {})
+            
+            # Calculate position size based on risk percentage
+            account_balance = trading_config.get('account_balance', 10000)
+            default_risk = risk_config.get('default_risk_percentage', 1.0)
+            
+            # Adjust risk based on reliability
+            adjusted_risk = default_risk * reliability
+            
+            # Min and max risk bounds
+            min_risk = risk_config.get('min_risk_percentage', 0.5)
+            max_risk = risk_config.get('max_risk_percentage', 2.0)
+            
+            # Ensure risk is within bounds
+            risk_percentage = max(min_risk, min(max_risk, adjusted_risk))
+            
+            # Risk amount in USD
+            risk_amount = account_balance * (risk_percentage / 100)
+            
+            # Default stop percentages
+            stop_percentage = 0.0
+            if signal_type == "BUY":
+                stop_percentage = risk_config.get('long_stop_percentage', 3.0)
+            else:
+                stop_percentage = risk_config.get('short_stop_percentage', 3.0)
+                
+            # Calculate stop loss price
+            stop_loss = 0.0
+            if signal_type == "BUY":
+                stop_loss = price * (1 - stop_percentage / 100)
+            else:
+                stop_loss = price * (1 + stop_percentage / 100)
+                
+            # Calculate position size
+            position_size = 0.0
+            if abs(price - stop_loss) > 0:
+                position_size = risk_amount / abs(price - stop_loss)
+            
+            # Calculate take profit based on risk:reward ratio
+            risk_reward_ratio = risk_config.get('risk_reward_ratio', 2.0)
+            
+            # Higher confidence = higher RR potential
+            adjusted_rr = risk_reward_ratio * (1 + (score - 50) / 100)
+            
+            # Calculate take profit price
+            take_profit = 0.0
+            if signal_type == "BUY":
+                take_profit = price + (adjusted_rr * (price - stop_loss))
+            else:
+                take_profit = price - (adjusted_rr * (stop_loss - price))
+                
+            # Update trade params
+            trade_params.update({
+                'stop_loss': round(stop_loss, 8),
+                'take_profit': round(take_profit, 8),
+                'position_size': round(position_size, 8),
+                'risk_reward_ratio': round(adjusted_rr, 2),
+                'risk_percentage': round(risk_percentage, 2),
+                'risk_amount': round(risk_amount, 2)
+            })
+            
+            self.logger.debug(f"Calculated trade parameters for {symbol}: {trade_params}")
+            return trade_params
+            
+        except Exception as e:
+            self.logger.error(f"Error calculating trade parameters for {symbol}: {str(e)}")
             self.logger.debug(traceback.format_exc())
+            
+            # Return default parameters on error
+            return {
+                'entry_price': price,
+                'stop_loss': None,
+                'take_profit': None,
+                'position_size': None,
+                'risk_reward_ratio': None,
+                'risk_percentage': None,
+                'confidence': min(score / 100, 1.0),
+                'timeframe': 'auto'
+            }
 
     async def _monitor_volume(self, symbol: str, current: Dict[str, Any], previous: Optional[float], market_data: Dict[str, Any]) -> None:
         """Monitor volume indicators for significant changes."""
@@ -2957,229 +3476,64 @@ class MarketMonitor:
             self.logger.error(f"Error in synchronous market data processing: {str(e)}")
     
     async def _generate_market_report(self) -> None:
-        """Generate and send comprehensive market report."""
-        start_time = time.time()
-        report_generation_metrics = {
-            'start_time': datetime.now().isoformat(),
-            'steps_completed': [],
-            'errors': [],
-            'warnings': [],
-            'duration_ms': 0
-        }
-        
+        """Generate a market report based on current conditions."""
         try:
-            self.logger.info("=" * 80)
-            self.logger.info("MARKET REPORT GENERATION STARTED")
-            self.logger.info("=" * 80)
-            report_generation_metrics['steps_completed'].append({'step': 'initialization', 'timestamp': datetime.now().isoformat()})
+            self.logger.info("Generating market report")
             
-            # Check if market_reporter is available
-            if not hasattr(self, 'market_reporter') or self.market_reporter is None:
-                error_msg = "Market reporter not available, cannot generate report"
-                self.logger.error(error_msg)
-                report_generation_metrics['errors'].append({'error': error_msg, 'timestamp': datetime.now().isoformat()})
+            # First, get a list of symbols to include in the report
+            symbols = await self.top_symbols_manager.get_symbols(limit=10)
+            if not symbols:
+                self.logger.warning("No symbols available for market report")
                 return
-            
-            # Log the market reporter details
-            self.logger.info("-" * 80)
-            self.logger.info("SECTION: Initializing Market Reporter")
-            section_start = time.time()
-            self.logger.info(f"Using market reporter: {self.market_reporter}")
-            self.logger.info(f"Market reporter has top_symbols_manager: {hasattr(self.market_reporter, 'top_symbols_manager') and self.market_reporter.top_symbols_manager is not None}")
-            self.logger.info(f"Market reporter has alert_manager: {hasattr(self.market_reporter, 'alert_manager') and self.market_reporter.alert_manager is not None}")
-            self.logger.info(f"SECTION TIME: {time.time() - section_start:.2f}s")
-            
-            # Log memory usage before report generation
-            self.logger.info("-" * 80)
-            self.logger.info("SECTION: Memory Usage Check (Before)")
-            section_start = time.time()
-            memory_before = self._get_memory_usage() if hasattr(self, '_get_memory_usage') else None
-            if memory_before:
-                self.logger.info(f"Memory usage before report generation: {memory_before:.2f} MB")
-            self.logger.info(f"SECTION TIME: {time.time() - section_start:.2f}s")
-            
-            # Log active symbols that will be processed
-            self.logger.info("-" * 80)
-            self.logger.info("SECTION: Symbol Check")
-            section_start = time.time()
-            if hasattr(self.market_reporter, 'symbols') and self.market_reporter.symbols:
-                symbol_count = len(self.market_reporter.symbols)
-                top_symbols = self.market_reporter.symbols[:5]  # Show first 5 symbols
-                self.logger.info(f"Reporting on {symbol_count} symbols. Top symbols: {top_symbols}")
-            self.logger.info(f"SECTION TIME: {time.time() - section_start:.2f}s")
                 
-            report_generation_metrics['steps_completed'].append({'step': 'pre_generation_checks', 'timestamp': datetime.now().isoformat()})
-            
-            # Use the dedicated market reporter to generate the report
-            self.logger.info("-" * 80)
-            self.logger.info("SECTION: Generating Market Summary")
-            section_start = time.time()
-            self.logger.info("Calling market_reporter.generate_market_summary()...")
-            generation_start = time.time()
-            report_result = await self.market_reporter.generate_market_summary()
-            generation_duration = time.time() - generation_start
-            self.logger.info(f"Market summary generation completed in {generation_duration:.2f}s")
-            self.logger.info(f"SECTION TIME: {time.time() - section_start:.2f}s")
-            
-            report_generation_metrics['steps_completed'].append({
-                'step': 'report_generation', 
-                'timestamp': datetime.now().isoformat(),
-                'duration_seconds': generation_duration
-            })
-            
-            # Log memory usage after report generation
-            self.logger.info("-" * 80)
-            self.logger.info("SECTION: Memory Usage Check (After)")
-            section_start = time.time()
-            memory_after = self._get_memory_usage() if hasattr(self, '_get_memory_usage') else None
-            if memory_after and memory_before:
-                memory_diff = memory_after - memory_before
-                self.logger.info(f"Memory usage after report generation: {memory_after:.2f} MB (Change: {memory_diff:+.2f} MB)")
-                report_generation_metrics['memory_impact_mb'] = memory_diff
-            self.logger.info(f"SECTION TIME: {time.time() - section_start:.2f}s")
-            
-            # Update the last report time
-            self.last_report_time = datetime.now(timezone.utc)
-            
-            # Process report results
-            self.logger.info("-" * 80)
-            self.logger.info("SECTION: Processing Report Results")
-            section_start = time.time()
-            if report_result:
-                self.logger.info(f"Market report generated successfully at {self.last_report_time}")
+            # Pre-fetch OHLCV data for each symbol to ensure data is in cache
+            self.logger.info(f"Pre-fetching OHLCV data for {len(symbols)} symbols")
+            for symbol in symbols[:5]:  # Limit to top 5 symbols
+                symbol_str = self._get_symbol_string(symbol)
+                self.logger.info(f"Fetching and caching OHLCV data for {symbol_str}")
+                # This will update the _ohlcv_cache for the symbol
+                await self.fetch_market_data(symbol_str, force_refresh=True)
                 
-                # Log successful report details
-                quality_score = report_result.get('quality_score', 'N/A')
+            # Wait a moment for data to be processed
+            await asyncio.sleep(1)
+            
+            # Generate the report using cached data
+            if hasattr(self, 'market_reporter') and self.market_reporter:
+                self.logger.info("Using market reporter to generate report")
+                timestamp = int(time.time() * 1000)
                 
-                # Check which components are present
-                available_components = []
-                for component in ['market_overview', 'futures_premium', 'smart_money_index', 'whale_activity']:
-                    if component in report_result:
-                        available_components.append(component)
-                        comp_data = report_result[component]
-                        self.logger.info(f"  - {component.replace('_', ' ').title()}: {len(comp_data) if isinstance(comp_data, dict) else 'N/A'} data points")
+                # Create container for market data
+                market_report_data = {
+                    'timestamp': timestamp,
+                    'symbols': {},
+                    'metadata': {
+                        'symbol_count': len(symbols),
+                        'generated_at': self.timestamp_utility.format_utc_time(timestamp),
+                    }
+                }
                 
-                component_count = len(available_components)
-                self.logger.info(f"Report summary: Quality score: {quality_score}, Components: {component_count}/4, Generation time: {generation_duration:.2f}s")
-                
-                # Log report structure details
-                if self.logger.isEnabledFor(logging.DEBUG):
-                    report_keys = list(report_result.keys())
-                    self.logger.debug(f"Report structure: {report_keys}")
+                # Add market data for each symbol
+                for symbol in symbols[:5]:  # Limit to top 5 symbols
+                    symbol_str = self._get_symbol_string(symbol)
+                    market_data = await self._get_market_data(symbol_str)
                     
-                    # Check for empty components
-                    empty_components = [k for k in report_keys 
-                                        if isinstance(report_result[k], dict) and not any(report_result[k].values())]
-                    if empty_components:
-                        self.logger.warning(f"Empty components in report: {empty_components}")
-                        report_generation_metrics['warnings'].append({
-                            'warning': f"Empty components: {empty_components}", 
-                            'timestamp': datetime.now().isoformat()
-                        })
-            
-            # Send report to Discord as a formatted webhook message
-            if hasattr(self.market_reporter, 'alert_manager') and self.market_reporter.alert_manager:
-                self.logger.info("SECTION: Sending Report to Discord")
-                section_start = time.time()
-                
-                try:
-                    # First, send a simple alert notification
-                    await self.market_reporter.alert_manager.send_alert(
-                        level="info",
-                        message="Market report generated",
-                        details={"type": "market_report"}
-                    )
-                    
-                    # Then format and send the rich Discord embed
-                    if hasattr(self.market_reporter.alert_manager, 'send_discord_webhook_message'):
-                        # Extract the data needed for the formatted report
-                        market_overview = report_result.get('market_overview', {})
-                        top_pairs = self.market_reporter.symbols[:10] if hasattr(self.market_reporter, 'symbols') else []
+                    if market_data:
+                        self.logger.info(f"Adding {symbol_str} data to market report")
+                        market_report_data['symbols'][symbol_str] = market_data
                         
-                        # Format the report with embeds
-                        formatted_report = await self.market_reporter.format_market_report(
-                            overview=market_overview,
-                            top_pairs=top_pairs
-                        )
-                        
-                        # Send the formatted report via webhook
-                        self.logger.info("Sending formatted market report via Discord webhook")
-                        await self.market_reporter.alert_manager.send_discord_webhook_message(formatted_report)
-                        self.logger.info("Formatted market report sent successfully")
-                    else:
-                        self.logger.warning("Discord webhook message method not available on alert manager")
-                        
-                    self.logger.info(f"SECTION TIME: {time.time() - section_start:.2f}s")
-                except Exception as e:
-                    error_msg = f"Error sending formatted report to Discord: {str(e)}"
-                    self.logger.error(error_msg)
-                    self.logger.debug(traceback.format_exc())
-                    report_generation_metrics['errors'].append({
-                        'error': error_msg,
-                        'timestamp': datetime.now().isoformat()
-                    })
+                # Generate the report
+                self.logger.info("Generating market PDF report")
+                success = await self.market_reporter.generate_market_report(market_report_data)
+                if success:
+                    self.logger.info("Market report generated successfully")
+                else:
+                    self.logger.error("Failed to generate market report")
             else:
-                warning_msg = "Market report may not have been fully generated or sent"
-                self.logger.warning(warning_msg)
-                report_generation_metrics['warnings'].append({
-                    'warning': warning_msg, 
-                    'timestamp': datetime.now().isoformat()
-                })
-            self.logger.info(f"SECTION TIME: {time.time() - section_start:.2f}s")
-            
-            report_generation_metrics['steps_completed'].append({'step': 'completion', 'timestamp': datetime.now().isoformat()})
-            
-        except Exception as e:
-            error_msg = f"Error generating market report: {str(e)}"
-            self.logger.error(error_msg)
-            self.logger.debug(traceback.format_exc())
-            report_generation_metrics['errors'].append({
-                'error': error_msg, 
-                'traceback': traceback.format_exc(),
-                'timestamp': datetime.now().isoformat()
-            })
-        finally:
-            # Calculate total duration
-            total_duration = time.time() - start_time
-            report_generation_metrics['duration_seconds'] = total_duration
-            report_generation_metrics['end_time'] = datetime.now().isoformat()
-            
-            # Log the metrics
-            self.logger.info("-" * 80)
-            self.logger.info(f"MARKET REPORT GENERATION COMPLETED in {total_duration:.2f}s")
-            self.logger.info("=" * 80)
-            
-            # Store metrics for later analysis
-            if hasattr(self, 'metrics_manager') and self.metrics_manager:
-                try:
-                    metrics_key = f"market_report_generation_{int(time.time())}"
-                    # Try different methods to store metrics based on what's available
-                    if hasattr(self.metrics_manager, 'store_metric'):
-                        self.metrics_manager.store_metric(metrics_key, report_generation_metrics)
-                    elif hasattr(self.metrics_manager, 'record_metric'):
-                        # Fallback to record_metric if available
-                        duration = report_generation_metrics.get('duration', 0)
-                        self.metrics_manager.record_metric(metrics_key, duration, {
-                            "status": report_generation_metrics.get('status', 'unknown'),
-                            "error": report_generation_metrics.get('error', None)
-                        })
-                    elif hasattr(self.metrics_manager, 'update_metric'):
-                        # Second fallback to update_metric
-                        duration = report_generation_metrics.get('duration', 0)
-                        await self.metrics_manager.update_metric(
-                            metrics_key, 
-                            float(duration), 
-                            {"status": report_generation_metrics.get('status', 'unknown')}
-                        )
-                    else:
-                        self.logger.warning("MetricsManager doesn't have a compatible method to store metrics")
-                except Exception as e:
-                    self.logger.error(f"Failed to store metrics: {str(e)}")
+                self.logger.warning("Market reporter not available")
                 
-            # Log detailed metrics if debug is enabled
-            if self.logger.isEnabledFor(logging.DEBUG):
-                self.logger.debug(f"Report generation metrics: {json.dumps(report_generation_metrics, indent=2)}")
-
+        except Exception as e:
+            self.logger.error(f"Error generating market report: {str(e)}")
+            self.logger.error(traceback.format_exc())
 
     async def process_symbol(self, symbol: str) -> None:
         """Process a single symbol."""
@@ -3231,55 +3585,153 @@ class MarketMonitor:
         }
         
         ohlcv_data = {}
-        raw_responses = {}  # Store raw responses
+        raw_responses = {}
         
-        for tf_name, interval in timeframes.items():
-            # Add delay between requests
-            await asyncio.sleep(0.5)
+        # Log the start of data fetching
+        self.logger.info(f"Fetching OHLCV data for {symbol} (base: {timeframe_limits['base']}, ltf: {timeframe_limits['ltf']}, mtf: {timeframe_limits['mtf']}, htf: {timeframe_limits['htf']})")
+        
+        # Fetch data for each timeframe
+        for tf_name, tf in timeframes.items():
+            limit = timeframe_limits.get(tf_name, 100)
+            try:
+                # Use the exchange to fetch OHLCV data
+                if self.exchange:
+                    since = None
+                    ohlcv = await self.exchange.fetch_ohlcv(symbol, tf, since, limit)
+                    
+                    # Process the OHLCV data into a DataFrame
+                    if ohlcv and len(ohlcv) > 0:
+                        # Store the raw response for debugging
+                        raw_responses[tf_name] = ohlcv
+                        
+                        # Convert to DataFrame
+                        df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+                        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+                        df.set_index('timestamp', inplace=True)
+                        
+                        # Store in the result dictionary
+                        ohlcv_data[tf_name] = {
+                            'data': df,
+                            'raw': ohlcv,
+                            'meta': {
+                                'symbol': symbol,
+                                'timeframe': tf,
+                                'count': len(ohlcv)
+                            }
+                        }
+                        
+                        self.logger.debug(f"Fetched {len(ohlcv)} {tf_name} candles for {symbol}")
+                    else:
+                        self.logger.error(f"Failed to fetch {tf_name} timeframe data for {symbol}")
+            except Exception as e:
+                self.logger.error(f"Error fetching {tf_name} timeframe data for {symbol}: {str(e)}")
+        
+        # Log success or failure
+        if ohlcv_data:
+            # Simplified version without nested f-strings
+            tf_info = []
+            for tf, data in ohlcv_data.items():
+                data_length = len(data.get("data", [])) if isinstance(data, dict) and "data" in data else 0
+                tf_info.append(f"{tf}: {data_length}")
             
-            # Get appropriate limit for this timeframe
-            limit = timeframe_limits[tf_name]
-            self.logger.info(f"Fetching {limit} candles for {symbol} {tf_name} timeframe ({interval})")
+            self.logger.info(f"Successfully fetched OHLCV data for {symbol}: {', '.join(tf_info)}")
             
-            # Fetch data with specific limit for this timeframe
-            raw_data = await self.exchange_manager._fetch_ohlcv(
-                symbol=symbol,
-                timeframe=interval,
-                limit=limit
-            )
+            # Update cache with both processed and raw data
+            fetch_time = self.timestamp_utility.get_utc_timestamp(as_ms=False)
+            # Update cache with both processed and raw data
+            self._ohlcv_cache[symbol] = {
+                'processed': ohlcv_data,
+                'raw_responses': raw_responses,
+                'fetch_time': fetch_time,
+                'fetch_time_formatted': self.timestamp_utility.format_utc_time(fetch_time * 1000)
+            }
+            self._last_ohlcv_update[symbol] = fetch_time
             
-            # Log raw response using helper
-            self._log_raw_response(f'OHLCV {tf_name}', symbol, raw_data)
+            return ohlcv_data
+        else:
+            self.logger.error(f"Failed to fetch any OHLCV data for {symbol}")
+            return None
+        
+    def get_ohlcv_for_report(self, symbol: str, timeframe: str = 'base') -> Optional[pd.DataFrame]:
+        """
+        Get cached OHLCV data formatted for ReportGenerator to avoid duplicate data fetching.
+        
+        Args:
+            symbol: Trading pair symbol
+            timeframe: Timeframe to retrieve ('base', 'ltf', 'mtf', 'htf')
             
-            # Store raw response
-            raw_responses[tf_name] = raw_data
-            
-            # Convert to DataFrame
-            if raw_data:
-                df = pd.DataFrame(raw_data)
-                df.columns = ['timestamp', 'open', 'high', 'low', 'close', 'volume']
-                # Ensure timestamps are in UTC
-                df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms', utc=True)
-                df.set_index('timestamp', inplace=True)
-                ohlcv_data[tf_name] = {
-                    'data': df,
-                    'raw_response': raw_data  # Store raw response with processed data
-                }
-            else:
-                self.logger.error(f"Failed to fetch {tf_name} timeframe data for {symbol}")
+        Returns:
+            Pandas DataFrame with OHLCV data ready for report generation or None if not available
+        """
+        try:
+            # Check if we have cached data
+            if symbol not in self._ohlcv_cache:
+                self.logger.warning(f"No cached OHLCV data for {symbol}")
                 return None
-        
-        fetch_time = self.timestamp_utility.get_utc_timestamp(as_ms=False)
-        # Update cache with both processed and raw data
-        self._ohlcv_cache[symbol] = {
-            'processed': ohlcv_data,
-            'raw_responses': raw_responses,
-            'fetch_time': fetch_time,
-            'fetch_time_formatted': self.timestamp_utility.format_utc_time(fetch_time * 1000)
-        }
-        self._last_ohlcv_update[symbol] = fetch_time
-        
-        return ohlcv_data
+                
+            # Get the cached data for the specified timeframe
+            ohlcv_data = self._ohlcv_cache[symbol]
+            
+            if 'processed' not in ohlcv_data:
+                self.logger.warning(f"Invalid OHLCV cache structure for {symbol}")
+                return None
+                
+            if timeframe not in ohlcv_data['processed']:
+                available_timeframes = list(ohlcv_data['processed'].keys())
+                self.logger.warning(f"Timeframe {timeframe} not available for {symbol}. Available: {available_timeframes}")
+                
+                # Try to use any available timeframe
+                if available_timeframes:
+                    timeframe = available_timeframes[0]
+                    self.logger.info(f"Using {timeframe} timeframe instead")
+                else:
+                    return None
+            
+            # Get the DataFrame from cache
+            if 'data' in ohlcv_data['processed'][timeframe]:
+                df = ohlcv_data['processed'][timeframe]['data'].copy()
+            else:
+                df = ohlcv_data['processed'][timeframe].copy()
+                
+            # Ensure the dataframe has the expected format
+            if not isinstance(df, pd.DataFrame) or df.empty:
+                self.logger.warning(f"Invalid DataFrame for {symbol} {timeframe}")
+                return None
+                
+            # Ensure we have a 'timestamp' column for the ReportGenerator
+            if df.index.name == 'timestamp' or isinstance(df.index, pd.DatetimeIndex):
+                # Reset index to have timestamp as a column
+                df = df.reset_index()
+                
+            # If the DataFrame doesn't have a timestamp column, create it
+            if 'timestamp' not in df.columns:
+                self.logger.info(f"Adding timestamp column to OHLCV data for {symbol}")
+                df['timestamp'] = pd.to_datetime(df.index)
+                
+            # Ensure all required columns exist
+            required_columns = ['timestamp', 'open', 'high', 'low', 'close', 'volume']
+            if not all(col in df.columns for col in required_columns):
+                missing = [col for col in required_columns if col not in df.columns]
+                self.logger.warning(f"Missing columns for {symbol}: {missing}")
+                return None
+                
+            # Ensure timestamp is in the right format
+            if not pd.api.types.is_datetime64_any_dtype(df['timestamp']):
+                df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+            
+            # Ensure HTF DataFrame has a DatetimeIndex for VWAP resampling
+            if timeframe == 'htf' and not isinstance(df.index, pd.DatetimeIndex):
+                df.set_index('timestamp', inplace=True)
+                if not isinstance(df.index, pd.DatetimeIndex):
+                    df.index = pd.to_datetime(df.index, errors='coerce')
+
+            self.logger.info(f"Retrieved {len(df)} OHLCV records for {symbol} ({timeframe}) from cache")
+            return df
+            
+        except Exception as e:
+            self.logger.error(f"Error getting OHLCV data for report: {str(e)}")
+            self.logger.error(traceback.format_exc())
+            return None
 
     def _needs_update(self, symbol: str, timeframe: str, interval: str) -> bool:
         """Check if timeframe needs updating based on interval."""
@@ -3431,15 +3883,21 @@ class MarketMonitor:
                 - ohlcv: OHLCV data for different timeframes
         """
         try:
-            symbol = market_data['symbol']
+            symbol = market_data.get('symbol', 'unknown')
             self.logger.info(f"🔄 CONFLUENCE: Running confluence analysis for {symbol}")
+            
+            # Ensure the symbol field is set correctly in market_data
+            if 'symbol' not in market_data:
+                self.logger.debug(f"🔄 CONFLUENCE: Adding missing 'symbol' field to market data for {symbol}")
+                market_data['symbol'] = symbol
             
             # Add detailed logging of data structure
             self.logger.debug("=== Market Data Structure ===")
             self.logger.debug(f"Market data keys: {market_data.keys()}")
             self.logger.debug(f"OHLCV keys: {market_data.get('ohlcv', {}).keys()}")
-            self.logger.debug(f"Base timeframe type: {type(market_data['ohlcv']['base'])}")
-            self.logger.debug(f"Base timeframe structure: {market_data['ohlcv']['base']}")
+            if 'ohlcv' in market_data and 'base' in market_data['ohlcv']:
+                self.logger.debug(f"Base timeframe type: {type(market_data['ohlcv']['base'])}")
+                self.logger.debug(f"Base timeframe structure: {market_data['ohlcv']['base']}")
             
             # Check if alert manager is available
             if not hasattr(self, 'alert_manager') or self.alert_manager is None:
@@ -3551,207 +4009,84 @@ class MarketMonitor:
             return symbol['symbol']
         return str(symbol)
 
-    async def fetch_market_data(self, symbol: Union[str, dict], use_cache: bool = True, force_refresh: bool = False) -> Dict[str, Any]:
-        """Fetch market data for a symbol, with optional caching."""
-        try:
-            symbol_str = self._get_symbol_string(symbol)
-            
-            fetch_start = self.timestamp_utility.get_utc_timestamp()
-            
-            # Check cache first if caching is enabled
-            if use_cache and not force_refresh and self._market_data_cache.get(symbol_str):
-                cache_entry = self._market_data_cache[symbol_str]
-                cache_age = self.timestamp_utility.get_age_seconds(cache_entry.get('timestamp', 0))
-                
-                if cache_age < self._cache_ttl:
-                    self.logger.debug(f"Using cached market data for {symbol_str} (age: {cache_age:.2f}s)")
-                    return cache_entry['data']
-            
-            self.logger.debug(f"\n=== Fetching Market Data for {symbol_str} at {self.timestamp_utility.format_utc_time(fetch_start)} ===")
-            
-            # Fetch OHLCV data with increased limit to ensure enough data for higher timeframes
-            # For base timeframe (1m), fetch 1000 points
-            raw_ohlcv = await self._fetch_with_retry("fetch_ohlcv", symbol_str, timeframe="1m", limit=1000)
-            self.logger.debug(f"\n=== Raw OHLCV Response for {symbol_str} ===")
-            
-            if isinstance(raw_ohlcv, list):
-                self.logger.debug(f"OHLCV data is a list with {len(raw_ohlcv)} items")
-            else:
-                self.logger.debug(f"OHLCV data type: {type(raw_ohlcv)}")
-                if isinstance(raw_ohlcv, dict):
-                    self.logger.debug(f"OHLCV keys: {list(raw_ohlcv.keys())}")
-            
-            self.logger.debug("=== End Raw OHLCV Response ===\n")
-            
-            # Standardize OHLCV data
-            ohlcv_data = self._standardize_ohlcv(raw_ohlcv)
-            
-            # Count data points in each timeframe after standardization
-            for tf, df in ohlcv_data.items():
-                if isinstance(df, pd.DataFrame):
-                    self.logger.debug(f"Standardized {tf} timeframe has {len(df)} data points")
-                    
-                    # If higher timeframes don't have enough data points, try to fetch more
-                    if tf in ['mtf', 'htf'] and len(df) < 50:  # Minimum 50 data points for higher timeframes
-                        timeframe_map = {
-                            'mtf': '30m',  # Typical MTF timeframe
-                            'htf': '4h'    # Typical HTF timeframe
-                        }
-                        if tf in timeframe_map:
-                            self.logger.info(f"Fetching additional data for {tf} timeframe ({timeframe_map[tf]})")
-                            try:
-                                # Fetch data directly for this timeframe
-                                tf_data = await self._fetch_with_retry(
-                                    "fetch_ohlcv", 
-                                    symbol_str, 
-                                    timeframe=timeframe_map[tf], 
-                                    limit=200  # Fetch 200 candles for higher timeframes
-                                )
-                                
-                                if tf_data and len(tf_data) > 0:
-                                    # Convert to DataFrame
-                                    tf_df = pd.DataFrame(tf_data, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-                                    
-                                    # Process timestamp and ensure numeric columns
-                                    tf_df['timestamp'] = pd.to_numeric(tf_df['timestamp'])
-                                    for col in ['open', 'high', 'low', 'close', 'volume']:
-                                        tf_df[col] = pd.to_numeric(tf_df[col])
-                                    
-                                    # Convert timestamp to datetime
-                                    tf_df['datetime'] = pd.to_datetime(tf_df['timestamp'], unit='ms')
-                                    
-                                    # Use this data for the timeframe
-                                    ohlcv_data[tf] = tf_df
-                                    self.logger.info(f"Successfully fetched {len(tf_df)} candles for {tf} timeframe")
-                            except Exception as e:
-                                self.logger.warning(f"Error fetching additional data for {tf}: {str(e)}")
-                else:
-                    self.logger.debug(f"Standardized {tf} timeframe is not a DataFrame: {type(df)}")
-            
-            # Fetch orderbook data with increased depth
-            orderbook = await self._fetch_with_retry("fetch_order_book", symbol_str, limit=200)
-            
-            # Add timestamp to orderbook data if missing
-            if isinstance(orderbook, dict) and 'timestamp' not in orderbook:
-                orderbook['timestamp'] = self.timestamp_utility.get_utc_timestamp()
-                self.logger.debug(f"Added missing timestamp to orderbook data: {orderbook['timestamp']}")
-                
-            # Log orderbook data stats
-            if isinstance(orderbook, dict):
-                ask_count = len(orderbook.get('asks', []))
-                bid_count = len(orderbook.get('bids', []))
-                self.logger.debug(f"Orderbook: {ask_count} asks, {bid_count} bids")
-            
-            # Fetch ticker data
-            ticker = await self._fetch_with_retry("fetch_ticker", symbol_str)
-            
-            # Fetch recent trades with increased limit
-            trades = await self._fetch_with_retry("fetch_trades", symbol_str, limit=1000)
-            
-            # Verify we got enough trades
-            if isinstance(trades, list):
-                self.logger.debug(f"Fetched {len(trades)} trades")
-                
-                # If we didn't get enough trades, try again with a different approach
-                if len(trades) < 1000:
-                    self.logger.info(f"Only fetched {len(trades)} trades, attempting to fetch more")
-                    
-                    try:
-                        # Some exchanges support pagination or since_id
-                        # Try to fetch more trades in batches
-                        total_trades = trades.copy()
-                        
-                        # If we have trades, get the oldest timestamp
-                        if len(trades) > 0:
-                            if isinstance(trades[0], dict) and 'timestamp' in trades[0]:
-                                oldest_timestamp = min(t['timestamp'] for t in trades if 'timestamp' in t)
-                                
-                                # Try to fetch older trades
-                                older_trades = await self._fetch_with_retry(
-                                    "fetch_trades", 
-                                    symbol_str, 
-                                    limit=1000,
-                                    params={"until": oldest_timestamp - 1}  # Get trades before the oldest we have
-                                )
-                                
-                                if isinstance(older_trades, list) and len(older_trades) > 0:
-                                    total_trades.extend(older_trades)
-                                    self.logger.info(f"Fetched {len(older_trades)} additional trades, total now: {len(total_trades)}")
-                                    
-                                    # Update trades with the combined list
-                                    trades = total_trades
-                        
-                    except Exception as e:
-                        self.logger.warning(f"Error fetching additional trades: {str(e)}")
-                        # Continue with what we have
-                        
-            elif isinstance(trades, dict):
-                self.logger.debug(f"Trades data is a dict with keys: {list(trades.keys())}")
-            else:
-                self.logger.debug(f"Trades data type: {type(trades)}")
-            
-            # Try to get liquidation data from cache
-            liquidations = liquidation_cache.load(symbol_str)
-            
-            # Fetch other market data
-            ticker = await self._fetch_with_retry("fetch_ticker", symbol_str)
-            orderbook = await self._fetch_with_retry("fetch_order_book", symbol_str, limit=100)
-            trades = await self._fetch_with_retry("fetch_trades", symbol_str, limit=100)
-            
-            # Load long/short ratio if available
-            long_short_ratio = None
-            try:
-                long_short_ratio = await self.exchange_manager.fetch_long_short_ratio(symbol_str)
-            except Exception as e:
-                self.logger.warning(f"Could not fetch long/short ratio: {str(e)}")
-            
-            # Get funding rate if available
-            funding_rate = ticker.get('fundingRate', None)
-            if not funding_rate:
-                try:
-                    funding_info = await self.exchange_manager.fetch_funding_rate(symbol_str)
-                    funding_rate = funding_info.get('fundingRate', 0)
-                except Exception as e:
-                    self.logger.warning(f"Could not fetch funding rate: {str(e)}")
-                    funding_rate = 0
-            
-            # Combine all market data
-            market_data = {
-                'symbol': symbol_str,
-                'ohlcv': ohlcv_data,
-                'orderbook': orderbook,
-                'ticker': ticker,
-                'trades': trades,
-                'funding': {'rate': funding_rate},
-                'sentiment': {
-                    'long_short_ratio': long_short_ratio,
-                    'liquidations': liquidations or [],
-                    'funding_rate': funding_rate
-                },
-                'timestamp': self.timestamp_utility.get_utc_timestamp()
-            }
-            
-            # Update cache
-            self._market_data_cache[symbol_str] = {
-                'data': market_data,
-                'timestamp': self.timestamp_utility.get_utc_timestamp()
-            }
-            
-            fetch_end = self.timestamp_utility.get_utc_timestamp()
-            fetch_duration = (fetch_end - fetch_start) / 1000.0
-            self.logger.debug(f"Market data fetch for {symbol_str} completed in {fetch_duration:.2f}s")
-            
-            # Log detailed data count before returning
-            self.logger.info(f"Market data for {symbol_str} prepared with following data points:")
-            for tf, df in ohlcv_data.items():
-                if isinstance(df, pd.DataFrame):
-                    self.logger.info(f"  - {tf} timeframe: {len(df)} data points")
-            
-            if liquidations:
-                self.logger.info(f"  - Liquidations: {len(liquidations)} events from cache")
-            
-            return market_data
+    async def fetch_market_data(self, symbol: str, force_refresh: bool = False) -> Dict[str, Any]:
+        """Fetch market data for a symbol from the market data manager.
         
+        Args:
+            symbol: The symbol to fetch market data for
+            force_refresh (bool): If True, force refresh of market data (bypass cache)
+        Returns:
+            Dict[str, Any]: Market data dictionary with various components
+        """
+        try:
+            if not self.market_data_manager:
+                self.logger.error("Market data manager not initialized")
+                return None
+
+            # If force_refresh is requested, refresh components first
+            if force_refresh:
+                try:
+                    await self.market_data_manager.refresh_components(symbol, components=['kline'])
+                except Exception as e:
+                    self.logger.error(f"Error refreshing components for {symbol}: {str(e)}")
+                    self.logger.debug(traceback.format_exc())
+
+            # Fetch market data through the manager
+            market_data = await self.market_data_manager.get_market_data(symbol)
+            
+            if not market_data:
+                self.logger.warning(f"No market data returned for {symbol}")
+                return None
+                
+            # Ensure symbol field is always included in market_data
+            if 'symbol' not in market_data:
+                self.logger.debug(f"Adding missing 'symbol' field to market data for {symbol}")
+                market_data['symbol'] = symbol
+                
+            # Ensure ticker is at least an empty dict so validation doesn't fail on None
+            if 'ticker' not in market_data or market_data['ticker'] is None:
+                self.logger.warning(f"Ticker data missing for {symbol}, initializing with empty dict")
+                market_data['ticker'] = {'last': 0, 'bid': 0, 'ask': 0, 'timestamp': int(time.time() * 1000)}
+            
+            # Ensure OHLCV data is available - if not, try to fetch it separately
+            if 'ohlcv' not in market_data or not market_data['ohlcv']:
+                self.logger.warning(f"OHLCV data missing for {symbol}, requesting fetch")
+                try:
+                    # Request OHLCV refresh from the market data manager
+                    await self.market_data_manager.refresh_components(symbol, components=['kline'])
+                    
+                    # Try to get the market data again after refresh
+                    market_data = await self.market_data_manager.get_market_data(symbol)
+                    
+                    # Ensure symbol field is added again after refresh
+                    if market_data and 'symbol' not in market_data:
+                        market_data['symbol'] = symbol
+                    
+                    # Log the result of the refresh attempt
+                    if market_data and 'ohlcv' in market_data and market_data['ohlcv']:
+                        self.logger.info(f"Successfully fetched OHLCV data for {symbol}")
+                    else:
+                        self.logger.warning(f"Still no OHLCV data for {symbol} after refresh attempt")
+                except Exception as e:
+                    self.logger.error(f"Error fetching OHLCV data for {symbol}: {str(e)}")
+                    self.logger.debug(traceback.format_exc())
+                
+            # Important: Update the OHLCV cache with the fetched data so PDF reports can use it
+            if market_data and 'ohlcv' in market_data and market_data['ohlcv']:
+                try:
+                    fetch_time = self.timestamp_utility.get_utc_timestamp(as_ms=False)
+                    self._ohlcv_cache[symbol] = {
+                        'processed': market_data['ohlcv'],
+                        'raw_responses': market_data.get('raw_responses', {}),
+                        'fetch_time': fetch_time,
+                        'fetch_time_formatted': self.timestamp_utility.format_utc_time(fetch_time * 1000)
+                    }
+                    self._last_ohlcv_update[symbol] = fetch_time
+                    self.logger.info(f"Updated OHLCV cache for {symbol} with {len(market_data['ohlcv'])} timeframes for PDF reports")
+                except Exception as e:
+                    self.logger.error(f"Error updating OHLCV cache for {symbol}: {str(e)}")
+                
+            return market_data
         except Exception as e:
             self.logger.error(f"Error fetching market data for {symbol}: {str(e)}")
             self.logger.error(traceback.format_exc())
@@ -4439,6 +4774,10 @@ class MarketMonitor:
         ax1.set_xticks(range(0, len(df), max(1, len(df) // 10)))
         ax1.set_xticklabels([timestamp.strftime('%H:%M') for timestamp in df.index[::max(1, len(df) // 10)]])
         
+        # Limit the number of x-axis ticks to avoid matplotlib warning
+        from matplotlib.ticker import MaxNLocator
+        ax1.xaxis.set_major_locator(MaxNLocator(nbins=10))
+
         # Add volume subplot
         ax2.set_title("Volume")
         ax2.bar(range(len(df)), df['volume'], color=colors, alpha=0.7)
@@ -4446,6 +4785,7 @@ class MarketMonitor:
         # Set x-axis labels for volume chart
         ax2.set_xticks(range(0, len(df), max(1, len(df) // 10)))
         ax2.set_xticklabels([timestamp.strftime('%H:%M') for timestamp in df.index[::max(1, len(df) // 10)]])
+        ax2.xaxis.set_major_locator(MaxNLocator(nbins=10))
         
         # Adjust layout
         plt.tight_layout()
@@ -4995,7 +5335,7 @@ class MarketMonitor:
         if not analysis_result:
             return f"No analysis results available for {symbol_str}"
         
-        score = analysis_result.get('score', analysis_result.get('confluence_score', 0))
+        score = analysis_result.get('confluence_score', 0)
         reliability = analysis_result.get('reliability', 0)
         components = analysis_result.get('components', {})
         
@@ -5836,3 +6176,236 @@ class MarketMonitor:
                 self.logger.info(f"Memory impact: {test_result['memory_diff_mb']:.2f} MB")
                 
             return test_result
+
+    def get_monitored_symbols(self) -> List[str]:
+        """
+        Get the list of symbols currently being monitored.
+        
+        Returns:
+            List of symbol strings
+        """
+        try:
+            # If we already have symbols loaded, return them
+            if hasattr(self, 'symbols') and self.symbols:
+                self.logger.debug(f"Returning {len(self.symbols)} cached symbols")
+                return self.symbols
+                
+            # If we have a top_symbols_manager but no symbols loaded yet, we can't use it here
+            # since get_symbols() is async and this method is sync
+            
+            # If we have a single symbol configured, return it as a list
+            if self.symbol:
+                self.logger.debug(f"Using configured symbol: {self.symbol}")
+                return [self.symbol]
+                
+            # Fallback to empty list
+            self.logger.warning("No symbols available for monitoring")
+            return []
+            
+        except Exception as e:
+            self.logger.error(f"Error getting monitored symbols: {str(e)}")
+            self.logger.error(traceback.format_exc())
+            return []
+
+    async def _monitor_whale_activity(self, symbol: str, market_data: Dict[str, Any]) -> None:
+        """
+        Monitor whale activity (accumulation/distribution) in real-time.
+        
+        This method analyzes the order book and recent trades to detect significant
+        whale activity patterns and sends alerts when thresholds are crossed.
+        
+        Args:
+            symbol: Trading pair symbol
+            market_data: Market data dictionary containing orderbook and trades
+        """
+        try:
+            # Skip if disabled in config
+            if not self.whale_activity_config.get('enabled', True):
+                return
+                
+            # Skip if no alert manager available
+            if not hasattr(self, 'alert_manager') or not self.alert_manager:
+                self.logger.debug(f"Skipping whale activity monitoring for {symbol}: No alert manager")
+                return
+                
+            # Check cooldown period
+            current_time = time.time()
+            last_alert_time = self._last_whale_alert.get(symbol, 0)
+            cooldown_period = self.whale_activity_config.get('cooldown', 900)  # 15 min default
+            
+            if current_time - last_alert_time < cooldown_period:
+                self.logger.debug(f"Skipping whale activity alert for {symbol}: In cooldown period")
+                return
+            
+            # Extract orderbook from market data
+            orderbook = market_data.get('orderbook')
+            if not orderbook or not isinstance(orderbook, dict):
+                self.logger.debug(f"No valid orderbook data for {symbol}")
+                return
+                
+            # Ensure bids and asks exist
+            if 'bids' not in orderbook or 'asks' not in orderbook:
+                self.logger.debug(f"Missing bids or asks in orderbook for {symbol}")
+                return
+                
+            # Get current price info
+            ticker = market_data.get('ticker', {})
+            current_price = float(ticker.get('last', 0))
+            if not current_price:
+                self.logger.debug(f"No price information for {symbol}")
+                return
+            
+            # Calculate whale threshold (adapt from MarketReporter._calculate_whale_threshold)
+            bids = orderbook.get('bids', [])
+            asks = orderbook.get('asks', [])
+            
+            all_sizes = []
+            for order in bids[:50] + asks[:50]:  # Use top 50 levels for calculation
+                if isinstance(order, list) and len(order) >= 2:
+                    all_sizes.append(float(order[1]))
+            
+            if not all_sizes:
+                self.logger.debug(f"No valid order sizes for {symbol}")
+                return
+                
+            # Calculate whale threshold (2 standard deviations above mean)
+            mean_size = float(np.mean(all_sizes))
+            std_size = float(np.std(all_sizes))
+            whale_threshold = mean_size + (2 * std_size)
+            
+            # Find whale orders
+            whale_bids = [order for order in bids if float(order[1]) >= whale_threshold]
+            whale_asks = [order for order in asks if float(order[1]) >= whale_threshold]
+            
+            whale_bid_volume = sum(float(order[1]) for order in whale_bids)
+            whale_ask_volume = sum(float(order[1]) for order in whale_asks)
+            
+            # Get total order book volumes for percentage calculation
+            total_bid_volume = sum(float(order[1]) for order in bids)
+            total_ask_volume = sum(float(order[1]) for order in asks)
+            
+            # Calculate USD values
+            bid_usd_value = whale_bid_volume * current_price
+            ask_usd_value = whale_ask_volume * current_price
+            
+            # Calculate net volume and imbalance metrics
+            net_volume = whale_bid_volume - whale_ask_volume
+            net_usd_value = net_volume * current_price
+            
+            # Calculate volume percentages
+            bid_percentage = (whale_bid_volume / total_bid_volume) if total_bid_volume > 0 else 0
+            ask_percentage = (whale_ask_volume / total_ask_volume) if total_ask_volume > 0 else 0
+            
+            # Calculate imbalance ratio
+            total_whale_volume = whale_bid_volume + whale_ask_volume
+            if total_whale_volume > 0:
+                bid_ratio = whale_bid_volume / total_whale_volume
+                ask_ratio = whale_ask_volume / total_whale_volume
+                imbalance = abs(bid_ratio - ask_ratio)
+            else:
+                imbalance = 0
+            
+            # Get thresholds from config
+            accumulation_threshold = self.whale_activity_config.get('accumulation_threshold', 1000000)
+            distribution_threshold = self.whale_activity_config.get('distribution_threshold', 1000000)
+            imbalance_threshold = self.whale_activity_config.get('imbalance_threshold', 0.2)
+            min_order_count = self.whale_activity_config.get('min_order_count', 5)
+            market_percentage = self.whale_activity_config.get('market_percentage', 0.02)
+            
+            # Create current activity data
+            current_activity = {
+                'timestamp': int(current_time),
+                'whale_bid_volume': whale_bid_volume,
+                'whale_ask_volume': whale_ask_volume,
+                'whale_bid_usd': bid_usd_value,
+                'whale_ask_usd': ask_usd_value,
+                'net_volume': net_volume,
+                'net_usd_value': net_usd_value,
+                'imbalance': imbalance,
+                'threshold': whale_threshold,
+                'bid_percentage': bid_percentage,
+                'ask_percentage': ask_percentage,
+                'whale_bid_orders': len(whale_bids),
+                'whale_ask_orders': len(whale_asks)
+            }
+            
+            # Store current activity data
+            self._last_whale_activity[symbol] = current_activity
+            
+            # Log detailed whale activity for debugging
+            self.logger.debug(f"Whale activity for {symbol}: " +
+                            f"Bids: {len(whale_bids)} orders ({whale_bid_volume:.2f} units, ${bid_usd_value:.2f}), " +
+                            f"Asks: {len(whale_asks)} orders ({whale_ask_volume:.2f} units, ${ask_usd_value:.2f})")
+            
+            # Detect significant accumulation
+            significant_accumulation = (
+                net_usd_value > accumulation_threshold and
+                len(whale_bids) >= min_order_count and
+                bid_percentage > market_percentage and
+                imbalance > imbalance_threshold
+            )
+            
+            # Detect significant distribution
+            significant_distribution = (
+                net_usd_value < -distribution_threshold and
+                len(whale_asks) >= min_order_count and
+                ask_percentage > market_percentage and
+                imbalance > imbalance_threshold
+            )
+            
+            # Generate alerts for significant activity
+            if significant_accumulation:
+                # Format a detailed message with the data
+                message = (
+                    f"🐋 **Whale Accumulation Detected** for {symbol}\n"
+                    f"• Net accumulation: {net_volume:.2f} units (${abs(net_usd_value):,.2f})\n"
+                    f"• Whale bid orders: {len(whale_bids)}, {bid_percentage:.1%} of order book\n"
+                    f"• Imbalance ratio: {imbalance:.1%}\n"
+                    f"• Current price: ${current_price:,.2f}"
+                )
+                
+                # Send alert through alert manager
+                await self.alert_manager.send_alert(
+                    level="info",
+                    message=message,
+                    details={
+                        "type": "whale_activity",
+                        "subtype": "accumulation",
+                        "symbol": symbol,
+                        "data": current_activity
+                    }
+                )
+                
+                # Update last alert time
+                self._last_whale_alert[symbol] = current_time
+                self.logger.info(f"Sent whale accumulation alert for {symbol}: ${abs(net_usd_value):,.2f}")
+                
+            elif significant_distribution:
+                # Format a detailed message with the data
+                message = (
+                    f"🐋 **Whale Distribution Detected** for {symbol}\n"
+                    f"• Net distribution: {abs(net_volume):.2f} units (${abs(net_usd_value):,.2f})\n"
+                    f"• Whale ask orders: {len(whale_asks)}, {ask_percentage:.1%} of order book\n"
+                    f"• Imbalance ratio: {imbalance:.1%}\n"
+                    f"• Current price: ${current_price:,.2f}"
+                )
+                
+                # Send alert through alert manager
+                await self.alert_manager.send_alert(
+                    level="info",
+                    message=message,
+                    details={
+                        "type": "whale_activity",
+                        "subtype": "distribution",
+                        "symbol": symbol,
+                        "data": current_activity
+                    }
+                )
+                
+                # Update last alert time
+                self._last_whale_alert[symbol] = current_time
+                self.logger.info(f"Sent whale distribution alert for {symbol}: ${abs(net_usd_value):,.2f}")
+                
+        except Exception as e:
+            self.logger.error(f"Error monitoring whale activity for {symbol}: {str(e)}")
+            self.logger.debug(traceback.format_exc())

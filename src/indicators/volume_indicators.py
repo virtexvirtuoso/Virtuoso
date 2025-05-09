@@ -253,6 +253,9 @@ class VolumeIndicators(BaseIndicator):
         try:
             self.logger.info("\n=== VOLUME INDICATORS Detailed Calculation ===")
             
+            # Get symbol from market data
+            symbol = market_data.get('symbol', '')
+            
             # Calculate volume delta
             delta_score = self._calculate_volume_delta(market_data)
             raw_delta = self._get_raw_volume_delta(market_data)
@@ -287,16 +290,28 @@ class VolumeIndicators(BaseIndicator):
                 'obv': obv_score
             }
             
+            # Use the standard log_score_contributions function with symbol
+            from src.core.analysis.indicator_utils import log_score_contributions, log_final_score
+            
             # Log component contribution breakdown
-            self.logger.info("\n=== Volume Score Contribution Breakdown ===")
-            for component, score in scores.items():
-                weight = self.component_weights.get(component, 0)
-                contribution = score * weight
-                self.logger.info(f"{component}: {score:.2f} × {weight:.2f} = {contribution:.2f}")
+            log_score_contributions(
+                self.logger,
+                f"{symbol} Volume Score Contribution Breakdown",
+                scores,
+                self.component_weights,
+                symbol=symbol
+            )
             
             # Calculate weighted score
             final_score = self._compute_weighted_score(scores)
-            self.logger.info(f"\nFinal Volume Score: {final_score:.2f}")
+            
+            # Log final score
+            log_final_score(
+                self.logger,
+                "Volume",
+                final_score,
+                symbol=symbol
+            )
             
             return final_score
             
@@ -602,6 +617,7 @@ class VolumeIndicators(BaseIndicator):
             
             self.logger.debug(f"CMF input DataFrame columns: {df.columns.tolist()}")
             self.logger.debug(f"CMF input DataFrame shape: {df.shape}")
+            self.logger.debug(f"CMF input DataFrame head:\n{df.head(5)}")
             
             # Handle CCXT OHLCV format if numeric columns
             if df.columns.dtype == 'int64':
@@ -627,6 +643,8 @@ class VolumeIndicators(BaseIndicator):
                 # Fallback: assume the last column is volume
                 df['volume'] = df.iloc[:, -1]
                 volume_col = 'volume'
+
+            self.logger.debug(f"Using columns: high='high', low='low', close='close', volume='{volume_col}'")
 
             # Create a copy to avoid modifying original data
             df = df.copy()
@@ -658,6 +676,7 @@ class VolumeIndicators(BaseIndicator):
             # Calculate close location value
             clv = ((df['close'] - df['low']) - (df['high'] - df['close'])) / hlrange
             clv = clv.fillna(0)  # Fill NaN with neutral value
+            self.logger.debug(f"CLV stats - min: {clv.min():.4f}, max: {clv.max():.4f}, mean: {clv.mean():.4f}")
             
             # Calculate Money Flow Volume
             mfv = clv * df[volume_col]
@@ -669,6 +688,7 @@ class VolumeIndicators(BaseIndicator):
             # Calculate CMF
             cmf = np.where(vol_sum != 0, mfv_sum / vol_sum, 0)
             cmf = pd.Series(cmf, index=df.index)
+            self.logger.debug(f"CMF (raw) stats - min: {cmf.min():.4f}, max: {cmf.max():.4f}, mean: {cmf.mean():.4f}")
             
             # Apply exponential smoothing
             if smoothing > 0:
@@ -679,6 +699,7 @@ class VolumeIndicators(BaseIndicator):
             
             # Normalize to 0-100 scale with bounds checking
             normalized_cmf = np.clip((cmf + 1) * 50, 0, 100)
+            self.logger.debug(f"Normalized CMF stats - min: {normalized_cmf.min():.2f}, max: {normalized_cmf.max():.2f}, mean: {normalized_cmf.mean():.2f}, current: {normalized_cmf.iloc[-1]:.2f}")
             
             # Log final normalized value
             self.logger.info(f"Final normalized CMF value: {normalized_cmf.iloc[-1]:.2f}")
@@ -1701,47 +1722,24 @@ class VolumeIndicators(BaseIndicator):
             float: CMF score (0-100) where 0 is very bearish and 100 is very bullish
         """
         try:
-            # Extract OHLCV data
-            if 'ohlcv' not in market_data or not market_data['ohlcv'] or 'base' not in market_data['ohlcv']:
-                self.logger.warning("No OHLCV data found for CMF calculation")
-                return 50.0
-                
-            df = market_data['ohlcv']['base']
-            
-            # Get period from config or use default
-            period = self.config.get('cmf_period', 20)
-            
-            # Calculate CMF using the existing method
-            cmf_series = self.calculate_cmf(df, period=period)
-            
-            # Return neutral score if series is empty
-            if cmf_series.empty:
-                return 50.0
-            
-            # Get raw CMF value (typically ranges from -1 to 1)
-            cmf_value = float(cmf_series.iloc[-1])
-            
-            # Normalize CMF to 0-100 scale
-            # CMF range is typically -1 to +1, where:
-            # -1 is extremely bearish (strong selling pressure)
-            # 0 is neutral
-            # +1 is extremely bullish (strong buying pressure)
-            
+            # Extract raw CMF value (should be between -1 and 1)
+            cmf_value = self._get_cmf_value(market_data)
+
             # Get CMF min/max bounds from config or use defaults
             min_cmf = self.config.get('min_cmf', -1.0)
             max_cmf = self.config.get('max_cmf', 1.0)
-            
+
             # Linear mapping from CMF to score
             # -1 (min_cmf) -> 0
             # 0 -> 50
             # +1 (max_cmf) -> 100
             normalized_score = 50 * (1 + (cmf_value / max(abs(min_cmf), abs(max_cmf))))
-            
+
             # Ensure score is within 0-100 range
             score = np.clip(normalized_score, 0, 100)
-            
-            self.logger.debug(f"CMF: {cmf_value:.4f}, Normalized score: {score:.2f}")
-            
+
+            self.logger.debug(f"CMF (raw): {cmf_value:.4f}, Normalized score: {score:.2f}")
+
             return float(score)
             
         except Exception as e:

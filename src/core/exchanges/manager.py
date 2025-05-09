@@ -488,32 +488,100 @@ class ExchangeManager:
         return await exchange.fetch_trades(symbol, limit=limit)
 
     async def fetch_ticker(self, symbol: str, exchange_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
-        """Fetch ticker data for a symbol.
+        """Fetch ticker data for a symbol
         
         Args:
             symbol: The trading pair symbol
             exchange_id: Optional exchange ID (uses primary exchange if not specified)
             
         Returns:
-            Ticker data dictionary or None if error
+            Ticker data or None if there was an error
         """
-        try:
-            # Get the appropriate exchange
-            exchange = None
-            if exchange_id and exchange_id in self.exchanges:
-                exchange = self.exchanges[exchange_id]
-            else:
-                exchange = await self.get_primary_exchange()
+        max_retries = 3
+        retry_delay = 1.0  # seconds
+        
+        for attempt in range(max_retries):
+            try:
+                # Get the appropriate exchange
+                exchange = await self._get_exchange_for_operation(exchange_id)
+                if not exchange:
+                    self.logger.error(f"No exchange available to fetch ticker for {symbol}")
+                    return None
+                    
+                # Format symbol if needed
+                api_symbol = self._format_symbol_for_exchange(symbol)
                 
-            if not exchange:
-                self.logger.error(f"No exchange available to fetch ticker for {symbol}")
-                return None
+                # Fetch the ticker with timeout
+                async with asyncio.timeout(5):  # 5 second timeout
+                    return await exchange.fetch_ticker(api_symbol)
                 
-            # Fetch ticker from the exchange
-            return await exchange.fetch_ticker(symbol)
-        except Exception as e:
-            self.logger.error(f"Error fetching ticker for {symbol}: {str(e)}")
-            return None
+            except asyncio.TimeoutError:
+                self.logger.warning(f"Timeout fetching ticker for {symbol} (attempt {attempt+1}/{max_retries})")
+            except AttributeError as e:
+                if "object has no attribute 'fetch_ticker'" in str(e):
+                    self.logger.error(f"Exchange does not support fetch_ticker method: {str(e)}")
+                    # Try to reinitialize the exchange if possible
+                    if attempt < max_retries - 1:
+                        self.logger.info(f"Attempting to reinitialize exchange...")
+                        try:
+                            # Clear current exchanges
+                            if exchange_id and exchange_id in self.exchanges:
+                                await self.exchanges[exchange_id].close()
+                                del self.exchanges[exchange_id]
+                            # Reinitialize
+                            if hasattr(self, 'config') and self.config:
+                                exchanges_config = self.config.get_value('exchanges', {})
+                                if exchange_id and exchange_id in exchanges_config:
+                                    new_exchange = await self.factory.create_exchange(exchange_id, exchanges_config[exchange_id])
+                                    if new_exchange:
+                                        self.exchanges[exchange_id] = new_exchange
+                        except Exception as reinit_err:
+                            self.logger.error(f"Failed to reinitialize exchange: {str(reinit_err)}")
+                else:
+                    self.logger.error(f"Error in fetch_ticker for {symbol}: {str(e)}")
+                if attempt == max_retries - 1:
+                    return None
+            except Exception as e:
+                self.logger.error(f"Error fetching ticker for {symbol} (attempt {attempt+1}/{max_retries}): {str(e)}")
+                if attempt == max_retries - 1:
+                    return None
+                
+            # Wait before retrying
+            if attempt < max_retries - 1:
+                await asyncio.sleep(retry_delay * (2 ** attempt))  # Exponential backoff
+        
+        return None
+    
+    async def _get_exchange_for_operation(self, exchange_id: Optional[str] = None) -> Optional[BaseExchange]:
+        """
+        Get the appropriate exchange for an operation
+        
+        Args:
+            exchange_id: Optional specific exchange ID to use
+            
+        Returns:
+            The exchange instance or None if not available
+        """
+        if exchange_id and exchange_id in self.exchanges:
+            return self.exchanges[exchange_id]
+        else:
+            return await self.get_primary_exchange()
+    
+    def _format_symbol_for_exchange(self, symbol: str) -> str:
+        """
+        Format a symbol to be compatible with exchange API
+        
+        Args:
+            symbol: The symbol in standard format
+            
+        Returns:
+            Formatted symbol string
+        """
+        if '/' in symbol and ':' not in symbol:
+            # Convert traditional format to exchange specific
+            base, quote = symbol.split('/')
+            return f"{base}{quote}"
+        return symbol
     
     async def fetch_orderbook(self, symbol: str, limit: int = 50, exchange_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """Fetch orderbook data for a symbol.
@@ -545,68 +613,100 @@ class ExchangeManager:
             return None
     
     async def fetch_long_short_ratio(self, symbol: str, exchange_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
-        """Fetch long/short ratio data for a symbol.
+        """
+        Fetch the long/short ratio for a symbol from an exchange
         
         Args:
-            symbol: The trading pair symbol
-            exchange_id: Optional exchange ID (uses primary exchange if not specified)
+            symbol: Symbol to fetch long/short ratio for
+            exchange_id: Optional specific exchange to use
             
         Returns:
-            Long/short ratio data or None if not supported/error
+            Dict containing long/short ratio data or None if not available
         """
         try:
-            # Get the appropriate exchange
-            exchange = None
-            if exchange_id and exchange_id in self.exchanges:
-                exchange = self.exchanges[exchange_id]
-            else:
-                exchange = await self.get_primary_exchange()
-                
+            exchange = await self._get_exchange_for_operation(exchange_id)
             if not exchange:
-                self.logger.error(f"No exchange available to fetch long/short ratio for {symbol}")
                 return None
                 
-            # Check if the exchange supports fetching long/short ratio
-            if hasattr(exchange, 'fetch_long_short_ratio'):
-                return await exchange.fetch_long_short_ratio(symbol)
-            elif hasattr(exchange, '_make_request'):
-                # Fallback to direct API call if supported
-                self.logger.warning(f"Using direct API call for long/short ratio for {symbol}")
-                try:
-                    response = await exchange._make_request('GET', '/v5/market/account-ratio', {
-                        'category': 'linear',
-                        'symbol': symbol,
-                        'period': '5min',
-                        'limit': 1
-                    })
-                    
-                    if response and response.get('retCode') == 0:
-                        ratio_data = response.get('result', {}).get('list', [])
-                        if ratio_data:
-                            latest = ratio_data[0]
-                            return {
-                                'symbol': symbol,
-                                'long': float(latest.get('longAccount', 50.0)),
-                                'short': float(latest.get('shortAccount', 50.0)),
-                                'timestamp': int(time.time() * 1000)
-                            }
-                    
-                    # If we get here, the API call failed or returned invalid data
-                    self.logger.warning(f"Direct API call for long/short ratio failed: {response}")
-                except Exception as e:
-                    self.logger.error(f"Error in direct API call for long/short ratio: {str(e)}")
+            # Standardize the symbol format
+            if '/' in symbol and ':' not in symbol:
+                # Convert traditional format to exchange specific
+                base, quote = symbol.split('/')
+                api_symbol = f"{base}{quote}"
             else:
-                self.logger.warning(f"Long/short ratio not supported for {symbol}")
+                api_symbol = symbol
                 
-            # Return a default structure
-            return {
-                'symbol': symbol,
-                'longShortRatio': 1.0,  # Default to balanced
-                'timestamp': int(time.time() * 1000)
-            }
+            # Try to fetch the long/short ratio
+            try:
+                self.logger.debug(f"Fetching long/short ratio for {api_symbol}")
+                ratio_data = await exchange.fetch_long_short_ratio(api_symbol)
+                return ratio_data
+            except (AttributeError, NotImplementedError):
+                self.logger.warning(f"Exchange {exchange.exchange_id} does not support long/short ratio")
+                return None
+            except Exception as e:
+                self.logger.error(f"Error fetching long/short ratio: {str(e)}")
+                return None
+                
         except Exception as e:
-            self.logger.error(f"Error fetching long/short ratio for {symbol}: {str(e)}")
+            self.logger.error(f"Error in fetch_long_short_ratio: {str(e)}")
             return None
+    
+    async def fetch_funding_rate(self, symbol: str, exchange_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """
+        Fetch the funding rate for a symbol from an exchange
+        
+        Args:
+            symbol: Symbol to fetch funding rate for
+            exchange_id: Optional specific exchange to use
+            
+        Returns:
+            Dict containing funding rate data or None if not available
+        """
+        try:
+            exchange = await self._get_exchange_for_operation(exchange_id)
+            if not exchange:
+                return None
+                
+            # Standardize the symbol format
+            if '/' in symbol and ':' not in symbol:
+                # Convert traditional format to exchange specific
+                base, quote = symbol.split('/')
+                api_symbol = f"{base}{quote}"
+            else:
+                api_symbol = symbol
+                
+            # Try to fetch the funding rate
+            try:
+                self.logger.debug(f"Fetching funding rate for {api_symbol}")
+                
+                # Check if exchange has ticker with funding rate
+                ticker = await exchange.fetch_ticker(api_symbol)
+                if ticker and 'fundingRate' in ticker:
+                    return {
+                        'fundingRate': ticker['fundingRate'],
+                        'nextFundingTime': ticker.get('nextFundingTime', None),
+                        'timestamp': ticker.get('timestamp', int(time.time() * 1000))
+                    }
+                
+                # Check if exchange has a specific funding rate method
+                if hasattr(exchange, 'fetch_funding_rate'):
+                    funding_data = await exchange.fetch_funding_rate(api_symbol)
+                    return funding_data
+                    
+                self.logger.warning(f"Exchange {exchange.exchange_id} does not provide funding rate data")
+                return {'fundingRate': 0}
+                
+            except (AttributeError, NotImplementedError):
+                self.logger.warning(f"Exchange {exchange.exchange_id} does not support funding rate")
+                return {'fundingRate': 0}
+            except Exception as e:
+                self.logger.error(f"Error fetching funding rate: {str(e)}")
+                return {'fundingRate': 0}
+                
+        except Exception as e:
+            self.logger.error(f"Error in fetch_funding_rate: {str(e)}")
+            return {'fundingRate': 0}
     
     async def fetch_risk_limits(self, symbol: str, exchange_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """Fetch risk limits data for a symbol.

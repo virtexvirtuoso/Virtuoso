@@ -112,7 +112,7 @@ confluence:
   # Thresholds for signal generation
   thresholds:
     buy: 65                         # Score at or above this value generates a bullish signal
-    neutral_buffer: 5               # Buffer zone around thresholds to prevent signal flipping
+    neutral_buffer: 0               # No buffer zone - eliminating neutral signals
     sell: 35                        # Score at or below this value generates a bearish signal
   # Weight configurations for all components and sub-components
   weights:
@@ -799,12 +799,30 @@ monitoring:
     - database                      # Database alerts
     - webhook                       # Webhook alerts
     cooldown_period: 300            # Alert cooldown period in seconds
-    discord_webhook_url: https://discord.com/api/webhooks/1197011710268162159/V_Gfq66qtfJGiZMxnIwC7pb20HwHqVCRMoU_kubPetn_ikB5F8NTw81_goGLoSQ3q3Vw # Discord webhook URL
+    discord_webhook_url: https://discord.com/api/webhooks/1370413964814450788/bCx2VxU6wUzblsAOy1QkD5hSFrjRnlVtmIiG-Kis9yETflTmHaj3p0WDE_Z88IccpTNP # Discord webhook URL
     enabled: true                   # Enable alerts
     # Liquidation alert settings
     liquidation:
       cooldown: 300                 # Liquidation alert cooldown in seconds
       threshold: 250000             # Liquidation threshold in USD
+    # Large order alert settings
+    large_orders:
+      cooldown: 300                 # Large order alert cooldown in seconds
+      threshold_usd: 2000000        # $1M default threshold for large order alerts
+      min_price: 0                  # No minimum price filter
+      excluded_symbols: []          # No excluded symbols
+      included_symbols: []          # Monitor all symbols
+    # Whale activity alert settings
+    whale_activity:
+      enabled: true                 # Enable whale activity monitoring
+      accumulation_threshold: 2000000  # $1M default threshold for significant accumulation
+      distribution_threshold: 2000000  # $1M default threshold for significant distribution
+      cooldown: 900                 # 15 minutes between alerts for same symbol
+      imbalance_threshold: 0.2      # 20% order book imbalance threshold
+      min_order_count: 5            # Minimum number of whale orders to consider
+      market_percentage: 0.02       # 2% of market volume to be considered significant
+      excluded_symbols: []          # No excluded symbols
+      included_symbols: []          # Monitor all symbols
   # Component monitoring
   components:
     # Analysis component monitoring

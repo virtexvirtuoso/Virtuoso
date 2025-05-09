@@ -119,7 +119,7 @@ class ConfluenceAnalyzer:
         }
 
     async def analyze(self, market_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Analyze market data using multiple indicators."""
+        """Analyze market data using multiple indicators and output formatter-ready data."""
         try:
             self.logger.info("Starting confluence analysis")
             start_time = time.time()
@@ -204,22 +204,160 @@ class ConfluenceAnalyzer:
             confluence_score = self._calculate_confluence_score(scores)
             reliability = self._calculate_reliability(scores)
             
-            # Format response
-            response = self._format_response(scores)
-            response['score'] = confluence_score
-            response['reliability'] = reliability
-            response['results'] = results
-            response['debug'] = self._get_debug_info('confluence')
+            # Extract and format subcomponents for weighted impact
+            top_weighted_subcomponents = self._extract_top_weighted_subcomponents(results, scores)
+            
+            # Create formatter-ready structure
+            formatter_results = {}
+            
+            # Add component scores to formatter_results
+            for component_name, component_result in results.items():
+                if isinstance(component_result, dict):
+                    # Add the component with its subcomponents to formatter_results
+                    formatter_results[component_name] = {
+                        'score': component_result.get('score', 0),
+                        'components': component_result.get('components', {})
+                    }
+            
+            # IMPORTANT: Add top individual components directly to their parent components to ensure they display
+            # This matches what the formatter expects for TOP INFLUENTIAL INDIVIDUAL COMPONENTS section
+            if top_weighted_subcomponents:
+                # For each subcomponent, highlight it in its parent component by adding a special flag
+                for sub_comp in top_weighted_subcomponents[:5]:  # Use top 5 for display
+                    sub_name = sub_comp.get('name', '')
+                    parent_name = sub_comp.get('parent', '')
+                    
+                    if parent_name and parent_name in formatter_results:
+                        # Make sure components exists
+                        if 'components' not in formatter_results[parent_name]:
+                            formatter_results[parent_name]['components'] = {}
+                        
+                        # Add or update the subcomponent with highlighting
+                        if sub_name:
+                            # Add "_top_ranked" to the subcomponent to prioritize it in the formatter
+                            highlighted_sub_name = f"{sub_name} (HIGH IMPACT)"
+                            formatter_results[parent_name]['components'][highlighted_sub_name] = sub_comp.get('score', 0)
+            
+            # Add a specific top_influential section
+            for sub_comp in top_weighted_subcomponents[:5]:
+                parent_name = sub_comp.get('parent', '')
+                if 'top_influential' not in formatter_results:
+                    formatter_results['top_influential'] = {
+                        'score': confluence_score,
+                        'components': {}
+                    }
+                
+                # Create a formatted display name with parent category
+                sub_name = sub_comp.get('name', '')
+                if sub_name and parent_name:
+                    display_name = f"{sub_name} ({parent_name})"
+                    formatter_results['top_influential']['components'][display_name] = sub_comp.get('score', 0)
+            
+            # Format response with formatter-ready data
+            response = {
+                'timestamp': pd.Timestamp.now().isoformat(),
+                'confluence_score': confluence_score,  # Use only 'confluence_score', not 'score'
+                'reliability': reliability,
+                'components': scores,
+                'results': formatter_results,  # formatter-ready structure
+                'top_weighted_subcomponents': top_weighted_subcomponents,  # Include for compatibility
+                'metadata': {
+                    'calculation_time': time.time() - start_time,
+                    'timings': {},
+                    'errors': [],
+                    'weights': self.weights
+                },
+                'debug': self._get_debug_info('confluence')
+            }
             
             elapsed = time.time() - start_time
             self.logger.info(f"Confluence analysis completed in {elapsed:.2f}s")
             self.logger.info(f"Final confluence score: {confluence_score:.2f} (reliability: {reliability:.2f})")
+            
             return response
             
         except Exception as e:
             self.logger.error(f"Error in confluence analysis: {str(e)}")
             self.logger.error(traceback.format_exc())
             return self._get_default_response()
+
+    def _extract_top_weighted_subcomponents(self, results: Dict[str, Any], scores: Dict[str, float]) -> List[Dict[str, Any]]:
+        """Extract top weighted subcomponents from results.
+        
+        Args:
+            results: Dictionary of indicator results
+            scores: Dictionary of component scores
+            
+        Returns:
+            List of subcomponents with weighted impact values
+        """
+        try:
+            all_sub_components = []
+            
+            # Calculate weights based on component names
+            total_weight = sum(self.weights.values())
+            weights = {k: v/total_weight for k, v in self.weights.items()}
+            self.logger.debug(f"Normalized component weights: {weights}")
+            
+            # Process each component's subcomponents
+            for component_name, component_result in results.items():
+                if not isinstance(component_result, dict):
+                    continue
+                
+                # Get component weight
+                component_weight = weights.get(component_name, 0)
+                
+                # Skip components with zero weight
+                if component_weight <= 0:
+                    continue
+                
+                # Get subcomponents from result
+                component_score = scores.get(component_name, 50.0)
+                
+                # Extract subcomponents if available
+                if 'components' in component_result and isinstance(component_result['components'], dict):
+                    sub_components = component_result['components']
+                    
+                    # Process each subcomponent
+                    for sub_name, sub_score in sub_components.items():
+                        if isinstance(sub_score, (int, float)) and not pd.isna(sub_score):
+                            # Determine direction indicator
+                            indicator = '→'  # Default neutral
+                            if sub_score >= 70:
+                                indicator = '↑'  # Bullish
+                            elif sub_score <= 30:
+                                indicator = '↓'  # Bearish
+                                
+                            # Calculate weighted impact
+                            weighted_impact = sub_score * component_weight
+                            
+                            # Add to subcomponents list
+                            sub_component = {
+                                'name': sub_name,
+                                'display_name': sub_name.replace('_', ' ').title(),
+                                'score': sub_score,
+                                'indicator': indicator,
+                                'parent': component_name,
+                                'parent_display_name': component_name.replace('_', ' ').title(),
+                                'parent_weight': component_weight,
+                                'weighted_impact': weighted_impact,
+                                'top_ranked': True  # Add flag to identify as a top ranked component
+                            }
+                            all_sub_components.append(sub_component)
+            
+            # Sort by weighted impact and return top components
+            sorted_components = sorted(all_sub_components, key=lambda x: x.get('weighted_impact', 0), reverse=True)
+            
+            # Mark the top 5 components explicitly
+            for i, comp in enumerate(sorted_components[:5]):
+                comp['rank'] = i + 1
+                
+            return sorted_components
+            
+        except Exception as e:
+            self.logger.error(f"Error extracting top weighted subcomponents: {str(e)}")
+            self.logger.debug(traceback.format_exc())
+            return []
 
     def _track_data_flow(self, stage: str, flow_id: str, data: Dict[str, Any]) -> None:
         """Track data flow through the analysis pipeline."""
@@ -1318,7 +1456,7 @@ class ConfluenceAnalyzer:
         """Return a default analysis response when analysis fails"""
         return {
             'timestamp': int(time.time() * 1000),
-            'score': 50.0,  # Neutral score
+            'confluence_score': 50.0,  # Neutral score (changed from 'score' to 'confluence_score')
             'signal': 'neutral',
             'confidence': 0.0,
             'components': {
@@ -2415,7 +2553,7 @@ class ConfluenceAnalyzer:
         """Return a default analysis response when analysis fails"""
         return {
             'timestamp': int(time.time() * 1000),
-            'score': 50.0,  # Neutral score
+            'confluence_score': 50.0,  # Neutral score
             'signal': 'neutral',
             'confidence': 0.0,
             'components': {
@@ -3597,6 +3735,7 @@ class ConfluenceAnalyzer:
             # Long/short ratio validation - support different formats with proper nested structure
             lsr = sentiment_data.get('long_short_ratio')
             if lsr is not None:
+                self.logger.info(f"VALIDATION: LSR before processing: {lsr}")
                 if isinstance(lsr, dict):
                     self.logger.debug(f"Dictionary LSR format with keys: {list(lsr.keys())}")
                     # Check if it has the required long/short keys
@@ -3607,6 +3746,33 @@ class ConfluenceAnalyzer:
                             'short': 50.0,
                             'timestamp': int(time.time() * 1000)
                         }
+                        self.logger.info(f"VALIDATION: Reset LSR to default due to missing long/short keys: {sentiment_data['long_short_ratio']}")
+                    else:
+                        # Convert values to float if they're not already
+                        try:
+                            long_val = float(lsr['long'])
+                            short_val = float(lsr['short'])
+                            
+                            # Validate percentages
+                            if long_val < 0 or short_val < 0 or (long_val + short_val == 0):
+                                self.logger.warning(f"LSR values invalid: long={long_val}, short={short_val}, resetting to defaults")
+                                sentiment_data['long_short_ratio'] = {
+                                    'long': 50.0,
+                                    'short': 50.0,
+                                    'timestamp': int(time.time() * 1000)
+                                }
+                                self.logger.info(f"VALIDATION: Reset LSR to default due to invalid values: {sentiment_data['long_short_ratio']}")
+                            else:
+                                # Values look good
+                                self.logger.info(f"VALIDATION: LSR values valid: long={long_val}, short={short_val}")
+                        except (ValueError, TypeError) as e:
+                            self.logger.warning(f"LSR values could not be converted to float: {e}, resetting to defaults")
+                            sentiment_data['long_short_ratio'] = {
+                                'long': 50.0,
+                                'short': 50.0,
+                                'timestamp': int(time.time() * 1000)
+                            }
+                            self.logger.info(f"VALIDATION: Reset LSR to default due to conversion error: {sentiment_data['long_short_ratio']}")
                 elif isinstance(lsr, (int, float)):
                     self.logger.debug(f"Converting simple LSR value {lsr} to structured format")
                     ratio = float(lsr)
@@ -3623,6 +3789,7 @@ class ConfluenceAnalyzer:
                         'short': short_pct,
                         'timestamp': int(time.time() * 1000)
                     }
+                    self.logger.info(f"VALIDATION: Converted LSR from scalar to structure: {sentiment_data['long_short_ratio']}")
                 else:
                     self.logger.warning(f"Unexpected LSR type: {type(lsr)}, setting defaults")
                     sentiment_data['long_short_ratio'] = {
@@ -3630,6 +3797,9 @@ class ConfluenceAnalyzer:
                         'short': 50.0,
                         'timestamp': int(time.time() * 1000)
                     }
+                    self.logger.info(f"VALIDATION: Reset LSR to default due to unexpected type: {sentiment_data['long_short_ratio']}")
+            
+            self.logger.info(f"VALIDATION: Final LSR after processing: {sentiment_data.get('long_short_ratio')}")
             
             # Liquidation data validation - support both array and aggregated formats
             liquidations = sentiment_data.get('liquidations')
@@ -3873,10 +4043,26 @@ class ConfluenceAnalyzer:
             if 'funding_rate' in sentiment_data:
                 if isinstance(sentiment_data['funding_rate'], dict) and 'rate' in sentiment_data['funding_rate']:
                     enhanced_sentiment['funding_rate'] = sentiment_data['funding_rate']
+                elif isinstance(sentiment_data['funding_rate'], dict):
+                    # Dictionary without 'rate' key
+                    self.logger.warning(f"Funding rate dictionary is missing 'rate' key: {sentiment_data['funding_rate']}")
+                    enhanced_sentiment['funding_rate'] = {
+                        'rate': 0.0001,
+                        'next_funding_time': int(time.time() * 1000) + 8 * 3600 * 1000
+                    }
                 else:
-                    enhanced_sentiment['funding_rate']['rate'] = float(sentiment_data['funding_rate'])
+                    # Try to convert simple value to float
+                    try:
+                        enhanced_sentiment['funding_rate']['rate'] = float(sentiment_data['funding_rate'])
+                    except (ValueError, TypeError):
+                        self.logger.warning(f"Could not convert funding_rate to float: {sentiment_data['funding_rate']}")
+                        enhanced_sentiment['funding_rate']['rate'] = 0.0001
             elif ticker_data and 'fundingRate' in ticker_data:
-                enhanced_sentiment['funding_rate']['rate'] = float(ticker_data['fundingRate'])
+                try:
+                    enhanced_sentiment['funding_rate']['rate'] = float(ticker_data['fundingRate'])
+                except (ValueError, TypeError):
+                    self.logger.warning(f"Could not convert ticker fundingRate to float: {ticker_data['fundingRate']}")
+                    enhanced_sentiment['funding_rate']['rate'] = 0.0001
             
             # Extract long/short ratio
             if 'long_short_ratio' in sentiment_data:

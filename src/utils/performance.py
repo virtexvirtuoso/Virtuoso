@@ -11,10 +11,18 @@ from functools import wraps
 # Add TRACE level
 TRACE_LEVEL = 5  # Lower than DEBUG (10)
 logging.addLevelName(TRACE_LEVEL, 'TRACE')
+
+# Define the trace method correctly
 def trace(self, message, *args, **kwargs):
+    """
+    Log 'msg % args' with severity 'TRACE'.
+    """
     if self.isEnabledFor(TRACE_LEVEL):
         self._log(TRACE_LEVEL, message, args, **kwargs)
-logging.Logger.trace = trace
+
+# Add trace method to Logger class
+if not hasattr(logging.Logger, 'trace'):
+    logging.Logger.trace = trace
 
 logger = logging.getLogger(__name__)
 

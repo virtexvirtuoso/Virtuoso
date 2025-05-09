@@ -20,7 +20,7 @@ logger = logging.getLogger("demo_enhanced_interpretations")
 
 # Import the necessary modules
 from src.core.analysis.interpretation_generator import InterpretationGenerator
-from src.core.formatting.enhanced_formatter import EnhancedFormatter
+from src.core.formatting.formatter import EnhancedFormatter
 from src.core.formatting import LogFormatter
 
 def load_sample_data(file_path: str = "sample_analysis_result.json") -> Dict[str, Any]:

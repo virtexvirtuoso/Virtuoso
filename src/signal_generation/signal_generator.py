@@ -29,7 +29,10 @@ import traceback
 from datetime import datetime
 import asyncio
 import time
-from src.monitoring.alert_manager import AlertManager
+# Import AlertManager type for annotation only, not the actual class
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from src.monitoring.alert_manager import AlertManager
 from src.core.reporting.report_manager import ReportManager
 import os
 from dotenv import load_dotenv
@@ -46,7 +49,7 @@ logger = logging.getLogger(__name__)
 class SignalGenerator:
     """Generates trading signals based on analysis results."""
     
-    def __init__(self, config: Dict[str, Any], alert_manager: Optional[AlertManager] = None):
+    def __init__(self, config: Dict[str, Any], alert_manager: Optional['AlertManager'] = None):
         """Initialize signal generator with configuration settings.
         
         Args:
@@ -113,11 +116,24 @@ class SignalGenerator:
         else:
             self.logger.warning("Discord webhook URL not found in environment variables")
         
+        # Initialize AlertManager if not provided
         if alert_manager:
             self.alert_manager = alert_manager
         else:
-            self.logger.warning("No alert manager provided")
-            self.alert_manager = None
+            try:
+                # Import AlertManager here to avoid circular import
+                from src.monitoring.alert_manager import AlertManager
+                self.alert_manager = AlertManager(config)
+                self.logger.info("Created new AlertManager instance")
+                
+                # Ensure Discord handler is registered
+                if hasattr(self.alert_manager, 'register_discord_handler'):
+                    self.alert_manager.register_discord_handler()
+                    self.logger.info("Discord handler registered with AlertManager")
+            except Exception as e:
+                self.logger.error(f"Failed to initialize AlertManager: {str(e)}")
+                self.logger.debug(traceback.format_exc())
+                self.alert_manager = None
         
         # Initialize ReportManager for PDF generation
         self.report_manager = None
@@ -132,9 +148,10 @@ class SignalGenerator:
                 self.logger.debug(traceback.format_exc())
         
         # Verify AlertManager initialization
-        if self.alert_manager and hasattr(self.alert_manager, 'discord_network'):
-            self.logger.info(f"AlertManager initialized with Discord webhook: {bool(self.alert_manager.discord_network)}")
-            self.logger.info(f"Registered handlers: {list(self.alert_manager.alert_handlers.keys())}")
+        if self.alert_manager and hasattr(self.alert_manager, 'discord_webhook_url') and self.alert_manager.discord_webhook_url:
+            self.logger.info(f"AlertManager initialized with Discord webhook URL")
+            if hasattr(self.alert_manager, 'alert_handlers'):
+                self.logger.info(f"Registered handlers: {list(self.alert_manager.alert_handlers.keys())}")
         else:
             self.logger.warning("AlertManager not properly initialized")
         
@@ -589,97 +606,191 @@ class SignalGenerator:
             raise RuntimeError(f"Failed to generate signal: {str(e)}") from e
 
     async def _send_signal_alert(self, signal: Dict[str, Any], indicators: Dict[str, Any]) -> None:
-        """Send signal alert via configured channels."""
+        """Send a signal alert to the alert manager."""
         try:
-            if not self.alert_manager:
-                self.logger.error("⚠️ AlertManager not initialized")
+            # Extract signal ID or create a new one
+            transaction_id = signal.get('transaction_id', str(uuid.uuid4())[:8])
+            signal_id = signal.get('signal_id', str(uuid.uuid4())[:8])
+            
+            # Get price from signal data or try to resolve it
+            price = signal.get('price')
+            if price is None:
+                price = self._resolve_price(signal, signal_id)
+            
+            # Extract key signal properties
+            symbol = signal.get('symbol', 'UNKNOWN')
+            score = signal.get('score', 50.0)
+            components = signal.get('components', {})
+            results = signal.get('results', {})
+            standardized_data = self._standardize_signal_data(signal)
+            
+            # Calculate reliability factor (0-1)
+            reliability = self._calculate_reliability(signal)
+            
+            # Generate enhanced formatted data for improved alerts
+            enhanced_data = self._generate_enhanced_formatted_data(
+                symbol=symbol,
+                confluence_score=score,
+                components=components,
+                results=results,
+                reliability=reliability,
+                buy_threshold=self.thresholds['buy'],
+                sell_threshold=self.thresholds['sell']
+            )
+            
+            # Determine signal direction
+            if score >= self.thresholds['buy']:
+                direction = 'BUY'
+            elif score <= self.thresholds['sell']:
+                direction = 'SELL'
+            else:
+                direction = 'NEUTRAL'
+            
+            # Skip processing if the signal is NEUTRAL
+            if direction == 'NEUTRAL':
+                self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}] Skipping alert for NEUTRAL signal on {symbol}")
                 return
-
-            # ALERT PIPELINE DEBUG: Verify alert manager state
-            self.logger.info(f"ALERT DEBUG: Verifying AlertManager state before sending signal for {signal.get('symbol')}")
             
-            # Check if alert_manager has expected attributes
-            if not hasattr(self.alert_manager, 'verify_handler_state'):
-                self.logger.error(f"ALERT DEBUG: AlertManager missing verify_handler_state method - possible version mismatch")
-            else:
-                # Verify handler state before sending
-                debug_info = await self.alert_manager.verify_handler_state()
-                self.logger.info(f"ALERT DEBUG: AlertManager handlers: {debug_info.get('handlers', [])}") 
-                
-                # Check if there are issues
-                if debug_info.get('status') == 'NO_HANDLERS':
-                    self.logger.critical(f"ALERT DEBUG: No handlers registered in AlertManager when sending signal for {signal.get('symbol')}")
+            # Get or generate report data for alert
+            pdf_path = signal.get('pdf_path')
+            self.logger.info(f"[DIAGNOSTICS] [PDF_GENERATION] [TXN:{transaction_id}][SIG:{signal_id}] Starting PDF report generation for {symbol}")
+            
+            if not pdf_path and hasattr(self, 'report_manager') and self.report_manager:
+                try:
+                    # Log PDF generation attempt with diagnostics-friendly format
+                    self.logger.info(f"[DIAGNOSTICS] [PDF_GENERATION] [TXN:{transaction_id}][SIG:{signal_id}] Using ReportManager to generate PDF")
                     
-                    # Verify discord webhook URL
-                    if hasattr(self.alert_manager, 'discord_webhook_url') and self.alert_manager.discord_webhook_url:
-                        self.logger.info(f"ALERT DEBUG: Discord webhook URL exists: {self.alert_manager.discord_webhook_url[:20]}...{self.alert_manager.discord_webhook_url[-10:]}")
-                        
-                        # Try to force register
-                        self.logger.info("ALERT DEBUG: Attempting to force register Discord handler")
-                        self.alert_manager.register_handler('discord')
-                        self.logger.info(f"ALERT DEBUG: After force registration: {self.alert_manager.handlers}")
-
-            # Debug log for troubleshooting
-            self.logger.debug(f"_send_signal_alert called for {signal.get('symbol')} with score {signal.get('score', 0):.2f}")
-            
-            timestamp = indicators.get('timestamp')
-            if isinstance(timestamp, datetime):
-                timestamp = int(timestamp.timestamp() * 1000)
+                    # Check if report_manager is properly initialized
+                    if self.report_manager is None:
+                        self.logger.error(f"[DIAGNOSTICS] [PDF_GENERATION] [TXN:{transaction_id}][SIG:{signal_id}] ERROR: ReportManager is None")
+                    else:
+                        self.logger.info(f"[DIAGNOSTICS] [PDF_GENERATION] [TXN:{transaction_id}][SIG:{signal_id}] ReportManager initialized: {type(self.report_manager).__name__}")
+                    
+                    # Generate PDF report if not already provided
+                    report_data = {
+                        'symbol': symbol, 
+                        'score': score,
+                        'direction': direction,
+                        'price': price,
+                        'components': components,
+                        'results': results
+                    }
+                    
+                    # Try to get chart data for the symbol
+                    self.logger.info(f"[DIAGNOSTICS] [PDF_GENERATION] [TXN:{transaction_id}][SIG:{signal_id}] Fetching OHLCV data for chart")
+                    ohlcv_data = await self._fetch_ohlcv_data(symbol) if not 'ohlcv_data' in signal else signal.get('ohlcv_data')
+                    
+                    # Check if we got valid OHLCV data
+                    if ohlcv_data is not None:
+                        if hasattr(ohlcv_data, 'empty'):
+                            is_empty = ohlcv_data.empty
+                        else:
+                            is_empty = len(ohlcv_data) == 0 if hasattr(ohlcv_data, '__len__') else True
+                            
+                        if is_empty:
+                            self.logger.error(f"[DIAGNOSTICS] [PDF_GENERATION] [TXN:{transaction_id}][SIG:{signal_id}] ERROR: OHLCV data is empty")
+                        else:
+                            self.logger.info(f"[DIAGNOSTICS] [PDF_GENERATION] [TXN:{transaction_id}][SIG:{signal_id}] OHLCV data retrieved with {len(ohlcv_data)} candles")
+                    else:
+                        self.logger.error(f"[DIAGNOSTICS] [PDF_GENERATION] [TXN:{transaction_id}][SIG:{signal_id}] ERROR: Failed to retrieve OHLCV data")
+                    
+                    # Generate report with chart if data is available
+                    if ohlcv_data is not None and not (hasattr(ohlcv_data, 'empty') and ohlcv_data.empty):
+                        self.logger.info(f"[DIAGNOSTICS] [PDF_GENERATION] [TXN:{transaction_id}][SIG:{signal_id}] Generating PDF report with OHLCV data")
+                        try:
+                            report_result = await self.report_manager.generate_report(
+                                signal_data=report_data,
+                                ohlcv_data=ohlcv_data
+                            )
+                            
+                            self.logger.info(f"[DIAGNOSTICS] [PDF_GENERATION] [TXN:{transaction_id}][SIG:{signal_id}] Report result: {report_result}")
+                            
+                            # Handle different types of return values from report_generator
+                            if isinstance(report_result, tuple) and len(report_result) >= 1 and report_result[0]:
+                                # Report generator returned (pdf_path, json_path)
+                                pdf_path = report_result[0]
+                                self.logger.info(f"[DIAGNOSTICS] [PDF_GENERATION] [TXN:{transaction_id}][SIG:{signal_id}] Generated PDF at: {pdf_path}")
+                                
+                                # Verify file exists
+                                if os.path.exists(pdf_path):
+                                    self.logger.info(f"[DIAGNOSTICS] [PDF_GENERATION] [TXN:{transaction_id}][SIG:{signal_id}] Verified PDF exists: {pdf_path}")
+                                else:
+                                    self.logger.error(f"[DIAGNOSTICS] [PDF_GENERATION] [TXN:{transaction_id}][SIG:{signal_id}] ERROR: PDF file does not exist: {pdf_path}")
+                                    pdf_path = None
+                            elif isinstance(report_result, bool) and report_result:
+                                # Report generator returned True but no path, try to find the PDF
+                                self.logger.info(f"[DIAGNOSTICS] [PDF_GENERATION] [TXN:{transaction_id}][SIG:{signal_id}] Report generated successfully but no path returned")
+                                
+                                # Look for PDF in expected locations
+                                symbol_safe = symbol.lower().replace('/', '_')
+                                timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+                                timestamp_unix = int(time.time())
+                                
+                                search_dirs = [
+                                    os.path.join(os.getcwd(), 'reports', 'pdf'),
+                                    os.path.join(os.getcwd(), 'exports')
+                                ]
+                                
+                                for search_dir in search_dirs:
+                                    if os.path.exists(search_dir):
+                                        pdfs = [f for f in os.listdir(search_dir) 
+                                              if f.lower().startswith(symbol_safe.lower()) and f.endswith('.pdf')]
+                                        if pdfs:
+                                            # Sort by creation time, newest first
+                                            pdfs.sort(key=lambda f: os.path.getctime(os.path.join(search_dir, f)), reverse=True)
+                                            pdf_path = os.path.join(search_dir, pdfs[0])
+                                            self.logger.info(f"[DIAGNOSTICS] [PDF_GENERATION] [TXN:{transaction_id}][SIG:{signal_id}] Found recent PDF: {pdf_path}")
+                                            break
+                            else:
+                                self.logger.error(f"[DIAGNOSTICS] [PDF_GENERATION] [TXN:{transaction_id}][SIG:{signal_id}] ERROR: Report generation failed or returned unexpected result: {report_result}")
+                        except Exception as report_error:
+                            self.logger.error(f"[DIAGNOSTICS] [PDF_GENERATION] [TXN:{transaction_id}][SIG:{signal_id}] ERROR generating report: {str(report_error)}")
+                            self.logger.error(traceback.format_exc())
+                    else:
+                        self.logger.info(f"[DIAGNOSTICS] [PDF_GENERATION] [TXN:{transaction_id}][SIG:{signal_id}] Generating PDF report without OHLCV data")
+                        try:
+                            success, pdf_path, _ = await self.report_manager.generate_and_attach_report(
+                                signal_data=report_data,
+                                signal_type=direction.lower()
+                            )
+                            
+                            # Log detailed results
+                            if success:
+                                self.logger.info(f"[DIAGNOSTICS] [PDF_GENERATION] [TXN:{transaction_id}][SIG:{signal_id}] PDF generated successfully: {pdf_path}")
+                                
+                                # Verify file exists and has content
+                                if pdf_path and os.path.exists(pdf_path):
+                                    file_size = os.path.getsize(pdf_path) / 1024  # KB
+                                    self.logger.info(f"[DIAGNOSTICS] [PDF_GENERATION] [TXN:{transaction_id}][SIG:{signal_id}] PDF file exists, size: {file_size:.2f} KB")
+                                else:
+                                    self.logger.error(f"[DIAGNOSTICS] [PDF_GENERATION] [TXN:{transaction_id}][SIG:{signal_id}] ERROR: PDF file does not exist at path: {pdf_path}")
+                            else:
+                                self.logger.error(f"[DIAGNOSTICS] [PDF_GENERATION] [TXN:{transaction_id}][SIG:{signal_id}] ERROR: PDF generation returned failure status")
+                        except Exception as pdf_err:
+                            self.logger.error(f"[DIAGNOSTICS] [PDF_GENERATION] [TXN:{transaction_id}][SIG:{signal_id}] ERROR: Exception in PDF generation without OHLCV: {str(pdf_err)}")
+                            self.logger.error(f"[DIAGNOSTICS] [PDF_GENERATION] [TXN:{transaction_id}][SIG:{signal_id}] Error traceback: {traceback.format_exc()}")
+                    
+                    if success and pdf_path:
+                        self.logger.info(f"[DIAGNOSTICS] [PDF_GENERATION] [TXN:{transaction_id}][SIG:{signal_id}] PDF report generation complete: {pdf_path}")
+                    else:
+                        self.logger.warning(f"[DIAGNOSTICS] [PDF_GENERATION] [TXN:{transaction_id}][SIG:{signal_id}] Failed to generate PDF report")
+                        pdf_path = None
+                except Exception as e:
+                    self.logger.error(f"[DIAGNOSTICS] [PDF_GENERATION] [TXN:{transaction_id}][SIG:{signal_id}] ERROR: Error generating PDF report: {str(e)}")
+                    self.logger.error(f"[DIAGNOSTICS] [PDF_GENERATION] [TXN:{transaction_id}][SIG:{signal_id}] Error traceback: {traceback.format_exc()}")
+                    pdf_path = None
             else:
-                timestamp = int(time.time() * 1000)
-            
-            # Get results/components needed for the fancy formatting
-            components = {
-                'volume': indicators.get('volume_score', 50),
-                'technical': indicators.get('technical_score', indicators.get('momentum_score', 50)),
-                'orderflow': indicators.get('orderflow_score', 50),
-                'orderbook': indicators.get('orderbook_score', 50),
-                'sentiment': indicators.get('sentiment_score', 50),
-                'price_structure': indicators.get('price_structure_score', indicators.get('position_score', 50))
-            }
-            
-            # ALERT PIPELINE DEBUG: Log component scores
-            self.logger.info(f"ALERT DEBUG: Component scores for {signal.get('symbol')}: {components}")
-            
-            # Create a detailed results object with rich interpretations
-            results = {}
-            for component_name, component_score in components.items():
-                # Get the appropriate interpretation method based on component name
-                interpret_method = getattr(self, f"_interpret_{component_name}", None)
-                
-                if not interpret_method:
-                    # Fallback for missing methods
-                    self.logger.warning(f"No interpretation method found for {component_name}")
-                    interpretation = f"No interpretation available for {component_name}"
+                if pdf_path:
+                    self.logger.info(f"[DIAGNOSTICS] [PDF_GENERATION] [TXN:{transaction_id}][SIG:{signal_id}] Using provided PDF path: {pdf_path}")
                 else:
-                    # Get detailed interpretation for this component's score
-                    interpretation = interpret_method(component_score, indicators)
-                
-                # Extract sub-components if available
-                extract_method = getattr(self, f"_extract_{component_name}_components", None)
-                sub_components = {}
-                if extract_method:
-                    sub_components = extract_method(indicators)
-                
-                # Create component entry with full interpretation text
-                results[component_name] = {
-                    'score': component_score,
-                    'components': sub_components,
-                    'interpretation': interpretation
-                }
+                    self.logger.warning(f"[DIAGNOSTICS] [PDF_GENERATION] [TXN:{transaction_id}][SIG:{signal_id}] No PDF path provided and no ReportManager available")
             
-            # Get reliability if available
-            reliability = indicators.get('reliability', 0.8)  # Default to 0.8 if not specified
-            
-            # Check if this is a threshold crossing signal that needs the fancy formatting
-            score = signal.get('score', 0)
-            
-            # Create a signal data dictionary that indicates what's been processed
+            # Create alert data for the alert manager
             alert_data = {
                 'symbol': symbol,
                 'confluence_score': score,
-                'components': serialized_components,
-                'results': serialized_results,
+                'components': components,
+                'results': results,
                 'reliability': reliability,  # Use reliability directly without normalization
                 'buy_threshold': self.thresholds['buy'],
                 'sell_threshold': self.thresholds['sell'],
@@ -700,60 +811,84 @@ class SignalGenerator:
                     'filename': os.path.basename(pdf_path),
                     'description': f"Report for {symbol}"
                 }]
-                self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] Adding PDF attachment: {pdf_path}")
+                self.logger.info(f"[DIAGNOSTICS] [PDF_ATTACHMENT] [TXN:{transaction_id}][SIG:{signal_id}] Adding PDF attachment: {pdf_path}")
+            else:
+                self.logger.warning(f"[DIAGNOSTICS] [PDF_ATTACHMENT] [TXN:{transaction_id}][SIG:{signal_id}] No valid PDF path found for attachment. Path: {pdf_path}")
+                if pdf_path:
+                    self.logger.warning(f"[DIAGNOSTICS] [PDF_ATTACHMENT] [TXN:{transaction_id}][SIG:{signal_id}] File exists check: {os.path.exists(pdf_path) if pdf_path else False}")
             
-            self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] Calling alert_manager.send_confluence_alert")
+            self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}] Calling alert_manager.send_confluence_alert")
             
             # Add diagnostic logging to check alert data before sending
-            self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] ALERT DATA CHECK - Preparing to send alert:")
-            self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] - Confluence score: {score}")
-            self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] - Influential components count: {len(enhanced_data.get('influential_components', []))}")
-            self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] - Market interpretations count: {len(enhanced_data.get('market_interpretations', []))}")
-            self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] - Top weighted subcomponents count: {len(enhanced_data.get('top_weighted_subcomponents', []))}")
-            self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] - Actionable insights count: {len(enhanced_data.get('actionable_insights', []))}")
+            self.logger.info(f"[DIAGNOSTICS] [ALERT_DATA] [TXN:{transaction_id}][SIG:{signal_id}] Preparing to send alert:")
+            self.logger.info(f"[DIAGNOSTICS] [ALERT_DATA] [TXN:{transaction_id}][SIG:{signal_id}] - Confluence score: {score}")
+            self.logger.info(f"[DIAGNOSTICS] [ALERT_DATA] [TXN:{transaction_id}][SIG:{signal_id}] - PDF path: {pdf_path}")
+            self.logger.info(f"[DIAGNOSTICS] [ALERT_DATA] [TXN:{transaction_id}][SIG:{signal_id}] - Files to attach: {files}")
             
-            # Check market interpretations format
-            market_interpretations = enhanced_data.get('market_interpretations', [])
-            if market_interpretations:
-                self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] - Sample market interpretation: {market_interpretations[0]}")
+            if enhanced_data:
+                self.logger.info(f"[DIAGNOSTICS] [ALERT_DATA] [TXN:{transaction_id}][SIG:{signal_id}] - Influential components count: {len(enhanced_data.get('influential_components', []))}")
+                self.logger.info(f"[DIAGNOSTICS] [ALERT_DATA] [TXN:{transaction_id}][SIG:{signal_id}] - Market interpretations count: {len(enhanced_data.get('market_interpretations', []))}")
+                self.logger.info(f"[DIAGNOSTICS] [ALERT_DATA] [TXN:{transaction_id}][SIG:{signal_id}] - Top weighted subcomponents count: {len(enhanced_data.get('top_weighted_subcomponents', []))}")
+                self.logger.info(f"[DIAGNOSTICS] [ALERT_DATA] [TXN:{transaction_id}][SIG:{signal_id}] - Actionable insights count: {len(enhanced_data.get('actionable_insights', []))}")
+            
+            # Verify the alert_manager is available
+            if not self.alert_manager:
+                self.logger.error(f"[DIAGNOSTICS] [ALERT_MANAGER] [TXN:{transaction_id}][SIG:{signal_id}] ERROR: AlertManager is None, cannot send alert")
+            else:
+                self.logger.info(f"[DIAGNOSTICS] [ALERT_MANAGER] [TXN:{transaction_id}][SIG:{signal_id}] AlertManager initialized: {type(self.alert_manager).__name__}")
+                
+                # Check for webhook URL
+                if hasattr(self.alert_manager, 'discord_webhook_url'):
+                    webhook_url = self.alert_manager.discord_webhook_url
+                    if webhook_url:
+                        webhook_length = len(webhook_url)
+                        self.logger.info(f"[DIAGNOSTICS] [ALERT_MANAGER] [TXN:{transaction_id}][SIG:{signal_id}] Discord webhook URL found with length: {webhook_length}")
+                    else:
+                        self.logger.error(f"[DIAGNOSTICS] [ALERT_MANAGER] [TXN:{transaction_id}][SIG:{signal_id}] ERROR: Discord webhook URL is empty")
             
             # Pass top_weighted_subcomponents to the alert manager
             await self.alert_manager.send_confluence_alert(
                 symbol=symbol,
                 confluence_score=score,  # This is validated_data.score
-                components=serialized_components,
-                results=serialized_results,
+                components=components,
+                results=results,
                 reliability=reliability,  # Use reliability directly without normalization
                 buy_threshold=self.thresholds['buy'],
                 sell_threshold=self.thresholds['sell'],
                 price=price,
                 transaction_id=transaction_id,
                 signal_id=signal_id,
-                influential_components=enhanced_data.get('influential_components'),
-                market_interpretations=enhanced_data.get('market_interpretations'),
-                actionable_insights=enhanced_data.get('actionable_insights'),
-                top_weighted_subcomponents=enhanced_data.get('top_weighted_subcomponents')
+                influential_components=enhanced_data.get('influential_components') if enhanced_data else None,
+                market_interpretations=enhanced_data.get('market_interpretations') if enhanced_data else None,
+                actionable_insights=enhanced_data.get('actionable_insights') if enhanced_data else None,
+                top_weighted_subcomponents=enhanced_data.get('top_weighted_subcomponents') if enhanced_data else None
             )
             
-            # If we have files to attach but couldn't attach them directly through send_confluence_alert,
-            # send them separately through the send_discord_webhook_message method
+            # Log success and check if files were attached
+            self.logger.info(f"[DIAGNOSTICS] [ALERT_SENT] [TXN:{transaction_id}][SIG:{signal_id}] Alert sent successfully for {symbol}")
+            
+            # Send PDF file as a separate message immediately after the alert, if not included directly in the alert
             if files and hasattr(self.alert_manager, 'send_discord_webhook_message'):
                 webhook_message = {
-                    'content': f"📑 PDF report for {symbol} {direction} signal",
+                    'content': f"📑 PDF report for {symbol} {direction} signal (score: {score:.1f})",
                     'username': "Virtuoso Reports"
                 }
+                
+                # Log the separate PDF file attachment attempt
+                self.logger.info(f"[DIAGNOSTICS] [PDF_ATTACHMENT] [TXN:{transaction_id}][SIG:{signal_id}] Sending PDF report as separate message")
+                
                 await self.alert_manager.send_discord_webhook_message(webhook_message, files=files)
-                self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}] PDF report sent as separate message")
+                self.logger.info(f"[DIAGNOSTICS] [PDF_ATTACHMENT] [TXN:{transaction_id}][SIG:{signal_id}] PDF report sent as separate message")
             
             self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}] Alert sent successfully for {symbol}")
         except Exception as e:
-            self.logger.error(f"[TXN:{transaction_id}][SIG:{signal_id}] Error sending confluence alert: {str(e)}")
-            self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] {traceback.format_exc()}")
+            self.logger.error(f"[DIAGNOSTICS] [ALERT_ERROR] [TXN:{transaction_id}][SIG:{signal_id}] ERROR: Error sending confluence alert: {str(e)}")
+            self.logger.error(f"[DIAGNOSTICS] [ALERT_ERROR] [TXN:{transaction_id}][SIG:{signal_id}] Error traceback: {traceback.format_exc()}")
             
             # Try direct send_alert method as fallback
             try:
                 if hasattr(self.alert_manager, 'send_alert'):
-                    self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}] Using fallback alert method for {symbol}")
+                    self.logger.info(f"[DIAGNOSTICS] [ALERT_FALLBACK] [TXN:{transaction_id}][SIG:{signal_id}] Using fallback alert method for {symbol}")
                     fallback_message = f"{direction} SIGNAL: {symbol} with score {score:.2f}/100"
                     
                     # Add transaction info to details
@@ -765,13 +900,10 @@ class SignalGenerator:
                         message=fallback_message,
                         details=standardized_data
                     )
-                    self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}] Fallback alert sent for {symbol}")
+                    self.logger.info(f"[DIAGNOSTICS] [ALERT_FALLBACK] [TXN:{transaction_id}][SIG:{signal_id}] Fallback alert sent for {symbol}")
             except Exception as e2:
-                self.logger.error(f"[TXN:{transaction_id}][SIG:{signal_id}] Error in fallback alert: {str(e2)}")
-                self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] Fallback error traceback: {traceback.format_exc()}")
-        except Exception as e:
-            self.logger.error(f"[TXN:{transaction_id}][SIG:{signal_id}] Error processing signal: {str(e)}")
-            self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] {traceback.format_exc()}")
+                self.logger.error(f"[DIAGNOSTICS] [ALERT_FALLBACK] [TXN:{transaction_id}][SIG:{signal_id}] ERROR: Error in fallback alert: {str(e2)}")
+                self.logger.error(f"[DIAGNOSTICS] [ALERT_FALLBACK] [TXN:{transaction_id}][SIG:{signal_id}] Fallback error traceback: {traceback.format_exc()}")
 
     def _collect_indicator_results(self, indicators: Dict[str, Any]) -> Dict[str, Any]:
         """Collect detailed indicator results for formatted alerts."""
@@ -1820,18 +1952,20 @@ class SignalGenerator:
         
         # Score field standardization
         if 'confluence_score' in standardized and 'score' not in standardized:
+            # This is the preferred case - confluence_score is present, copy to score for backward compatibility
             standardized['score'] = standardized['confluence_score']
         elif 'score' in standardized and 'confluence_score' not in standardized:
+            # Old format - copy to confluence_score
             standardized['confluence_score'] = standardized['score']
         elif 'score' not in standardized and 'confluence_score' not in standardized:
             # Default score if both missing
-            standardized['score'] = 50.0
             standardized['confluence_score'] = 50.0
+            standardized['score'] = standardized['confluence_score']  # Copy from confluence_score
         
         # Always ensure both score fields are set to the same value
         if 'score' in standardized and 'confluence_score' in standardized:
-            # Use score as the canonical value
-            standardized['confluence_score'] = standardized['score']
+            # Use confluence_score as the canonical value (changed from using 'score')
+            standardized['score'] = standardized['confluence_score']
         
         # Technical/momentum score standardization
         if 'technical_score' in standardized and 'momentum_score' not in standardized:
@@ -1995,23 +2129,24 @@ class SignalGenerator:
     ) -> Dict[str, Any]:
         """Generate enhanced formatted data for signal display.
         
-        This method extracts detailed component information and creates
-        rich, formatted data structures for displaying in alerts.
-        
         Args:
-            symbol: The trading symbol
-            confluence_score: The overall score
+            symbol: Trading symbol
+            confluence_score: Overall confluence score
             components: Component scores
-            results: Detailed results
-            reliability: Reliability score
-            buy_threshold: Buy threshold
-            sell_threshold: Sell threshold
+            results: Detailed analysis results
+            reliability: Reliability score (0-1)
+            buy_threshold: Buy signal threshold
+            sell_threshold: Sell signal threshold
             
         Returns:
-            Dict containing enhanced formatted data
+            Enhanced formatted data for display
         """
-        self.logger.debug(f"Generating enhanced formatted data for {symbol}")
-        enhanced_data = {}
+        enhanced_data = {
+            'influential_components': [],
+            'market_interpretations': [],
+            'actionable_insights': [],
+            'top_weighted_subcomponents': []
+        }
         
         try:
             # Normalize component weights if provided
@@ -2078,6 +2213,9 @@ class SignalGenerator:
                                 # Safeguard: Cap weighted_impact to 1.0 (100%) to prevent inflated values
                                 weighted_sub_impact = min(weighted_sub_impact, 1.0)
                                 
+                                # Convert weighted_impact to percentage (0-100 range)
+                                weighted_sub_impact = weighted_sub_impact * 100
+                                
                                 # Add to sub-components list
                                 sub_component = {
                                     'name': sub_name,
@@ -2108,7 +2246,7 @@ class SignalGenerator:
                 
             # Sort by weighted impact
             sorted_sub_components = sorted(all_sub_components, key=lambda x: x.get('weighted_impact', 0), reverse=True)
-            enhanced_data['top_weighted_subcomponents'] = sorted_sub_components[:10]  # Top 10
+            enhanced_data['top_weighted_subcomponents'] = sorted_sub_components[:10]
             self.logger.debug(f"Generated top {len(enhanced_data['top_weighted_subcomponents'])} weighted sub-components by impact")
             
             # Get main components sorted by score for interpretation generation
