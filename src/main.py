@@ -43,8 +43,11 @@ from src.monitoring.health_monitor import HealthMonitor
 # Import API routes initialization
 from src.api import init_api_routes
 
-# Load environment variables
-load_dotenv()
+# Load environment variables from specific path
+env_path = Path(__file__).parent.parent / "config" / "env" / ".env"
+load_dotenv(dotenv_path=env_path)
+logger = logging.getLogger(__name__)
+logger.info(f"Loading environment variables from: {env_path}")
 
 # Initialize root logger with enhanced configuration
 configure_logging()
@@ -518,7 +521,7 @@ async def get_symbol_analysis(symbol: str):
         from src.core.formatting import LogFormatter
         formatted_table = LogFormatter.format_confluence_score_table(
             symbol=symbol,
-            confluence_score=analysis.get('score', analysis.get('confluence_score', 0)),
+            confluence_score=analysis.get('confluence_score', 0),
             components=analysis.get('components', {}),
             results=analysis.get('results', {}),
             weights=analysis.get('metadata', {}).get('weights', {}),
@@ -529,7 +532,7 @@ async def get_symbol_analysis(symbol: str):
         return {
             "symbol": symbol,
             "timestamp": analysis.get('timestamp', None),
-            "score": analysis.get('score', None),
+            "score": analysis.get('confluence_score', None),
             "components": analysis.get('components', {}),
             "interpretation": analysis.get('interpretation', {})
         }
@@ -564,7 +567,7 @@ async def websocket_analysis(websocket: WebSocket, symbol: str):
                 from src.core.formatting import LogFormatter
                 formatted_table = LogFormatter.format_confluence_score_table(
                     symbol=symbol,
-                    confluence_score=analysis.get('score', analysis.get('confluence_score', 0)),
+                    confluence_score=analysis.get('confluence_score', 0),
                     components=analysis.get('components', {}),
                     results=analysis.get('results', {}),
                     weights=analysis.get('metadata', {}).get('weights', {}),
@@ -576,7 +579,7 @@ async def websocket_analysis(websocket: WebSocket, symbol: str):
                 await websocket.send_json({
                     "symbol": symbol,
                     "timestamp": analysis.get('timestamp', None),
-                    "score": analysis.get('score', None),
+                    "score": analysis.get('confluence_score', None),
                     "components": analysis.get('components', {}),
                     "interpretation": analysis.get('interpretation', {})
                 })

@@ -174,7 +174,7 @@ class SentimentIndicators(BaseIndicator):
             
         except Exception as e:
             self.logger.error(f"Error calculating long/short ratio: {str(e)}")
-                return 50.0
+            return 50.0
 
     def calculate_funding_rate(self, market_data: Dict[str, Any]) -> float:
         """Calculate funding rate score (redirects to _calculate_funding_score)."""
@@ -270,7 +270,7 @@ class SentimentIndicators(BaseIndicator):
             
         except Exception as e:
             self.logger.error(f"Error calculating funding rate volatility score: {str(e)}")
-                return 50.0
+            return 50.0
 
     def calculate_liquidation_events(self, liquidations_data: Any) -> float:
         """Calculate sentiment score based on liquidation events.
@@ -352,7 +352,7 @@ class SentimentIndicators(BaseIndicator):
             
         except Exception as e:
             self.logger.error(f"Error calculating liquidation events score: {str(e)}")
-                return 50.0
+            return 50.0
 
     def calculate_volume_sentiment(self, volume_data: Dict[str, Any]) -> float:
         """Calculate sentiment score based on volume metrics.
@@ -423,7 +423,7 @@ class SentimentIndicators(BaseIndicator):
             
         except Exception as e:
             self.logger.error(f"Error calculating volume sentiment score: {str(e)}")
-                return 50.0
+            return 50.0
             
     def _calculate_funding_score(self, sentiment_data: Dict[str, Any]) -> float:
         """Calculate sentiment score based on funding rate."""
@@ -439,6 +439,11 @@ class SentimentIndicators(BaseIndicator):
             elif isinstance(sentiment_data, dict) and 'rate' in sentiment_data:
                 current_funding = float(sentiment_data.get('rate', 0))
                 self.logger.debug(f"Using funding rate from dictionary 'rate' field: {current_funding}")
+            # Handle dict without 'rate' key
+            elif isinstance(sentiment_data, dict) and 'rate' not in sentiment_data and len(sentiment_data) > 0:
+                # Dictionary without 'rate' key - log warning and use default
+                self.logger.warning(f"Funding rate dictionary is missing 'rate' key: {sentiment_data}")
+                current_funding = 0.0001  # Default funding rate
             # If funding_rate is a key in the dictionary
             elif isinstance(sentiment_data, dict) and 'funding_rate' in sentiment_data:
                 funding_rate = sentiment_data.get('funding_rate')
@@ -448,6 +453,10 @@ class SentimentIndicators(BaseIndicator):
                 elif isinstance(funding_rate, dict) and 'rate' in funding_rate:
                     current_funding = float(funding_rate.get('rate', 0))
                     self.logger.debug(f"Using funding rate from nested dictionary: {current_funding}")
+                elif isinstance(funding_rate, dict):
+                    # Dictionary without 'rate' key
+                    self.logger.warning(f"Nested funding rate dictionary missing 'rate' key: {funding_rate}")
+                    current_funding = 0.0001  # Default funding rate
             # Check if it's nested in a 'sentiment' field
             elif isinstance(sentiment_data, dict) and 'sentiment' in sentiment_data:
                 nested_data = sentiment_data.get('sentiment', {})
@@ -459,6 +468,10 @@ class SentimentIndicators(BaseIndicator):
                     elif isinstance(funding_rate, dict) and 'rate' in funding_rate:
                         current_funding = float(funding_rate.get('rate', 0))
                         self.logger.debug(f"Using funding rate from deeply nested structure: {current_funding}")
+                    elif isinstance(funding_rate, dict):
+                        # Dictionary without 'rate' key
+                        self.logger.warning(f"Deeply nested funding rate dictionary missing 'rate' key: {funding_rate}")
+                        current_funding = 0.0001  # Default funding rate
             
             # If no valid funding rate was found
             if current_funding is None:
@@ -485,7 +498,7 @@ class SentimentIndicators(BaseIndicator):
             
         except Exception as e:
             self.logger.error(f"Error calculating funding rate score: {str(e)}")
-                return 50.0
+            return 50.0
             
     def _calculate_lsr_score(self, lsr_data: Any) -> float:
         """Calculate sentiment score based on long-short ratio.
@@ -502,16 +515,16 @@ class SentimentIndicators(BaseIndicator):
                 # Extract from format {'long': 0.XX, 'short': 0.XX}
                 long_value = self._safe_get(lsr_data, 'long', 0.5)
                 short_value = self._safe_get(lsr_data, 'short', 0.5)
-            
-            # Validate values
-            if not isinstance(long_value, (int, float)) or not isinstance(short_value, (int, float)):
+                
+                # Validate values
+                if not isinstance(long_value, (int, float)) or not isinstance(short_value, (int, float)):
                     self.logger.warning(f"Invalid LSR values: long={long_value}, short={short_value}")
-                return 50.0
+                    return 50.0
                 
                 # Calculate long percentage
-            total = long_value + short_value
-            if total <= 0:
-                return 50.0
+                total = long_value + short_value
+                if total <= 0:
+                    return 50.0
                 
                 long_percentage = (long_value / total) * 100
             elif isinstance(lsr_data, (int, float)):
@@ -537,8 +550,8 @@ class SentimentIndicators(BaseIndicator):
             
         except Exception as e:
             self.logger.error(f"Error calculating LSR score: {str(e)}")
-                return 50.0
-                
+            return 50.0
+
     def _apply_sigmoid_transformation(self, value, sensitivity=None, center=50):
         """
         Apply sigmoid transformation to make values more sensitive around the center.
@@ -614,7 +627,7 @@ class SentimentIndicators(BaseIndicator):
             # 76-100: Extreme Greed
             if 'fear_and_greed' in market_mood:
                 try:
-                fear_greed = float(market_mood['fear_and_greed'])
+                    fear_greed = float(market_mood['fear_and_greed'])
                     
                     # Fear & Greed Index interpretation:
                     # - Convert 0-100 scale to sentiment score
@@ -700,7 +713,7 @@ class SentimentIndicators(BaseIndicator):
             
         except Exception as e:
             self.logger.error(f"Error calculating market mood: {str(e)}")
-                return 50.0
+            return 50.0
 
     async def calculate(self, market_data: Dict[str, Any]) -> Dict[str, Any]:
         """Calculate overall sentiment score based on market data.
@@ -970,7 +983,7 @@ class SentimentIndicators(BaseIndicator):
             
         except Exception as e:
             self.logger.error(f"Error calculating risk score: {str(e)}")
-                return 50.0
+            return 50.0
 
     def _generate_interpretation(self, component_scores: Dict[str, float], overall_score: float) -> Dict[str, Any]:
         """Generate human-readable interpretation of sentiment scores."""
@@ -1049,7 +1062,7 @@ class SentimentIndicators(BaseIndicator):
         
     def _generate_signals(self, component_scores: Dict[str, float], overall_score: float) -> List[Dict[str, Any]]:
         """Generate trading signals based on sentiment scores."""
-            signals = []
+        signals = []
         
         # Ensure component_scores is a dictionary
         if not isinstance(component_scores, dict):
@@ -1058,29 +1071,29 @@ class SentimentIndicators(BaseIndicator):
             
         # Generate overall sentiment signal
         if overall_score < 30:
-                signals.append({
-                    'signal': 'SELL',
+            signals.append({
+                'signal': 'SELL',
                 'strength': 'strong',
                 'reason': 'Extremely bearish market sentiment',
                 'confidence': 0.8
             })
         elif overall_score < 45:
-                signals.append({
-                    'signal': 'SELL',
+            signals.append({
+                'signal': 'SELL',
                 'strength': 'moderate',
                 'reason': 'Moderately bearish market sentiment',
                 'confidence': 0.6
             })
         elif overall_score > 70:
-                signals.append({
-                    'signal': 'BUY',
+            signals.append({
+                'signal': 'BUY',
                 'strength': 'strong',
                 'reason': 'Extremely bullish market sentiment',
                 'confidence': 0.8
             })
         elif overall_score > 55:
-                signals.append({
-                    'signal': 'BUY',
+            signals.append({
+                'signal': 'BUY',
                 'strength': 'moderate',
                 'reason': 'Moderately bullish market sentiment',
                 'confidence': 0.6
@@ -1263,11 +1276,11 @@ class SentimentIndicators(BaseIndicator):
             
             # If we get here, the format wasn't recognized
             self.logger.warning(f"Unrecognized funding history format: {type(funding_history)}")
-                return 50.0
+            return 50.0
             
         except Exception as e:
             self.logger.error(f"Error calculating funding history score: {str(e)}")
-                return 50.0
+            return 50.0
 
     def _safe_get(self, data: Any, key: str, default_value: Any = None) -> Any:
         """Safely get a value from a dictionary, handling cases where data might not be a dictionary.

@@ -24,6 +24,7 @@
 - [Performance Optimization](#performance-optimization)
 - [Contributing](#contributing)
 - [License](#license)
+- [Recent Fixes](#recent-fixes)
 
 ## Overview
 
@@ -171,6 +172,77 @@ Virtuoso implements an advanced atomic data fetching mechanism that ensures data
 - **Error Resilience**: Comprehensive error handling with automatic retry mechanisms
 - **Rate Limit Compliance**: Built-in rate limit awareness to prevent exchange API restrictions
 - **Performance Monitoring**: Detailed metrics on fetch success rates and timing
+
+#### Complete Metadata Structure:
+
+Each atomic fetch operation captures a comprehensive set of metadata:
+
+- **Symbol**: Trading pair identifier (e.g., "BTCUSDT")
+- **Fetch Timestamps**:
+  - Request start timestamp (ms precision)
+  - Component-specific timestamps (for each data type)
+  - Request completion timestamp
+  - Duration (ms) for total fetch and component-level operations
+  - Data age indicators (time since last update)
+- **Data Components**:
+  - **Ticker**: 
+    - Latest price
+    - 24h high/low
+    - Bid/ask prices and sizes
+    - 24h volume (base and quote)
+    - 24h price change and percentage
+    - Last price timestamp
+  - **Orderbook**: 
+    - Complete order book with depth (up to L2/L3 depending on exchange)
+    - Aggregated volumes at price levels
+    - Bid/ask imbalance ratios
+    - Timestamp of orderbook snapshot
+    - Sequence number (for order matching)
+  - **Klines/OHLCV**: For multiple timeframes with full data for each:
+    - Base (1m): Open, High, Low, Close, Volume
+    - LTF (5m): Open, High, Low, Close, Volume
+    - MTF (30m): Open, High, Low, Close, Volume
+    - HTF (240m/4h): Open, High, Low, Close, Volume
+    - Timestamp for each candle
+  - **Trades**: 
+    - Recent market trades with complete data:
+      - Price
+      - Size/amount
+      - Side (buy/sell)
+      - Cost (price * size)
+      - Timestamp
+      - Trade ID
+      - Liquidation flag (when available)
+  - **Long/Short Ratio**: 
+    - Long vs short position distribution
+    - Account ratio
+    - Position ratio
+    - Buy/sell volume ratio
+  - **Open Interest**: 
+    - Current open interest values
+    - Historical open interest data when available
+    - Open interest by timeframe
+    - Timestamp of each data point
+  - **Risk Limits**: 
+    - Exchange-specific position limit data
+    - Leverage tiers
+    - Maintenance margin requirements
+    - Position size limits
+- **Performance Metrics**:
+  - Component fetch timing (ms) for each data type
+  - Success/error rates (overall and by component)
+  - API rate limit usage and remaining quota
+  - Data freshness indicators (age of data in ms)
+  - Fetch efficiency scores
+  - Queue time and processing time separation
+  - Resource utilization during fetch
+- **Error Metadata**:
+  - Component-specific error tracking
+  - Retry attempt counts and history
+  - Exception details with stack traces
+  - Error classification (network, rate limit, data parsing)
+  - Recovery actions taken
+  - Fallback data usage indicators
 
 #### Implementation Details:
 
@@ -802,3 +874,30 @@ This project is licensed under the [LICENSE](LICENSE) - see the LICENSE file for
 ---
 
 **Note**: Additional detailed documentation is available in the `docs/` directory, including API specifications, component details, and advanced usage guides.
+
+## Recent Fixes
+
+### Fixed Validation Rules Registration
+- Added proper `add_rule` method to both sync and async `ValidationService` classes
+- The method now correctly handles data type and rule registration
+- Improved error logging for validation failures
+
+### Fixed Open Interest History Fetching
+- Implemented comprehensive `fetch_open_interest_history` method in CCXTExchange class
+- Added caching mechanism to prevent excessive API calls
+- Implemented exchange-specific handling (especially for Bybit)
+- Added fallback mechanism to create synthetic data when exchange doesn't support history
+
+### Fixed Logging Issues
+- Fixed 'Logger' object has no attribute 'trace' error in momentum indicators
+- Added safe initialization of trace logging level (5) in indicator package
+- Improved trace method implementation to follow Python logging standards
+- Added conditional addition to prevent duplicate trace method registration
+
+### Enhanced Data Collection
+- Improved data collection for trade history and orderbook depth
+- Added better error handling for insufficient data scenarios
+- Implemented synthetic data generation for missing open interest history
+- Improved exchange integration for more reliable data fetching
+
+All fixes have been designed to maintain backward compatibility while improving reliability and data quality.

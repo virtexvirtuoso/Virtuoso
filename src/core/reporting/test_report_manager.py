@@ -189,7 +189,7 @@ def create_discord_message(signal_data):
                 }
             ],
             'footer': {
-                'text': f"Generated at {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')} • Virtuoso Trading Bot"
+                'text': f"Generated at {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')} • Virtuoso Crypto"
             }
         }]
     }
@@ -208,6 +208,10 @@ def main():
     
     # Get sample data
     signal_data = create_sample_signal_data()
+    
+    # Add custom watermark (optional)
+    signal_data['watermark_text'] = "VIRTUOSO CRYPTO • CONFIDENTIAL"
+    
     ohlcv_data = create_sample_ohlcv_data(symbol=signal_data['symbol'])
     webhook_message = create_discord_message(signal_data)
     

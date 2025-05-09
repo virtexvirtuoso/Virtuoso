@@ -118,10 +118,19 @@ class BybitExchange(BaseExchange):
     }
     
     TIMEFRAME_MAP = {
-        '1': '1',      # 1 minute
-        '5': '5',      # 5 minutes
-        '30': '30',    # 30 minutes
-        '240': '240'   # 4 hours
+        '1m': '1',
+        '3m': '3',
+        '5m': '5',
+        '15m': '15',
+        '30m': '30',
+        '1h': '60',
+        '2h': '120',
+        '4h': '240',
+        '6h': '360',
+        '12h': '720',
+        '1d': 'D',
+        '1w': 'W',
+        '1M': 'M'
     }
     
     # Add reverse mapping
@@ -1906,7 +1915,9 @@ class BybitExchange(BaseExchange):
                 if i == 0: ticker = result
                 elif i == 1: orderbook = result
                 elif i == 2: trades = result
-                elif i == 3: lsr = result
+                elif i == 3: 
+                    lsr = result
+                    self.logger.info(f"LSR data received in fetch_market_data: {lsr}")
                 elif i == 4: risk_limits = result
             
             # Try to fetch OHLCV data (this is CPU intensive so we don't parallelize)
@@ -1974,20 +1985,32 @@ class BybitExchange(BaseExchange):
                     
                     try:
                         # Extract values and convert to float
-                        buy_ratio = float(latest_lsr.get('buyRatio', 0.5))
-                        sell_ratio = float(latest_lsr.get('sellRatio', 0.5))
+                        buy_ratio = float(latest_lsr.get('buyRatio', '0.5')) * 100
+                        sell_ratio = float(latest_lsr.get('sellRatio', '0.5')) * 100
                         timestamp = int(latest_lsr.get('timestamp', int(time.time() * 1000)))
+                        
+                        self.logger.info(f"Processing LSR in fetch_market_data: buy_ratio={buy_ratio}, sell_ratio={sell_ratio}")
                         
                         # Create structured format
                         market_data['sentiment']['long_short_ratio'] = {
                             'symbol': symbol,
-                            'long': buy_ratio,
+                            'long': buy_ratio,  # Already converted to percentage (0-100)
                             'short': sell_ratio,
                             'timestamp': timestamp
                         }
                         market_data['metadata']['lsr_success'] = True
+                        self.logger.info(f"Stored LSR in market_data: {market_data['sentiment']['long_short_ratio']}")
                     except (ValueError, TypeError) as e:
                         self.logger.warning(f"Error processing long/short ratio: {e}")
+                elif isinstance(lsr, dict) and ('long' in lsr and 'short' in lsr):
+                    # Already in our format
+                    market_data['sentiment']['long_short_ratio'] = lsr
+                    market_data['metadata']['lsr_success'] = True
+                    self.logger.info(f"Using pre-formatted LSR in market_data: {lsr}")
+                else:
+                    self.logger.warning(f"Unexpected LSR format: {type(lsr)}, contents: {lsr}")
+            else:
+                self.logger.warning("No LSR data available, using default neutral values")
             
             if risk_limits:
                 market_data['risk_limit'] = risk_limits
@@ -2005,9 +2028,19 @@ class BybitExchange(BaseExchange):
                 # Extract funding rate
                 try:
                     funding_rate = float(ticker.get('fundingRate', 0.0))
-                    market_data['sentiment']['funding_rate'] = funding_rate
+                    next_funding_time = int(ticker.get('nextFundingTime', 0))
+                    market_data['sentiment']['funding_rate'] = {
+                        'rate': funding_rate,
+                        'next_funding_time': next_funding_time
+                    }
+                    self.logger.debug(f"Set funding_rate in sentiment: {market_data['sentiment']['funding_rate']}")
                 except (ValueError, TypeError):
                     self.logger.warning("Could not convert funding rate to float")
+                    market_data['sentiment']['funding_rate'] = {
+                        'rate': 0.0001,
+                        'next_funding_time': int(time.time() * 1000) + 8 * 3600 * 1000
+                    }
+                    self.logger.debug(f"Set default funding_rate in sentiment: {market_data['sentiment']['funding_rate']}")
                 
                 # Extract open interest
                 try:
@@ -2443,7 +2476,7 @@ class BybitExchange(BaseExchange):
             start_time = end_time - (minutes_back * 60 * 1000)
             
             response = await self._make_request('GET', '/v5/market/kline', {
-                'category': 'linear',
+                'category': 'linear',  # Always use linear category for market monitor
                 'symbol': symbol,
                 'interval': bybit_interval,
                 'limit': 200,  # Maximum allowed by Bybit
@@ -2959,89 +2992,107 @@ class BybitExchange(BaseExchange):
             raise
 
     def _get_symbol_string(self, symbol: Union[str, dict]) -> str:
-        """Extract symbol string from either string or symbol dict.
+        """
+        Convert various symbol formats to the proper format for API calls.
         
         Args:
-            symbol: Symbol string or dictionary
+            symbol: Symbol in various formats ('BTC/USDT', 'BTC/USDT:USDT', dict with 'symbol' key)
             
         Returns:
-            Symbol string
-            
-        Raises:
-            ValueError: If symbol is invalid
+            String in the format expected by the Bybit API
         """
-        if isinstance(symbol, dict):
-            if 'symbol' not in symbol:
-                raise ValueError("Invalid symbol dictionary - missing 'symbol' key")
-            return symbol['symbol']
+        # If already a string, process directly
+        if isinstance(symbol, str):
+            # Remove colon segment for API calls (e.g., BTCUSDT:USDT -> BTCUSDT)
+            if ':' in symbol:
+                # For API calls, we need BTCUSDT without the :USDT suffix
+                base_symbol = symbol.split(':')[0]
+                return base_symbol
+            
+            # Handle BTC/USDT format
+            if '/' in symbol:
+                parts = symbol.split('/')
+                if len(parts) == 2:
+                    base, quote = parts
+                    # Remove any special characters
+                    base = base.strip()
+                    quote = quote.strip()
+                    return f"{base}{quote}"
+                
+            # Already in correct format (e.g., BTCUSDT)
+            return symbol
+        
+        # If dictionary with 'symbol' key, extract and process
+        elif isinstance(symbol, dict) and 'symbol' in symbol:
+            return self._get_symbol_string(symbol['symbol'])
+        
+        # Default case: return as string
         return str(symbol)
 
-    async def fetch_ohlcv(self, symbol: Union[str, dict], timeframe: str = '1m', limit: int = 1000) -> List[List[float]]:
-        """Fetch OHLCV data with symbol validation.
+    async def fetch_ohlcv(self, symbol: Union[str, dict], timeframe: str = '1m', limit: int = 1000, since: Optional[int] = None) -> List[List[float]]:
+        """
+        Fetch OHLCV data for a symbol.
         
         Args:
-            symbol: Symbol string or dictionary
-            timeframe: Timeframe string
-            limit: Number of candles to fetch
+            symbol: Symbol to fetch OHLCV data for
+            timeframe: Timeframe to fetch (1m, 5m, 1h, etc.)
+            limit: Maximum number of candles to fetch
+            since: Timestamp in milliseconds (ignored - Bybit API uses limit rather than timestamp)
             
         Returns:
-            List of processed OHLCV candles
+            List of OHLCV candles
         """
-        symbol_str = self._get_symbol_string(symbol)
-        
-        # Get current time in milliseconds
-        end_time = int(time.time() * 1000)
-        
-        # Convert timeframe from standard format to Bybit's format
-        bybit_timeframe = {
-            '1m': '1',
-            '3m': '3',
-            '5m': '5',
-            '15m': '15',
-            '30m': '30',
-            '1h': '60',
-            '2h': '120',
-            '4h': '240',
-            '6h': '360',
-            '12h': '720',
-            '1d': 'D',
-            '1w': 'W',
-            '1M': 'M'
-        }.get(timeframe, '1')  # Default to 1 minute if not found
-        
-        # Calculate start time based on timeframe and limit
-        # We need to calculate how far back to go based on the timeframe and limit
-        timeframe_minutes = {
-            '1m': 1,
-            '5m': 5,
-            '15m': 15,
-            '30m': 30,
-            '1h': 60,
-            '4h': 240,
-            '1d': 1440
-        }.get(timeframe, 1)  # Default to 1 minute if timeframe not recognized
-        
-        # Calculate milliseconds to go back based on timeframe and limit
-        # Add 20% buffer to ensure we get enough data
-        minutes_back = timeframe_minutes * limit * 1.2
-        start_time = end_time - (minutes_back * 60 * 1000)
-        
-        params = {
-            'category': 'linear',
-            'symbol': symbol_str,
-            'interval': bybit_timeframe,  # Use the converted timeframe
-            'limit': min(limit, 1000),  # Bybit maximum is 1000
-            'start': start_time,
-            'end': end_time
-        }
-        
-        self.logger.debug(f"Fetching OHLCV with params: {params}")
-        
-        # Get the raw API response
-        response = await self._make_request('GET', '/v5/market/kline', params)
-        
-        # Process the response to extract and validate candles
-        return await self.parse_ohlcv(response)
+        try:
+            # Convert the timeframe to Bybit format if needed
+            tf = self.TIMEFRAME_MAP.get(timeframe, timeframe)
+            
+            # Get the correct symbol format for API
+            original_symbol = symbol if isinstance(symbol, str) else symbol.get('symbol', '')
+            api_symbol = self._get_symbol_string(symbol)
+            
+            # Always use linear category for market monitor
+            category = 'linear'
+            
+            self.logger.debug(f"Fetching OHLCV for {original_symbol} (API symbol: {api_symbol}, category: {category}, timeframe: {tf})")
+            
+            # Make the API request
+            response = await self._make_request(
+                'GET', 
+                '/v5/market/kline',
+                params={
+                    'category': category,
+                    'symbol': api_symbol,
+                    'interval': tf,
+                    'limit': min(limit, 1000)  # Max 1000 per Bybit API docs
+                }
+            )
+            
+            if not response or 'result' not in response or 'list' not in response['result']:
+                self.logger.error(f"Invalid response format for OHLCV data: {response}")
+                return []
+            
+            # Parse the response
+            ohlcv_data = []
+            for candle in response['result']['list']:
+                if len(candle) >= 7:
+                    timestamp = int(candle[0])
+                    open_price = float(candle[1])
+                    high_price = float(candle[2])
+                    low_price = float(candle[3])
+                    close_price = float(candle[4])
+                    volume = float(candle[5])
+                    
+                    # Format matches the CCXT standard: [timestamp, open, high, low, close, volume]
+                    ohlcv_data.append([timestamp, open_price, high_price, low_price, close_price, volume])
+            
+            # Sort by timestamp (oldest first)
+            ohlcv_data.sort(key=lambda x: x[0])
+            
+            return ohlcv_data
+            
+        except Exception as e:
+            self.logger.error(f"Error fetching OHLCV data for {symbol}: {str(e)}")
+            return []
 
     async def get_orderbook(self, symbol: Union[str, dict], limit: Optional[int] = None) -> Dict[str, Any]:
         """Get orderbook with symbol validation.
@@ -3055,7 +3106,7 @@ class BybitExchange(BaseExchange):
         """
         symbol_str = self._get_symbol_string(symbol)
         params = {
-            'category': 'linear',
+            'category': 'linear',  # Always use linear category
             'symbol': symbol_str
         }
         if limit:
@@ -3076,7 +3127,7 @@ class BybitExchange(BaseExchange):
         """
         symbol_str = self._get_symbol_string(symbol)
         request_params = {
-            'category': 'linear',
+            'category': 'linear',  # Always use linear category
             'symbol': symbol_str,
             'limit': 1000  # Set default limit to maximum allowed by Bybit
         }
@@ -3111,35 +3162,95 @@ class BybitExchange(BaseExchange):
             return []
 
     async def fetch_order_book(self, symbol: str, limit: int = 100) -> dict:
-        """Fetch order book for a specific symbol."""
-        try:
-            response = await self.session.get(
-                url=f"{self.api_url}/v5/market/orderbook",
-                params={
-                    "category": "linear",
-                    "symbol": symbol,
-                    "limit": limit
-                }
-            )
-            data = await response.json()
+        """
+        Fetch the order book for a symbol.
+        
+        Args:
+            symbol: Symbol to fetch order book for
+            limit: Number of levels to fetch
             
-            if data.get("retCode") != 0:
-                self.logger.error(f"Order book fetch failed: {data.get('retMsg')}")
-                return {"bids": [], "asks": []}
-
-            orderbook = data["result"]
-            return {
-                "bids": [[float(b[0]), float(b[1])] for b in orderbook.get("b", [])],
-                "asks": [[float(a[0]), float(a[1])] for a in orderbook.get("a", [])]
+        Returns:
+            Order book data with bids and asks
+        """
+        try:
+            # Process the symbol to get the correct format for the API
+            api_symbol = self._get_symbol_string(symbol)
+            
+            # Always use linear category for market monitor
+            category = 'linear'
+            
+            self.logger.debug(f"Fetching order book for {symbol} (API symbol: {api_symbol}, category: {category})")
+            
+            response = await self._make_request('GET', '/v5/market/orderbook', {
+                'category': category,
+                'symbol': api_symbol,
+                'limit': min(limit, 200)  # Max 200 per Bybit API docs
+            })
+            
+            # Initialize default empty orderbook
+            default_orderbook = {
+                'symbol': symbol,  # Use original symbol for consistency
+                'bids': [],
+                'asks': [],
+                'timestamp': int(time.time() * 1000),
+                'datetime': datetime.now().isoformat(),
+                'nonce': None
             }
+            
+            # Check if response is valid
+            if not response or 'result' not in response:
+                self.logger.error(f"Invalid response format for order book: {response}")
+                return default_orderbook
+                
+            result = response.get('result', {})
+            if not result:
+                self.logger.error(f"Empty result in order book response: {response}")
+                return default_orderbook
+                
+            # Parse bids and asks
+            bids = []
+            asks = []
+            
+            for bid in result.get('b', []):
+                if len(bid) >= 2:
+                    price = float(bid[0])
+                    amount = float(bid[1])
+                    bids.append([price, amount])
+                    
+            for ask in result.get('a', []):
+                if len(ask) >= 2:
+                    price = float(ask[0])
+                    amount = float(ask[1])
+                    asks.append([price, amount])
+            
+            # Create the orderbook structure
+            orderbook = {
+                'symbol': symbol,  # Use original symbol for consistency
+                'bids': bids,
+                'asks': asks,
+                'timestamp': int(result.get('ts', time.time() * 1000)),
+                'datetime': datetime.fromtimestamp(int(result.get('ts', time.time() * 1000)) / 1000).isoformat(),
+                'nonce': result.get('u')
+            }
+            
+            return orderbook
             
         except Exception as e:
             self.logger.error(f"Error fetching order book: {str(e)}")
-            return {"bids": [], "asks": []}
+            
+            # Return an empty but properly structured orderbook on error
+            return {
+                'symbol': symbol,
+                'bids': [],
+                'asks': [],
+                'timestamp': int(time.time() * 1000),
+                'datetime': datetime.now().isoformat(),
+                'nonce': None
+            }
 
     async def _fetch_long_short_ratio(self, symbol: str) -> Dict[str, Any]:
         """
-        Fetch the long/short ratio for a symbol.
+        Fetch long/short ratio data for a symbol.
         
         Args:
             symbol: The trading pair symbol (e.g. 'BTCUSDT')
@@ -3148,63 +3259,99 @@ class BybitExchange(BaseExchange):
             Dictionary containing long/short ratio data
         """
         try:
-            self.logger.debug(f"Fetching long/short ratio for {symbol}")
-            
+            # Ensure symbol is properly formatted for API
+            symbol_str = self._get_symbol_string(symbol)
+            self.logger.info(f"[LSR] Fetching long/short ratio for {symbol_str}")
+            # Set up request parameters
+            params = {
+                'category': 'linear',  # Always use linear category
+                'symbol': symbol_str,
+                'period': '5min',  # Use 5min for more frequent data
+                'limit': 1  # We only need the most recent data point
+            }
             # Make the API request to account-ratio endpoint
-            response = await self._make_request('GET', '/v5/market/account-ratio', {
-                'category': 'linear',
-                'symbol': symbol,
-                'period': '5min',  # Default period
-                'limit': 1  # Only need the most recent data
-            })
-            
-            if not response or response.get('retCode') != 0:
-                self.logger.error(f"Failed to fetch long/short ratio: {response}")
+            response = await self._make_request('GET', '/v5/market/account-ratio', params)
+            self.logger.info(f"[LSR] Raw API response for {symbol_str}: {response}")
+            if not response:
+                self.logger.error(f"[LSR] Failed to fetch long/short ratio: Null response")
                 # Return default structure
-                return {
+                default_lsr = {
                     'symbol': symbol,
                     'long': 50.0,
                     'short': 50.0,
                     'timestamp': int(time.time() * 1000)
                 }
-            
+                self.logger.info(f"[LSR] Returning default LSR due to null response: {default_lsr}")
+                return default_lsr
+            if response.get('retCode') != 0:
+                self.logger.error(f"[LSR] Failed to fetch long/short ratio: {response.get('retMsg', 'Unknown error')} (code: {response.get('retCode', 'unknown')})")
+                # Return default structure
+                default_lsr = {
+                    'symbol': symbol,
+                    'long': 50.0,
+                    'short': 50.0,
+                    'timestamp': int(time.time() * 1000)
+                }
+                self.logger.info(f"[LSR] Returning default LSR due to API error: {default_lsr}")
+                return default_lsr
             # Extract data from response
             ratio_data = response.get('result', {}).get('list', [])
             if not ratio_data:
-                self.logger.warning(f"No long/short ratio data returned for {symbol}")
+                self.logger.warning(f"[LSR] No long/short ratio data returned for {symbol}")
                 # Return default structure
-                return {
+                default_lsr = {
                     'symbol': symbol,
                     'long': 50.0,
                     'short': 50.0,
                     'timestamp': int(time.time() * 1000)
                 }
-            
+                self.logger.info(f"[LSR] Returning default LSR due to empty result list: {default_lsr}")
+                return default_lsr
             # Parse the first entry
             latest = ratio_data[0]
-            self.logger.debug(f"Raw long/short ratio data: {latest}")
-            
+            self.logger.info(f"[LSR] Raw long/short ratio data from API for {symbol}: {latest}")
             # Build result using the correct API fields (buyRatio/sellRatio)
-            buy_ratio = float(latest.get('buyRatio', 50.0))
-            sell_ratio = float(latest.get('sellRatio', 50.0))
-            timestamp = int(latest.get('timestamp', time.time() * 1000))
-            
-            return {
-                'symbol': symbol,
-                'long': buy_ratio,
-                'short': sell_ratio,
-                'timestamp': timestamp
-            }
-            
+            try:
+                # Convert string values to float and multiply by 100 to get percentages
+                buy_ratio = float(latest.get('buyRatio', '0.5')) * 100
+                sell_ratio = float(latest.get('sellRatio', '0.5')) * 100
+                timestamp = int(latest.get('timestamp', time.time() * 1000))
+                # Ensure values are valid
+                if buy_ratio <= 0 or sell_ratio <= 0:
+                    self.logger.warning(f"[LSR] Invalid buyRatio or sellRatio values: {buy_ratio}, {sell_ratio}")
+                    buy_ratio = 50.0
+                    sell_ratio = 50.0
+                result = {
+                    'symbol': symbol,
+                    'long': buy_ratio,  # Already converted to percentage (0-100)
+                    'short': sell_ratio,
+                    'timestamp': timestamp
+                }
+                self.logger.info(f"[LSR] Returning LSR data: {result}")
+                return result
+            except (ValueError, TypeError) as e:
+                self.logger.error(f"[LSR] Error parsing long/short ratio data: {e}, raw data: {latest}")
+                # Return default structure
+                default_lsr = {
+                    'symbol': symbol,
+                    'long': 50.0,
+                    'short': 50.0,
+                    'timestamp': int(time.time() * 1000)
+                }
+                self.logger.info(f"[LSR] Returning default LSR due to parsing error: {default_lsr}")
+                return default_lsr
         except Exception as e:
-            self.logger.error(f"Error fetching long/short ratio for {symbol}: {str(e)}")
+            self.logger.error(f"[LSR] Error fetching long/short ratio for {symbol}: {str(e)}")
+            self.logger.debug(traceback.format_exc())
             # Return default structure
-            return {
+            default_lsr = {
                 'symbol': symbol,
                 'long': 50.0,
                 'short': 50.0,
                 'timestamp': int(time.time() * 1000)
             }
+            self.logger.info(f"[LSR] Returning default LSR due to exception: {default_lsr}")
+            return default_lsr
     
     async def _fetch_risk_limits(self, symbol: str) -> Dict[str, Any]:
         """
@@ -3356,113 +3503,119 @@ class BybitExchange(BaseExchange):
 
     async def _fetch_ticker(self, symbol: str) -> dict:
         """
-        Fetch ticker data for a symbol
+        Fetch ticker data for a specific symbol.
         
         Args:
-            symbol: Trading pair symbol
+            symbol: Symbol to fetch ticker for
             
         Returns:
-            Dictionary with ticker data
+            Ticker data dictionary
         """
-        logger.debug(f"Fetching ticker for {symbol}")
-        
-        # Ensure symbol is properly formatted
-        formatted_symbol = self._convert_to_exchange_symbol(symbol)
-        if not formatted_symbol:
-            logger.warning(f"Symbol format error: {symbol}")
-            return None
-        
-        # Set up request parameters
-        params = {
-            'category': 'linear',
-            'symbol': formatted_symbol
-        }
-        
         try:
-            # Make the request to the endpoint
-            response = await self._make_request('GET', 'v5/market/tickers', params)
+            # Process the symbol to get the correct format for the API
+            api_symbol = self._get_symbol_string(symbol)
             
-            # Check response validity
-            if not response or not isinstance(response, dict) or 'result' not in response:
-                logger.warning(f"Invalid ticker response for {symbol}: {response}")
-                return None
+            # Always use linear category for market monitor
+            category = 'linear'
+            
+            self.logger.debug(f"Fetching ticker for {symbol} (API symbol: {api_symbol}, category: {category})")
+            
+            # Make the API request
+            response = await self._make_request('GET', '/v5/market/tickers', {
+                'category': category,
+                'symbol': api_symbol
+            })
+            
+            # Check if response is valid
+            if not response or 'result' not in response:
+                self.logger.warning(f"No ticker data in response for {symbol}")
+                return self._default_ticker_data(symbol)
                 
-            # Extract ticker data from response
-            result = response.get('result', {})
-            if not result or 'list' not in result or not result['list']:
-                logger.warning(f"No ticker data in response for {symbol}")
-                return None
+            # Get the ticker list
+            ticker_list = response.get('result', {}).get('list', [])
+            
+            if not ticker_list or len(ticker_list) == 0:
+                self.logger.warning(f"No ticker data in response for {symbol}")
+                return self._default_ticker_data(symbol)
                 
-            ticker_data = result['list'][0]
+            # Extract the first ticker
+            ticker = ticker_list[0]
             
-            # Log raw data for debugging
-            logger.debug(f"Raw ticker data for {symbol}: {ticker_data}")
+            # Parse funding rate and next funding time
+            funding_rate = self.safe_float(ticker, 'fundingRate')
+            next_funding_time = int(ticker.get('nextFundingTime', 0))
             
-            # Define safe_float helper function to handle empty strings
-            def safe_float(value, default=0.0):
-                if value is None or value == '':
-                    return default
-                try:
-                    # Remove any commas and convert to float
-                    cleaned = str(value).replace(',', '')
-                    return float(cleaned)
-                except (ValueError, TypeError):
-                    logger.warning(f"Could not convert {value} to float, using default {default}")
-                    return default
-            
-            # Extract relevant fields using safe_float
-            volume = safe_float(ticker_data.get('volume24h', 0))
-            turnover = safe_float(ticker_data.get('turnover24h', 0))
-            
-            # Extract open interest data with explicit logging
-            open_interest = 0.0
-            open_interest_value = 0.0
-            
-            if 'openInterest' in ticker_data:
-                open_interest = safe_float(ticker_data.get('openInterest', 0))
-                logger.debug(f"Extracted openInterest = {open_interest} for {symbol}")
-                    
-            if 'openInterestValue' in ticker_data:
-                open_interest_value = safe_float(ticker_data.get('openInterestValue', 0))
-                logger.debug(f"Extracted openInterestValue = {open_interest_value} for {symbol}")
-            
-            # Format the data into a standard structure
-            formatted_ticker = {
-                'symbol': symbol,
+            # Common fields for both spot and linear
+            result = {
+                'symbol': symbol,  # Use original symbol for consistency
                 'timestamp': int(time.time() * 1000),
-                'datetime': datetime.utcnow().isoformat(),
-                'high': safe_float(ticker_data.get('highPrice24h', 0)),
-                'low': safe_float(ticker_data.get('lowPrice24h', 0)),
-                'bid': safe_float(ticker_data.get('bid1Price', 0)),
-                'ask': safe_float(ticker_data.get('ask1Price', 0)),
-                'last': safe_float(ticker_data.get('lastPrice', 0)),
-                'volume': volume,
-                'turnover': turnover,
-                'mark': safe_float(ticker_data.get('markPrice', 0)),
-                'index': safe_float(ticker_data.get('indexPrice', 0)),
-                'percentage': safe_float(ticker_data.get('price24hPcnt', 0)) * 100,
-                'bid_size': safe_float(ticker_data.get('bid1Size', 0)),
-                'ask_size': safe_float(ticker_data.get('ask1Size', 0)),
-                # Use both field names for compatibility
-                'open_interest': open_interest,
-                'open_interest_value': open_interest_value,
-                'openInterest': open_interest,  # Legacy format for compatibility
-                'openInterestValue': open_interest_value,  # Legacy format for compatibility
-                'fundingRate': safe_float(ticker_data.get('fundingRate', 0)),
-                'nextFundingTime': int(ticker_data.get('nextFundingTime', 0) or 0),
-                # Include the raw ticker data for direct access
-                'raw_data': ticker_data
+                'datetime': datetime.now().isoformat(),
+                'high': self.safe_float(ticker, 'highPrice24h'),
+                'low': self.safe_float(ticker, 'lowPrice24h'),
+                'bid': self.safe_float(ticker, 'bid1Price'),
+                'bidVolume': self.safe_float(ticker, 'bid1Size'),
+                'ask': self.safe_float(ticker, 'ask1Price'),
+                'askVolume': self.safe_float(ticker, 'ask1Size'),
+                'vwap': 0,
+                'open': 0,
+                'close': self.safe_float(ticker, 'lastPrice'),
+                'last': self.safe_float(ticker, 'lastPrice'),
+                'previousClose': 0,
+                'change': 0,
+                'percentage': self.safe_float(ticker, 'price24hPcnt') * 100,  # Convert to percentage
+                'average': 0,
+                'baseVolume': self.safe_float(ticker, 'volume24h'),
+                'quoteVolume': self.safe_float(ticker, 'turnover24h'),
+                'fundingRate': funding_rate,
+                'nextFundingTime': next_funding_time
             }
             
-            # Log extracted values for debugging
-            logger.debug(f"Extracted volume24h={volume}, turnover24h={turnover} for {symbol}")
+            # Calculate change for consistency
+            prevPrice = self.safe_float(ticker, 'prevPrice24h')
+            last = self.safe_float(ticker, 'lastPrice')
             
-            return formatted_ticker
+            if prevPrice and last:
+                result['open'] = prevPrice
+                result['change'] = last - prevPrice
+            
+            return result
             
         except Exception as e:
-            logger.exception(f"Error fetching ticker for {symbol}: {str(e)}")
-            return None
+            self.logger.error(f"Error fetching ticker for {symbol}: {str(e)}")
+            return self._default_ticker_data(symbol)
             
+    def _default_ticker_data(self, symbol: str) -> dict:
+        """
+        Create default ticker data with empty values.
+        
+        Args:
+            symbol: Symbol for the ticker
+            
+        Returns:
+            Default ticker data structure
+        """
+        return {
+            'symbol': symbol,  # Use the provided symbol parameter 
+            'timestamp': int(time.time() * 1000),
+            'datetime': datetime.now().isoformat(),
+            'high': 0,
+            'low': 0,
+            'bid': 0,
+            'bidVolume': 0,
+            'ask': 0,
+            'askVolume': 0,
+            'vwap': 0,
+            'open': 0,
+            'close': 0,
+            'last': 0,
+            'previousClose': 0,
+            'change': 0,
+            'percentage': 0,
+            'average': 0,
+            'baseVolume': 0,
+            'quoteVolume': 0
+        }
+
     # Alias for compatibility with other exchange implementations
     async def fetch_ticker(self, symbol: str) -> dict:
         """Alias for _fetch_ticker to maintain compatibility with other exchange implementations."""
@@ -3491,7 +3644,7 @@ class BybitExchange(BaseExchange):
             
             # Set up request parameters
             params = {
-                'category': 'linear',
+                'category': 'linear',  # Always use linear category
                 'symbol': symbol_str,
                 'intervalTime': interval,  # Use the original interval format directly
                 'limit': min(limit, 200)  # Bybit maximum is 200
@@ -3694,6 +3847,30 @@ class BybitExchange(BaseExchange):
     async def _fetch_klines(self, symbol: str, interval: str) -> List[List[Any]]:
         """Alias for _fetch_ohlcv to maintain compatibility."""
         return await self._fetch_ohlcv(symbol, interval)
+
+    # Helper utility functions
+    def safe_float(self, data, key, default=0.0):
+        """
+        Safely convert a value to float with fallback to default.
+        
+        Args:
+            data: Dictionary containing the key
+            key: Key to extract from dictionary
+            default: Default value if conversion fails
+            
+        Returns:
+            Converted float value or default
+        """
+        value = data.get(key)
+        if value is None or value == '':
+            return default
+        try:
+            # Remove any commas and convert to float
+            cleaned = str(value).replace(',', '')
+            return float(cleaned)
+        except (ValueError, TypeError):
+            self.logger.warning(f"Could not convert {value} to float, using default {default}")
+            return default
 
 class BybitWebSocket:
     """WebSocket client for Bybit exchange."""

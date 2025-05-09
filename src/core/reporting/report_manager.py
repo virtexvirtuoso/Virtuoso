@@ -17,6 +17,7 @@ from pathlib import Path
 import pandas as pd
 from datetime import datetime
 import numpy as np
+import shutil
 
 # Local imports
 from src.core.reporting.pdf_generator import ReportGenerator
@@ -51,8 +52,27 @@ class ReportManager:
         for directory in [self.base_dir, self.pdf_dir, self.json_dir]:
             os.makedirs(directory, exist_ok=True)
         
-        # Initialize PDF generator
-        self.pdf_generator = ReportGenerator(self.config)
+        # Find the template directory
+        template_dir = self.config.get('template_dir')
+        if not template_dir:
+            # Try common locations
+            possible_dirs = [
+                os.path.join(os.getcwd(), 'src/templates'),
+                os.path.join(os.getcwd(), 'templates'),
+                os.path.join(os.getcwd(), 'src/core/reporting/templates')
+            ]
+            
+            for dir_path in possible_dirs:
+                if os.path.exists(dir_path):
+                    template_dir = dir_path
+                    break
+        
+        # Initialize PDF generator with proper template directory
+        self.pdf_generator = ReportGenerator(config=self.config, template_dir=template_dir)
+        
+        # Explicitly set the template_dir to ensure it's available
+        if template_dir and os.path.exists(template_dir):
+            self.pdf_generator.template_dir = template_dir
         
         # Default Discord webhook config
         self.discord_webhook_url = self.config.get('discord_webhook_url', None)
@@ -77,136 +97,103 @@ class ReportManager:
     async def generate_and_attach_report(
         self,
         signal_data: Dict[str, Any],
+        signal_type: str = 'buy',
         ohlcv_data: Optional[pd.DataFrame] = None,
-        webhook_message: Optional[Dict[str, Any]] = None,
-        webhook_url: Optional[str] = None,
-        signal_type: Optional[str] = None,
         output_path: Optional[str] = None
-    ) -> Tuple[bool, str, str]:
+    ) -> Tuple[bool, Optional[str], Optional[str]]:
         """
-        Generate PDF report and attach it to webhook message.
+        Generate a report for a signal and optionally attach it to an alert.
         
         Args:
-            signal_data: Trading signal data
-            ohlcv_data: OHLCV price data for charts
-            webhook_message: Discord webhook message to modify
-            webhook_url: Discord webhook URL
-            signal_type: Type of signal ('alert', 'report', etc.)
-            output_path: Optional explicit output path for the PDF
+            signal_data: The signal data dictionary
+            signal_type: Type of signal (buy, sell, neutral)
+            ohlcv_data: Optional OHLCV dataframe for charts
+            output_path: Optional path for the output PDF file
             
         Returns:
-            Tuple of (success, pdf_path, json_path)
+            Tuple containing (success flag, PDF path, JSON path)
         """
-        if not signal_data:
-            return False, "", ""
-            
         try:
-            # Get timestamp of signal for filename
-            timestamp = signal_data.get('timestamp', int(time.time() * 1000))
-            if isinstance(timestamp, str):
-                try:
-                    timestamp = int(timestamp)
-                except ValueError:
-                    timestamp = int(time.time() * 1000)
+            self._log("Generating signal report", level=logging.INFO)
             
-            # Convert to datetime for filename
-            dt = datetime.fromtimestamp(timestamp / 1000)
-            timestamp_str = dt.strftime("%Y%m%d_%H%M%S")
+            if not signal_data:
+                self._log("No signal data provided", level=logging.ERROR)
+                return False, None, None
+                
+            symbol = signal_data.get('symbol', 'UNKNOWN')
             
-            # Generate filenames for reports
-            if signal_type is None or signal_type == 'signal':
-                base_filename = f"{signal_data.get('symbol', 'UNKNOWN')}_{timestamp_str}"
-            elif signal_type == 'market_report':
-                base_filename = f"market_report_{timestamp_str}"
+            # Sanitize symbol for filenames
+            if isinstance(symbol, str):
+                symbol_safe = symbol.lower().replace('/', '_')
             else:
-                base_filename = f"{signal_type}_{signal_data.get('symbol', 'UNKNOWN')}_{timestamp_str}"
+                self._log(f"Invalid symbol type: {type(symbol)}", level=logging.WARNING)
+                symbol_safe = "unknown"
                 
-            # Determine export directory
-            if signal_type == 'market_report':
-                export_dir = os.path.join('exports', 'market_reports')
-            else:
-                export_dir = os.path.join('exports')
-                
+            # Create timestamp string
+            timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+            base_filename = f"{symbol_safe}_{timestamp_str}"
+            
+            # Create export directory
+            export_dir = "exports"
             os.makedirs(export_dir, exist_ok=True)
             
-            # If output_path is provided, use it instead of generating one
-            if output_path:
-                pdf_path = output_path
-            else:
-                pdf_path = os.path.join(export_dir, f"{base_filename}.pdf")
-                
-            # Export JSON data
-            json_path = os.path.join(export_dir, f"{base_filename}.json")
-            try:
-                # Define custom JSON serializer function to handle non-serializable types
-                def json_serializer(obj):
-                    if isinstance(obj, (datetime, pd.Timestamp)):
-                        return obj.isoformat()
-                    elif hasattr(pd, 'Timestamp') and isinstance(obj, pd.Timestamp):
-                        return obj.isoformat()
-                    elif isinstance(obj, (np.int64, np.int32, np.int16, np.int8)):
-                        return int(obj)
-                    elif isinstance(obj, (np.float64, np.float32, np.float16)):
-                        return float(obj)
-                    elif isinstance(obj, np.ndarray):
-                        return obj.tolist()
-                    elif isinstance(obj, pd.DataFrame):
-                        return obj.to_dict(orient='records')
-                    elif isinstance(obj, pd.Series):
-                        return obj.to_dict()
-                    return str(obj)  # Default: convert to string for any other type
-                
-                with open(json_path, 'w') as f:
-                    json.dump(signal_data, f, indent=2, default=json_serializer)
-                self.logger.info(f"JSON report saved to {json_path}")
-            except Exception as e:
-                self.logger.error(f"Failed to save JSON report: {str(e)}")
-                self.logger.debug(traceback.format_exc())
-                
-            # Get PDF generator instance
-            generator = self.pdf_generator
+            # Export signal data as JSON for tracking
+            json_path = os.path.join(export_dir, f"{signal_type}_{symbol_safe}_{timestamp_str}.json")
+            with open(json_path, 'w') as f:
+                json.dump(signal_data, f, indent=2, default=str)
+            self._log(f"JSON report saved to {json_path}", level=logging.INFO)
             
-            # Generate the PDF
-            if signal_type == 'market_report':
-                self.logger.info(f"Generating market report PDF for {signal_data.get('symbol', 'MARKET')}")
-                success = await generator.generate_market_html_report(signal_data, output_path=pdf_path)
+            # Validate output_path to make sure it's a file path ending with .pdf
+            if output_path:
+                # If path exists and is a directory, modify it
+                if os.path.exists(output_path) and os.path.isdir(output_path):
+                    self._log(f"Output path is a directory: {output_path}", level=logging.WARNING)
+                    pdf_path = os.path.join(output_path, f"{base_filename}.pdf")
+                elif not output_path.lower().endswith('.pdf'):
+                    # It's not a proper PDF file path, add .pdf extension
+                    pdf_path = f"{output_path}.pdf"
+                else:
+                    # It's a file path ending with .pdf
+                    pdf_path = output_path
+                    # Ensure parent directory exists
+                    parent_dir = os.path.dirname(pdf_path)
+                    if parent_dir:
+                        os.makedirs(parent_dir, exist_ok=True)
             else:
-                self.logger.info(f"Generating signal report PDF for {signal_data.get('symbol', 'UNKNOWN')}")
-                # Default to regular signal report generation
-                success = await generator.generate_report(signal_data, ohlcv_data, output_path=pdf_path)
+                # No output path provided, generate default
+                pdf_path = os.path.join(export_dir, f"{base_filename}.pdf")
+            
+            # Generate the PDF report
+            self._log(f"Generating signal report PDF for {symbol}", level=logging.INFO)
+            
+            # Call the PDF generator
+            try:
+                result_pdf_path = self.pdf_generator.generate_trading_report(
+                    signal_data=signal_data,
+                    ohlcv_data=ohlcv_data,
+                    output_dir=pdf_path
+                )
+                # Verify the PDF was generated and exists
+                if result_pdf_path and os.path.exists(result_pdf_path[0]) and not os.path.isdir(result_pdf_path[0]):
+                    self._log(f"PDF report generated successfully: {pdf_path}", level=logging.INFO)
+                    return True, result_pdf_path[0], json_path
+                else:
+                    self._log(f"Error generating PDF report: Result path is {result_pdf_path}", level=logging.ERROR)
+                    # Try to recover if the path was created as a directory
+                    if pdf_path and os.path.exists(pdf_path) and os.path.isdir(pdf_path):
+                        self._log(f"PDF path is a directory: {pdf_path}", level=logging.ERROR)
+                        return await self._generate_fallback_pdf(signal_data, ohlcv_data, pdf_path, json_path)
+            except Exception as e:
+                self._log(f"Error generating PDF report: {str(e)}", level=logging.ERROR)
+                self._log(traceback.format_exc(), level=logging.DEBUG)
+                return await self._generate_fallback_pdf(signal_data, ohlcv_data, pdf_path, json_path)
                 
-            if success:
-                self.logger.info(f"PDF report generated successfully: {pdf_path}")
-                
-                # If webhook message is provided, attach the file to it
-                if webhook_message and os.path.exists(pdf_path):
-                    if 'files' not in webhook_message:
-                        webhook_message['files'] = []
-                        
-                    webhook_message['files'].append({
-                        'path': pdf_path,
-                        'filename': os.path.basename(pdf_path),
-                        'description': f"Report for {signal_data.get('symbol', 'UNKNOWN')}"
-                    })
-                    
-                    # If webhook URL is provided, send the message directly
-                    if webhook_url and self.discord_webhook_url:
-                        await self._attach_files_to_webhook(
-                            webhook_message=webhook_message,
-                            webhook_url=webhook_url,
-                            files=[pdf_path],
-                            file_descriptions=["PDF Report"]
-                        )
-                        
-                return True, pdf_path, json_path
-            else:
-                self.logger.error("Failed to generate PDF report")
-                return False, "", json_path
-                
+            return False, None, json_path
+            
         except Exception as e:
-            self.logger.error(f"Error generating report: {str(e)}")
-            self.logger.debug(traceback.format_exc())
-            return False, "", ""
+            self._log(f"Error in generate_and_attach_report: {str(e)}", level=logging.ERROR)
+            self._log(traceback.format_exc(), level=logging.DEBUG)
+            return False, None, None
     
     async def _attach_files_to_webhook(
         self,
@@ -350,8 +337,6 @@ class ReportManager:
             return await self.generate_and_attach_report(
                 signal_data=signal_data,
                 ohlcv_data=ohlcv_data,
-                webhook_message=webhook_message,
-                webhook_url=webhook_url,
                 signal_type=signal_type
             )
         
@@ -420,4 +405,58 @@ class ReportManager:
         except Exception as e:
             self.logger.error(f"Error cleaning up old reports: {str(e)}")
             self.logger.error(traceback.format_exc())
-            return 0, 0 
+            return 0, 0
+    
+    async def _generate_fallback_pdf(
+        self,
+        signal_data: Dict[str, Any],
+        ohlcv_data: Optional[pd.DataFrame],
+        pdf_path: str,
+        json_path: str
+    ) -> Tuple[bool, Optional[str], Optional[str]]:
+        """
+        Generate a fallback PDF when the primary method fails.
+        
+        Args:
+            signal_data: Signal data dictionary
+            ohlcv_data: OHLCV dataframe for charts
+            pdf_path: Path where the PDF should be saved
+            json_path: Path to the saved JSON data
+            
+        Returns:
+            Tuple of (success, pdf_path, json_path)
+        """
+        try:
+            # Create a fixed path by appending _fixed.pdf
+            fixed_pdf_path = f"{pdf_path}_fixed.pdf" if not pdf_path.endswith('_fixed.pdf') else pdf_path
+            
+            # Generate HTML content directly
+            html_content = self.pdf_generator._generate_html_content(signal_data, ohlcv_data)
+            html_path = fixed_pdf_path.replace('.pdf', '.html_fixed.html')
+            
+            # Write HTML to file
+            with open(html_path, 'w', encoding='utf-8') as f:
+                f.write(html_content)
+                
+            # Generate PDF from HTML
+            self._log(f"Generating PDF from HTML: {html_path}", level=logging.INFO)
+            await self.pdf_generator.generate_pdf(html_path, fixed_pdf_path)
+            
+            # Check if fixed PDF was created successfully
+            if os.path.exists(fixed_pdf_path) and not os.path.isdir(fixed_pdf_path) and os.path.getsize(fixed_pdf_path) > 0:
+                self._log(f"Created fixed PDF at: {fixed_pdf_path}", level=logging.INFO)
+                return True, fixed_pdf_path, json_path
+            else:
+                self._log(f"Failed to create fixed PDF at: {fixed_pdf_path}", level=logging.ERROR)
+                return False, None, json_path
+                
+        except Exception as e:
+            self._log(f"Error generating fallback PDF: {str(e)}", level=logging.ERROR)
+            self._log(traceback.format_exc(), level=logging.DEBUG)
+            return False, None, json_path
+    
+    def _log(self, message: str, level: int = logging.INFO) -> None:
+        """Log messages with the appropriate logger."""
+        if not hasattr(self, 'logger'):
+            self.logger = logging.getLogger(__name__)
+        self.logger.log(level, message) 

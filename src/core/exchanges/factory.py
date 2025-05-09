@@ -5,6 +5,7 @@ from .bybit import BybitExchange
 from .bybit_demo import BybitDemoExchange
 from .coinbase import CoinbaseExchange
 from .hyperliquid import HyperliquidExchange
+from .ccxt_exchange import CCXTExchange
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +16,8 @@ class ExchangeFactory:
         'bybit': BybitExchange,
         'bybit_demo': BybitDemoExchange,
         'coinbase': CoinbaseExchange,
-        'hyperliquid': HyperliquidExchange
+        'hyperliquid': HyperliquidExchange,
+        'ccxt': CCXTExchange
     }
     
     @classmethod
@@ -35,11 +37,26 @@ class ExchangeFactory:
                 exchange_id = 'bybit_demo'
                 logger.info("Creating Bybit Demo exchange instance")
             
+            # Check if we're using CCXT generic integration
+            use_ccxt = config.get('use_ccxt', False)
+            if use_ccxt and exchange_id != 'ccxt':
+                # Store the original exchange_id for CCXT to use
+                config['exchange_id'] = exchange_id
+                exchange_id = 'ccxt'
+                logger.info(f"Using CCXT for {config['exchange_id']} exchange integration")
+            
             # Get exchange class
             exchange_class = cls.EXCHANGE_MAP.get(exchange_id)
             if not exchange_class:
-                logger.error(f"Unsupported exchange: {exchange_id}")
-                return None
+                if use_ccxt:
+                    logger.info(f"Exchange {exchange_id} not directly supported, using CCXT integration")
+                    exchange_class = CCXTExchange
+                    # Set the exchange_id for CCXT to use
+                    config['exchange_id'] = exchange_id
+                    exchange_id = 'ccxt'
+                else:
+                    logger.error(f"Unsupported exchange: {exchange_id}")
+                    return None
 
             # Create exchange configuration with proper WebSocket endpoints
             exchange_config = {

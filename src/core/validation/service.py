@@ -44,6 +44,18 @@ class ValidationService:
         self._validators[name] = validator
         logger.debug(f"Registered validator: {name}")
         
+    def add_rule(self, data_type: str, rule: ValidationRule) -> None:
+        """Register a validation rule.
+        
+        Args:
+            data_type: Data type to validate
+            rule: Validation rule to add
+        """
+        if data_type not in self._rules:
+            self._rules[data_type] = []
+        self._rules[data_type].append(rule)
+        logger.debug(f"Registered validation rule: {rule.name} for data type {data_type}")
+        
     def register_rule(self, rule: ValidationRule) -> None:
         """Register a validation rule."""
         if rule.name not in self._rules:
@@ -146,6 +158,18 @@ class AsyncValidationService(ValidationProvider):
             logger.warning(f"Overwriting existing validator: {name}")
         self._validators[name] = validator
         logger.debug(f"Registered validator: {name}")
+        
+    def add_rule(self, data_type: str, rule: ValidationRule) -> None:
+        """Register a validation rule.
+        
+        Args:
+            data_type: Data type to validate
+            rule: Validation rule to add
+        """
+        if data_type not in self._rules:
+            self._rules[data_type] = []
+        self._rules[data_type].append(rule)
+        logger.debug(f"Registered validation rule: {rule.name} for data type {data_type}")
         
     def register_rule(self, rule: ValidationRule) -> None:
         """Register a validation rule."""

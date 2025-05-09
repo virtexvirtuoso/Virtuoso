@@ -8,6 +8,24 @@ including technical, volume, price structure, orderflow, and sentiment indicator
 """
 
 import logging
+
+# Add TRACE level to logging if it doesn't exist
+TRACE_LEVEL = 5  # Lower than DEBUG (10)
+logging.addLevelName(TRACE_LEVEL, 'TRACE')
+
+# Define trace method if it doesn't exist
+if not hasattr(logging.Logger, 'trace'):
+    def trace(self, message, *args, **kwargs):
+        """
+        Log 'msg % args' with severity 'TRACE'.
+        """
+        if self.isEnabledFor(TRACE_LEVEL):
+            self._log(TRACE_LEVEL, message, args, **kwargs)
+    
+    # Add trace method to Logger class
+    logging.Logger.trace = trace
+
+# Initialize package logger
 logger = logging.getLogger(__name__)
 
 logger.debug("=== Loading indicators package ===")

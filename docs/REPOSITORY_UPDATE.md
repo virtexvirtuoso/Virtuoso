@@ -61,8 +61,7 @@ Edit the `.env` file to configure your API keys and system settings.
 For InfluxDB configuration, you can use the new environment management script:
 
 ```bash
-# Set up InfluxDB environment variables
-bash set_influxdb_env.sh
+bash scripts/set_influxdb_env.sh
 ```
 
 ### 4. Create Required Directories
@@ -234,7 +233,7 @@ alerts:
 
 3. **API Access Issues**: Verify that the API server is running and that you're using the correct endpoints and authentication.
 
-4. **InfluxDB Connection Problems**: If you're experiencing issues with InfluxDB connectivity, run the `set_influxdb_env.sh` script to ensure your environment variables are correctly set.
+4. **InfluxDB Connection Problems**: If you're experiencing issues with InfluxDB connectivity, run the `scripts/set_influxdb_env.sh` script to ensure your environment variables are correctly set.
 
 5. **Reliability Score Discrepancies**: If you notice inconsistencies in reliability scores between logs and alerts, ensure you have the latest version which includes fixes for this issue.
 

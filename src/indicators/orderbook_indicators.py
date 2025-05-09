@@ -1832,3 +1832,30 @@ class OrderbookIndicators(BaseIndicator):
             self.logger.error(f"Error calculating orderbook pressure: {str(e)}")
             return 50.0, {'error': str(e)}
 
+    def log_indicator_results(self, final_score: float, component_scores: Dict[str, float], symbol: str = "") -> None:
+        """Log detailed indicator results with proper formatting.
+        
+        Args:
+            final_score: The final calculated score
+            component_scores: Dictionary of component scores
+            symbol: Trading pair symbol
+        """
+        from src.core.analysis.indicator_utils import log_score_contributions, log_final_score
+        
+        # Log component contribution breakdown
+        log_score_contributions(
+            self.logger,
+            f"{symbol} Orderbook Score Contribution Breakdown",
+            component_scores,
+            self.component_weights,
+            symbol=symbol
+        )
+        
+        # Log final score
+        log_final_score(
+            self.logger,
+            "Orderbook",
+            final_score,
+            symbol=symbol
+        )
+

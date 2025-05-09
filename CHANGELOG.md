@@ -16,11 +16,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PDF report generation for trading signals with annotated charts
 - Chart image generation with entry/exit levels and price targets
 - Base64 encoding option for PDF and chart attachments in API responses
-- Test script (`test_signals_api.py`) for simplified Signals API testing
+- Simplified Signals API testing functionality
 - Confluence analysis log image integration in PDF reports
 - Dynamic trading symbol management based on incoming signals
 - Signal monitoring system in DemoTradingRunner for automated trade execution
 - Environment variable management script for InfluxDB credentials
+- Advanced diagnostic tools for troubleshooting system components
+- Comprehensive system integrity verification
 
 ### Enhanced
 - README.md updated with comprehensive Signals API documentation
@@ -35,6 +37,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Volume analysis with participation and conviction metrics
   - Price structure analysis with market positioning details
   - Orderflow analysis with institutional activity tracking
+- Improved OHLCV data handling in MarketMonitor:
+  - Added fallback mechanism for missing OHLCV data
+  - Enhanced data refresh capability for specific components
+  - Implemented proper error handling and logging for data fetching
+- Enhanced PDF report generation with better template management
+- Improved ReportManager integration in SignalGenerator for consistent PDF generation
+- Optimized directory structure for report storage and organization
 
 ### Fixed
 - JSON serialization for datetime objects in signal responses
@@ -43,6 +52,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Signal contributor impact calculation to prevent inflated values
 - Reliability score display discrepancy between logs and alerts
 - Consistency in market interpretations between different components
+- Missing OHLCV data in market analysis by implementing proper data fetching and caching
+- PDF attachment issues in webhook alerts by improving path handling and file verification
+- Signal PDF generation failures by ensuring proper initialization of ReportManager
+- OHLCV cache handling in MarketMonitor
+- Missing required directories for report generation
+- Template directory path resolution for report generation
+- File permission issues for generated reports and charts
 
 ## [1.0.0] - 2023-06-01
 

@@ -1,7 +1,11 @@
 import logging
 import sys
+import os
 from typing import Dict, Any
 import json
+
+# Add the project root directory to the Python path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
 # Setup basic logging configuration
 logging.basicConfig(level=logging.INFO, format='%(message)s')
@@ -37,6 +41,6 @@ component_scores = {
 
 # Test the _log_component_breakdown method
 print("\nTesting sentiment component breakdown formatting:")
-sentiment._log_component_breakdown(component_scores)
+sentiment._log_component_breakdown(component_scores, "BTCUSDT")
 
 print("\nComponent breakdown test completed successfully!") 

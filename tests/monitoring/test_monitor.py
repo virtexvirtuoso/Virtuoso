@@ -4,8 +4,11 @@ Test script to verify our fix for the SentimentIndicators.get_signals coroutine 
 import asyncio
 import logging
 import os
+import pytest
 from src.monitoring.monitor import MarketMonitor
 from src.indicators.sentiment_indicators import SentimentIndicators
+from src.monitoring.metrics_manager import MetricsManager
+from src.monitoring.alert_manager import AlertManager
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -84,6 +87,53 @@ async def test_sentiment_indicators_directly():
         print(f"Error: {e}")
         import traceback
         traceback.print_exc()
+
+@pytest.mark.asyncio
+async def test_market_monitor_initializes_ohlcv_cache():
+    """Test that MarketMonitor initializes _ohlcv_cache on creation."""
+    logger.info("Testing MarketMonitor initialization for _ohlcv_cache")
+    test_config = {
+        'discord': {'webhook_url': os.getenv("DISCORD_TEST_WEBHOOK_URL", "http://localhost:8080/test-webhook")},
+        'monitoring': {}
+    } # Basic config
+    test_alert_manager = AlertManager(test_config, logger) # Basic AlertManager
+    test_metrics_manager = MetricsManager(test_config, test_alert_manager) # Basic MetricsManager
+    try:
+        # Instantiate MarketMonitor with minimal valid arguments
+        monitor = MarketMonitor(
+            exchange=None,
+            symbol=None,
+            exchange_manager=None,
+            database_client=None,
+            portfolio_analyzer=None,
+            confluence_analyzer=None,
+            timeframes=None,
+            logger=logger, # Use existing logger
+            metrics_manager=test_metrics_manager, # Provide MetricsManager instance
+            health_monitor=None,
+            validation_config=None,
+            config=test_config, # Provide config dictionary
+            alert_manager=test_alert_manager, # Provide AlertManager instance
+            signal_generator=None,
+            top_symbols_manager=None,
+            market_data_manager=None
+        )
+        
+        # Check if the attribute exists
+        assert hasattr(monitor, '_ohlcv_cache'), "MarketMonitor should have attribute _ohlcv_cache"
+        assert isinstance(monitor._ohlcv_cache, dict), "_ohlcv_cache should be a dictionary"
+        
+        # Test calling get_ohlcv_for_report
+        # This should not raise an AttributeError
+        result = monitor.get_ohlcv_for_report("BTC/USDT")
+        assert result is None, "get_ohlcv_for_report should return None for an empty cache"
+        
+        logger.info("MarketMonitor initialization test passed.")
+        
+    except AttributeError as e:
+        pytest.fail(f"MarketMonitor initialization failed: {e}")
+    except Exception as e:
+        pytest.fail(f"An unexpected error occurred: {e}")
 
 if __name__ == "__main__":
     asyncio.run(test_sentiment_indicators_directly()) 

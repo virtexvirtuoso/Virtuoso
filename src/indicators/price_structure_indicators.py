@@ -1778,7 +1778,6 @@ class PriceStructureIndicators(BaseIndicator):
                 'components': {},
                 'metrics': {}
             }
-
     def _calculate_sr_levels(self, df: pd.DataFrame) -> float:
         """Calculate support/resistance levels using DBSCAN clustering and Market Profile."""
         debug = DebugMetrics(start_time=time.time())
@@ -1799,18 +1798,58 @@ class PriceStructureIndicators(BaseIndicator):
             price_std = df['close'].std()
             eps = price_std * 0.001  # Adaptive epsilon
             
-            clustering = DBSCAN(
-                eps=eps,
-                min_samples=3,  # Minimum points to form a cluster
-                n_jobs=-1
-            ).fit(prices, sample_weight=volumes)
-            
-            # Get cluster centers and strengths
-            cluster_data = defaultdict(lambda: {'prices': [], 'volumes': []})
-            for idx, label in enumerate(clustering.labels_):
-                if label != -1:  # Ignore noise points
-                    cluster_data[label]['prices'].append(prices[idx][0])
-                    cluster_data[label]['volumes'].append(volumes[idx])
+            try:
+                # Try with sample_weight parameter
+                clustering = DBSCAN(
+                    eps=eps,
+                    min_samples=3,  # Minimum points to form a cluster
+                    n_jobs=-1
+                ).fit(prices, sample_weight=volumes)
+                
+                # Get cluster centers and strengths if original method worked
+                cluster_data = defaultdict(lambda: {'prices': [], 'volumes': []})
+                for idx, label in enumerate(clustering.labels_):
+                    if label != -1:  # Ignore noise points
+                        cluster_data[label]['prices'].append(prices[idx][0])
+                        cluster_data[label]['volumes'].append(volumes[idx])
+                        
+            except TypeError as e:
+                if "got an unexpected keyword argument 'sample_weight'" in str(e):
+                    # Fallback for newer scikit-learn versions that don't support sample_weight
+                    self.logger.warning("DBSCAN.fit() doesn't support sample_weight, using alternative approach")
+                    
+                    # Alternative approach - pre-weight points by duplicating based on volume
+                    weighted_prices = []
+                    for i, p in enumerate(prices):
+                        # Scale down to avoid too many duplicates
+                        weight = max(1, int(volumes[i] / max(volumes) * 10))
+                        weighted_prices.extend([p] * weight)
+                    
+                    weighted_prices = np.array(weighted_prices)
+                    clustering = DBSCAN(
+                        eps=eps,
+                        min_samples=3,
+                        n_jobs=-1
+                    ).fit(weighted_prices)
+                    
+                    # Adjust labels to match original points
+                    # This needs careful handling since we're changing dimensions
+                    cluster_data = defaultdict(lambda: {'prices': [], 'volumes': []})
+                    
+                    # Process the clusters from weighted points
+                    labels_counter = {}
+                    for idx, p in enumerate(weighted_prices):
+                        label = clustering.labels_[idx]
+                        if label != -1:  # Ignore noise points
+                            # Find closest original point
+                            distances = np.linalg.norm(prices - p, axis=1)
+                            closest_idx = np.argmin(distances)
+                            
+                            cluster_data[label]['prices'].append(prices[closest_idx][0])
+                            cluster_data[label]['volumes'].append(volumes[closest_idx])
+                else:
+                    # Re-raise if it's a different error
+                    raise
             
             sr_levels = []
             for label, data in cluster_data.items():
@@ -3393,3 +3432,56 @@ class PriceStructureIndicators(BaseIndicator):
         except Exception as e:
             self.logger.error(f"Error logging indicator results: {str(e)}")
             self.logger.debug(traceback.format_exc())
+
+    def _calculate_single_vwap_score(self, df: pd.DataFrame) -> float:
+        """Calculate VWAP score for a single timeframe DataFrame using daily and weekly session VWAPs."""
+        try:
+            if df.empty or 'close' not in df.columns or 'volume' not in df.columns:
+                self.logger.warning("Invalid DataFrame for VWAP score calculation")
+                return 50.0
+
+            # Ensure we have a datetime index or a timestamp column
+            if 'timestamp' in df.columns:
+                # Assume timestamp is in ms or seconds, convert to UTC datetime
+                if df['timestamp'].max() > 1e12:
+                    df['datetime'] = pd.to_datetime(df['timestamp'], unit='ms', utc=True)
+                else:
+                    df['datetime'] = pd.to_datetime(df['timestamp'], unit='s', utc=True)
+                df = df.set_index('datetime')
+            elif not isinstance(df.index, pd.DatetimeIndex):
+                self.logger.warning("DataFrame must have a DatetimeIndex or 'timestamp' column")
+                return 50.0
+
+            now = df.index[-1]
+            current_price = df['close'].iloc[-1]
+
+            # --- Daily VWAP ---
+            daily_start = now.normalize()  # 00:00:00 UTC today
+            daily_df = df[df.index >= daily_start]
+            if not daily_df.empty:
+                daily_vwap = (daily_df['close'] * daily_df['volume']).sum() / daily_df['volume'].sum()
+                daily_score = 50 + ((current_price - daily_vwap) / daily_vwap) * 100 if daily_vwap != 0 else 50.0
+                daily_score = float(np.clip(daily_score, 0, 100))
+            else:
+                daily_score = 50.0
+
+            # --- Weekly VWAP ---
+            # Find the most recent Sunday 00:00:00 UTC
+            weekday = now.weekday()  # Monday=0, Sunday=6
+            days_since_sunday = (weekday + 1) % 7
+            weekly_start = (now - pd.Timedelta(days=days_since_sunday)).normalize()
+            weekly_df = df[df.index >= weekly_start]
+            if not weekly_df.empty:
+                weekly_vwap = (weekly_df['close'] * weekly_df['volume']).sum() / weekly_df['volume'].sum()
+                weekly_score = 50 + ((current_price - weekly_vwap) / weekly_vwap) * 100 if weekly_vwap != 0 else 50.0
+                weekly_score = float(np.clip(weekly_score, 0, 100))
+            else:
+                weekly_score = 50.0
+
+            # --- Combine Scores ---
+            score = float(np.mean([daily_score, weekly_score]))
+            self.logger.debug(f"Daily VWAP: {daily_vwap if 'daily_vwap' in locals() else 'N/A'}, Weekly VWAP: {weekly_vwap if 'weekly_vwap' in locals() else 'N/A'}, Current Price: {current_price:.2f}, Daily Score: {daily_score:.2f}, Weekly Score: {weekly_score:.2f}, Final Score: {score:.2f}")
+            return score
+        except Exception as e:
+            self.logger.error(f"Error in _calculate_single_vwap_score: {str(e)}")
+            return 50.0

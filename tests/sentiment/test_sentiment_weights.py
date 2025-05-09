@@ -1,8 +1,12 @@
 import logging
 import sys
+import os
 import yaml
 import json
 from typing import Dict, Any
+
+# Add the project root directory to the Python path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
 # Setup basic logging configuration
 logging.basicConfig(level=logging.INFO, format='%(message)s')
@@ -75,7 +79,7 @@ component_scores = {
 
 # Test the _log_component_breakdown method
 print("\n=== Testing sentiment component breakdown ===")
-sentiment._log_component_breakdown(component_scores)
+sentiment._log_component_breakdown(component_scores, "ETHUSDT")
 
 # Test weighted score calculation
 weighted_score = sentiment._compute_weighted_score(component_scores)
