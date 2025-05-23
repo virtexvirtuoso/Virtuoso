@@ -157,7 +157,7 @@ async def main():
         if 'exchange' in locals():
             await exchange.close()
         
-        if 'health_monitor' in locals() and health_monitor.running:
+        if 'health_monitor' in locals() and health_monitor.is_running:
             await health_monitor.stop_monitoring()
 
 if __name__ == "__main__":

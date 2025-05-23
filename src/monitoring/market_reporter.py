@@ -42,6 +42,16 @@ class MarketReporter:
         self.top_symbols_manager = top_symbols_manager
         self.alert_manager = alert_manager
         
+        # Add Bybit-specific field mappings 
+        self.BYBIT_FIELD_MAPPINGS = {
+            'mark_price': ['markPrice', 'mark_price'],
+            'index_price': ['indexPrice', 'index_price'],
+            'funding_rate': ['fundingRate', 'funding_rate'],
+            'open_interest': ['openInterest', 'open_interest', 'oi'],
+            'turnover': ['turnover24h', 'turnover', 'volume24hValue'],
+            'volume': ['volume', 'volume24h']
+        }
+        
         # Initialize PDF generator and report manager
         try:
             # Check for centralized template configuration first
@@ -423,6 +433,147 @@ class MarketReporter:
         self.request_counts.clear()
         self.last_reset_time = time.time()
         
+    def _format_bybit_symbol(self, symbol: str) -> str:
+        """Format symbol for Bybit API calls.
+        
+        Args:
+            symbol: Symbol in CCXT format (e.g., 'BTC/USDT:USDT' or 'BTC/USDT')
+            
+        Returns:
+            Symbol formatted for Bybit API (e.g., 'BTCUSDT:USDT' or 'BTCUSDT')
+        """
+        # First check if this is already in Bybit format
+        if '/' not in symbol and ':' in symbol:
+            return symbol  # Already in Bybit format with ':' separator
+        elif '/' not in symbol:
+            return symbol  # Already in simple format without '/'
+        
+        # Convert from CCXT format
+        if ':' in symbol:
+            # For futures with a specific settlement currency
+            base, quote_settlement = symbol.split('/')
+            return f"{base}{quote_settlement}"
+        else:
+            # For simple pairs
+            return symbol.replace('/', '')
+            
+    def _extract_bybit_field(self, data: Dict, field_type: str, default=0) -> float:
+        """Extract a field from Bybit data using mappings.
+        
+        Args:
+            data: The data structure from API response
+            field_type: The type of field to extract
+            default: Default value if field not found
+            
+        Returns:
+            Extracted value as float
+        """
+        # Check if data is a ticker structure
+        if data is None:
+            return default
+            
+        # Try to get from 'info' if it exists (common in CCXT)
+        if 'info' in data:
+            info = data['info']
+            field_names = self.BYBIT_FIELD_MAPPINGS.get(field_type, [field_type])
+            
+            for name in field_names:
+                if name in info:
+                    try:
+                        return float(info[name])
+                    except (ValueError, TypeError):
+                        continue
+        
+        # Try direct access as fallback
+        field_names = self.BYBIT_FIELD_MAPPINGS.get(field_type, [field_type])
+        for name in field_names:
+            if name in data:
+                try:
+                    return float(data[name])
+                except (ValueError, TypeError):
+                    continue
+                
+        return default
+            
+    async def _analyze_funding_rates(self, symbol: str) -> Dict[str, Any]:
+        """Analyze funding rate history for a symbol.
+        
+        Args:
+            symbol: Symbol to analyze in Bybit format
+            
+        Returns:
+            Dictionary with funding rate analysis
+        """
+        try:
+            category = "linear"  # Default to linear (USDT) futures
+            
+            # Check if exchange is initialized
+            if not self.exchange:
+                return {'average': 0, 'trend': 'neutral', 'latest': 0}
+                
+            # Use direct API call or method from exchange
+            if hasattr(self.exchange, 'fetch_funding_rate_history'):
+                funding_data = await self._fetch_with_retry(
+                    'fetch_funding_rate_history', 
+                    symbol, 
+                    limit=10,
+                    timeout=5
+                )
+                
+                # Extract rates from response
+                rates = []
+                if isinstance(funding_data, list):
+                    for entry in funding_data:
+                        if 'fundingRate' in entry:
+                            rates.append(float(entry['fundingRate']))
+                        elif 'rate' in entry:
+                            rates.append(float(entry['rate']))
+            else:
+                # Fallback to direct Bybit API if exchange doesn't have the method
+                endpoint = f"market/funding/history?category={category}&symbol={symbol}&limit=10"
+                response = await self._fetch_with_retry('publicGetV5' + endpoint.replace('/', '').title(), timeout=5)
+                
+                if isinstance(response, dict) and 'result' in response and 'list' in response['result']:
+                    for entry in response['result']['list']:
+                        if 'fundingRate' in entry:
+                            rates.append(float(entry['fundingRate']))
+                            
+            # Calculate statistics
+            if not rates:
+                return {'average': 0, 'trend': 'neutral', 'latest': 0}
+                
+            avg_rate = sum(rates) / len(rates)
+            
+            # Determine trend
+            if len(rates) > 1:
+                if rates[0] > avg_rate:
+                    trend = 'increasing'
+                elif rates[0] < avg_rate:
+                    trend = 'decreasing'
+                else:
+                    trend = 'stable'
+            else:
+                trend = 'neutral'
+                
+            # Determine sentiment
+            if avg_rate > 0.0001:
+                sentiment = 'bullish'  # High positive funding rates indicate long sentiment dominance
+            elif avg_rate < -0.0001:
+                sentiment = 'bearish'  # Negative funding rates indicate short sentiment dominance
+            else:
+                sentiment = 'neutral'  # Near-zero rates indicate balanced sentiment
+                
+            return {
+                'average': avg_rate,
+                'latest': rates[0] if rates else 0,
+                'trend': trend,
+                'sentiment': sentiment,
+                'historical': rates[:5]  # Include recent history (limited to 5 entries)
+            }
+        except Exception as e:
+            self.logger.warning(f"Error analyzing funding rates for {symbol}: {e}")
+            return {'average': 0, 'trend': 'neutral', 'latest': 0, 'sentiment': 'neutral'}
+            
     async def _send_alert(self, alert_type: str, message: str, severity: str = "info"):
         """Send alert through alert manager if available."""
         try:
@@ -518,136 +669,75 @@ class MarketReporter:
         return report
 
     async def generate_market_pdf_report(self, report_data: Dict[str, Any]) -> Optional[str]:
-        """Generate a PDF report from the market data.
-        
-        Args:
-            report_data: The market report data.
-        Returns:
-            Optional[str]: The path to the generated PDF file, or None if PDF generation failed.
-        """
-        pdf_path = None
+        """Generate a PDF market report.
 
-        # Enhanced error handling and logging
+        Args:
+            report_data: The report data to include in the PDF.
+
+        Returns:
+            The path to the generated PDF file, or None if generation failed.
+        """
         try:
-            # Check if PDF generator is available
-            if not hasattr(self, 'pdf_generator') or not self.pdf_generator:
-                self.logger.warning("PDF generator not available, skipping PDF generation")
-                return None
-                
+            timestamp = int(time.time())
+            readable_time = datetime.fromtimestamp(timestamp).strftime('%Y%m%d_%H%M%S')
+            
+            # Ensure the report_data contains the timestamp
+            if 'timestamp' not in report_data:
+                report_data['timestamp'] = timestamp
+            
+            report_id = f"NEU_{readable_time}"  # Using a neutral identifier
+            
             # Create directories if they don't exist
-            reports_base_dir = os.path.join(os.getcwd(), 'reports')
-            reports_html_dir = os.path.join(reports_base_dir, 'html')
-            reports_pdf_dir = os.path.join(reports_base_dir, 'pdf')
-            exports_dir = os.path.join(os.getcwd(), 'exports', 'market_reports')
+            html_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "reports", "html")
+            pdf_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "reports", "pdf")
+            os.makedirs(html_dir, exist_ok=True)
+            os.makedirs(pdf_dir, exist_ok=True)
             
-            os.makedirs(reports_html_dir, exist_ok=True)
-            os.makedirs(reports_pdf_dir, exist_ok=True)
-            os.makedirs(exports_dir, exist_ok=True)
-                
-            # Use timestamp from report data if available, otherwise generate a new one
-            timestamp = report_data.get('timestamp', int(time.time() * 1000))
-            if isinstance(timestamp, str):
-                try:
-                    timestamp = int(timestamp)
-                except ValueError:
-                    timestamp = int(time.time() * 1000)
+            # Define output paths
+            html_path = os.path.join(html_dir, f"market_report_{report_id}.html")
+            pdf_path = os.path.join(pdf_dir, f"market_report_{report_id}.pdf")  # Correct path in PDF directory
             
-            # Convert to MS timestamp if needed for consistency
-            if timestamp < 10000000000:  # If in seconds, convert to milliseconds
-                timestamp = timestamp * 1000
-                    
-            # Create more descriptive filenames
-            time_str = datetime.fromtimestamp(timestamp / 1000).strftime("%Y%m%d_%H%M%S")
-            
-            # Get market regime for filename
-            regime = report_data.get('market_overview', {}).get('regime', 'NEUTRAL').upper()
-            regime_short = regime[:3]  # First 3 chars of regime (BUL, BEA, NEU, RAN)
-            
-            # Create filenames with consistent pattern
-            base_name = f"market_report_{regime_short}_{time_str}"
-            html_filename = f"{base_name}.html"
-            pdf_filename = f"{base_name}.pdf"
-            
-            html_path = os.path.join(reports_html_dir, html_filename)
-            pdf_path = os.path.join(reports_pdf_dir, pdf_filename)
-            export_pdf_path = os.path.join(exports_dir, pdf_filename)
-            
+            # Generate HTML report
             self.logger.info(f"Generating HTML report: {html_path}")
+            template_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "templates", "market_report_dark.html")
+            self.logger.debug(f"Template path: {template_path}")
             
-            # Get template path for error logging
-            template_path = ""
-            if hasattr(self.pdf_generator, 'template_dir'):
-                template_path = os.path.join(self.pdf_generator.template_dir, "market_report_dark.html")
-                self.logger.debug(f"Template path: {template_path}")
+            # Debug the market_data structure
+            self.logger.debug(f"Market data keys: {list(report_data.keys())}")
+            for key in report_data.keys():
+                if isinstance(report_data[key], dict):
+                    self.logger.debug(f"  '{key}' section keys: {list(report_data[key].keys())}")
             
-            # Use generate_market_html_report method directly which uses the correct market template
-            try:
-                html_success = await self.pdf_generator.generate_market_html_report(
-                    market_data=report_data,
-                    output_path=html_path,
-                    generate_pdf=True
-                )
-            except Exception as html_err:
-                # Log detailed template error information
-                self._log_template_error(
-                    error_message=str(html_err),
-                    template_path=template_path,
-                    data=report_data
-                )
+            # Generate the HTML report
+            report_generator = ReportGenerator()
+            success = await report_generator.generate_market_html_report(
+                report_data,
+                output_path=html_path,
+                template_path=template_path,
+                generate_pdf=True
+            )
+            
+            if not success:
+                self.logger.error(f"Failed to generate HTML report")
                 return None
             
-            if html_success:
-                # The PDF should have been generated by generate_market_html_report
-                pdf_path = html_path.replace('.html', '.pdf')
+            # Check if PDF was generated correctly
+            if not os.path.exists(pdf_path):
+                self.logger.error(f"PDF file not found at expected path: {pdf_path}")
                 
-                if os.path.exists(pdf_path):
-                    self.logger.info(f"PDF report generated successfully at {pdf_path}")
-                    
-                    # Also copy to exports directory for easier access
-                    try:
-                        shutil.copy2(pdf_path, export_pdf_path)
-                        self.logger.info(f"Copied PDF report to exports: {export_pdf_path}")
-                    except Exception as copy_err:
-                        self.logger.warning(f"Failed to copy PDF to exports: {str(copy_err)}")
-                    
+                # Try fallback direct generation
+                self.logger.info(f"Attempting direct PDF generation as fallback")
+                pdf_success = await report_generator.generate_pdf(html_path, pdf_path)
+                
+                if pdf_success and os.path.exists(pdf_path):
+                    self.logger.info(f"Fallback PDF generation successful: {pdf_path}")
                     return pdf_path
                 else:
-                    self.logger.error(f"PDF file not found at expected path: {pdf_path}")
-                    
-                    # Try to regenerate PDF directly as fallback
-                    try:
-                        self.logger.info("Attempting direct PDF generation as fallback")
-                        pdf_success = await self.pdf_generator.generate_pdf(html_path, pdf_path)
-                        if pdf_success and os.path.exists(pdf_path):
-                            self.logger.info(f"Fallback PDF generation successful: {pdf_path}")
-                            return pdf_path
-                    except Exception as fallback_err:
-                        self.logger.error(f"Fallback PDF generation failed: {str(fallback_err)}")
-                    
+                    self.logger.error(f"Fallback PDF generation failed")
                     return None
-            else:
-                self.logger.error("Failed to generate HTML for market report")
-                
-                # Check if HTML file was partially created and might have useful error info
-                if os.path.exists(html_path) and os.path.getsize(html_path) > 0:
-                    try:
-                        with open(html_path, 'r') as f:
-                            html_content = f.read(500)  # Read first 500 chars
-                            if "Error" in html_content or "Exception" in html_content:
-                                self.logger.error(f"Error in HTML template: {html_content}")
-                    except Exception as read_err:
-                        self.logger.debug(f"Could not read HTML file for error info: {str(read_err)}")
-                        
-                return None
             
-        except KeyError as key_err:
-            self.logger.error(f"Missing key in report data: {str(key_err)}")
-            self.logger.debug(f"Report data keys: {list(report_data.keys())}")
-            # Print first level of nested keys for debugging
-            for key, value in report_data.items():
-                if isinstance(value, dict):
-                    self.logger.debug(f"Keys in {key}: {list(value.keys())}")
-            return None
+            self.logger.info(f"Market report PDF generated at {pdf_path}")
+            return pdf_path
         except Exception as e:
             self.logger.error(f"Error generating PDF report: {str(e)}")
             self.logger.debug(traceback.format_exc())
@@ -1053,6 +1143,12 @@ class MarketReporter:
             premiums = {}
             failed_symbols = []
             
+            # For term structure analysis
+            quarterly_futures = {}
+            funding_rates = {}
+            average_premium = 0.0
+            valid_premiums = 0
+            
             for symbol, result in zip(symbols, results):
                 if isinstance(result, Exception):
                     self.logger.warning(f"Error calculating futures premium for {symbol}: {str(result)}")
@@ -1062,9 +1158,46 @@ class MarketReporter:
                     failed_symbols.append(symbol)
                 else:
                     premiums[symbol] = result
+                    
+                    # Track average premium and count valid results
+                    if 'premium_value' in result:
+                        average_premium += result['premium_value']
+                        valid_premiums += 1
+                        
+                    # Store quarterly futures data if available
+                    if 'futures_contracts' in result and result['futures_contracts']:
+                        quarterly_futures[symbol] = result['futures_contracts']
+                        
+                    # Get funding rate data
+                    try:
+                        bybit_symbol = self._format_bybit_symbol(symbol)
+                        funding_data = await self._analyze_funding_rates(bybit_symbol)
+                        funding_rates[symbol] = funding_data
+                    except Exception as e:
+                        self.logger.debug(f"Error getting funding data for {symbol}: {e}")
+            
+            # Calculate average and determine market status
+            if valid_premiums > 0:
+                average_premium = average_premium / valid_premiums
+                
+                # Determine overall contango status
+                if average_premium > 0.1:
+                    contango_status = "CONTANGO"
+                elif average_premium < -0.1:
+                    contango_status = "BACKWARDATION"
+                else:
+                    contango_status = "NEUTRAL"
+            else:
+                average_premium = 0.0
+                contango_status = "NEUTRAL"
             
             result = {
                 'premiums': premiums,
+                'quarterly_futures': quarterly_futures,
+                'funding_rates': funding_rates,
+                'average_premium': f"{average_premium:.4f}%",
+                'average_premium_value': average_premium,
+                'contango_status': contango_status,
                 'timestamp': int(datetime.now().timestamp() * 1000)
             }
             
@@ -1081,12 +1214,13 @@ class MarketReporter:
                 'timestamp': int(datetime.now().timestamp() * 1000),
                 'error': str(e)
             }
+            
 
     async def _calculate_single_premium(self, symbol: str, all_markets: Dict) -> Optional[Dict[str, Any]]:
         """Calculate futures premium for a single symbol with proper timeouts."""
         try:
             # Clean up the symbol format for Bybit API
-            clean_symbol = symbol.replace('/', '')
+            clean_symbol = self._format_bybit_symbol(symbol)
             
             # For Bybit, we need to use the perp and spot symbols correctly
             if clean_symbol.endswith(':USDT'):
@@ -1095,7 +1229,7 @@ class MarketReporter:
                 spot_symbol = clean_symbol.replace(':USDT', '')
             elif '/' in symbol:
                 # Convert from ccxt format to Bybit format
-                perp_symbol = symbol.replace('/', '') 
+                perp_symbol = self._format_bybit_symbol(symbol)
                 spot_symbol = perp_symbol
             else:
                 # Already in simple format (e.g., 'BTCUSDT')
@@ -1141,26 +1275,14 @@ class MarketReporter:
                 perp_ticker = None
                 spot_ticker = None
             
-            # Extract prices from different possible structures
-            mark_price = None
-            index_price = None
-            last_price = None
-            
-            # Extract mark price from perpetual futures
-            if perp_ticker and 'info' in perp_ticker:
-                info = perp_ticker['info']
-                mark_price = float(info.get('markPrice', info.get('mark_price', 0)))
-                # Some exchanges provide index price in the perp ticker
-                index_price = float(info.get('indexPrice', info.get('index_price', 0)))
-                last_price = float(perp_ticker.get('last', 0))
-            
-            # If mark price not found, use last price
-            if not mark_price and perp_ticker:
-                mark_price = float(perp_ticker.get('last', 0))
+            # Extract prices from different possible structures using the enhanced extraction method
+            mark_price = self._extract_bybit_field(perp_ticker, 'mark_price')
+            index_price = self._extract_bybit_field(perp_ticker, 'index_price')
+            last_price = self._extract_bybit_field(perp_ticker, 'last')
             
             # If index price not found, try to use spot price
             if not index_price and spot_ticker:
-                index_price = float(spot_ticker.get('last', 0))
+                index_price = self._extract_bybit_field(spot_ticker, 'last')
             
             # Get futures data efficiently
             futures_price = 0
@@ -1168,90 +1290,268 @@ class MarketReporter:
             weekly_futures_found = 0
             quarterly_futures_found = 0
             futures_contracts = []
-            premium = 0
-            premium_type = "📊 Neutral"
             
-            # Find futures contracts for this base asset more efficiently
+            # Find quarterly futures efficiently for Bybit
             try:
-                # Filter relevant markets once instead of iterating multiple times
-                futures_markets = []
-                futures_pattern = re.compile(r'([A-Z]+).*?(\d{2}(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)\d{2})')
+                # Get current year and month
+                current_year = datetime.now().year 
+                current_month = datetime.now().month
+                current_year_short = current_year % 100  # Last two digits (e.g., 25 for 2025)
                 
-                # More efficient filtering
-                for market in all_markets.values():
-                    market_id = market.get('id', '').upper() 
-                    market_symbol = market.get('symbol', '').upper()
-                    
-                    # Fast check if this market is for our base asset
-                    if base_asset.upper() in market_id or base_asset.upper() in market_symbol:
-                        # Check if it's a futures contract with delivery date
-                        if (re.search(futures_pattern, market_id) or re.search(futures_pattern, market_symbol)):
-                            futures_markets.append(market)
-                            
-                            # Extract delivery time if available
-                            if 'info' in market and 'deliveryTime' in market['info'] and market['info']['deliveryTime'] != '0':
-                                try:
-                                    delivery_time = int(market['info']['deliveryTime']) / 1000  # Convert to seconds
-                                    delivery_date = datetime.fromtimestamp(delivery_time)
-                                    
-                                    # Check if this is a quarterly contract
-                                    is_quarterly = delivery_date.month in [3, 6, 9, 12] and delivery_date.day > 25
-                                    
-                                    if is_quarterly:
-                                        quarterly_futures_found += 1
-                                    else:
-                                        weekly_futures_found += 1
-                                    
-                                    futures_contracts.append({
-                                        'symbol': market.get('symbol', market.get('id', '')),
-                                        'delivery_date': delivery_date.strftime('%Y-%m-%d'),
-                                        'is_quarterly': is_quarterly
-                                    })
-                                except Exception as e:
-                                    self.logger.debug(f"Error parsing delivery time for {market_id}: {e}")
+                # Get base asset and check if it needs special formatting
+                base_asset_clean = base_asset.strip()
                 
-                # If we found futures contracts
-                if futures_contracts:
-                    self.logger.debug(f"Found {len(futures_contracts)} futures contracts for {base_asset}")
+                # Function to calculate last Friday of a month
+                def get_last_friday(year, month):
+                    if month == 12:
+                        last_day = datetime(year, 12, 31)
+                    else:
+                        last_day = datetime(year, month + 1, 1) - timedelta(days=1)
                     
-                    # Sort by delivery time if available
-                    try:
-                        # Sort futures markets by expiry
-                        # Check if futures_markets is a list or a dictionary
-                        if isinstance(futures_markets, list):
-                            # It's already a list, sort it directly
-                            sorted_futures = sorted(
-                                futures_markets,
-                                key=lambda x: x.get('expiry', 0)
-                            )
-                        elif isinstance(futures_markets, dict):
-                            # Convert from dict to list, then sort
-                            sorted_futures = sorted(
-                                futures_markets.values(),
-                                key=lambda x: x.get('expiry', 0)
-                            )
-                        else:
-                            # Initialize as empty list if it's neither
-                            sorted_futures = []
-                            self.logger.warning(f"Unexpected type for futures_markets: {type(futures_markets)}")
+                    # Find the last Friday (weekday 4)
+                    offset = (4 - last_day.weekday()) % 7
+                    last_friday = last_day - timedelta(days=offset) if offset != 0 else last_day
+                    return last_friday
+                
+                # Try multiple formats for quarterly futures
+                quarterly_symbols = []
+                
+                # Format 1: Standard format with month abbreviation (Bybit's historical format for linear futures)
+                # Example: BTCUSDT-27JUN25
+                def format_quarterly_symbol_standard(base, year, month):
+                    last_friday = get_last_friday(year, month)
+                    day = last_friday.day
+                    month_abbr = last_friday.strftime("%b").upper()
+                    return f"{base}USDT-{day}{month_abbr}{year % 100}"
+                
+                # Format 2: MMDD format without hyphen (some exchanges use this)
+                # Example: BTCUSDT0627
+                def format_quarterly_symbol_mmdd(base, year, month):
+                    last_friday = get_last_friday(year, month)
+                    return f"{base}USDT{last_friday.month:02d}{last_friday.day:02d}"
+                
+                # Format 3: Month code format (e.g., M for June, U for Sept, Z for Dec)
+                # Example: BTCUSDTM25 for linear or BTCUSDM25 for inverse
+                def format_quarterly_symbol_code(base, year, month, inverse=False):
+                    month_codes = {3: 'H', 6: 'M', 9: 'U', 12: 'Z'}
+                    if inverse:
+                        return f"{base}USD{month_codes[month]}{year % 100}"
+                    else:
+                        return f"{base}USDT{month_codes[month]}{year % 100}"
+                
+                # Format 4: Base-only format (BTC-27JUN25)
+                def format_base_only(base, year, month):
+                    last_friday = get_last_friday(year, month)
+                    day = last_friday.day
+                    month_abbr = last_friday.strftime("%b").upper()
+                    return f"{base}-{day}{month_abbr}{year % 100}"
+                
+                # Add quarterly futures for current year
+                for month in [6, 9, 12]:
+                    if month >= current_month or month == 12:  # Always include December
+                        # Based on testing results, prioritize formats in this order:
                         
-                        # Try to get ticker for the nearest expiry with timeout
-                        try:
-                            async with asyncio.timeout(3):  # 3 second timeout for futures ticker
-                                if sorted_futures:
-                                    futures_ticker = await self.exchange.fetch_ticker(sorted_futures[0]['symbol'])
-                                    if futures_ticker and futures_ticker.get('last'):
-                                        futures_price = float(futures_ticker['last'])
-                                        if index_price and index_price > 0:
-                                            futures_basis = ((futures_price - index_price) / index_price) * 100
-                        except asyncio.TimeoutError:
-                            self.logger.warning(f"Timeout fetching futures ticker for {base_asset}")
-                        except Exception as se:
-                            self.logger.debug(f"Error fetching futures ticker: {se}")
-                    except Exception as me:
-                        self.logger.debug(f"Error sorting futures contracts for {base_asset}: {me}")
+                        # For BTC and ETH, we found these formats work best:
+                        if base_asset_clean in ["BTC", "ETH"]:
+                            # 1. First try exact hyphenated format from instrument list
+                            quarterly_symbols.append(format_quarterly_symbol_standard(base_asset_clean, current_year, month))
+                            
+                            # 2. Try base-only format (e.g., BTC-27JUN25)
+                            quarterly_symbols.append((format_base_only(base_asset_clean, current_year, month), "linear"))
+                            
+                            # 3. Try inverse month code format (e.g., BTCUSDM25)
+                            quarterly_symbols.append((format_quarterly_symbol_code(base_asset_clean, current_year, month, inverse=True), "inverse"))
+                                
+                            # 4. Try MMDD format without hyphen as fallback
+                            quarterly_symbols.append(format_quarterly_symbol_mmdd(base_asset_clean, current_year, month))
+                        else:
+                            # For other assets like SOL/XRP/AVAX, prioritize standard format
+                            # 1. Try standard format with hyphen (e.g., SOLUSDT-27JUN25)
+                            quarterly_symbols.append(format_quarterly_symbol_standard(base_asset_clean, current_year, month))
+                            
+                            # 2. Try MMDD format as fallback
+                            quarterly_symbols.append(format_quarterly_symbol_mmdd(base_asset_clean, current_year, month))
+                            
+                            # 3. Try linear month code format
+                            quarterly_symbols.append(format_quarterly_symbol_code(base_asset_clean, current_year, month))
+                
+                # Add March for next year if we're in Q4
+                if current_month >= 10:
+                    next_year = current_year + 1
+                    
+                    # Use the same prioritization for next year's March contracts
+                    if base_asset_clean in ["BTC", "ETH"]:
+                        quarterly_symbols.append(format_quarterly_symbol_standard(base_asset_clean, next_year, 3))
+                        quarterly_symbols.append((format_base_only(base_asset_clean, next_year, 3), "linear"))
+                        quarterly_symbols.append((format_quarterly_symbol_code(base_asset_clean, next_year, 3, inverse=True), "inverse"))
+                        quarterly_symbols.append(format_quarterly_symbol_mmdd(base_asset_clean, next_year, 3))
+                    else:
+                        quarterly_symbols.append(format_quarterly_symbol_standard(base_asset_clean, next_year, 3))
+                        quarterly_symbols.append(format_quarterly_symbol_mmdd(base_asset_clean, next_year, 3))
+                        quarterly_symbols.append(format_quarterly_symbol_code(base_asset_clean, next_year, 3))
+                
+                self.logger.debug(f"Trying quarterly futures symbols for {base_asset}: {quarterly_symbols}")
+                
+                # Check for existence and fetch quarterly futures data
+                for symbol_item in quarterly_symbols:
+                    try:
+                        # Handle symbol items that specify category
+                        category = "linear"  # Default category
+                        if isinstance(symbol_item, tuple):
+                            symbol = symbol_item[0]
+                            category = symbol_item[1]
+                        else:
+                            symbol = symbol_item
+                        
+                        # Construct proper request parameters based on category
+                        params = {'category': category, 'symbol': symbol}
+                        self.logger.debug(f"Fetching ticker for {symbol} with params: {params}")
+                        
+                        # Use direct API call for more flexibility with categories
+                        endpoint = f"market/tickers"
+                        url = f"{self.exchange.rest_endpoint}/v5/{endpoint}"
+                        
+                        quarterly_ticker = None
+                        
+                        # Try to use fetch_ticker with specified category first
+                        if hasattr(self.exchange, 'fetch_ticker_with_params'):
+                            quarterly_ticker = await self._fetch_with_retry('fetch_ticker_with_params', symbol, params, timeout=3)
+                        else:
+                            # Fall back to direct API call with correct category
+                            import aiohttp
+                            async with aiohttp.ClientSession() as session:
+                                async with session.get(url, params=params) as response:
+                                    if response.status == 200:
+                                        result = await response.json()
+                                        if result.get('retCode') == 0 and result.get('result') and result['result'].get('list'):
+                                            quarterly_ticker = result['result']['list'][0]
+                        
+                        # Process the ticker data if found
+                        if quarterly_ticker:
+                            if isinstance(quarterly_ticker, dict):
+                                quarterly_price = float(quarterly_ticker.get('lastPrice', 0))
+                            else:
+                                quarterly_price = self._extract_bybit_field(quarterly_ticker, 'last')
+                                
+                            if quarterly_price > 0:
+                                # Determine which month this contract is for
+                                month_info = None
+                                month_name = ""
+                                months_to_expiry = 0
+                                
+                                # For standard format (with hyphen)
+                                if "-" in symbol:
+                                    # Format like BTCUSDT-27JUN25
+                                    parts = symbol.split("-")[1]
+                                    if len(parts) >= 5:
+                                        month_code = parts[2:5]  # Extract month code (JUN, SEP, DEC, MAR)
+                                        month_mapping = {
+                                            'MAR': {'num': 3, 'name': 'March'},
+                                            'JUN': {'num': 6, 'name': 'June'},
+                                            'SEP': {'num': 9, 'name': 'September'},
+                                            'DEC': {'num': 12, 'name': 'December'}
+                                        }
+                                        
+                                        if month_code in month_mapping:
+                                            month_info = month_mapping[month_code]
+                                            expiry_month = month_info['num']
+                                            month_name = month_info['name']
+                                            months_to_expiry = self._calculate_months_to_expiry(expiry_month, symbol)
+                                
+                                # For month code format (like BTCUSDTM25 or BTCUSDM25)
+                                elif len(symbol) >= 3 and symbol[-3] in ['M', 'U', 'Z', 'H']:
+                                    month_code = symbol[-3]
+                                    month_mapping = {
+                                        'H': {'num': 3, 'name': 'March'},
+                                        'M': {'num': 6, 'name': 'June'},
+                                        'U': {'num': 9, 'name': 'September'},
+                                        'Z': {'num': 12, 'name': 'December'}
+                                    }
+                                    
+                                    if month_code in month_mapping:
+                                        month_info = month_mapping[month_code]
+                                        expiry_month = month_info['num']
+                                        month_name = month_info['name']
+                                        months_to_expiry = self._calculate_months_to_expiry(expiry_month, symbol)
+                                
+                                # For MMDD format
+                                elif len(symbol) >= 10 and all(c.isdigit() for c in symbol[-4:]):
+                                    month_num = int(symbol[-4:-2])
+                                    if month_num == 3:
+                                        month_name = "March"
+                                        expiry_month = 3
+                                    elif month_num == 6:
+                                        month_name = "June"
+                                        expiry_month = 6
+                                    elif month_num == 9:
+                                        month_name = "September"
+                                        expiry_month = 9
+                                    elif month_num == 12:
+                                        month_name = "December"
+                                        expiry_month = 12
+                                    
+                                    if month_name:
+                                        months_to_expiry = self._calculate_months_to_expiry(expiry_month, symbol)
+                                
+                                # If we've figured out the month info, calculate the basis
+                                if month_name and months_to_expiry > 0:
+                                    # Calculate annualized basis
+                                    if index_price and index_price > 0:
+                                        # For inverse contracts, calculation is different
+                                        if category == "inverse":
+                                            # For inverse contracts, the price is inverted (1/price)
+                                            # So the basis formula needs to be adjusted
+                                            inverse_index = 1/index_price if index_price != 0 else 0
+                                            inverse_quarterly = 1/quarterly_price if quarterly_price != 0 else 0
+                                            basis = ((inverse_quarterly - inverse_index) / inverse_index) * 100
+                                        else:
+                                            # Regular linear contracts
+                                            basis = ((quarterly_price - index_price) / index_price) * 100
+                                
+                                        # Annualize the basis
+                                        annualized_basis = basis * (12 / months_to_expiry)
+                                        
+                                        # Format for output
+                                        futures_contracts.append({
+                                            'symbol': symbol,
+                                            'category': category,
+                                            'month': month_name,
+                                            'price': quarterly_price,
+                                            'basis': f"{basis:.4f}%",
+                                            'annualized_basis': f"{annualized_basis:.4f}%",
+                                            'annualized_value': annualized_basis,
+                                            'months_to_expiry': months_to_expiry
+                                        })
+                                        
+                                        quarterly_futures_found += 1
+                                        self.logger.info(f"Found quarterly future: {symbol} (category: {category}) with price {quarterly_price}")
+                                        
+                                        # Once we find a valid contract format, prioritize this format for future calls
+                                        if category == "inverse" and symbol[-3] in ['M', 'U', 'Z', 'H']:
+                                            format_preference = "inverse_code"
+                                        elif "-" in symbol:
+                                            format_preference = "standard"
+                                        elif len(symbol) >= 10 and all(c.isdigit() for c in symbol[-4:]):
+                                            format_preference = "mmdd"
+                                        elif symbol[-3] in ['M', 'U', 'Z', 'H']:
+                                            format_preference = "code"
+                                            
+                                        self.logger.debug(f"Found working format: {format_preference} for {base_asset}")
+                                        break  # Found a working format, no need to try others
+                    except Exception as e:
+                        self.logger.debug(f"Error fetching quarterly future {symbol}: {e}")
+                
+                # Sort futures contracts by expiry
+                futures_contracts.sort(key=lambda x: x.get('months_to_expiry', 12))
+                
+                # Set data for nearest future if available
+                if futures_contracts:
+                    nearest = futures_contracts[0]
+                    futures_price = nearest.get('price', 0)
+                    futures_basis = nearest.get('basis', '0.00%')
+                    
             except Exception as e:
-                self.logger.debug(f"Error finding futures contracts for {base_asset}: {e}")
+                self.logger.debug(f"Error finding futures contracts for {base_asset}: {str(e)}")
             
             # Calculate premium if we have valid prices
             if mark_price and mark_price > 0 and (index_price and index_price > 0):
@@ -1259,6 +1559,9 @@ class MarketReporter:
                 
                 # Determine premium type
                 premium_type = "📉 Backwardation" if premium < 0 else "📈 Contango"
+                
+                # Get funding rate data if available
+                funding_rate = self._extract_bybit_field(perp_ticker, 'funding_rate')
                 
                 return {
                     'premium': f"{premium:.4f}%",
@@ -1270,9 +1573,10 @@ class MarketReporter:
                     'weekly_futures_count': weekly_futures_found,
                     'quarterly_futures_count': quarterly_futures_found,
                     'futures_price': futures_price,
-                    'futures_basis': f"{futures_basis:.4f}%",
+                    'futures_basis': futures_basis,
+                    'funding_rate': funding_rate,
                     'timestamp': int(datetime.now().timestamp() * 1000),
-                    'futures_contracts': futures_contracts[:5] if futures_contracts else []  # Include first 5 contracts
+                    'futures_contracts': futures_contracts  # Include all quarterly contracts
                 }
             else:
                 self.logger.debug(f"Missing price data for futures premium: {symbol} (mark: {mark_price}, index: {index_price})")
@@ -1282,104 +1586,181 @@ class MarketReporter:
             return None
     
     async def _calculate_smart_money_index(self, symbols: List[str]) -> Dict[str, Any]:
-        """Calculate smart money index based on whale activity and order flow."""
+        """Calculate smart money index based on institutional activity.
+        
+        This function analyzes long-short ratios, exchange flows, and OI changes
+        to gauge institutional activity.
+        
+        Args:
+            symbols: List of symbols to analyze
+            
+        Returns:
+            Smart money index data
+        """
         try:
-            signals = []
-            total_score = 0
-            valid_symbols = 0
-            key_zones = []
+            self.logger.info("Calculating smart money index...")
+            start_time = time.time()
             
-            for symbol in symbols:
-                try:
-                    # Fix symbol format for Bybit API
-                    clean_symbol = symbol.replace('/', '')
-                    if clean_symbol.endswith(':USDT'):
-                        api_symbol = clean_symbol
-                    else:
-                        api_symbol = clean_symbol
-                        
-                    self.logger.info(f"Fetching order book and trades for {symbol} (API symbol: {api_symbol})")
-                    
-                    # Get order book and recent trades using the properly formatted symbol
-                    order_book = await self.exchange.fetch_order_book(api_symbol)
-                    trades = await self.exchange.fetch_trades(api_symbol)
-                    
-                    if order_book and trades:
-                        # Calculate whale threshold
-                        whale_threshold = self._calculate_whale_threshold(order_book)
-                        
-                        # Analyze large trades
-                        large_trades = [t for t in trades if float(t.get('amount', 0)) >= whale_threshold]
-                        buy_volume = sum(float(t['amount']) for t in large_trades if t.get('side') == 'buy')
-                        sell_volume = sum(float(t['amount']) for t in large_trades if t.get('side') == 'sell')
-                        
-                        # Calculate signal score (0-100)
-                        if buy_volume + sell_volume > 0:
-                            buy_ratio = buy_volume / (buy_volume + sell_volume)
-                            score = buy_ratio * 100
-                            total_score += score
-                            valid_symbols += 1
-                            
-                            # Check for key accumulation/distribution zones
-                            if buy_volume > sell_volume * 2:  # Strong buying
-                                key_zones.append({
-                                    'symbol': symbol,
-                                    'type': 'accumulation',
-                                    'strength': buy_volume / (buy_volume + sell_volume) * 100,
-                                    'buy_volume': buy_volume,
-                                    'sell_volume': sell_volume
-                                })
-                            elif sell_volume > buy_volume * 2:  # Strong selling
-                                key_zones.append({
-                                    'symbol': symbol,
-                                    'type': 'distribution',
-                                    'strength': sell_volume / (buy_volume + sell_volume) * 100,
-                                    'buy_volume': buy_volume,
-                                    'sell_volume': sell_volume
-                                })
-                            
-                            signals.append({
-                                'symbol': symbol,
-                                'score': score,
-                                'buy_volume': buy_volume,
-                                'sell_volume': sell_volume
-                            })
-                            
-                except Exception as e:
-                    self.logger.warning(f"Error calculating smart money index for {symbol}: {str(e)}")
-                    continue
-                
-            # Calculate final index
-            index = total_score / valid_symbols if valid_symbols > 0 else 50.0
-            
-            # Determine smart money sentiment
-            sentiment = "NEUTRAL"
-            if index >= 65:
-                sentiment = "BULLISH"
-            elif index <= 35:
-                sentiment = "BEARISH"
-                
-            # Calculate institutional flow
-            inst_flow = index - 50  # Deviation from neutral
-            
-            return {
-                'index': index,
-                'sentiment': sentiment,
-                'institutional_flow': f"{inst_flow:+.1f}%",
-                'signals': signals,
-                'key_zones': key_zones,
-                'timestamp': int(datetime.now().timestamp() * 1000)
+            # Initialize result structure
+            result = {
+                'index': 50,  # Default neutral value (changed from smi_value)
+                'trend': 'neutral',
+                'long_ratio': 0.5,  # Default balanced
+                'short_ratio': 0.5,
+                'changes': [],
+                'timestamp': int(time.time())
             }
+            
+            # Get primary symbol (usually BTC)
+            if not symbols:
+                self.logger.warning("No symbols provided for smart money index")
+                return result
+                
+            symbol = symbols[0]
+            clean_symbol = self._format_bybit_symbol(symbol)
+            
+            # Format the symbol correctly for Bybit API
+            if ':' in clean_symbol:
+                # Remove settlement currency suffix if present
+                clean_symbol = clean_symbol.split(':')[0]
+                
+            # Try to get long-short ratio data from Bybit API
+            try:
+                # Use direct API call for long-short ratio via our exchange
+                if hasattr(self.exchange, 'fetch_long_short_ratio'):
+                    self.logger.debug(f"Fetching long-short ratio for {clean_symbol}")
+                    long_short_data = await self._fetch_with_retry(
+                        'fetch_long_short_ratio',
+                        clean_symbol,
+                        timeout=5
+                    )
+                    
+                    # Process the long-short data
+                    if long_short_data and isinstance(long_short_data, dict):
+                        if 'data' in long_short_data and long_short_data['data']:
+                            # Get most recent entry
+                            recent = long_short_data['data'][0]
+                            buy_ratio = float(recent.get('buyRatio', 0.5))
+                            sell_ratio = float(recent.get('sellRatio', 0.5))
+                            
+                            result['long_ratio'] = buy_ratio
+                            result['short_ratio'] = sell_ratio
+                            
+                            # Calculate SMI value (0-100 scale)
+                            index_value = buy_ratio * 100
+                            result['index'] = index_value
+                            
+                            # Determine trend
+                            if index_value > 60:
+                                result['trend'] = 'bullish'
+                            elif index_value < 40:
+                                result['trend'] = 'bearish'
+                            else:
+                                result['trend'] = 'neutral'
+                                
+                            # Track change over time
+                            if len(long_short_data['data']) > 1:
+                                # Compare current to previous
+                                previous = long_short_data['data'][1] 
+                                prev_buy_ratio = float(previous.get('buyRatio', 0.5))
+                                change = (buy_ratio - prev_buy_ratio) * 100  # Convert to percentage points
+                                result['change'] = change
+                                
+                                # Add change entry
+                                timestamp = int(recent.get('timestamp', time.time() * 1000))
+                                entry_time = datetime.fromtimestamp(timestamp / 1000).strftime('%H:%M')
+                                
+                                change_entry = {
+                                    'time': entry_time,
+                                    'value': index_value,
+                                    'change': change,
+                                    'type': 'increase' if change > 0 else 'decrease'
+                                }
+                                result['changes'].append(change_entry)
+            except Exception as e:
+                self.logger.warning(f"Error processing long-short ratio data: {e}")
+            except Exception as e:
+                self.logger.warning(f"Error fetching long-short ratio: {e}")
+                
+            # Fall back to direct API call using aiohttp
+            category = "linear"  # Default to USDT-margined contracts
+            # Construct endpoint carefully to avoid double slashes if self.exchange.rest_endpoint already has one
+            endpoint_path = f"/v5/market/account-ratio?category={category}&symbol={clean_symbol}&period=5min&limit=10"
+            base_url = self.exchange.rest_endpoint.strip('/')
+            url = f"{base_url}{endpoint_path}"
+            
+            # Check if we already populated data from the first attempt
+            if result.get('index', 50) == 50: # Check if it's still the default
+                self.logger.info(f"Attempting direct API call for long-short ratio: {url}")
+                import aiohttp
+                try:
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get(url, timeout=10) as response: # Added timeout
+                            if response.status == 200:
+                                api_data = await response.json()
+                                if api_data.get('retCode') == 0 and api_data.get('result') and api_data['result'].get('list'):
+                                    data_list = api_data['result']['list']
+                                    if data_list:
+                                        recent = data_list[0]
+                                        buy_ratio = float(recent.get('buyRatio', 0.5))
+                                        sell_ratio = float(recent.get('sellRatio', 0.5))
+                                        
+                                        result['long_ratio'] = buy_ratio
+                                        result['short_ratio'] = sell_ratio
+                                        
+                                        index_value = buy_ratio * 100
+                                        result['index'] = index_value
+                                        
+                                        if index_value > 60:
+                                            result['trend'] = 'bullish'
+                                        elif index_value < 40:
+                                            result['trend'] = 'bearish'
+                                        else:
+                                            result['trend'] = 'neutral'
+                                        
+                                        if len(data_list) > 1:
+                                            previous = data_list[1]
+                                            prev_buy_ratio = float(previous.get('buyRatio', 0.5))
+                                            change = (buy_ratio - prev_buy_ratio) * 100
+                                            result['change'] = change
+                                            
+                                            timestamp = int(recent.get('timestamp', time.time() * 1000))
+                                            entry_time = datetime.fromtimestamp(timestamp / 1000).strftime('%H:%M')
+                                            
+                                            change_entry = {
+                                                'time': entry_time,
+                                                'value': index_value,
+                                                'change': change,
+                                                'type': 'increase' if change > 0 else 'decrease'
+                                            }
+                                            result['changes'].append(change_entry)
+                                        self.logger.info(f"Successfully processed long-short ratio from direct API call for {clean_symbol}")
+                                    else:
+                                        self.logger.warning(f"Direct API call for long-short ratio for {clean_symbol} returned empty list.")
+                                else:
+                                    self.logger.warning(f"Direct API call for long-short ratio for {clean_symbol} failed or returned unexpected data: {api_data.get('retMsg')}")
+                            else:
+                                self.logger.warning(f"Direct API call for long-short ratio for {clean_symbol} returned status {response.status}")
+                except aiohttp.ClientError as ce:
+                    self.logger.warning(f"AIOHTTP client error during direct API call for {clean_symbol}: {ce}")
+                except asyncio.TimeoutError:
+                    self.logger.warning(f"Timeout during direct API call for long-short ratio for {clean_symbol}")
+                except Exception as e:
+                    self.logger.warning(f"Error with direct API call for long-short ratio for {clean_symbol}: {e}")
+            
+            # Update timestamp at the end
+            result['timestamp'] = int(time.time() * 1000) # Ensure timestamp is in ms
+            return result
             
         except Exception as e:
             self.logger.error(f"Error calculating smart money index: {str(e)}")
             return {
-                'index': 50.0,
-                'sentiment': "NEUTRAL",
-                'institutional_flow': "+0.0%",
-                'signals': [],
-                'key_zones': [],
-                'timestamp': int(datetime.now().timestamp() * 1000)
+                'index': 50,
+                'trend': 'neutral',
+                'long_ratio': 0.5,
+                'short_ratio': 0.5,
+                'changes': [],
+                'timestamp': int(time.time())
             }
     
     async def _calculate_whale_activity(self, symbols: List[str]) -> Dict[str, Any]:
@@ -1490,39 +1871,378 @@ class MarketReporter:
             return {}
     
     def _validate_report_data(self, report: Dict[str, Any]) -> Dict[str, Any]:
-        """Validate the generated market report data."""
-        if not report:
-            return {'valid': False, 'quality_score': 0}
-            
-        required_sections = {
-            'market_overview': False,
-            'futures_premium': False,
-            'smart_money_index': False,
-            'whale_activity': False,
-            'performance_metrics': False
-        }
+        """Validate the report data structure and add fallbacks where needed."""
+        validated = report.copy()
         
-        # Check section presence and data
+        # Check required sections
+        required_sections = [
+            'market_overview', 
+            'futures_premium', 
+            'smart_money_index',
+            'whale_activity',
+            'performance_metrics'
+        ]
+        
+        # Create fallback timestamp if missing
+        if 'timestamp' not in validated:
+            validated['timestamp'] = int(time.time())
+        
+        # Add current year for footer
+        validated['current_year'] = datetime.now().year
+        
+        # Process each required section
+        section_statuses = {}
+        
         for section in required_sections:
-            if section in report and report[section]:
-                required_sections[section] = True
+            # If section is completely missing, add fallback
+            if section not in validated:
+                self.logger.warning(f"Missing section '{section}' in report, using fallback")
+                validated[section] = self._get_fallback_content(section)
+                section_statuses[section] = "Added fallback (missing section)"
+            # If section exists but is empty (None or empty dict/list)
+            elif self._is_section_invalid(section, validated[section]):
+                self.logger.warning(f"Invalid or empty section '{section}' in report, using fallback")
+                validated[section] = self._get_fallback_content(section)
+                section_statuses[section] = "Added fallback (empty section)"
+            # Section exists but may need normalization
+            else:
+                # Normalize the section structure (add missing fields, transform data)
+                validated[section] = self._normalize_section_structure(section, validated[section])
+                section_statuses[section] = "OK"
+        
+        # Log validation status for all sections
+        section_validation_summary = ", ".join([f"{section}: {status}" for section, status in section_statuses.items()])
+        self.logger.info(f"Component validations: {section_validation_summary}")
+        
+        return validated
+    
+
+    def _is_section_invalid(self, section: str, section_data: Dict[str, Any]) -> bool:
+        """Check if a section is invalid based on its specific requirements."""
+        if section_data is None:
+            return True
+        
+        if not isinstance(section_data, dict):
+            return True
+            
+        # Check section-specific requirements
+        if section == 'market_overview':
+            # Market overview should have regime field
+            return not section_data.get('regime') or section_data.get('regime') == 'UNKNOWN'
+            
+        elif section == 'futures_premium':
+            # Futures premium should have premiums dict with data or timestamp
+            premiums = section_data.get('premiums', {})
+            timestamp = section_data.get('timestamp')
+            return not premiums and not timestamp
+            
+        elif section == 'smart_money_index':
+            # Smart money index should have either 'index' or 'smi_value' field
+            has_index = 'index' in section_data
+            has_smi_value = 'smi_value' in section_data  
+            has_timestamp = 'timestamp' in section_data
+            return not (has_index or has_smi_value) and not has_timestamp
+            
+        elif section == 'whale_activity':
+            # Whale activity should have whale_activity dict or timestamp
+            whale_data = section_data.get('whale_activity', {})
+            timestamp = section_data.get('timestamp')
+            return not whale_data and not timestamp
+            
+        elif section == 'performance_metrics':
+            # Performance metrics should have metrics dict or timestamp
+            metrics = section_data.get('metrics', {})
+            timestamp = section_data.get('timestamp')
+            return not metrics and not timestamp
+            
+        return False
+
+    def _get_fallback_content(self, section_name: str) -> Dict[str, Any]:
+        """Get fallback content for missing sections."""
+        fallbacks = {
+            'market_overview': {
+                'regime': 'NEUTRAL',
+                'volatility': 0.0,
+                'avg_change': 0.0,
+                'summary': 'Market overview data is currently unavailable.'
+            },
+            'futures_premium': {
+                'summary': 'Futures premium data is currently unavailable.',
+                'data': []
+            },
+            'smart_money_index': {
+                'current_value': 50,
+                'change': 0.0,
+                'signal': 'NEUTRAL',
+                'summary': 'Smart Money Index data is currently unavailable.'
+            },
+            'whale_activity': {
+                'transactions': [],
+                'summary': 'Whale activity data is currently unavailable.'
+            },
+            'performance_metrics': {
+                'api_latency': {'avg': 0, 'max': 0, 'p95': 0},
+                'error_rate': {'total': 0, 'by_type': {}, 'errors_per_minute': 0.0},
+                'data_quality': {'avg_score': 100, 'min_score': 100},
+                'processing_time': {'avg': 0.0, 'max': 0.0},
+                'request_rate': {'total_requests': 0, 'requests_per_minute': 0.0, 'by_endpoint': {}}
+            }
+        }
+        
+        return fallbacks.get(section_name, {})
+    
+    def _normalize_section_structure(self, section: str, section_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Ensure each section has the expected structure with properly formatted summaries.
+        
+        Args:
+            section: Name of the report section
+            section_data: Raw data for the section
+            
+        Returns:
+            Normalized section data with required fields for template
+        """
+        if not section_data:
+            return self._get_fallback_content(section)
+            
+        normalized = section_data.copy()
+        
+        # Add a timestamp if not present
+        if 'timestamp' not in normalized:
+            normalized['timestamp'] = int(time.time())
+        
+        # Generate appropriate summaries based on section type
+        if section == 'market_overview':
+            # Ensure required fields exist with default values
+            if 'regime' not in normalized:
+                normalized['regime'] = 'NEUTRAL'
                 
-        # Calculate quality score
-        section_scores = {
-            'market_overview': 25,
-            'futures_premium': 20,
-            'smart_money_index': 20,
-            'whale_activity': 20,
-            'performance_metrics': 15
-        }
+            if 'volatility' not in normalized:
+                normalized['volatility'] = 0
+                
+            if 'avg_change' not in normalized:
+                normalized['avg_change'] = 0
+                
+            # Create a summary if not present
+            if 'summary' not in normalized:
+                regime = normalized['regime']
+                volatility = normalized.get('volatility', 0)
+                avg_change = normalized.get('avg_change', 0)
+                
+                direction = 'upward' if avg_change > 0 else 'downward' if avg_change < 0 else 'neutral'
+                vol_level = 'high' if volatility > 2 else 'moderate' if volatility > 1 else 'low'
+                
+                normalized['summary'] = (
+                    f"The market is currently in a {regime.lower()} regime with "
+                    f"{vol_level} volatility ({volatility:.2f}%) and showing "
+                    f"{direction} price movement ({avg_change:.2f}%)."
+                )
+                
+        elif section == 'futures_premium':
+            # Convert string values to float if needed
+            for key in ['average_premium', 'max_premium', 'min_premium']:
+                if key in normalized and isinstance(normalized[key], str):
+                    try:
+                        normalized[key] = float(normalized[key].replace('%', '').strip())
+                    except (ValueError, TypeError):
+                        normalized[key] = 0
+            
+            # Ensure premium data exists
+            if 'data' not in normalized or not normalized['data']:
+                if 'premiums' in normalized:
+                    # Transform premiums to data format
+                    normalized['data'] = []
+                    for symbol, premium in normalized['premiums'].items():
+                        normalized['data'].append({
+                            'symbol': symbol,
+                            'premium': premium,
+                            'premium_value': float(premium.replace('%', '')) if isinstance(premium, str) else premium
+                        })
+                else:
+                    normalized['data'] = []
+                    
+            # Create a summary if not present
+            if 'summary' not in normalized:
+                avg_premium = normalized.get('average_premium', 0)
+                avg_premium = float(avg_premium) if isinstance(avg_premium, str) else avg_premium
+                
+                sentiment = 'bullish' if avg_premium > 0.1 else 'bearish' if avg_premium < -0.1 else 'neutral'
+                normalized['summary'] = f"Futures market is showing a {sentiment} bias with average premium of {avg_premium:.2f}%."
+                
+        elif section == 'smart_money_index':
+            # Handle field name transitions: smi_value -> index
+            if 'smi_value' in normalized and 'index' not in normalized:
+                normalized['index'] = normalized['smi_value']
+                
+            # Ensure required fields exist
+            if 'current_value' not in normalized and 'value' in normalized:
+                normalized['current_value'] = normalized['value']
+                
+            if 'current_value' not in normalized and 'index' in normalized:
+                normalized['current_value'] = normalized['index']
+                
+            if 'current_value' not in normalized:
+                normalized['current_value'] = 50.0  # Neutral value
+                
+            # Make sure index field exists too for template compatibility
+            if 'index' not in normalized:
+                normalized['index'] = normalized['current_value']
+                
+            # Add change if missing
+            if 'change' not in normalized:
+                normalized['change'] = 0.0
+                
+            # Add signal if missing
+            if 'signal' not in normalized:
+                value = float(normalized['current_value'])
+                if value > 60:
+                    normalized['signal'] = 'BULLISH'
+                elif value < 40:
+                    normalized['signal'] = 'BEARISH'
+                else:
+                    normalized['signal'] = 'NEUTRAL'
+                    
+            # Create a summary if not present
+            if 'summary' not in normalized:
+                value = normalized['current_value']
+                change = normalized.get('change', 0)
+                signal = normalized.get('signal', 'NEUTRAL')
+                
+                change_text = f"up {change:.2f}%" if change > 0 else f"down {abs(change):.2f}%" if change < 0 else "unchanged"
+                
+                normalized['summary'] = (
+                    f"Smart money index is at {value:.1f} ({change_text}), "
+                    f"indicating a {signal.lower()} institutional bias."
+                )
+                
+        elif section == 'whale_activity':
+            # Ensure transactions field exists
+            if 'transactions' not in normalized:
+                normalized['transactions'] = []
+                
+            # Format transactions properly if they exist
+            if normalized['transactions']:
+                for tx in normalized['transactions']:
+                    if 'symbol' not in tx and 'pair' in tx:
+                        tx['symbol'] = tx['pair']
+                        
+                    if 'side' not in tx:
+                        # Try to determine side from other fields
+                        if 'buy' in tx or 'usd_value' in tx and float(tx['usd_value']) > 0:
+                            tx['side'] = 'buy'
+                        elif 'sell' in tx or 'usd_value' in tx and float(tx['usd_value']) < 0:
+                            tx['side'] = 'sell'
+                        else:
+                            tx['side'] = 'unknown'
+                        
+                    # Ensure usd_value exists
+                    if 'usd_value' not in tx and 'value_usd' in tx:
+                        tx['usd_value'] = tx['value_usd']
+                    elif 'usd_value' not in tx and 'amount' in tx and 'price' in tx:
+                        tx['usd_value'] = float(tx['amount']) * float(tx['price'])
+                    elif 'usd_value' not in tx:
+                        tx['usd_value'] = 0
+                        
+            # Create a summary if not present
+            if 'summary' not in normalized:
+                txs = normalized['transactions']
+                
+                if not txs:
+                    normalized['summary'] = "No significant whale activity detected in the last 24 hours."
+                else:
+                    # Calculate total buy and sell volume
+                    buy_vol = sum(float(t['usd_value']) for t in txs if t.get('side', '').lower() == 'buy')
+                    sell_vol = sum(abs(float(t['usd_value'])) for t in txs if t.get('side', '').lower() == 'sell')
+                    
+                    # Determine bias
+                    if buy_vol > sell_vol * 1.5:
+                        bias = "strong buying"
+                    elif buy_vol > sell_vol * 1.2:
+                        bias = "buying"
+                    elif sell_vol > buy_vol * 1.5:
+                        bias = "strong selling"
+                    elif sell_vol > buy_vol * 1.2:
+                        bias = "selling"
+                    else:
+                        bias = "neutral"
+                        
+                    # Format summary
+                    tx_count = len(txs)
+                    total_vol = buy_vol + sell_vol
+                    
+                    normalized['summary'] = (
+                        f"Whale activity shows a {bias} bias with {tx_count} large transactions "
+                        f"totaling ${self._format_number(total_vol)}."
+                    )
+    
+        elif section == 'performance_metrics':
+            # Ensure required fields exist
+            default_metrics = {
+                'api_latency': {'avg': 0, 'max': 0, 'p95': 0},
+                'error_rate': {'total': 0, 'by_type': {}, 'errors_per_minute': 0.0},
+                'data_quality': {'avg_score': 100, 'min_score': 100},
+                'processing_time': {'avg': 0, 'max': 0}
+            }
+            
+            for key, default in default_metrics.items():
+                if key not in normalized:
+                    normalized[key] = default
+                    
+        return normalized
+    
+    def _get_volume_description(self, volume: float) -> str:
+        """Generate a qualitative description of trading volume.
         
-        quality_score = sum(section_scores[section] for section, present in required_sections.items() if present)
+        Args:
+            volume: Trading volume value
+            
+        Returns:
+            Text description of volume level
+        """
+        if volume == 0:
+            return "unavailable"
+        elif volume > 1000000000:
+            return "extremely high"
+        elif volume > 500000000:
+            return "very high"
+        elif volume > 100000000:
+            return "high"
+        elif volume > 50000000:
+            return "moderate"
+        elif volume > 10000000:
+            return "low"
+        else:
+            return "very low"
+    
+    def _normalize_data_for_template(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Format data specifically for template rendering."""
+        normalized = data.copy()
         
-        return {
-            'valid': all(required_sections.values()),
-            'quality_score': quality_score,
-            'sections': required_sections
-        }
+        # Prepare top performers in expected format if it exists but not in expected format
+        if 'top_performers' in normalized and isinstance(normalized['top_performers'], list):
+            # Convert from list to expected structure with gainers and losers
+            sorted_performers = sorted(normalized['top_performers'], key=lambda x: x.get('change_percent', 0), reverse=True)
+            
+            gainers = []
+            losers = []
+            
+            for performer in sorted_performers:
+                change = performer.get('change_percent', 0)
+                entry = {
+                    'symbol': performer.get('symbol', 'UNKNOWN'),
+                    'change': abs(change)
+                }
+                
+                if change >= 0:
+                    gainers.append(entry)
+                else:
+                    losers.append(entry)
+            
+            normalized['top_performers'] = {
+                'gainers': gainers[:5],  # Top 5 gainers
+                'losers': losers[:5]     # Top 5 losers
+            }
+            
+        return normalized
 
     async def run_scheduled_reports(self):
         """Run scheduled market reports at specified times."""
@@ -1672,21 +2392,13 @@ class MarketReporter:
                                                 }
                                             ]
                                             
-                                            # Add JSON file if available
-                                            if 'json_path' in report and os.path.exists(report['json_path']):
-                                                files.append({
-                                                    'path': report['json_path'],
-                                                    'filename': os.path.basename(report['json_path']),
-                                                    'description': 'Market Report JSON'
-                                                })
-                                                
-                                            # Add note about attachments
+                                            # Add note about PDF attachment only
                                             if 'content' in formatted_report:
                                                 formatted_report['content'] += "\n\n📑 PDF report attached"
                                             else:
                                                 formatted_report['content'] = "📑 PDF report attached"
                                                 
-                                            # Send with file attachments
+                                            # Send with PDF file attachment only
                                             await self.alert_manager.send_discord_webhook_message(formatted_report, files=files)
                                         else:
                                             # Send without attachments
@@ -1721,9 +2433,9 @@ class MarketReporter:
             raise
 
     async def format_market_report(self, overview, top_pairs, market_regime=None, smart_money=None, whale_activity=None):
-        """Format market report for Discord webhook with optimized layout."""
+        """Format market report for Discord webhook with optimized, concise layout."""
         try:
-            self.logger.info("Starting market report formatting")
+            self.logger.info("Starting optimized market report formatting")
             # Get current time for timestamps
             utc_now = datetime.utcnow()
             
@@ -1731,7 +2443,7 @@ class MarketReporter:
             dashboard_base_url = "https://virtuoso.internal-dashboard.com"
             virtuoso_logo_url = "https://i.imgur.com/4M34hi2.png"
             
-            # Format the report into Discord-friendly embeds
+            # Format the report into Discord-friendly embeds (optimized to 3 embeds)
             embeds = []
             
             # Log incoming data for debugging
@@ -1739,454 +2451,184 @@ class MarketReporter:
             self.logger.info(f"Smart money data available: {bool(smart_money)}")
             self.logger.info(f"Whale activity data available: {bool(whale_activity)}")
             
-            # --- Market Overview Embed (Blue) - Optimized layout ---
+            # --- 1. Market Overview Embed (Blue) - Key metrics only ---
             if overview:
-                # Construct a compact description
+                # Extract key metrics
+                daily_change = overview.get('daily_change', 0)
+                regime = overview.get('regime', 'UNKNOWN')
+                volatility = overview.get('volatility', 0)
+                btc_dominance = overview.get('btc_dominance', '0.0')
+                total_volume = overview.get('total_volume', 0)
+                
+                # Market state emoji and description
+                if daily_change >= 0:
+                    trend_emoji = "📈"
+                    trend_color = 5763719  # Green
+                else:
+                    trend_emoji = "📉" 
+                    trend_color = 15158332  # Red
+                
+                # Compact market description
                 market_desc = (
-                    f"**Global Market Overview | {utc_now.strftime('%B %d, %Y')}**\n\n"
-                    f"{'📈' if overview.get('daily_change', 0) >= 0 else '📉'} "
-                    f"BTC 24h: **{overview.get('daily_change', 0):+.2f}%** | "
-                    f"💰 Vol: **${self._format_number(overview.get('total_volume', 0))}** | "
-                    f"📊 BTC Dom: **{overview.get('btc_dominance', '0.0')}%**"
+                    f"{trend_emoji} **BTC 24h**: {daily_change:+.2f}% | "
+                    f"**Vol**: ${self._format_number(total_volume)} | "
+                    f"**Dom**: {btc_dominance}%\n"
+                    f"**Regime**: {regime} | **Volatility**: {volatility:.1f}%"
                 )
                 
-                # Extract important metrics
-                regime = overview.get('regime', 'UNKNOWN')
-                trend_strength = float(overview.get('trend_strength', '0.0%').replace('%', ''))
-                volatility = overview.get('volatility', 0)
+                # Key levels (simplified)
+                support = overview.get('btc_support', '0')
+                resistance = overview.get('btc_resistance', '0')
+                sentiment = overview.get('sentiment', 'Neutral')
                 
-                # Create the embed with optimized field layout
                 market_embed = {
                     "title": "📊 Market Overview",
-                    "color": 3447003,  # Blue
+                    "color": trend_color,
                     "url": f"{dashboard_base_url}/overview",
                     "description": market_desc,
-                    "fields": []
-                }
-                
-                # --- Group 1: Market Metrics (First Row) ---
-                market_embed["fields"].append({
-                    "name": "💪 Strength",
-                    "value": f"**{overview.get('strength', trend_strength)}%**\n{regime}",
-                            "inline": True
-                })
-                
-                market_embed["fields"].append({
-                    "name": "📊 Volatility",
-                    "value": f"**{volatility:.1f}%**\n{overview.get('vol_regime', 'Normal')}",
-                            "inline": True
-                })
-                
-                market_embed["fields"].append({
-                    "name": "💧 Liquidity",
-                    "value": f"**{overview.get('liquidity', '0')}**\n{'High' if int(overview.get('liquidity', 0)) > 75 else 'Medium' if int(overview.get('liquidity', 0)) > 50 else 'Low'}",
-                            "inline": True
-                })
-                
-                # --- Group 2: Key Price Levels (Second Row) ---
-                market_embed["fields"].append({
-                    "name": "BTC Support 🛡️",
-                    "value": f"**${overview.get('btc_support', '0')}**",
-                            "inline": True
-                })
-                
-                market_embed["fields"].append({
-                    "name": "BTC Resistance 🧱",
-                    "value": f"**${overview.get('btc_resistance', '0')}**",
-                            "inline": True
-                })
-                
-                market_embed["fields"].append({
-                    "name": "Sentiment 🧠",
-                    "value": f"**{overview.get('sentiment', 'Neutral')}**",
-                    "inline": True
-                })
-                
-                # --- Group 3: Market Flows (Non-inline) ---
-                flows = overview.get('flows', {})
-                if flows:
-                    # Filter out non-numeric values and timestamps
-                    flow_items = [(k, v) for k, v in flows.items() 
-                                if isinstance(v, (int, float)) and k != 'timestamp']
-                    
-                    # Sort by absolute value to show most significant first
-                    flow_items.sort(key=lambda x: abs(x[1]), reverse=True)
-                    
-                    # Format the flow text
-                    flow_lines = []
-                    for key, value in flow_items[:5]:  # Limit to top 5 most significant flows
-                        direction = "↗️" if value > 0 else "↘️"
-                        flow_lines.append(f"{direction} **{key.replace('_', ' ').title()}**: ${abs(value):,.0f}")
-                    
-                    flow_text = "\n".join(flow_lines)
-                else:
-                    flow_text = "No flow data available"
-                
-                market_embed["fields"].append({
-                    "name": "💰 Market Flows (24h)",
-                    "value": flow_text,
-                            "inline": False
-                })
-                
-                # Add Footer
-                market_embed["footer"] = {
-                    "text": f"Virtuoso Engine | Data as of {utc_now.strftime('%H:%M:%S UTC')}",
-                    "icon_url": virtuoso_logo_url
-                }
-                market_embed["timestamp"] = utc_now.isoformat() + 'Z'
-                
-                embeds.append(market_embed)
-            
-            # --- Futures Premium Embed (Yellow) - Optimized layout ---
-            futures_premium = None
-            if 'futures_premium' in globals():
-                futures_premium = futures_premium
-                
-            # Try to find a BTC futures premium data point
-            btc_premium_data = None
-            btc_premium_value = 0
-            
-            if futures_premium and 'premiums' in futures_premium:
-                for symbol, data in futures_premium['premiums'].items():
-                    if 'BTC' in symbol:
-                        btc_premium_data = data
-                        premium_value_str = data.get('premium', '0.0%')
-                        btc_premium_value = float(premium_value_str.replace('%', ''))
-                        break
-            
-            # Create futures premium embed if we have data
-            if btc_premium_data:
-                premium_type = "📈 Contango" if btc_premium_value >= 0 else "📉 Backwardation"
-                premium_desc = f"Futures are trading in **{premium_type.split(' ')[1]}** with a premium of **{btc_premium_data.get('premium', '0.0%')}**"
-                
-                embeds.append({
-                    "title": "🔄 Futures Premium Analysis",
-                    "color": 16776960,  # Yellow
-                    "url": f"{dashboard_base_url}/futures",
-                    "description": premium_desc,
                     "fields": [
-                        # Group 1: Key price comparisons (inline row)
                         {
-                            "name": "Mark Price",
-                            "value": f"${self._format_number(btc_premium_data.get('mark_price', 0))}",
+                            "name": "🛡️ Support / 🧱 Resistance",
+                            "value": f"**${support}** / **${resistance}**",
                             "inline": True
                         },
                         {
-                            "name": "Index Price",
-                            "value": f"${self._format_number(btc_premium_data.get('index_price', 0))}",
+                            "name": "🧠 Sentiment",
+                            "value": f"**{sentiment}**",
                             "inline": True
-                        },
-                        {
-                            "name": "Spread",
-                            "value": f"${self._format_number(abs(btc_premium_data.get('mark_price', 0) - btc_premium_data.get('index_price', 0)))}",
-                            "inline": True
-                        },
-                        # Group 2: Quarterly futures info (non-inline)
-                        {
-                            "name": "Quarterly Futures",
-                            "value": f"Price: ${self._format_number(btc_premium_data.get('quarterly_price', 0))}\nBasis: {btc_premium_data.get('quarterly_basis', '0.0%')}\nContracts: {btc_premium_data.get('quarterly_futures_count', 0)}",
-                            "inline": False
                         }
                     ],
                     "footer": {
-                        "text": f"Virtuoso Engine | Data as of {utc_now.strftime('%H:%M:%S UTC')}",
+                        "text": f"Virtuoso Engine | {utc_now.strftime('%H:%M:%S UTC')}",
                         "icon_url": virtuoso_logo_url
                     },
                     "timestamp": utc_now.isoformat() + 'Z'
-                })
-            else:
-                # Default futures premium embed if no data is available
-                embeds.append({
-                    "title": "🔄 Futures Premium Analysis",
-                    "color": 16776960,  # Yellow
-                    "description": "Could not retrieve detailed BTC futures premium data at this time.",
-                    "fields": [],
-                    "footer": {
-                        "text": f"Virtuoso Engine | Data as of {utc_now.strftime('%H:%M:%S UTC')}",
-                        "icon_url": virtuoso_logo_url
-                    },
-                    "timestamp": utc_now.isoformat() + 'Z'
-                })
+                }
+                
+                embeds.append(market_embed)
             
-            # --- Smart Money Embed (Pink) - Optimized layout ---
+            # --- 2. Institutional Activity Embed (Purple) - Combined Smart Money + Whale Activity ---
+            institutional_data = []
             smi_value = 50.0
             smi_sentiment = "NEUTRAL"
-            inst_flow = "+0.0%"
-            key_zones_text = "No significant zones detected"
             
+            # Smart Money data
             if smart_money:
                 smi_value = smart_money.get('index', 50.0)
                 smi_sentiment = smart_money.get('sentiment', "NEUTRAL")
                 inst_flow = smart_money.get('institutional_flow', "+0.0%")
                 
-                # Add sentiment emoji for clearer visual indicator
-                sentiment_emoji = "⚖️"  # Neutral
+                # Smart money emoji
                 if smi_sentiment == "BULLISH":
-                    sentiment_emoji = "🔼"
+                    smi_emoji = "🟢"
                 elif smi_sentiment == "BEARISH":
-                    sentiment_emoji = "🔽"
-                
-                # Format key zones if available
-                if 'key_zones' in smart_money and smart_money['key_zones']:
-                    key_zones = smart_money['key_zones']
-                    if len(key_zones) > 0:
-                        zones_list = []
-                        for zone in key_zones[:3]:  # Show top 3 zones
-                            zone_type = zone.get('type', 'unknown')
-                            symbol = zone.get('symbol', '')
-                            strength = zone.get('strength', 0)
-                            icon = "🟢" if zone_type == 'accumulation' else "🔴"
-                            zones_list.append(f"{icon} **{symbol}**: {strength:.1f}% Strength ({zone_type})")
-                        key_zones_text = "\n".join(zones_list)
-                
-                # Add the smart money embed with detailed information
-                embeds.append({
-                    "title": "🧠 Smart Money Flow",
-                    "color": 16738740,  # Pink
-                    "url": f"{dashboard_base_url}/smart-money",
-                    "description": f"The Smart Money Index is **{smi_value:.1f}/100** ({sentiment_emoji} **{smi_sentiment}**), indicating institutional flow of **{inst_flow}**.",
-                    "fields": [
-                        # Main metrics as a code block for visual emphasis
-                        {
-                            "name": "Smart Money Index",
-                            "value": f"```\n{smi_value:.1f}/100 | Flow: {inst_flow} | Bias: {smi_sentiment}\n```",
-                            "inline": False
-                        },
-                        # Key zones in a separate section
-                        {
-                            "name": "Key Accumulation/Distribution Zones",
-                            "value": key_zones_text,
-                            "inline": False
-                        }
-                    ],
-                    "footer": {
-                        "text": f"Virtuoso Engine | Data as of {utc_now.strftime('%H:%M:%S UTC')}",
-                        "icon_url": virtuoso_logo_url
-                    },
-                    "timestamp": utc_now.isoformat() + 'Z'
-                })
-            else:
-                # Simple embed if no smart money data
-                embeds.append({
-                    "title": "🧠 Smart Money Flow",
-                    "color": 16738740,  # Pink
-                    "url": f"{dashboard_base_url}/smart-money",
-                    "description": "Smart money data currently unavailable.",
-                    "footer": {
-                        "text": f"Virtuoso Engine | Data as of {utc_now.strftime('%H:%M:%S UTC')}",
-                        "icon_url": virtuoso_logo_url
-                    },
-                    "timestamp": utc_now.isoformat() + 'Z'
-                })
-                
-            # --- Whale Activity Embed (Blue) - Optimized layout ---
-            if whale_activity and 'significant_activity' in whale_activity:
-                significant = whale_activity.get('significant_activity', {})
-                
-                if significant and whale_activity.get('has_significant_activity', False):
-                    whale_desc = "**Analysis of significant market activity by large players**"
-                    whale_lines = []
-                    net_usd_value_total = 0
-                    
-                    for symbol, data in significant.items():
-                        direction = "buying" if data.get('net_whale_volume', 0) > 0 else "selling"
-                        volume = abs(data.get('net_whale_volume', 0))
-                        usd_value = abs(data.get('usd_value', 0))
-                        net_usd_value_total += data.get('usd_value', 0)  # Keep sign for total
-                        
-                        icon = "🟢" if direction == "buying" else "🔴"
-                        whale_lines.append(f"{icon} **{symbol}**: {volume:.2f} units (${self._format_number(usd_value)}) {direction}")
-                    
-                    # Activity details
-                    whale_activity_text = "\n".join(whale_lines)
-                    
-                    # Summary data
-                    net_direction = "buying" if net_usd_value_total > 0 else "selling"
-                    summary = f"Net whale flow: **{net_direction}** ${self._format_number(abs(net_usd_value_total))}"
-                    
-                    whale_embed = {
-                        "title": "🐋 Whale Activity",
-                "color": 3447003,  # Blue
-                        "url": f"{dashboard_base_url}/whales",
-                        "description": whale_desc,
-                        "fields": [
-                            # Summary first (non-inline)
-                            {
-                                "name": "📊 Summary",
-                                "value": summary,
-                                "inline": False
-                            },
-                            # Order book activity
-                            {
-                                "name": "📚 Order Book Imbalances",
-                                "value": whale_activity_text,
-                                "inline": False
-                            }
-                        ],
-                        "footer": {
-                            "text": f"Virtuoso Engine | Data as of {utc_now.strftime('%H:%M:%S UTC')}",
-                            "icon_url": virtuoso_logo_url
-                        },
-                        "timestamp": utc_now.isoformat() + 'Z'
-                    }
-                    
-                    # Add transactions field if available
-                    if 'large_transactions' in whale_activity and whale_activity['large_transactions']:
-                        transaction_text = "No significant transactions detected"
-                        transactions = whale_activity['large_transactions']
-                        
-                        if transactions:
-                            transaction_lines = []
-                            top_transactions = sorted(transactions, 
-                                                    key=lambda x: abs(x.get('usd_value', 0)), 
-                                                    reverse=True)[:3]
-                            
-                            for tx in top_transactions:
-                                tx_type = "BUY" if tx.get('usd_value', 0) > 0 else "SELL"
-                                icon = "🟢" if tx_type == "BUY" else "🔴"
-                                asset = tx.get('symbol', 'Unknown')
-                                value = abs(tx.get('usd_value', 0))
-                                
-                                transaction_lines.append(
-                                    f"{icon} **{asset}**: {tx_type} ${self._format_number(value)}"
-                                )
-                            
-                            if transaction_lines:
-                                transaction_text = "\n".join(transaction_lines)
-                                
-                        whale_embed["fields"].append({
-                            "name": "💸 Large Transactions",
-                            "value": transaction_text,
-                            "inline": False
-                        })
-                    
-                    embeds.append(whale_embed)
+                    smi_emoji = "🔴"
                 else:
-                    # No significant whale activity
-                    whale_desc = "No significant whale activity detected in the monitored pairs."
-                    whale_activity_text = "All monitored pairs show normal order book distribution."
-                    summary = "No notable whale flows in the current period."
-                    
-                    embeds.append({
-                        "title": "🐋 Whale Activity",
-                        "color": 3447003,  # Blue
-                        "url": f"{dashboard_base_url}/whales",
-                        "description": whale_desc,
-                        "fields": [
-                            {
-                                "name": "Summary",
-                                "value": summary,
-                                "inline": False
-                            },
-                            {
-                                "name": "Market Activity",
-                                "value": whale_activity_text,
-                                "inline": False
-                            }
-                        ],
-                        "footer": {
-                            "text": f"Virtuoso Engine | Data as of {utc_now.strftime('%H:%M:%S UTC')}",
-                            "icon_url": virtuoso_logo_url
-                        },
-                        "timestamp": utc_now.isoformat() + 'Z'
-                    })
+                    smi_emoji = "⚪"
+                
+                institutional_data.append(f"{smi_emoji} **Smart Money**: {smi_value:.1f}/100 ({smi_sentiment})")
+                institutional_data.append(f"📊 **Institutional Flow**: {inst_flow}")
             
-            # --- Market Outlook Embed (Purple) ---
+            # Whale Activity data
+            whale_summary = "No significant whale activity detected"
+            if whale_activity and whale_activity.get('has_significant_activity', False):
+                significant = whale_activity.get('significant_activity', {})
+                if significant:
+                    whale_flows = []
+                    net_flow = 0
+                    
+                    for symbol, data in list(significant.items())[:3]:  # Top 3 only
+                        direction = "📈 BUY" if data.get('net_whale_volume', 0) > 0 else "📉 SELL"
+                        usd_value = abs(data.get('usd_value', 0))
+                        net_flow += data.get('usd_value', 0)
+                        whale_flows.append(f"**{symbol}**: {direction} ${self._format_number(usd_value)}")
+                    
+                    if whale_flows:
+                        net_direction = "📈 NET BUYING" if net_flow > 0 else "📉 NET SELLING"
+                        whale_summary = f"{net_direction} ${self._format_number(abs(net_flow))}\n" + "\n".join(whale_flows)
+            
+            # Create institutional activity embed
+            institutional_embed = {
+                "title": "🏦 Institutional Activity",
+                "color": 10181046,  # Purple
+                "url": f"{dashboard_base_url}/institutional",
+                "description": "\n".join(institutional_data) if institutional_data else "Institutional data currently unavailable",
+                "fields": [
+                    {
+                        "name": "🐋 Whale Activity",
+                        "value": whale_summary,
+                        "inline": False
+                    }
+                ],
+                "footer": {
+                    "text": f"Virtuoso Engine | {utc_now.strftime('%H:%M:%S UTC')}",
+                    "icon_url": virtuoso_logo_url
+                },
+                "timestamp": utc_now.isoformat() + 'Z'
+            }
+            
+            embeds.append(institutional_embed)
+            
+            # --- 3. Trading Outlook Embed (Dynamic color based on bias) ---
             if overview:
-                # Extract key metrics
+                # Determine overall bias and risk
                 regime = overview.get('regime', 'UNKNOWN')
                 trend_strength = float(overview.get('trend_strength', '0.0%').replace('%', ''))
                 volatility = overview.get('volatility', 0)
                 
-                # Create dynamic descriptions based on actual data
-                regime_desc = "consolidating"
-                if "BULLISH" in regime:
-                    regime_desc = "in an uptrend"
-                elif "BEARISH" in regime:
-                    regime_desc = "in a downtrend"
-                elif "CHOPPY" in regime or "VOLATILE" in regime:
-                    regime_desc = "showing choppy conditions"
-                elif "RANGING" in regime:
-                    regime_desc = "range-bound"
+                # Dynamic bias determination
+                overall_bias = "NEUTRAL"
+                bias_color = 3447003  # Blue for neutral
+                bias_emoji = "⚪"
                 
-                # Simplified bias
-                bias = "neutral"
-                if "BULLISH" in regime:
-                    bias = "bullish"
-                elif "BEARISH" in regime:
-                    bias = "bearish"
+                if "BULLISH" in regime or (smi_value > 60 and trend_strength > 50):
+                    overall_bias = "BULLISH"
+                    bias_color = 5763719  # Green
+                    bias_emoji = "🟢"
+                elif "BEARISH" in regime or (smi_value < 40 and trend_strength < 30):
+                    overall_bias = "BEARISH"
+                    bias_color = 15158332  # Red
+                    bias_emoji = "🔴"
                 
-                # Simplified volatility description
-                vol_desc = "moderate"
+                # Risk level
+                risk_level = "MODERATE"
                 if volatility > 5:
-                    vol_desc = "high"
-                elif volatility < 1:
-                    vol_desc = "low"
+                    risk_level = "HIGH"
+                elif volatility < 1.5:
+                    risk_level = "LOW"
                 
-                # Simplified trend strength
-                trend_desc = "moderate"
-                if trend_strength > 100:
-                    trend_desc = "strong"
-                elif trend_strength < 30:
-                    trend_desc = "weak"
+                # Actionable outlook
+                if overall_bias == "BULLISH":
+                    outlook_text = f"Market showing **bullish bias** with {trend_strength:.1f}% trend strength. Consider **long positions** on pullbacks to support levels."
+                elif overall_bias == "BEARISH":
+                    outlook_text = f"Market showing **bearish bias** with {trend_strength:.1f}% trend strength. Consider **short positions** on rallies to resistance levels."
+                else:
+                    outlook_text = f"Market in **consolidation phase**. Wait for clear directional break above resistance or below support before positioning."
                 
-                # Simplified institutional flow
-                inst_flow = "neutral"
-                if smart_money:
-                    smi_value = smart_money.get('index', 50.0)
-                    if smi_value > 65:
-                        inst_flow = "bullish"
-                    elif smi_value < 35:
-                        inst_flow = "bearish"
-                
-                # Construct a more concise market outlook
-                market_outlook = (
-                    f"The market is currently **{regime_desc}** with a **{bias}** bias. "
-                    f"Trend strength is **{trend_desc}** at **{trend_strength:.1f}%** with **{vol_desc}** volatility."
-                )
-                
-                # Create enhanced outlook embed with metrics as fields
                 outlook_embed = {
-                    "title": "🔮 Market Outlook",
-                "color": 10181046,  # Purple
+                    "title": f"🎯 Trading Outlook",
+                    "color": bias_color,
                     "url": f"{dashboard_base_url}/outlook",
-                "description": market_outlook,
+                    "description": outlook_text,
                     "fields": [
-                        # First row - key metrics
                         {
-                            "name": "Market Regime",
-                            "value": f"**{regime}**",
+                            "name": "📊 Market Bias",
+                            "value": f"{bias_emoji} **{overall_bias}**",
                             "inline": True
                         },
                         {
-                            "name": "Trend Direction",
-                            "value": f"**{bias.title()}**",
+                            "name": "⚠️ Risk Level",
+                            "value": f"**{risk_level}**",
                             "inline": True
                         },
                         {
-                            "name": "Risk Level",
-                            "value": f"**{vol_desc.title()}**",
-                            "inline": True
-                        },
-                        # Second row - additional metrics
-                        {
-                            "name": "Trend Strength",
+                            "name": "💪 Trend Strength",
                             "value": f"**{trend_strength:.1f}%**",
-                            "inline": True
-                        },
-                        {
-                            "name": "Volatility",
-                            "value": f"**{volatility:.1f}%**",
-                            "inline": True
-                        },
-                        {
-                            "name": "Institutional Flow",
-                            "value": f"**{inst_flow.title()}**",
                             "inline": True
                         }
                     ],
                     "footer": {
-                        "text": f"Virtuoso Engine | Data as of {utc_now.strftime('%H:%M:%S UTC')}",
+                        "text": f"Virtuoso Engine | {utc_now.strftime('%H:%M:%S UTC')}",
                         "icon_url": virtuoso_logo_url
                     },
                     "timestamp": utc_now.isoformat() + 'Z'
@@ -2194,60 +2636,26 @@ class MarketReporter:
                 
                 embeds.append(outlook_embed)
             
-            # --- System Status Embed (Green) ---
-            system_embed = {
-                "title": "⚙️ System Status",
-                "color": 5763719,  # Green
-                "url": f"{dashboard_base_url}/status",
-                "description": "All systems operating normally with optimal data quality.",
-                "fields": [
-                    # Status indicators as inline fields
-                    {
-                        "name": "Market Monitor",
-                        "value": "✅ Active",
-                        "inline": True
-                    },
-                    {
-                        "name": "Data Collection",
-                        "value": "✅ Running",
-                        "inline": True
-                    },
-                    {
-                        "name": "Analysis Engine",
-                        "value": "✅ Ready",
-                        "inline": True
-                    },
-                    # Performance metrics
-                    {
-                        "name": "Performance",
-                        "value": f"Quality: **100%** | Latency: **Normal** | Errors: **0.0%**",
-                        "inline": False
-                    }
-                ],
-                "footer": {
-                    "text": f"Virtuoso Engine | Data as of {utc_now.strftime('%H:%M:%S UTC')}",
-                    "icon_url": virtuoso_logo_url
-                },
-                "timestamp": utc_now.isoformat() + 'Z'
-            }
-            
-            embeds.append(system_embed)
-            
-            # --- Final Structure ---
+            # --- Final Structure - Optimized for readability ---
             return {
-                "content": f"# 🌟 VIRTUOSO Market Intelligence\n_Analysis for {utc_now.strftime('%B %d, %Y - %H:%M UTC')}_",
+                "content": f"# 🌟 Market Intelligence Report\n*{utc_now.strftime('%B %d, %Y - %H:%M UTC')}*",
                 "embeds": embeds,
                 "username": "Virtuoso Market Monitor",
                 "avatar_url": virtuoso_logo_url
             }
+            
         except Exception as e:
             self.logger.error(f"Error formatting market report: {str(e)}")
             self.logger.debug(traceback.format_exc())
             # Return a simplified error message
             return {
-                "content": f"Error generating market report: {str(e)}",
-                "embeds": [{"title": "Error Report", "color": 15158332, "description": "Failed to format report."}]
-            } 
+                "content": f"⚠️ Error generating market report: {str(e)}",
+                "embeds": [{
+                    "title": "Report Generation Error", 
+                    "color": 15158332, 
+                    "description": "Failed to format market intelligence report. Please check system logs."
+                }]
+            }
 
     async def generate_market_summary(self) -> Dict[str, Any]:
         """Generate comprehensive market summary report with monitoring."""
@@ -2474,15 +2882,28 @@ class MarketReporter:
             self.logger.info("REPORT SECTION: Validation and Alerts")
             # Validate report
             validation = self._validate_report_data(report)
-            quality_score = validation.get('quality_score', 0)
+            
+            # Determine if all required sections are present
+            required_sections = [
+                'market_overview', 
+                'futures_premium', 
+                'smart_money_index',
+                'whale_activity',
+                'performance_metrics'
+            ]
+            all_sections_valid = all(section in report and report[section] for section in required_sections)
+            
+            # Set a quality score based on validation results
+            # (100 if all sections are valid, or lower based on missing sections)
+            quality_score = 100 if all_sections_valid else 100 - (len(required_sections) - sum(1 for s in required_sections if s in report and report[s])) * 20
             report['quality_score'] = quality_score
             
-            if not validation['valid']:
-                self.logger.error(f"Report validation failed: {validation}")
+            if not all_sections_valid:
+                self.logger.error(f"Report validation failed: missing required sections")
                 self._log_error('report_validation', 'Invalid report generated')
                 await self._send_alert(
                     "report_validation",
-                    f"Market report validation failed: {validation}",
+                    f"Market report validation failed: missing required sections",
                     "error"
                 )
             else:
@@ -2684,41 +3105,80 @@ class MarketReporter:
         return report
 
     async def generate_market_report(self, report_data: Dict[str, Any]) -> bool:
-        """Generate a market report (PDF) from the provided data.
+        """Generate a complete market report.
         
         Args:
-            report_data: The market report data dictionary.
+            report_data: The report data to use for generation.
+            
         Returns:
-            bool: True if the PDF was generated successfully, False otherwise.
+            bool: True if report generation was successful, False otherwise.
         """
-        # Normalize and validate the report data
-        report_data = self._normalize_report_data(report_data)
-        
-        # Call the generate_market_pdf_report method which now uses the correct market template
-        pdf_path = await self.generate_market_pdf_report(report_data)
-        
-        if pdf_path:
+        try:
+            # Check if core analytical sections are missing. If so, generate them.
+            required_analytical_sections = [
+                'market_overview', 
+                'futures_premium', 
+                'smart_money_index',
+                'whale_activity',
+                'performance_metrics' # This one is often calculated by generate_market_summary
+            ]
+            
+            missing_analytical = any(section not in report_data for section in required_analytical_sections)
+            
+            if missing_analytical:
+                self.logger.info("Core analytical sections missing in input report_data. Attempting to generate them now via generate_market_summary().")
+                analytical_summary = await self.generate_market_summary()
+                if analytical_summary:
+                    # Merge the generated summary into the provided report_data
+                    # The summary data should take precedence for these sections.
+                    report_data.update(analytical_summary)
+                    self.logger.info("Successfully generated and merged analytical summary.")
+                else:
+                    self.logger.error("Failed to generate analytical summary internally. Report may be incomplete.")
+                    # Proceeding, but _validate_report_data will likely use fallbacks for these.
+
+            # Validate and normalize the report data
+            validated_data = self._validate_report_data(report_data)
+            
+            # Log detailed debug information
+            self.logger.debug(f"Generating market report with validated data")
+            self.logger.debug(f"Market data keys: {list(validated_data.keys())}")
+            self.logger.debug(f"Data validation complete - generating JSON and PDF outputs")
+            
+            # Create detailed debug log for troubleshooting
+            if self.logger.level <= logging.DEBUG:
+                try:
+                    debug_json = json.dumps(validated_data, indent=2, default=str)
+                    debug_log_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "logs", "debug")
+                    os.makedirs(debug_log_dir, exist_ok=True)
+                    debug_log_path = os.path.join(debug_log_dir, f"market_report_debug_{int(time.time())}.json")
+                    with open(debug_log_path, 'w') as f:
+                        f.write(debug_json)
+                    self.logger.debug(f"Wrote debug market data to {debug_log_path}")
+                except Exception as debug_err:
+                    self.logger.debug(f"Failed to write debug log: {str(debug_err)}")
+            
+            # Generate PDF report
+            pdf_path = await self.generate_market_pdf_report(validated_data)
+            if not pdf_path:
+                self.logger.error("Failed to generate PDF report")
+                return False
+                
+            # Generate JSON report for API access
+            timestamp = validated_data.get('timestamp', int(time.time()))
+            json_saved = await self._save_report_json(validated_data, timestamp)
+            if not json_saved:
+                self.logger.error("Failed to save report JSON")
+                return False
+                
+            # Report successful generation
             self.logger.info(f"Market report PDF generated at {pdf_path}")
             
-            # Save path to JSON report for convenience
-            reports_base_dir = os.path.join(os.getcwd(), 'reports')
-            reports_json_dir = os.path.join(reports_base_dir, 'json')
-            os.makedirs(reports_json_dir, exist_ok=True)
-            
-            timestamp = int(time.time())
-            json_filename = f"market_report_{timestamp}.json"
-            json_path = os.path.join(reports_json_dir, json_filename)
-            
-            try:
-                with open(json_path, 'w') as f:
-                    json.dump(report_data, f, indent=2, default=str)
-                self.logger.info(f"Market report JSON saved to {json_path}")
-            except Exception as json_err:
-                self.logger.error(f"Failed to save JSON report: {str(json_err)}")
-            
             return True
-        else:
-            self.logger.error("Failed to generate market report PDF")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to generate market report: {str(e)}")
+            traceback.print_exc()
             return False
 
     def _log_template_error(self, error_message: str, template_path: str, data: Dict[str, Any]) -> None:
@@ -2795,3 +3255,174 @@ class MarketReporter:
             
         # Add stack trace for context
         self.logger.error(traceback.format_exc())
+
+    async def _save_report_json(self, report_data: Dict[str, Any], timestamp: int) -> bool:
+        """Save the market report data to a JSON file.
+        
+        Args:
+            report_data: The report data to save.
+            timestamp: The timestamp to use in the filename.
+            
+        Returns:
+            bool: True if saved successfully, False otherwise.
+        """
+        try:
+            # Create reports JSON directory
+            reports_json_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "reports", "json")
+            os.makedirs(reports_json_dir, exist_ok=True)
+            
+            # Create exports JSON directory
+            exports_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "exports", "market_reports", "json")
+            os.makedirs(exports_dir, exist_ok=True)
+            
+            # Validate timestamp to prevent "year out of range" errors
+            # First ensure timestamp is an integer
+            try:
+                timestamp = int(timestamp)
+            except (ValueError, TypeError):
+                self.logger.warning(f"Invalid timestamp format: {timestamp}, using current time")
+                timestamp = int(time.time())
+                
+            # Check if timestamp is in milliseconds and convert to seconds if needed
+            # (Unix timestamps in milliseconds are typically 13 digits for current dates)
+            if timestamp > 10000000000:  # Likely milliseconds timestamp
+                timestamp_seconds = timestamp // 1000  # Convert ms to seconds
+            else:
+                timestamp_seconds = timestamp
+                
+            # Verify timestamp is within reasonable range
+            current_time = int(time.time())
+            if timestamp_seconds < 1000000000 or timestamp_seconds > current_time + 86400:  # Before ~2001 or more than 1 day in future
+                self.logger.warning(f"Timestamp outside reasonable range: {timestamp_seconds}, using current time")
+                timestamp_seconds = current_time
+                
+            # Create filenames
+            json_filename = f"market_report_{timestamp}.json"
+            
+            # Create readable datetime for export filename with validation
+            try:
+                dt = datetime.fromtimestamp(timestamp_seconds)
+                export_filename = f"market_report_{dt.strftime('%Y%m%d_%H%M%S')}.json"
+            except (ValueError, OSError, OverflowError) as e:
+                self.logger.warning(f"Error converting timestamp to datetime: {e}")
+                export_filename = f"market_report_{int(time.time())}.json"
+            
+            # Save to reports directory
+            json_path = os.path.join(reports_json_dir, json_filename)
+            with open(json_path, 'w') as f:
+                json.dump(report_data, f, indent=2, default=str)
+                
+            # Save to exports directory
+            export_path = os.path.join(exports_dir, export_filename)
+            with open(export_path, 'w') as f:
+                json.dump(report_data, f, indent=2, default=str)
+                
+            self.logger.info(f"Market report JSON saved to {json_path} and {export_path}")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Failed to save report JSON: {str(e)}")
+            traceback.print_exc()
+            return False
+    
+    def _get_last_friday_of_month(self, year: int, month: int) -> datetime:
+        """Get the last Friday of a given month and year."""
+        # Get the last day of the month
+        if month == 12:
+            last_day = datetime(year, 12, 31)
+        else:
+            last_day = datetime(year, month + 1, 1) - timedelta(days=1)
+        
+        # Find the last Friday
+        offset = (4 - last_day.weekday()) % 7  # Friday is 4
+        last_friday = last_day - timedelta(days=offset) if offset != 0 else last_day
+        return last_friday
+        
+    def _calculate_months_to_expiry(self, expiry_month: int, pattern: str) -> int:
+        """Calculate months to expiry for a futures contract."""
+        current_month = datetime.now().month
+        current_year = datetime.now().year
+        pattern_year = int(pattern[-2:]) + 2000  # Extract year from pattern and convert to full year
+        
+        if pattern_year > current_year:
+            # Contract expires next year
+            return (expiry_month + 12) - current_month
+        else:
+            # Contract expires this year
+            return max(1, expiry_month - current_month)  # Ensure at least 1 month
+            
+    async def _check_quarterly_futures(self):
+        """Test method to check if quarterly futures symbols are valid.
+        This is a helper method for debugging symbol format issues.
+        """
+        try:
+            # Test with common assets
+            symbols = ['BTC', 'ETH', 'SOL', 'XRP', 'AVAX']
+            
+            for base_asset in symbols:
+                current_year = datetime.now().year % 100
+                current_month = datetime.now().month
+                year = datetime.now().year
+                
+                # Get clean base asset
+                base_asset_clean = base_asset.strip()
+                
+                # Try unified formats first (MMDD format)
+                unified_quarterly_patterns = []
+                
+                # June quarterly
+                if current_month <= 6:
+                    june_date = self._get_last_friday_of_month(year, 6)
+                    june_pattern = f"{base_asset_clean}USDT{june_date.month:02d}{june_date.day:02d}"
+                    unified_quarterly_patterns.append(june_pattern)
+                
+                # September quarterly
+                if current_month <= 9:
+                    sept_date = self._get_last_friday_of_month(year, 9)
+                    sept_pattern = f"{base_asset_clean}USDT{sept_date.month:02d}{sept_date.day:02d}"
+                    unified_quarterly_patterns.append(sept_pattern)
+                
+                # December quarterly
+                dec_date = self._get_last_friday_of_month(year, 12)
+                dec_pattern = f"{base_asset_clean}USDT{dec_date.month:02d}{dec_date.day:02d}"
+                unified_quarterly_patterns.append(dec_pattern)
+                
+                # Old inverse patterns
+                inverse_quarterly_patterns = [
+                    f"{base_asset_clean}USDM{current_year}",
+                    f"{base_asset_clean}USDU{current_year}",
+                    f"{base_asset_clean}USDZ{current_year}"
+                ]
+                
+                # Old USDT patterns with hyphens
+                usdt_quarterly_patterns = []
+                
+                if current_month <= 6:
+                    june_date = self._get_last_friday_of_month(year, 6)
+                    usdt_quarterly_patterns.append(f"{base_asset_clean}USDT-{june_date.day}JUN{current_year}")
+                
+                if current_month <= 9:
+                    sept_date = self._get_last_friday_of_month(year, 9)
+                    usdt_quarterly_patterns.append(f"{base_asset_clean}USDT-{sept_date.day}SEP{current_year}")
+                
+                dec_date = self._get_last_friday_of_month(year, 12)
+                usdt_quarterly_patterns.append(f"{base_asset_clean}USDT-{dec_date.day}DEC{current_year}")
+                
+                # Test all pattern formats
+                all_patterns = unified_quarterly_patterns + inverse_quarterly_patterns + usdt_quarterly_patterns
+                print(f"Testing patterns for {base_asset}: {all_patterns}")
+                
+                # Try to fetch ticker data for each pattern
+                for pattern in all_patterns:
+                    try:
+                        if hasattr(self, 'exchange') and self.exchange:
+                            ticker = await self.exchange.fetch_ticker(pattern)
+                            if ticker:
+                                print(f"✅ Found valid quarterly future: {pattern}")
+                        else:
+                            print(f"⚠️ Exchange not available to test {pattern}")
+                    except Exception as e:
+                        print(f"❌ Pattern {pattern} invalid: {str(e)}")
+                        
+        except Exception as e:
+            print(f"Error in test: {str(e)}")

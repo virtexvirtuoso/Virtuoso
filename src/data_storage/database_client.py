@@ -4,8 +4,8 @@ import logging
 import asyncpg
 
 if TYPE_CHECKING:
-    from monitoring.metrics_manager import MetricsManager
-    from monitoring.alert_manager import AlertManager
+    from src.monitoring.metrics_manager import MetricsManager
+from src.monitoring.alert_manager import AlertManager
 
 logger = logging.getLogger(__name__)
 

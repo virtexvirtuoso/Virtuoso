@@ -6,8 +6,8 @@ from typing import Dict, Any, Optional, TYPE_CHECKING
 from datetime import datetime, timezone
 
 if TYPE_CHECKING:
-    from monitoring.alert_manager import AlertManager
-    from monitoring.metrics_manager import MetricsManager
+    from src.monitoring.alert_manager import AlertManager
+from src.monitoring.metrics_manager import MetricsManager
 
 from src.core.error.models import ErrorContext, ErrorSeverity
 

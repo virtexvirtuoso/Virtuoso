@@ -53,18 +53,7 @@ async def test_pdf_generation_and_attachment():
         
         # Get the Discord webhook URL
         logger.info("Getting Discord webhook URL...")
-        webhook_url = None
-        
-        # Try from environment variable
-        if "DISCORD_WEBHOOK_URL" in os.environ:
-            webhook_url = os.environ["DISCORD_WEBHOOK_URL"]
-            logger.info("Found webhook URL in environment variable")
-        
-        # Fallback to the hardcoded URL
-        if not webhook_url:
-            webhook_url = "https://discord.com/api/webhooks/1197011710268162159/V_Gfq66qtfJGiZMxnIwC7pb20HwHqVCRMoU_kubPetn_ikB5F8NTw81_goGLoSQ3q3Vw"
-            logger.info("Using fallback webhook URL")
-            os.environ["DISCORD_WEBHOOK_URL"] = webhook_url
+        webhook_url = os.getenv('DISCORD_WEBHOOK_URL', 'https://discord.com/api/webhooks/example')
         
         # Set the webhook URL in the config
         config['alerts']['discord']['webhook_url'] = webhook_url

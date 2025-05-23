@@ -193,4 +193,10 @@ src/indicators/price_structure_indicators.py
 /run_*_test.py
 /*_alert_*.html
 /confluence_alert_*.html
-/*_test_*.html 
+/*_test_*.html
+
+# Ignore all README.md files
+**/README.md
+
+# Except the main README.md in the root directory
+!/README.md 

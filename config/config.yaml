@@ -26,6 +26,7 @@ exchanges:
       private: wss://stream.bybit.com/v5/private # Private WebSocket endpoint
       public: wss://stream.bybit.com/v5/public   # Public WebSocket endpoint
       reconnect_attempts: 3         # Maximum reconnection attempts
+    testnet: false
 
 # Market Configuration
 # -----------------
@@ -111,7 +112,7 @@ timeframes:
 confluence:
   # Thresholds for signal generation
   thresholds:
-    buy: 65                         # Score at or above this value generates a bullish signal
+    buy: 68                         # Score at or above this value generates a bullish signal
     neutral_buffer: 0               # No buffer zone - eliminating neutral signals
     sell: 35                        # Score at or below this value generates a bearish signal
   # Weight configurations for all components and sub-components
@@ -795,12 +796,24 @@ monitoring:
   alerts:
     # Alert channels
     channels:
-    - console                       # Console alerts
-    - database                      # Database alerts
-    - webhook                       # Webhook alerts
+      - console                       # Console alerts
+      - database                      # Database alerts
+      - webhook                       # Webhook alerts
     cooldown_period: 300            # Alert cooldown period in seconds
-    discord_webhook_url: https://discord.com/api/webhooks/1370413964814450788/bCx2VxU6wUzblsAOy1QkD5hSFrjRnlVtmIiG-Kis9yETflTmHaj3p0WDE_Z88IccpTNP # Discord webhook URL
     enabled: true                   # Enable alerts
+    # Discord webhook retry configuration
+    discord_webhook:
+      max_retries: 3                # Maximum number of retry attempts
+      initial_retry_delay: 2        # Initial retry delay in seconds
+      timeout_seconds: 30           # Request timeout in seconds
+      exponential_backoff: true     # Use exponential backoff for retries
+      fallback_enabled: true        # Enable fallback to direct HTTP requests
+      recoverable_status_codes:     # HTTP status codes that should trigger retries
+        - 429                       # Rate limited
+        - 500                       # Internal server error
+        - 502                       # Bad gateway
+        - 503                       # Service unavailable
+        - 504                       # Gateway timeout
     # Liquidation alert settings
     liquidation:
       cooldown: 300                 # Liquidation alert cooldown in seconds
@@ -815,12 +828,62 @@ monitoring:
     # Whale activity alert settings
     whale_activity:
       enabled: true                 # Enable whale activity monitoring
-      accumulation_threshold: 2000000  # $1M default threshold for significant accumulation
-      distribution_threshold: 2000000  # $1M default threshold for significant distribution
+      accumulation_threshold: 5000000  # $5M default threshold for significant accumulation
+      distribution_threshold: 5000000  # $5M default threshold for significant distribution
+      cooldown: 1800                # 30 minutes between alerts for same symbol
+      imbalance_threshold: 0.3      # 30% order book imbalance threshold
+      min_order_count: 8            # Minimum number of whale orders to consider
+      market_percentage: 0.05       # 5% of market volume to be considered significant
+      excluded_symbols: []          # No excluded symbols
+      included_symbols: []          # Monitor all symbols
+      # New trade-based whale alert parameters
+      trade_alerts_enabled: true    # Enable trade-based whale alerts
+      trade_cooldown: 900           # 15 minutes between trade alerts
+      min_whale_trades: 5           # Minimum number of whale trades to trigger alert
+      min_trade_volume_usd: 500000  # Minimum USD value for significant trade volume
+      min_trade_imbalance: 0.75     # Minimum 75% imbalance for significant trade activity
+    # Market manipulation detection settings
+    manipulation_detection:
+      enabled: true                 # Enable manipulation detection
       cooldown: 900                 # 15 minutes between alerts for same symbol
-      imbalance_threshold: 0.2      # 20% order book imbalance threshold
-      min_order_count: 5            # Minimum number of whale orders to consider
-      market_percentage: 0.02       # 2% of market volume to be considered significant
+      
+      # Open Interest change thresholds (OPTIMIZED)
+      oi_change_15m_threshold: 0.015 # 1.5% OI change in 15 minutes (optimized from 2%)
+      oi_change_1h_threshold: 0.02  # 2.0% OI change in 1 hour (optimized from 5%)
+      oi_absolute_threshold: 1000000 # $1M absolute OI change
+      
+      # Volume spike thresholds (OPTIMIZED)
+      volume_spike_threshold: 2.5   # 2.5x above 15-min average (optimized from 2x)
+      volume_spike_duration: 15     # Minutes to consider for spike
+      
+      # Price movement thresholds (OPTIMIZED)
+      price_change_15m_threshold: 0.0075 # 0.75% price change in 15 minutes (optimized from 1%)
+      price_change_5m_threshold: 0.005 # 0.5% price change in 5 minutes
+      
+      # OI vs price divergence thresholds (OPTIMIZED)
+      divergence_oi_threshold: 0.015 # 1.5% OI increase (optimized from 1%)
+      divergence_price_threshold: 0.005 # 0.5% price decrease (opposite direction)
+      
+      # Confidence scoring weights
+      weights:
+        oi_change: 0.3              # Weight for OI change analysis
+        volume_spike: 0.25          # Weight for volume spike analysis
+        price_movement: 0.25        # Weight for price movement analysis
+        divergence: 0.2             # Weight for divergence analysis
+      
+      # Alert thresholds
+      alert_confidence_threshold: 0.7 # Minimum confidence for alert
+      high_confidence_threshold: 0.85 # High confidence threshold
+      critical_confidence_threshold: 0.95 # Critical confidence threshold
+      
+      # Data requirements
+      min_data_points: 15           # Minimum data points for analysis
+      lookback_periods:
+        5m: 5                       # 5-minute lookback period
+        15m: 15                     # 15-minute lookback period
+        1h: 60                      # 1-hour lookback period
+      
+      # Symbol filtering
       excluded_symbols: []          # No excluded symbols
       included_symbols: []          # Monitor all symbols
   # Component monitoring
@@ -949,4 +1012,7 @@ system:
   environment: development          # Environment: development, production, or testing
   log_level: DEBUG                  # Global log level
   version: 1.0.0                    # System version
+  base_dir: "."
+  reports_dir: "./reports"
+  enable_reporting: true
 

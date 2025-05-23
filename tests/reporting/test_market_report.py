@@ -49,7 +49,7 @@ async def test_market_report():
         
         # Set up Bybit API credentials
         bybit_api_key = 'TjaG5KducWssxy9Z1m'
-        bybit_api_secret = '6x6VAFOrwhc4EJJNmda7PdEYYKbcndo6povm'
+        bybit_api_secret = 'test_api_secret_placeholder'
         
         # Set environment variables for the exchange to use
         os.environ['BYBIT_API_KEY'] = bybit_api_key

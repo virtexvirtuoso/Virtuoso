@@ -81,9 +81,18 @@ class MarketDataManager:
             'orderbook': {'last_log': 0, 'interval': ws_throttle},
             'kline': {'last_log': 0, 'interval': ws_throttle * 2},  # Less frequent for klines
             'trades': {'last_log': 0, 'interval': ws_throttle},
-            'liquidation': {'last_log': 0, 'interval': 0}  # Always log liquidations (important)
+            'liquidation': {'last_log': 0, 'interval': 0},  # Always log liquidations (important)
+            'open_interest': {'last_log': 0, 'interval': ws_throttle}  # Add specific open interest throttling
         }
         
+        # Track candle processing for aggregated logging
+        self.candle_processing = {
+            'symbols': {},
+            'last_log': 0,
+            'interval': ws_throttle * 2,  # Less frequent for batch logs
+            'batch_count': 0
+        }
+    
     async def initialize(self, symbols: List[str]) -> None:
         """Initialize data manager with symbols to monitor
         
@@ -1010,89 +1019,134 @@ class MarketDataManager:
     def _update_kline_from_ws(self, symbol: str, data: Dict[str, Any]) -> None:
         """Update kline (OHLCV) data from WebSocket message."""
         try:
-            # Extract kline data from message
+            # Extract candle data from message
             kline_data = {}
             
             if 'topic' in data and 'data' in data:
                 kline_data = data['data']
             elif 'data' in data and isinstance(data['data'], list):
                 kline_data = data['data']
+            elif 'data' in data and isinstance(data['data'], dict):
+                kline_data = [data['data']]
             elif isinstance(data, list):
                 kline_data = data
+            elif isinstance(data, dict) and ('open' in data or 'close' in data):
+                kline_data = [data]
             else:
                 self.logger.warning(f"Unknown kline data format from WebSocket: {data}")
                 return
                 
-            # Skip if empty kline data
-            if not kline_data:
-                self.logger.warning(f"Empty kline data received from WebSocket for {symbol}")
-                return
-                
-            # Extract timeframe from topic
+            # Determine timeframe
             timeframe = None
-            if 'topic' in data:
-                # Extract interval from topic like 'kline.1.BTCUSDT'
-                parts = data['topic'].split('.')
-                if len(parts) >= 2:
-                    interval = parts[1]
-                    # Map to our internal timeframe names
-                    if interval == '1':
-                        timeframe = 'base'
-                    elif interval == '5':
-                        timeframe = 'ltf'
-                    elif interval == '30':
-                        timeframe = 'mtf'
-                    elif interval == '240':
-                        timeframe = 'htf'
             
-            # If we couldn't extract from topic, try from the kline data itself
+            # Try to extract from topic
+            if 'topic' in data:
+                topic = data['topic']
+                try:
+                    # Parse interval from topic (like 'kline.1m' or 'kline.5')
+                    if '.' in topic:
+                        parts = topic.split('.')
+                        if len(parts) > 1:
+                            interval_str = parts[1]
+                            
+                            # Convert to minutes for standardized comparison
+                            if interval_str.endswith('m'):
+                                interval_minutes = float(interval_str.rstrip('m'))
+                            elif interval_str.endswith('h'):
+                                interval_minutes = float(interval_str.rstrip('h')) * 60
+                            elif interval_str.endswith('d') or interval_str.endswith('D'):
+                                interval_minutes = float(interval_str.rstrip('dD')) * 1440
+                            else:
+                                interval_minutes = float(interval_str)
+                            
+                            # Map to our internal timeframe names
+                            if 0.5 <= interval_minutes <= 1.5:  # Allow for some timestamp flexibility
+                                timeframe = 'base'
+                            elif 4.5 <= interval_minutes <= 5.5:
+                                timeframe = 'ltf'
+                            elif 29.5 <= interval_minutes <= 30.5:
+                                timeframe = 'mtf'
+                            elif 239.5 <= interval_minutes <= 240.5:
+                                timeframe = 'htf'
+                except (ValueError, TypeError):
+                    pass
+            
+            # If timeframe couldn't be determined from topic, try to get from kline_data itself
             if not timeframe and isinstance(kline_data, list) and len(kline_data) > 0:
                 first_candle = kline_data[0]
                 if isinstance(first_candle, dict) and 'interval' in first_candle:
                     interval = first_candle['interval']
-                    # Map to our internal timeframe names
-                    if interval == '1':
-                        timeframe = 'base'
-                    elif interval == '5':
-                        timeframe = 'ltf'
-                    elif interval == '30':
-                        timeframe = 'mtf'
-                    elif interval == '240':
-                        timeframe = 'htf'
-                elif isinstance(first_candle, dict) and 'start' in first_candle and 'end' in first_candle:
-                    # Try to determine interval from start and end timestamps
-                    try:
-                        start = int(first_candle['start'])
-                        end = int(first_candle['end'])
-                        interval_ms = end - start
-                        interval_minutes = interval_ms / 60000  # Convert ms to minutes
-                        
-                        # Map to our internal timeframe names
-                        if 0.5 <= interval_minutes <= 1.5:  # Allow for some timestamp flexibility
-                            timeframe = 'base'
-                        elif 4.5 <= interval_minutes <= 5.5:
-                            timeframe = 'ltf'
-                        elif 29.5 <= interval_minutes <= 30.5:
-                            timeframe = 'mtf'
-                        elif 239.5 <= interval_minutes <= 240.5:
-                            timeframe = 'htf'
-                    except (ValueError, TypeError):
-                        pass
+                    # Map interval to timeframe
+                    interval_map = {
+                        '1': 'base',
+                        '5': 'ltf',
+                        '30': 'mtf',
+                        '60': 'mtf',
+                        '240': 'htf',
+                        '1D': 'htf'
+                    }
+                    timeframe = interval_map.get(interval, None)
             
+            # Update candle processing aggregation stats
+            now = time.time()
+            if symbol not in self.candle_processing['symbols']:
+                self.candle_processing['symbols'][symbol] = {
+                    'count': 0, 
+                    'timeframes': set(),
+                    'last_update': now,
+                    'warnings': 0,
+                    'last_warning': 0
+                }
+            
+            # Update symbol stats
+            symbol_data = self.candle_processing['symbols'][symbol]
+            symbol_data['count'] += len(kline_data)
+            symbol_data['timeframes'].add(timeframe if timeframe else 'base')
+            symbol_data['last_update'] = now
+            self.candle_processing['batch_count'] += len(kline_data)
+            
+            # Only log warnings if we haven't seen many for this symbol recently
+            warning_throttle_interval = 60  # Only log warnings once per minute per symbol
+            warning_throttled = (now - symbol_data['last_warning'] < warning_throttle_interval and 
+                               symbol_data['warnings'] > 2)
+            
+            # Log warnings for missing timeframe with throttling
             if not timeframe:
-                # Default to base timeframe with a warning
-                self.logger.warning(f"Could not determine timeframe from WebSocket kline message: {kline_data}")
+                # Set default timeframe
                 timeframe = 'base'
                 
+                # Only log warning if not throttled
+                if not warning_throttled:
+                    self.logger.warning(f"Could not determine timeframe from WebSocket kline message: {kline_data}")
+                    symbol_data['warnings'] += 1
+                    symbol_data['last_warning'] = now
+            
             # Process kline data
             candles = []
             
             # If it's a single candle
             if isinstance(kline_data, dict):
                 kline_data = [kline_data]
+            
+            # Log individual updates only if threshold not exceeded and not too frequent
+            log_threshold_exceeded = self.candle_processing['batch_count'] > 20  # Reduced from 50
+            time_to_log = (now - self.candle_processing['last_log'] >= self.candle_processing['interval'])
+            
+            if not log_threshold_exceeded:
+                self.logger.debug(f"Processing {len(kline_data)} WebSocket candles for {symbol} {timeframe}")
+            elif time_to_log:
+                # Log aggregated stats
+                active_symbols = sum(1 for s in self.candle_processing['symbols'].values() 
+                                 if now - s['last_update'] < 60)  # active in last minute
+                total_candles = sum(s['count'] for s in self.candle_processing['symbols'].values())
+                self.logger.debug(f"Processed {total_candles} WebSocket candles for {active_symbols} symbols in the last {int(now - self.candle_processing['last_log'])}s")
                 
-            self.logger.debug(f"Processing {len(kline_data)} WebSocket candles for {symbol} {timeframe}")
-                
+                # Reset counters
+                self.candle_processing['batch_count'] = 0
+                self.candle_processing['last_log'] = now
+                for s in self.candle_processing['symbols'].values():
+                    s['count'] = 0
+            
             for candle in kline_data:
                 try:
                     # Process different possible formats
@@ -1122,7 +1176,7 @@ class MarketDataManager:
                     else:
                         self.logger.warning(f"Unknown candle format from WebSocket: {candle}")
                         continue
-                        
+                    
                     # Create candle dict
                     parsed_candle = {
                         'timestamp': timestamp,
@@ -1817,7 +1871,11 @@ class MarketDataManager:
                     if len(history) > 200:
                         history.pop()
                 
-                self.logger.debug(f"Updated open interest for {symbol}: {value} (history: {len(history)} entries)")
+                # Throttle open interest logging similar to other WebSocket updates
+                now = time.time()
+                if now - self.ws_log_throttle['open_interest']['last_log'] >= self.ws_log_throttle['open_interest']['interval']:
+                    self.logger.debug(f"Updated open interest for {symbol}: {value} (history: {len(history)} entries)")
+                    self.ws_log_throttle['open_interest']['last_log'] = now
                 
         except Exception as e:
             self.logger.error(f"Error updating open interest history: {str(e)}")
