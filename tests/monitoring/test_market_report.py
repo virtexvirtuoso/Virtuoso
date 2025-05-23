@@ -33,7 +33,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 try:
-    from monitoring.market_reporter import MarketReporter
+    from src.monitoring.market_reporter import MarketReporter
 except ImportError as e:
     logger.error(f"Error importing MarketReporter: {str(e)}")
     logger.error(f"Current directory: {current_dir}")
@@ -161,10 +161,24 @@ async def test_market_report():
             
             # Log results
             logger.info("\nMarket Report Validation:")
-            logger.info(f"Valid: {validation['valid']}")
-            logger.info(f"Quality Score: {validation['quality_score']}/100")
+            logger.info("Report validated and normalized")
+            
+            # Check if all required sections are present
+            required_sections = [
+                'market_overview', 
+                'futures_premium', 
+                'smart_money_index',
+                'whale_activity',
+                'performance_metrics'
+            ]
+            present_sections = {section: section in report and report[section] for section in required_sections}
+            
+            # Calculate quality score based on present sections
+            quality_score = 100 if all(present_sections.values()) else 100 - (len(required_sections) - sum(present_sections.values())) * 20
+            
+            logger.info(f"Quality Score: {quality_score}/100")
             logger.info("\nSection Coverage:")
-            for section, present in validation['sections'].items():
+            for section, present in present_sections.items():
                 logger.info(f"- {section}: {'✓' if present else '✗'}")
             
             # Print the report sections

@@ -8,8 +8,8 @@ import traceback
 
 # Type checking imports
 if TYPE_CHECKING:
-    from monitoring.metrics_manager import MetricsManager
-    from monitoring.alert_manager import AlertManager
+    from src.monitoring.metrics_manager import MetricsManager
+from src.monitoring.alert_manager import AlertManager
 
 logger = logging.getLogger(__name__)
 
@@ -29,10 +29,10 @@ class DataBatcher:
         """
         # Initialize managers
         if metrics_manager is None:
-            from monitoring.metrics_manager import MetricsManager
+            from src.monitoring.metrics_manager import MetricsManager
             metrics_manager = MetricsManager()
         if alert_manager is None:
-            from monitoring.alert_manager import AlertManager
+            from src.monitoring.alert_manager import AlertManager
             alert_manager = AlertManager(config=config)
             
         self.metrics_manager = metrics_manager

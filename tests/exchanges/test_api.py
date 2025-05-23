@@ -10,7 +10,7 @@ def main():
         logger.info("Initializing Bybit exchange...")
         exchange = ccxt.bybit({
             'apiKey': 'TjaG5KducWssxy9Z1m',
-            'secret': '6x6VAFOrwhc4EJJNmda7PdEYYKbcndo6povm',
+            'secret': 'test_api_secret_placeholder',
             'enableRateLimit': True
         })
         

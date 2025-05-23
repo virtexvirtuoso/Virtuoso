@@ -31,7 +31,7 @@ from src.models.schema import AlertPayload, ConfluenceAlert, SignalDirection
 from src.core.reporting.report_manager import ReportManager
 
 if TYPE_CHECKING:
-    from monitoring.metrics_manager import MetricsManager
+    from src.monitoring.metrics_manager import MetricsManager
 
 logger = getLogger(__name__)
 
@@ -65,6 +65,13 @@ class AlertManager:
         self._last_large_order_alert = {}  # Dictionary to track last large order alerts by symbol
         self._last_whale_activity_alert = {}  # Dictionary to track last whale activity alerts by symbol
         self._last_alert = {}  # Dictionary to track last alerts by alert key
+        
+        # Mock mode for testing
+        self.mock_mode = config.get('monitoring', {}).get('alerts', {}).get('mock_mode', False)
+        self.capture_alerts = config.get('monitoring', {}).get('alerts', {}).get('capture_alerts', False)
+        if self.capture_alerts:
+            self.captured_alerts = []
+            self.logger.info("Alert capture enabled for testing")
         
         # DEBUG: New attributes for tracking handler registration issues
         self._initialization_time = time.time()
@@ -120,10 +127,9 @@ class AlertManager:
         # CRITICAL DEBUG: Print initialization
         print("CRITICAL DEBUG: Initializing AlertManager")
         
-        # CRITICAL FIX: Hardcoded Discord webhook URL as last resort
-        # This will be overridden if found in config or environment
-        self.discord_webhook_url = "https://discord.com/api/webhooks/1197011710268162159/V_Gfq66qtfJGiZMxnIwC7pb20HwHqVCRMoU_kubPetn_ikB5F8NTw81_goGLoSQ3q3Vw"
-        print(f"CRITICAL DEBUG: Backup webhook URL: {self.discord_webhook_url[:20]}...{self.discord_webhook_url[-10:]}")
+        # Initialize Discord webhook URL as empty - will be populated from config or environment
+        self.discord_webhook_url = ""
+        print("CRITICAL DEBUG: Discord webhook URL will be loaded from config or environment variables")
         
         # Additional configurations from config file
         if 'monitoring' in self.config and 'alerts' in self.config['monitoring']:
@@ -132,26 +138,37 @@ class AlertManager:
             # Discord webhook - first check from direct path in config
             if 'discord_webhook_url' in alert_config:
                 self.discord_webhook_url = alert_config['discord_webhook_url']
-                print(f"CRITICAL DEBUG: Webhook URL from direct config: {self.discord_webhook_url[:20]}...{self.discord_webhook_url[-10:]}")
+                if self.discord_webhook_url:
+                        print(f"CRITICAL DEBUG: Webhook URL from direct config: {self.discord_webhook_url[:20]}...{self.discord_webhook_url[-10:]}")
+                else:
+                    print("CRITICAL DEBUG: Discord webhook URL from direct config is None or empty")
             # Then check nested discord > webhook_url path (old format)
             elif 'discord' in alert_config and 'webhook_url' in alert_config['discord']:
                 self.discord_webhook_url = alert_config['discord']['webhook_url']
-                print(f"CRITICAL DEBUG: Webhook URL from nested config: {self.discord_webhook_url[:20]}...{self.discord_webhook_url[-10:]}")
+                if self.discord_webhook_url:
+                        print(f"CRITICAL DEBUG: Webhook URL from nested config: {self.discord_webhook_url[:20]}...{self.discord_webhook_url[-10:]}")
+                else:
+                    print("CRITICAL DEBUG: Discord webhook URL from nested config is None or empty")
             # Try to get from environment variable
             else:
-                discord_webhook_url = os.getenv('DISCORD_WEBHOOK_URL')
-                if discord_webhook_url:
+                self.discord_webhook_url = os.getenv('DISCORD_WEBHOOK_URL', '')  # Use environment variable instead of hardcoded value
+                if self.discord_webhook_url:
                     # Fix potential newline issues
-                    discord_webhook_url = discord_webhook_url.strip().replace('\n', '')
-                    self.discord_webhook_url = discord_webhook_url
-                    print(f"CRITICAL DEBUG: Webhook URL from environment: {self.discord_webhook_url[:20]}...{self.discord_webhook_url[-10:]}")
+                    self.discord_webhook_url = self.discord_webhook_url.strip().replace('\n', '')
+                    if self.discord_webhook_url:
+                            print(f"CRITICAL DEBUG: Webhook URL from environment: {self.discord_webhook_url[:20]}...{self.discord_webhook_url[-10:]}")
+                    else:
+                        print("CRITICAL DEBUG: Discord webhook URL from environment is empty after cleaning")
                 else:
                     self.logger.warning("No Discord webhook URL found in config or environment")
             
             # Direct discord webhook from config (alternative path)
             if 'discord_network' in alert_config:
                 self.discord_webhook_url = alert_config['discord_network']
-                print(f"CRITICAL DEBUG: Webhook URL from discord_network: {self.discord_webhook_url[:20]}...{self.discord_webhook_url[-10:]}")
+                if self.discord_webhook_url:
+                        print(f"CRITICAL DEBUG: Webhook URL from discord_network: {self.discord_webhook_url[:20]}...{self.discord_webhook_url[-10:]}")
+                else:
+                    print("CRITICAL DEBUG: Discord webhook URL from discord_network is None or empty")
             
             # Thresholds
             if 'thresholds' in alert_config:
@@ -174,6 +191,16 @@ class AlertManager:
                 if 'threshold' in alert_config['liquidation']:
                     self.liquidation_threshold = alert_config['liquidation']['threshold']
                     print(f"CRITICAL DEBUG: Loaded liquidation threshold from config: ${self.liquidation_threshold:,}")
+        
+        # Discord webhook retry configuration
+        monitoring_config = self.config.get('monitoring', {})
+        discord_config = monitoring_config.get('alerts', {}).get('discord_webhook', {})
+        self.webhook_max_retries = discord_config.get('max_retries', 3)
+        self.webhook_initial_retry_delay = discord_config.get('initial_retry_delay', 2)
+        self.webhook_timeout = discord_config.get('timeout_seconds', 30)
+        self.webhook_exponential_backoff = discord_config.get('exponential_backoff', True)
+        self.webhook_fallback_enabled = discord_config.get('fallback_enabled', True)
+        self.webhook_recoverable_status_codes = discord_config.get('recoverable_status_codes', [429, 500, 502, 503, 504])
         
         # Force initialize handlers
         try:
@@ -1567,14 +1594,17 @@ class AlertManager:
             self.logger.error(traceback.format_exc())
     
     async def _send_discord_alert(self, alert: Dict[str, Any]) -> None:
-        """Send alert to Discord webhook.
+        """Send alert to Discord webhook with retry logic and fallback mechanism.
         
         Args:
             alert: Alert data
         """
+        # Create unique ID for tracking this alert
+        alert_id = str(uuid.uuid4())[:8]
+        
         try:
             if not self.discord_webhook_url:
-                self.logger.warning("Cannot send Discord alert: webhook URL not set")
+                self.logger.warning(f"[ALERT:{alert_id}] Cannot send Discord alert: webhook URL not set")
                 return
                 
             # Extract alert data
@@ -1629,23 +1659,118 @@ class AlertManager:
             webhook = DiscordWebhook(url=self.discord_webhook_url)
             webhook.add_embed(embed)
             
-            # Send the webhook
-            response = webhook.execute()
+            # Retry logic with exponential backoff
+            max_retries = self.webhook_max_retries
+            retry_delay = self.webhook_initial_retry_delay
+            response = None
             
-            # Log the result
-            if response and hasattr(response, 'status_code'):
-                if 200 <= response.status_code < 300:
-                    self.logger.debug(f"Discord alert sent successfully with status code {response.status_code}")
-                else:
-                    self.logger.error(f"Failed to send Discord alert. Status code: {response.status_code}")
-                    if hasattr(response, 'text'):
-                        self.logger.error(f"Response text: {response.text}")
-            else:
-                self.logger.warning("No response received from Discord webhook")
+            self.logger.debug(f"[ALERT:{alert_id}] Attempting to send Discord alert (max {max_retries} retries)")
+            
+            for attempt in range(max_retries):
+                try:
+                    # Attempt to send the webhook
+                    response = webhook.execute()
+                    
+                    # Check if successful
+                    if response and hasattr(response, 'status_code') and 200 <= response.status_code < 300:
+                        self.logger.debug(f"[ALERT:{alert_id}] Discord alert sent successfully on attempt {attempt + 1}")
+                        self._alert_stats['sent'] = int(self._alert_stats.get('sent', 0)) + 1
+                        return
+                    else:
+                        status_code = response.status_code if response and hasattr(response, 'status_code') else "N/A"
+                        self.logger.warning(f"[ALERT:{alert_id}] Failed to send alert (attempt {attempt+1}/{max_retries}): Status code {status_code}")
+                        
+                        # Check for recoverable status codes
+                        if (response and hasattr(response, 'status_code') and 
+                            response.status_code in self.webhook_recoverable_status_codes):
+                            if attempt < max_retries - 1:
+                                self.logger.info(f"[ALERT:{alert_id}] Recoverable error, retrying after {retry_delay} seconds...")
+                                await asyncio.sleep(retry_delay)
+                                if self.webhook_exponential_backoff:
+                                    retry_delay *= 2  # Exponential backoff
+                                continue
+                        
+                        # Log response details if available
+                        if response and hasattr(response, 'text'):
+                            self.logger.debug(f"[ALERT:{alert_id}] Response: {response.text[:200]}")
+                            
+                except (requests.exceptions.ConnectionError, 
+                        requests.exceptions.Timeout,
+                        requests.exceptions.HTTPError) as req_err:
+                    # Handle requests library errors (including RemoteDisconnected)
+                    self.logger.warning(f"[ALERT:{alert_id}] Network error sending alert (attempt {attempt+1}/{max_retries}): {str(req_err)}")
+                    if attempt < max_retries - 1:
+                        self.logger.info(f"[ALERT:{alert_id}] Retrying after {retry_delay} seconds...")
+                        await asyncio.sleep(retry_delay)
+                        if self.webhook_exponential_backoff:
+                            retry_delay *= 2
+                        continue
+                    
+                except Exception as e:
+                    # Handle other unexpected errors
+                    self.logger.error(f"[ALERT:{alert_id}] Unexpected error sending alert (attempt {attempt+1}/{max_retries}): {str(e)}")
+                    if attempt < max_retries - 1:
+                        await asyncio.sleep(retry_delay)
+                        if self.webhook_exponential_backoff:
+                            retry_delay *= 2
+                        continue
+                    else:
+                        # Final attempt failed
+                        self.logger.error(f"[ALERT:{alert_id}] All attempts failed, trying fallback method...")
+                        break
+            
+            # Fallback mechanism using direct HTTP request
+            if self.webhook_fallback_enabled and (not response or 
+                (hasattr(response, 'status_code') and response.status_code not in range(200, 300))):
+                
+                self.logger.info(f"[ALERT:{alert_id}] Attempting fallback using direct HTTP request...")
+                
+                try:
+                    # Create simplified payload for fallback
+                    fallback_data = {
+                        'content': f"**{level} Alert** - {message}",
+                        'embeds': [{
+                            'title': f"{level} Alert",
+                            'description': message[:2000],  # Truncate to avoid length issues
+                            'color': color,
+                            'timestamp': dt.isoformat(),
+                            'fields': [
+                                {
+                                    'name': key[:256],  # Discord field name limit
+                                    'value': str(value)[:1024],  # Discord field value limit
+                                    'inline': True
+                                }
+                                for key, value in list(details.items())[:10]  # Limit to 10 fields
+                            ] if details else []
+                        }]
+                    }
+                    
+                    # Use aiohttp for direct request
+                    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=self.webhook_timeout)) as session:
+                        async with session.post(
+                            self.discord_webhook_url,
+                            json=fallback_data,
+                            headers={'Content-Type': 'application/json'}
+                        ) as resp:
+                            if resp.status in range(200, 300):
+                                self.logger.info(f"[ALERT:{alert_id}] Successfully sent alert using fallback method")
+                                self._alert_stats['sent'] = int(self._alert_stats.get('sent', 0)) + 1
+                                return
+                            else:
+                                response_text = await resp.text()
+                                self.logger.error(f"[ALERT:{alert_id}] Fallback method failed: {resp.status} - {response_text[:200]}")
+                                
+                except Exception as fallback_err:
+                    self.logger.error(f"[ALERT:{alert_id}] Fallback method error: {str(fallback_err)}")
+            
+            # If we reach here, all attempts failed
+            self.logger.error(f"[ALERT:{alert_id}] Failed to send Discord alert after all retry attempts and fallback")
+            self._alert_stats['errors'] = int(self._alert_stats.get('errors', 0)) + 1
                 
         except Exception as e:
-            self.logger.error(f"Error sending Discord alert: {str(e)}")
+            self.logger.error(f"[ALERT:{alert_id}] Error in _send_discord_alert: {str(e)}")
             self.logger.error(traceback.format_exc())
+            self._alert_stats['errors'] = int(self._alert_stats.get('errors', 0)) + 1
     
     async def send_discord_webhook_message(self, message: Dict[str, Any], files: List[str] = None) -> None:
         """Send a message to Discord webhook.
@@ -1657,6 +1782,22 @@ class AlertManager:
         try:
             # Create a unique ID for this webhook message for tracking
             webhook_id = str(uuid.uuid4())[:8]
+            
+            # Handle mock mode for testing
+            if self.mock_mode:
+                self.logger.info(f"[WH:{webhook_id}][MOCK] Would send webhook message: {message.get('content', '')[:50]}...")
+                
+                # Store the message if capture is enabled
+                if self.capture_alerts:
+                    self.captured_alerts.append({
+                        'message': message,
+                        'files': files,
+                        'timestamp': time.time(),
+                        'webhook_id': webhook_id
+                    })
+                    self.logger.debug(f"[WH:{webhook_id}][MOCK] Message captured for testing")
+                
+                return
             
             if not self.discord_webhook_url:
                 self.logger.warning(f"[WH:{webhook_id}] Cannot send Discord webhook message: webhook URL not set")
@@ -1764,23 +1905,69 @@ class AlertManager:
                 # Log summary of attachments
                 self.logger.info(f"[WH:{webhook_id}][FILES] Successfully attached {successful_attachments}/{len(normalized_files)} files to webhook")
             
-            # Send the webhook
-            self.logger.debug(f"[WH:{webhook_id}] Executing webhook")
-            response = webhook.execute()
+            # Send the webhook with retry logic
+            self.logger.debug(f"[WH:{webhook_id}] Executing webhook with retry logic")
             
-            # Check response
-            if response and hasattr(response, 'status_code'):
-                if 200 <= response.status_code < 300:
-                    self.logger.info(f"[WH:{webhook_id}] Discord webhook message sent successfully with status code {response.status_code}")
-                else:
-                    self.logger.warning(f"[WH:{webhook_id}] Discord webhook response with unexpected status: {response.status_code}")
-                    if hasattr(response, 'text'):
-                        self.logger.debug(f"[WH:{webhook_id}] Response text: {response.text}")
-            else:
-                self.logger.warning(f"[WH:{webhook_id}] No valid response from Discord webhook")
+            max_retries = self.webhook_max_retries
+            retry_delay = self.webhook_initial_retry_delay
+            response = None
+            
+            for attempt in range(max_retries):
+                try:
+                    response = webhook.execute()
+                    
+                    # Check if successful
+                    if response and hasattr(response, 'status_code') and 200 <= response.status_code < 300:
+                        self.logger.info(f"[WH:{webhook_id}] Discord webhook message sent successfully on attempt {attempt + 1}")
+                        return
+                    else:
+                        status_code = response.status_code if response and hasattr(response, 'status_code') else "N/A"
+                        self.logger.warning(f"[WH:{webhook_id}] Failed to send webhook (attempt {attempt+1}/{max_retries}): Status code {status_code}")
+                        
+                        # Check for recoverable status codes
+                        if (response and hasattr(response, 'status_code') and 
+                            response.status_code in self.webhook_recoverable_status_codes):
+                            if attempt < max_retries - 1:
+                                self.logger.info(f"[WH:{webhook_id}] Recoverable error, retrying after {retry_delay} seconds...")
+                                await asyncio.sleep(retry_delay)
+                                if self.webhook_exponential_backoff:
+                                    retry_delay *= 2
+                                continue
+                        
+                        # Log response details if available
+                        if response and hasattr(response, 'text'):
+                            self.logger.debug(f"[WH:{webhook_id}] Response text: {response.text[:200]}")
+                            
+                except (requests.exceptions.ConnectionError, 
+                        requests.exceptions.Timeout,
+                        requests.exceptions.HTTPError) as req_err:
+                    # Handle requests library errors (including RemoteDisconnected)
+                    self.logger.warning(f"[WH:{webhook_id}] Network error sending webhook (attempt {attempt+1}/{max_retries}): {str(req_err)}")
+                    if attempt < max_retries - 1:
+                        self.logger.info(f"[WH:{webhook_id}] Retrying after {retry_delay} seconds...")
+                        await asyncio.sleep(retry_delay)
+                        if self.webhook_exponential_backoff:
+                            retry_delay *= 2
+                        continue
+                        
+                except Exception as e:
+                    # Handle other unexpected errors
+                    self.logger.error(f"[WH:{webhook_id}] Unexpected error sending webhook (attempt {attempt+1}/{max_retries}): {str(e)}")
+                    if attempt < max_retries - 1:
+                        await asyncio.sleep(retry_delay)
+                        if self.webhook_exponential_backoff:
+                            retry_delay *= 2
+                        continue
+                    else:
+                        # Final attempt failed
+                        self.logger.error(f"[WH:{webhook_id}] All attempts failed")
+                        break
+            
+            # If we reach here, all attempts failed
+            self.logger.error(f"[WH:{webhook_id}] Failed to send Discord webhook message after all retry attempts")
                 
         except Exception as e:
-            self.logger.error(f"Error sending Discord webhook message: {str(e)}")
+            self.logger.error(f"[WH:{webhook_id}] Error sending Discord webhook message: {str(e)}")
             self.logger.debug(traceback.format_exc())
     
     def register_discord_handler(self) -> None:
@@ -2049,3 +2236,343 @@ class AlertManager:
             self.logger.error(f"[TXN:{transaction_id}][SIG:{signal_id}] Error sending signal alert: {str(e)}")
             self.logger.debug(traceback.format_exc())
             raise
+
+    async def send_manipulation_alert(
+        self,
+        symbol: str,
+        manipulation_type: str,
+        confidence_score: float,
+        severity: str,
+        metrics: Dict[str, Any],
+        description: str,
+        current_price: float = None
+    ) -> None:
+        """
+        Send manipulation detection alert.
+        
+        Args:
+            symbol: Trading pair symbol
+            manipulation_type: Type of manipulation detected
+            confidence_score: Confidence score (0-1)
+            severity: Alert severity ('low', 'medium', 'high', 'critical')
+            metrics: Manipulation metrics dictionary
+            description: Description of the manipulation
+            current_price: Current price of the asset
+        """
+        try:
+            # Determine alert level based on severity
+            alert_level_map = {
+                'low': 'info',
+                'medium': 'warning', 
+                'high': 'warning',
+                'critical': 'error'
+            }
+            alert_level = alert_level_map.get(severity, 'info')
+            
+            # Create severity emoji
+            severity_emoji_map = {
+                'low': '⚠️',
+                'medium': '🔸',
+                'high': '🔸',
+                'critical': '🚨'
+            }
+            severity_emoji = severity_emoji_map.get(severity, '⚠️')
+            
+            # Format manipulation type for display
+            manipulation_type_display = manipulation_type.replace('_', ' ').title()
+            
+            # Build detailed message
+            message_parts = [
+                f"{severity_emoji} **Market Manipulation Alert** for {symbol}",
+                f"• **Type**: {manipulation_type_display}",
+                f"• **Confidence**: {confidence_score:.1%}",
+                f"• **Severity**: {severity.upper()}",
+            ]
+            
+            if current_price:
+                message_parts.append(f"• **Current Price**: ${current_price:,.4f}")
+                
+            message_parts.extend([
+                "",
+                f"**Details**:",
+                f"• {description}",
+            ])
+            
+            # Add specific metrics if available
+            if metrics:
+                if metrics.get('oi_change_15m_pct', 0) != 0:
+                    oi_pct = metrics['oi_change_15m_pct'] * 100
+                    message_parts.append(f"• OI Change (15m): {oi_pct:+.1f}%")
+                    
+                if metrics.get('volume_spike_ratio', 0) > 1:
+                    volume_ratio = metrics['volume_spike_ratio']
+                    message_parts.append(f"• Volume Spike: {volume_ratio:.1f}x average")
+                    
+                if metrics.get('price_change_15m_pct', 0) != 0:
+                    price_pct = metrics['price_change_15m_pct'] * 100
+                    message_parts.append(f"• Price Change (15m): {price_pct:+.1f}%")
+                    
+                if metrics.get('divergence_detected', False):
+                    divergence_strength = metrics.get('divergence_strength', 0) * 100
+                    message_parts.append(f"• OI-Price Divergence: {divergence_strength:.1f}% strength")
+            
+            message = "\n".join(message_parts)
+            
+            # Send alert with detailed information
+            await self.send_alert(
+                level=alert_level,
+                message=message,
+                details={
+                    "type": "manipulation_detection",
+                    "subtype": manipulation_type,
+                    "symbol": symbol,
+                    "confidence_score": confidence_score,
+                    "severity": severity,
+                    "metrics": metrics,
+                    "timestamp": int(time.time())
+                }
+            )
+            
+            self.logger.info(f"Sent manipulation alert for {symbol}: {manipulation_type} "
+                           f"(confidence: {confidence_score:.1%})")
+                           
+        except Exception as e:
+            self.logger.error(f"Error sending manipulation alert for {symbol}: {str(e)}")
+            self.logger.debug(traceback.format_exc())
+
+    async def send_trade_execution_alert(
+        self, 
+        symbol: str, 
+        side: str, 
+        quantity: float, 
+        price: float,
+        trade_type: str = "entry",  # 'entry' or 'exit'
+        order_id: str = None,
+        transaction_id: str = None,
+        confluence_score: float = None,
+        stop_loss_pct: float = None,
+        take_profit_pct: float = None,
+        position_size_usd: float = None,
+        exchange: str = None
+    ) -> None:
+        """Send an alert when a trade is executed.
+        
+        Args:
+            symbol: Trading pair symbol
+            side: Trade side ('buy' or 'sell')
+            quantity: Trade quantity
+            price: Execution price
+            trade_type: Type of trade ('entry' or 'exit')
+            order_id: Exchange order ID
+            transaction_id: Internal transaction ID
+            confluence_score: Confluence score that triggered the trade
+            stop_loss_pct: Stop loss percentage
+            take_profit_pct: Take profit percentage
+            position_size_usd: Position size in USD
+            exchange: Exchange name
+        """
+        # Generate IDs for tracking if not provided
+        txn_id = transaction_id or str(uuid.uuid4())[:8]
+        alert_id = str(uuid.uuid4())[:8]
+        
+        self.logger.debug(f"[TXN:{txn_id}][ALERT:{alert_id}] Sending trade execution alert for {symbol}")
+        
+        try:
+            # Skip if no webhook URL configured and not in mock mode
+            if not self.discord_webhook_url and not self.mock_mode:
+                self.logger.warning(f"[TXN:{txn_id}][ALERT:{alert_id}] Cannot send trade alert: webhook URL not set")
+                return
+                
+            # Normalize side to uppercase
+            side = side.upper()
+            trade_type = trade_type.lower()
+            
+            # Calculate USD value
+            usd_value = quantity * price
+            
+            # Determine emoji and color based on side and trade type
+            if trade_type == "entry":
+                if side == "BUY":
+                    emoji = "🟢"
+                    color = 0x00FF00  # Green
+                    title = f"{emoji} LONG POSITION OPENED: {symbol}"
+                else:
+                    emoji = "🔴"
+                    color = 0xFF0000  # Red
+                    title = f"{emoji} SHORT POSITION OPENED: {symbol}"
+            else:  # exit
+                if side == "BUY":  # Buying to close a short
+                    emoji = "⚪"
+                    color = 0xCCCCCC  # Light gray
+                    title = f"{emoji} SHORT POSITION CLOSED: {symbol}"
+                else:  # Selling to close a long
+                    emoji = "⚪"
+                    color = 0xCCCCCC  # Light gray
+                    title = f"{emoji} LONG POSITION CLOSED: {symbol}"
+            
+            # Format price with appropriate precision
+            price_str = format_price_string(price)
+            
+            # Build description with all trade details
+            description = [
+                f"**Price:** {price_str}",
+                f"**Quantity:** {quantity:.8f}",
+                f"**Value:** ${usd_value:.2f}"
+            ]
+            
+            # Add exchange if provided
+            if exchange:
+                description.append(f"**Exchange:** {exchange}")
+                
+            # Add order ID if provided
+            if order_id:
+                description.append(f"**Order ID:** {order_id}")
+                
+            # Add position size in USD if provided
+            if position_size_usd:
+                description.append(f"**Position Size:** ${position_size_usd:.2f}")
+                
+            # Add risk management parameters if provided
+            risk_params = []
+            if stop_loss_pct:
+                # Calculate stop price
+                if side == "BUY":  # Long position
+                    stop_price = price * (1 - stop_loss_pct)
+                else:  # Short position
+                    stop_price = price * (1 + stop_loss_pct)
+                stop_price_str = format_price_string(stop_price)
+                risk_params.append(f"**Stop Loss:** {stop_loss_pct*100:.2f}% ({stop_price_str})")
+                
+            if take_profit_pct:
+                # Calculate take profit price
+                if side == "BUY":  # Long position
+                    tp_price = price * (1 + take_profit_pct)
+                else:  # Short position
+                    tp_price = price * (1 - take_profit_pct)
+                tp_price_str = format_price_string(tp_price)
+                risk_params.append(f"**Take Profit:** {take_profit_pct*100:.2f}% ({tp_price_str})")
+                
+            # Add risk parameters if any are provided
+            if risk_params:
+                description.append("\n**Risk Management:**")
+                description.extend(risk_params)
+                
+            # Add confluence score if provided
+            if confluence_score is not None:
+                # Determine confidence level based on score
+                if confluence_score >= 85:
+                    confidence = "Very High"
+                elif confluence_score >= 70:
+                    confidence = "High"
+                elif confluence_score >= 60:
+                    confidence = "Medium"
+                else:
+                    confidence = "Low"
+                    
+                description.append(f"\n**Signal Confidence:** {confidence} ({confluence_score:.1f}/100)")
+                
+            # Join description parts
+            description_text = "\n".join(description)
+            
+            # Create Discord embed
+            embed = DiscordEmbed(
+                title=title,
+                description=description_text,
+                color=color
+            )
+            
+            # Add timestamp
+            embed.set_timestamp()
+            
+            # Add footer with tracking ID
+            embed.set_footer(text=f"TXN:{txn_id} | ALERT:{alert_id}")
+            
+            # Create webhook
+            webhook = DiscordWebhook(url=self.discord_webhook_url or "https://mock.discord.webhook.url", username="Virtuoso Trading")
+            
+            # Add embed
+            webhook.add_embed(embed)
+            
+            # Prepare for alert capture if enabled
+            alert_data = {
+                'title': title,
+                'message': {
+                    'content': description_text,
+                    'embed': {
+                        'title': title,
+                        'description': description_text,
+                        'color': color
+                    }
+                },
+                'timestamp': time.time(),
+                'type': 'trade_execution',
+                'symbol': symbol,
+                'side': side,
+                'price': price,
+                'quantity': quantity,
+                'trade_type': trade_type,
+                'txn_id': txn_id,
+                'alert_id': alert_id
+            }
+            
+            # Store in captured alerts if capture is enabled
+            if self.capture_alerts:
+                if not hasattr(self, 'captured_alerts'):
+                    self.captured_alerts = []
+                self.captured_alerts.append(alert_data)
+                self.logger.info(f"[TXN:{txn_id}][ALERT:{alert_id}] Captured trade execution alert for {symbol}")
+            
+            # If in mock mode, log but don't actually send
+            if self.mock_mode:
+                self.logger.info(f"[TXN:{txn_id}][ALERT:{alert_id}] MOCK MODE: Would send trade execution alert for {symbol}")
+                self.logger.info(f"[TXN:{txn_id}][ALERT:{alert_id}] Alert content: {title}\n{description_text}")
+                # Update alert stats for mock mode
+                self._alert_stats['total'] = int(self._alert_stats.get('total', 0)) + 1
+                self._alert_stats['sent'] = int(self._alert_stats.get('sent', 0)) + 1
+                return
+            
+            # Execute webhook with retry logic (only if not in mock mode)
+            max_retries = 3
+            retry_delay = 2  # seconds
+            response = None
+            
+            for attempt in range(max_retries):
+                try:
+                    response = webhook.execute()
+                    
+                    if response and response.status_code == 200:
+                        self.logger.info(f"[TXN:{txn_id}][ALERT:{alert_id}] Successfully sent trade execution alert for {symbol}")
+                        break
+                    else:
+                        status_code = response.status_code if response else "N/A"
+                        self.logger.warning(f"[TXN:{txn_id}][ALERT:{alert_id}] Failed to send alert (attempt {attempt+1}/{max_retries}): Status code {status_code}")
+                        
+                        if response and response.status_code in [429, 500, 502, 503, 504]:
+                            # These are potentially recoverable with retry
+                            if attempt < max_retries - 1:
+                                self.logger.info(f"[TXN:{txn_id}][ALERT:{alert_id}] Retrying after {retry_delay} seconds...")
+                                await asyncio.sleep(retry_delay)
+                                retry_delay *= 2  # Exponential backoff
+                                continue
+                        
+                except Exception as e:
+                    self.logger.error(f"[TXN:{txn_id}][ALERT:{alert_id}] Error executing webhook (attempt {attempt+1}/{max_retries}): {str(e)}")
+                    if attempt < max_retries - 1:
+                        await asyncio.sleep(retry_delay)
+                        retry_delay *= 2
+                        continue
+                    else:
+                        raise
+            
+            # Update alert stats
+            if response and response.status_code == 200:
+                self._alert_stats['total'] = int(self._alert_stats.get('total', 0)) + 1
+                self._alert_stats['sent'] = int(self._alert_stats.get('sent', 0)) + 1
+            else:
+                self._alert_stats['total'] = int(self._alert_stats.get('total', 0)) + 1
+                self._alert_stats['errors'] = int(self._alert_stats.get('errors', 0)) + 1
+            
+        except Exception as e:
+            self.logger.error(f"[TXN:{txn_id}][ALERT:{alert_id}] Error sending trade execution alert for {symbol}: {str(e)}")
+            self.logger.debug(traceback.format_exc())
+            self._alert_stats['errors'] = int(self._alert_stats.get('errors', 0)) + 1

@@ -75,14 +75,21 @@ validation_service = None
 def display_banner():
     """Display the Virtuoso ASCII art banner"""
     banner = """
-██    ██ ██ ██████  ████████ ██    ██  ██████  ███████  ██████  
-██    ██ ██ ██   ██    ██    ██    ██ ██    ██ ██      ██    ██ 
-██    ██ ██ ██████     ██    ██    ██ ██    ██ ███████ ██    ██ 
- ██  ██  ██ ██   ██    ██    ██    ██ ██    ██      ██ ██    ██ 
-  ████   ██ ██   ██    ██     ██████   ██████  ███████  ██████  
-                    ╔═══════════════════╗                    
-                    ║   CRYPTO SIGNALS  ║                    
-                    ╚═══════════════════╝
+    ██╗   ██╗██╗██████╗ ████████╗██╗   ██╗ ██████╗ ███████╗ ██████╗ 
+    ██║   ██║██║██╔══██╗╚══██╔══╝██║   ██║██╔═══██╗██╔════╝██╔═══██╗
+    ██║   ██║██║██████╔╝   ██║   ██║   ██║██║   ██║███████╗██║   ██║
+    ╚██╗ ██╔╝██║██╔══██╗   ██║   ██║   ██║██║   ██║╚════██║██║   ██║
+     ╚████╔╝ ██║██║  ██║   ██║   ╚██████╔╝╚██████╔╝███████║╚██████╔╝
+      ╚═══╝  ╚═╝╚═╝  ╚═╝   ╚═╝    ╚═════╝  ╚═════╝ ╚══════╝ ╚═════╝ 
+                                                                     
+     ██████╗██████╗ ██╗   ██╗██████╗ ████████╗ ██████╗              
+    ██╔════╝██╔══██╗╚██╗ ██╔╝██╔══██╗╚══██╔══╝██╔═══██╗             
+    ██║     ██████╔╝ ╚████╔╝ ██████╔╝   ██║   ██║   ██║             
+    ██║     ██╔══██╗  ╚██╔╝  ██╔═══╝    ██║   ██║   ██║             
+    ╚██████╗██║  ██║   ██║   ██║        ██║   ╚██████╔╝             
+     ╚═════╝╚═╝  ╚═╝   ╚═╝   ╚═╝        ╚═╝    ╚═════╝              
+                                                                     
+                      🚀 Advanced Signal Analytics 🚀               
 """
     print(banner)
     logger.info("Starting Virtuoso Trading System")
@@ -178,21 +185,32 @@ async def lifespan(app: FastAPI):
         # Initialize market monitor
         logger.info("Initializing market monitor...")
         market_monitor = MarketMonitor(
+            exchange=await exchange_manager.get_primary_exchange(),
+            symbol=None,  # Will monitor top symbols
+            exchange_manager=exchange_manager,
+            database_client=database_client,
+            portfolio_analyzer=portfolio_analyzer,
+            confluence_analyzer=confluence_analyzer,
+            timeframes={
+                'base': '1m',
+                'ltf': '5m', 
+                'mtf': '30m',
+                'htf': '4h'
+            },
             logger=logger,
-            metrics_manager=metrics_manager
+            metrics_manager=metrics_manager,
+            health_monitor=None,  # Optional
+            validation_config=None,  # Optional
+            config=config_manager.config,
+            alert_manager=alert_manager,
+            signal_generator=signal_generator,
+            top_symbols_manager=top_symbols_manager,
+            market_data_manager=market_data_manager,
+            manipulation_detector=None  # Optional
         )
         
-        # Store important components in market_monitor for use
-        market_monitor.exchange_manager = exchange_manager
-        market_monitor.database_client = database_client
-        market_monitor.portfolio_analyzer = portfolio_analyzer
-        market_monitor.confluence_analyzer = confluence_analyzer
-        market_monitor.alert_manager = alert_manager
-        market_monitor.signal_generator = signal_generator
-        market_monitor.top_symbols_manager = top_symbols_manager
-        market_monitor.market_data_manager = market_data_manager
+        # Store market reporter reference
         market_monitor.market_reporter = market_reporter
-        market_monitor.config = config_manager.config
         
         # Start monitoring system
         logger.info("Starting monitoring system...")
@@ -339,12 +357,15 @@ async def root():
             if market_monitor:
                 logger.debug("Market monitor exists, checking health...")
                 try:
-                    is_healthy = await market_monitor.is_healthy()
+                    # Use the new service-oriented API
+                    service_status = market_monitor.get_service_status()
+                    is_healthy = service_status.get('status') == 'healthy'
                     logger.debug(f"Market monitor health check result: {is_healthy}")
                     status["components"]["market_monitor"]["status"] = "active" if is_healthy else "inactive"
-                    status["components"]["market_monitor"]["last_update"] = market_monitor._last_update_time
+                    status["components"]["market_monitor"]["last_update"] = service_status.get('last_update')
                     status["components"]["market_monitor"]["details"]["initialized"] = bool(market_monitor)
-                    status["components"]["market_monitor"]["details"]["is_running"] = market_monitor._running
+                    status["components"]["market_monitor"]["details"]["is_running"] = market_monitor.is_running
+                    status["components"]["market_monitor"]["details"]["service_status"] = service_status
                     logger.debug(f"Market monitor details: {status['components']['market_monitor']}")
                 except Exception as e:
                     error_msg = f"Error during market monitor health check: {str(e)}"
@@ -410,7 +431,7 @@ async def health_check():
             "exchange_manager": bool(exchange_manager and await exchange_manager.is_healthy()),
             "portfolio_analyzer": bool(portfolio_analyzer),
             "database_client": bool(database_client and await database_client.is_healthy()),
-            "market_monitor": bool(market_monitor and market_monitor.is_running()),
+            "market_monitor": bool(market_monitor and market_monitor.is_running),
             "market_reporter": bool(market_reporter),
             "top_symbols_manager": bool(top_symbols_manager)
         }
@@ -1028,21 +1049,32 @@ async def main():
         
         # Initialize market monitor with all required components
         monitor = MarketMonitor(
+            exchange=await exchange_manager.get_primary_exchange(),
+            symbol=None,  # Will monitor top symbols
+            exchange_manager=exchange_manager,
+            database_client=database_client,
+            portfolio_analyzer=portfolio_analyzer,
+            confluence_analyzer=confluence_analyzer,
+            timeframes={
+                'base': '1m',
+                'ltf': '5m', 
+                'mtf': '30m',
+                'htf': '4h'
+            },
             logger=logger,
-            metrics_manager=metrics_manager
+            metrics_manager=metrics_manager,
+            health_monitor=None,  # Optional
+            validation_config=None,  # Optional
+            config=config_manager.config,
+            alert_manager=alert_manager,
+            signal_generator=signal_generator,
+            top_symbols_manager=top_symbols_manager,
+            market_data_manager=market_data_manager,
+            manipulation_detector=None  # Optional
         )
         
-        # Store important components in market_monitor for use
-        monitor.exchange_manager = exchange_manager
-        monitor.database_client = database_client
-        monitor.portfolio_analyzer = portfolio_analyzer
-        monitor.confluence_analyzer = confluence_analyzer
-        monitor.alert_manager = alert_manager
-        monitor.signal_generator = signal_generator
-        monitor.top_symbols_manager = top_symbols_manager
-        monitor.market_data_manager = market_data_manager
-        monitor.market_reporter = market_reporter  # Add the market reporter to the monitor
-        monitor.config = config_manager.config
+        # Store market reporter reference
+        market_monitor.market_reporter = market_reporter
         
         # Handle shutdown signals
         loop = asyncio.get_event_loop()
@@ -1060,7 +1092,7 @@ async def main():
             while True:
                 await asyncio.sleep(60)  # Check every 60 seconds
                 # Verify monitor is still running
-                if not monitor.running:
+                if not monitor.is_running:
                     logger.info("Monitor is no longer running. Exiting.")
                     break
         except asyncio.CancelledError:
@@ -1072,7 +1104,7 @@ async def main():
         logger.error(f"Fatal error: {str(e)}")
         logger.debug(traceback.format_exc())
     finally:
-        if monitor and monitor.running:
+        if monitor and monitor.is_running:
             logger.info("Stopping the monitor...")
             await monitor.stop()
         logger.info("Shutdown complete")
