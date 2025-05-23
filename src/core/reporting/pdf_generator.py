@@ -1343,38 +1343,25 @@ class ReportGenerator:
                                         alpha=0.05,
                                     )
 
-                # Add watermark
-                fig.text(
-                    0.5,
-                    0.5,
-                    "SIMULATED",
-                    fontsize=40,
-                    color="#e5e7eb",
-                    ha="center",
-                    va="center",
-                    alpha=0.1,
-                    rotation=30,
-                    transform=fig.transFigure,
-                )
                 
                 # Adjust layout with specific settings instead of tight_layout
                 plt.subplots_adjust(right=0.85, left=0.1, top=0.9, bottom=0.15)
 
-                # Create output filename
+                # Create output filename for REAL data chart
                 timestamp = int(time.time())
                 output_file = os.path.join(
-                    output_dir, f"{symbol.replace('/', '_')}_simulated_{timestamp}.png"
+                    output_dir, f"{symbol.replace('/', '_')}_chart_{timestamp}.png"
                 )
 
                 # Save the figure
                 plt.savefig(output_file, dpi=150, bbox_inches="tight")
                 plt.close(fig)
 
-                self._log(f"Saved simulated chart: {output_file}")
+                self._log(f"Real data candlestick chart saved to: {output_file}")
                 return output_file
 
         except Exception as e:
-            self._log(f"Error creating simulated chart: {str(e)}", logging.ERROR)
+            self._log(f"Error creating candlestick chart: {str(e)}", logging.ERROR)
             self._log(traceback.format_exc(), logging.DEBUG)
             return None
 
@@ -1638,6 +1625,17 @@ class ReportGenerator:
                         targets=targets,
                         output_dir=os.path.dirname(pdf_path),
                     )
+                    
+                    # If real data chart failed but we have trade params, fall back to simulated
+                    if candlestick_chart is None and trade_params:
+                        self._log("Real data chart failed, falling back to simulated chart", logging.WARNING)
+                        candlestick_chart = self._create_simulated_chart(
+                            symbol=symbol,
+                            entry_price=entry_price or price,
+                            stop_loss=stop_loss,
+                            targets=targets,
+                            output_dir=os.path.dirname(pdf_path),
+                        )
                 elif signal_data.get("trade_params", None):
                     self._log("Creating simulated chart from trade parameters")
 
@@ -2767,13 +2765,16 @@ class ReportGenerator:
 
                 dt = datetime.fromtimestamp(timestamp / 1000)
                 report_date = dt.strftime("%Y-%m-%d %H:%M:%S UTC")
+                # Store both timestamp and report_date for template compatibility
                 market_data["report_date"] = report_date
+                market_data["timestamp"] = timestamp
                 self.logger.debug(f"Processed timestamp {timestamp} to {report_date}")
             except Exception as timestamp_error:
                 self.logger.error(f"Error processing timestamp: {str(timestamp_error)}")
                 current_time = datetime.now()
                 report_date = current_time.strftime("%Y-%m-%d %H:%M:%S UTC")
                 market_data["report_date"] = report_date
+                market_data["timestamp"] = int(current_time.timestamp() * 1000)
                 self.logger.info(f"Using current time for report date: {report_date}")
 
             # Process top performers - ensure it's a list
@@ -3001,8 +3002,84 @@ class ReportGenerator:
                 # Add required missing fields with defaults
                 if "additional_sections" not in market_data:
                     market_data["additional_sections"] = {}
+                
+                # Ensure critical sections have at least empty structures
+                market_data.setdefault("market_overview", {})
+                market_data.setdefault("futures_premium", {})
+                market_data.setdefault("smart_money_index", {})
+                market_data.setdefault("whale_activity", {})
+                market_data.setdefault("top_performers", [])
+                market_data.setdefault("trading_signals", [])
+                market_data.setdefault("notable_news", [])
+                
+                # Add comprehensive logging of data structure
+                try:
+                    # Use a custom encoder or fallback to simple string conversion for problem values
+                    class DebugEncoder(json.JSONEncoder):
+                        def default(self, obj):
+                            try:
+                                return super().default(obj)
+                            except:
+                                return str(obj)
+                    
+                    self.logger.debug(
+                        f"Market data keys: {sorted(market_data.keys())}"
+                    )
+                    
+                    # Log sample of each section to identify structure issues
+                    for key in ["market_overview", "futures_premium", "smart_money_index", "whale_activity"]:
+                        if key in market_data:
+                            sample = str(market_data[key])[:200] + "..." if len(str(market_data[key])) > 200 else str(market_data[key])
+                            self.logger.debug(f"{key} sample: {sample}")
+                except Exception as log_error:
+                    self.logger.error(f"Error logging market data structure: {str(log_error)}")
 
                 html_content = template.render(**market_data)
+                
+                # Log HTML content preview
+                html_preview = html_content[:500] + "..." if len(html_content) > 500 else html_content
+                self.logger.debug(f"HTML content preview: {html_preview}")
+                self.logger.info(f"HTML content length: {len(html_content)} characters")
+                
+                # Check for actual content in the HTML
+                missing_content = True
+                key_phrases = ["Market Overview", "Market Intelligence", "Virtuoso"]
+                for phrase in key_phrases:
+                    if phrase in html_content:
+                        missing_content = False
+                        break
+                        
+                if missing_content:
+                    self.logger.error("HTML appears to be missing key content phrases, possible rendering issue")
+                else:
+                    self.logger.info(f"HTML content contains expected phrases, rendering looks ok")
+                
+                # Check for specific content sections
+                sections = {
+                    "market_overview": "Market Overview",
+                    "futures_premium": "Futures Premium",
+                    "smart_money_index": "Smart Money Index",
+                    "whale_activity": "Whale Activity"
+                }
+                
+                for section_key, section_title in sections.items():
+                    if section_key in market_data and section_title in html_content:
+                        self.logger.debug(f"Section '{section_key}' appears to be rendered correctly")
+                    elif section_key in market_data:
+                        self.logger.warning(f"Section '{section_key}' exists in data but doesn't appear in HTML")
+                    else:
+                        self.logger.debug(f"Section '{section_key}' not in market data")
+                
+                # For debugging, write out the HTML to a debug file
+                try:
+                    debug_dir = os.path.join(os.getcwd(), 'logs', 'debug')
+                    os.makedirs(debug_dir, exist_ok=True)
+                    debug_html_path = os.path.join(debug_dir, f"debug_html_{int(time.time())}.html")
+                    with open(debug_html_path, "w") as f:
+                        f.write(html_content)
+                    self.logger.info(f"Wrote debug HTML to {debug_html_path}")
+                except Exception as debug_error:
+                    self.logger.error(f"Failed to write debug HTML: {str(debug_error)}")
 
                 # Add watermark to the rendered HTML
                 watermark_text = market_data.get("watermark_text", "VIRTUOSO CRYPTO")

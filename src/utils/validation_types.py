@@ -7,7 +7,7 @@ import pytz
 
 if TYPE_CHECKING:
     from data_processing.market_validator import MarketDataValidator
-    from monitoring.alert_manager import AlertManager
+    from src.monitoring.alert_manager import AlertManager
 
 class ValidationLevel(Enum):
     """Validation strictness levels."""

@@ -742,21 +742,41 @@ class PriceStructureIndicators(BaseIndicator):
             scores = []
             weights = {'htf': 0.4, 'mtf': 0.35, 'ltf': 0.25}
             
+            if not timeframe_data or not isinstance(timeframe_data, dict):
+                self.logger.warning("Invalid timeframe data for VWAP analysis - using DEFAULT value 50.0")
+                return 50.0
+                
+            self.logger.debug(f"Available timeframes: {list(timeframe_data.keys())}")
+            
+            available_tfs = 0
             for tf, weight in weights.items():
                 if tf in timeframe_data:
                     df = timeframe_data[tf].get('data', pd.DataFrame())
-                    if isinstance(df, pd.DataFrame) and not df.empty:
+                    if isinstance(df, pd.DataFrame) and not df.empty and 'close' in df.columns and 'volume' in df.columns:
                         tf_score = self._calculate_single_vwap_score(df)
                         scores.append(tf_score * weight)
                         self.logger.debug(f"- {tf.upper()} Score: {tf_score:.2f} (weight: {weight:.2f})")
+                        available_tfs += 1
+                    else:
+                        self.logger.debug(f"- Skipping {tf} - invalid DataFrame")
+                else:
+                    self.logger.debug(f"- Timeframe {tf} not available")
             
-            final_score = sum(scores) if scores else 50.0
-            self.logger.debug(f"- Final VWAP Score: {final_score:.2f}")
+            if not scores:
+                self.logger.warning("No valid timeframe VWAP scores calculated - using DEFAULT value 50.0")
+                return 50.0
+                
+            final_score = sum(scores)
+            self.logger.debug(f"- Final VWAP Score: {final_score:.2f} (calculated from {available_tfs} timeframes)")
+            
+            # Verify if the score is suspiciously close to the default value
+            self._verify_score_not_default(final_score, "Multi-timeframe VWAP")
             
             return final_score
             
         except Exception as e:
             self.logger.error(f"Error calculating VWAP score: {str(e)}")
+            self.logger.warning("Using DEFAULT value 50.0 due to error")
             return 50.0
 
     @handle_indicator_error
@@ -3181,29 +3201,34 @@ class PriceStructureIndicators(BaseIndicator):
         """
         try:
             if not ohlcv_data or not isinstance(ohlcv_data, dict):
-                self.logger.warning("Invalid OHLCV data for volume analysis")
+                self.logger.warning("Invalid OHLCV data for volume analysis - using DEFAULT value 50.0")
                 return 50.0
                 
             available_timeframes = [tf for tf in ohlcv_data.keys() 
                                    if isinstance(ohlcv_data[tf], pd.DataFrame) 
                                    and not ohlcv_data[tf].empty]
-                                   
+                               
             if not available_timeframes:
-                self.logger.warning("No valid timeframes available for volume analysis")
+                self.logger.warning("No valid timeframes available for volume analysis - using DEFAULT value 50.0")
                 return 50.0
+            
+            self.logger.debug(f"Volume analysis using {len(available_timeframes)} timeframes: {available_timeframes}")
                 
             # Calculate volume profile score
             vp_scores = []
             for tf in available_timeframes:
                 df = ohlcv_data[tf]
                 if 'volume' not in df.columns:
+                    self.logger.debug(f"Skipping {tf} - no volume column")
                     continue
                     
                 vp_score = self._calculate_volume_profile_score(df)
                 vp_scores.append(vp_score)
+                self.logger.debug(f"Volume profile score for {tf}: {vp_score:.2f}")
                 
             # Calculate VWAP score
             vwap_score = self._calculate_vwap_score(ohlcv_data)
+            self.logger.debug(f"VWAP score: {vwap_score}")
             
             # Calculate volume node score if available
             vn_scores = []
@@ -3215,6 +3240,7 @@ class PriceStructureIndicators(BaseIndicator):
                 try:
                     vn_score = self._calculate_volume_node_score(df)
                     vn_scores.append(vn_score)
+                    self.logger.debug(f"Volume node score for {tf}: {vn_score:.2f}")
                 except Exception as e:
                     self.logger.debug(f"Error calculating volume node score: {str(e)}")
                     
@@ -3228,14 +3254,21 @@ class PriceStructureIndicators(BaseIndicator):
                 scores.append(np.mean(vn_scores))
                 
             if not scores:
-                self.logger.warning("No volume analysis scores calculated")
+                self.logger.warning("No volume analysis scores calculated - using DEFAULT value 50.0")
                 return 50.0
                 
-            return float(np.mean(scores))
+            final_score = float(np.mean(scores))
+            self.logger.debug(f"Final volume score: {final_score:.2f} (calculated from {len(scores)} components)")
+            
+            # Verify if the score is suspiciously close to the default value
+            self._verify_score_not_default(final_score, "Volume Analysis")
+            
+            return final_score
             
         except Exception as e:
             self.logger.error(f"Error in volume analysis: {str(e)}")
             self.logger.error(traceback.format_exc())
+            self.logger.warning("Using DEFAULT value 50.0 due to error")
             return 50.0
 
     def _calculate_order_blocks(self, df):
@@ -3373,15 +3406,25 @@ class PriceStructureIndicators(BaseIndicator):
         """
         try:
             if not scores:
-                self.logger.warning("No scores provided for weighted calculation")
+                self.logger.warning("No scores provided for weighted calculation - using DEFAULT value 50.0")
                 return 50.0
                 
             self.logger.debug("Computing weighted score with component mapping")
             self.logger.debug(f"Input scores: {scores}")
             self.logger.debug(f"Component weights: {self.component_weights}")
             
+            # Check for default values in input scores
+            default_components = []
+            for component, score in scores.items():
+                if abs(score - 50.0) < 0.001:
+                    default_components.append(component)
+            
+            if default_components:
+                self.logger.warning(f"Found possible default values in components: {default_components}")
+            
             weighted_sum = 0.0
             weight_sum = 0.0
+            used_components = []
             
             for component, score in scores.items():
                 # Map internal component name to config name if needed
@@ -3390,23 +3433,30 @@ class PriceStructureIndicators(BaseIndicator):
                 # Get weight for the component
                 weight = self.component_weights.get(config_component, 0.0)
                 
+                if weight > 0:
+                    used_components.append(component)
+                
                 self.logger.debug(f"Component: {component} -> {config_component}, Score: {score:.2f}, Weight: {weight:.2f}")
                 
                 weighted_sum += score * weight
                 weight_sum += weight
             
             if weight_sum == 0:
-                self.logger.warning("No valid weights found for components, using default score")
+                self.logger.warning("No valid weights found for components - using DEFAULT value 50.0")
                 return 50.0
                 
             final_score = weighted_sum / weight_sum
-            self.logger.debug(f"Final weighted score: {final_score:.2f} (sum: {weighted_sum:.2f}, weight: {weight_sum:.2f})")
+            self.logger.debug(f"Final weighted score: {final_score:.2f} (sum: {weighted_sum:.2f}, weight: {weight_sum:.2f}, using {len(used_components)}/{len(scores)} components)")
+            
+            # Check if final score is suspiciously close to default
+            self._verify_score_not_default(final_score, "Weighted Composite")
             
             return float(np.clip(final_score, 0, 100))
             
         except Exception as e:
             self.logger.error(f"Error computing weighted score: {str(e)}")
             self.logger.debug(traceback.format_exc())
+            self.logger.warning("Using DEFAULT value 50.0 due to error")
             return 50.0
 
     def log_indicator_results(self, final_score: float, component_scores: Dict[str, float], symbol: str = '') -> None:
@@ -3433,11 +3483,19 @@ class PriceStructureIndicators(BaseIndicator):
             self.logger.error(f"Error logging indicator results: {str(e)}")
             self.logger.debug(traceback.format_exc())
 
+    def _verify_score_not_default(self, score: float, component_name: str, threshold: float = 0.001) -> None:
+        """Log a warning if a score is suspiciously close to the default value."""
+        if abs(score - 50.0) < threshold:
+            self.logger.warning(f"POSSIBLE DEFAULT VALUE: {component_name} score is exactly 50.0")
+            # Log details about the calculation to help identify the source
+            self.logger.debug(f"Stack trace for potential default value in {component_name}:")
+            self.logger.debug(''.join(traceback.format_stack(limit=5)))
+
     def _calculate_single_vwap_score(self, df: pd.DataFrame) -> float:
         """Calculate VWAP score for a single timeframe DataFrame using daily and weekly session VWAPs."""
         try:
             if df.empty or 'close' not in df.columns or 'volume' not in df.columns:
-                self.logger.warning("Invalid DataFrame for VWAP score calculation")
+                self.logger.warning("Invalid DataFrame for VWAP score calculation - using DEFAULT value 50.0")
                 return 50.0
 
             # Ensure we have a datetime index or a timestamp column
@@ -3448,12 +3506,14 @@ class PriceStructureIndicators(BaseIndicator):
                 else:
                     df['datetime'] = pd.to_datetime(df['timestamp'], unit='s', utc=True)
                 df = df.set_index('datetime')
+                self.logger.debug(f"Created datetime index from timestamp column")
             elif not isinstance(df.index, pd.DatetimeIndex):
-                self.logger.warning("DataFrame must have a DatetimeIndex or 'timestamp' column")
+                self.logger.warning("DataFrame must have a DatetimeIndex or 'timestamp' column - using DEFAULT value 50.0")
                 return 50.0
 
             now = df.index[-1]
             current_price = df['close'].iloc[-1]
+            self.logger.debug(f"VWAP calculation starting with current_price={current_price:.4f} at {now}")
 
             # --- Daily VWAP ---
             daily_start = now.normalize()  # 00:00:00 UTC today
@@ -3462,8 +3522,10 @@ class PriceStructureIndicators(BaseIndicator):
                 daily_vwap = (daily_df['close'] * daily_df['volume']).sum() / daily_df['volume'].sum()
                 daily_score = 50 + ((current_price - daily_vwap) / daily_vwap) * 100 if daily_vwap != 0 else 50.0
                 daily_score = float(np.clip(daily_score, 0, 100))
+                self.logger.debug(f"Daily VWAP calculated: {daily_vwap:.4f}, score={daily_score:.2f} (NOT default)")
             else:
                 daily_score = 50.0
+                self.logger.warning("No daily data for VWAP calculation - using DEFAULT value 50.0")
 
             # --- Weekly VWAP ---
             # Find the most recent Sunday 00:00:00 UTC
@@ -3475,13 +3537,24 @@ class PriceStructureIndicators(BaseIndicator):
                 weekly_vwap = (weekly_df['close'] * weekly_df['volume']).sum() / weekly_df['volume'].sum()
                 weekly_score = 50 + ((current_price - weekly_vwap) / weekly_vwap) * 100 if weekly_vwap != 0 else 50.0
                 weekly_score = float(np.clip(weekly_score, 0, 100))
+                self.logger.debug(f"Weekly VWAP calculated: {weekly_vwap:.4f}, score={weekly_score:.2f} (NOT default)")
             else:
                 weekly_score = 50.0
+                self.logger.warning("No weekly data for VWAP calculation - using DEFAULT value 50.0")
 
             # --- Combine Scores ---
-            score = float(np.mean([daily_score, weekly_score]))
-            self.logger.debug(f"Daily VWAP: {daily_vwap if 'daily_vwap' in locals() else 'N/A'}, Weekly VWAP: {weekly_vwap if 'weekly_vwap' in locals() else 'N/A'}, Current Price: {current_price:.2f}, Daily Score: {daily_score:.2f}, Weekly Score: {weekly_score:.2f}, Final Score: {score:.2f}")
+            if 'daily_vwap' in locals() and 'weekly_vwap' in locals():
+                score = float(np.mean([daily_score, weekly_score]))
+                self.logger.debug(f"Final VWAP score: {score:.2f} (calculated from daily={daily_score:.2f}, weekly={weekly_score:.2f})")
+            else:
+                score = 50.0
+                self.logger.warning("Using DEFAULT VWAP score 50.0 due to missing calculations")
+            
+            # Verify if score is suspiciously close to the default value
+            self._verify_score_not_default(score, "VWAP")
+                
             return score
         except Exception as e:
             self.logger.error(f"Error in _calculate_single_vwap_score: {str(e)}")
+            self.logger.warning("Using DEFAULT value 50.0 due to error")
             return 50.0

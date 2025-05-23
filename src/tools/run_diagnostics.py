@@ -290,9 +290,10 @@ async def run_app_with_timeout(timeout_minutes=10):
         timeout_minutes: How long to run the app in minutes
     """
     # Set the Discord webhook URL environment variable if needed
-    if 'DISCORD_WEBHOOK_URL' not in os.environ:
-        webhook_url = "https://discord.com/api/webhooks/1197011710268162159/V_Gfq66qtfJGiZMxnIwC7pb20HwHqVCRMoU_kubPetn_ikB5F8NTw81_goGLoSQ3q3Vw"
-        os.environ['DISCORD_WEBHOOK_URL'] = webhook_url
+    webhook_url = os.getenv('DISCORD_WEBHOOK_URL', '')
+    if not webhook_url:
+        logger.warning("DISCORD_WEBHOOK_URL environment variable not set")
+    else:
         logger.info(f"Set DISCORD_WEBHOOK_URL environment variable")
 
     # Ensure the logs directory exists
