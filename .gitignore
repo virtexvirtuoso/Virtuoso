@@ -141,6 +141,8 @@ reports/pdfs/
 reports/json/
 reports/charts/
 reports/session_reports/
+reports/diagnostics/
+static/diagnostics/
 exports/
 test-reports/
 # Keep the directories but not their contents

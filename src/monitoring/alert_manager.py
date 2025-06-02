@@ -31,7 +31,7 @@ from src.models.schema import AlertPayload, ConfluenceAlert, SignalDirection
 from src.core.reporting.report_manager import ReportManager
 
 if TYPE_CHECKING:
-    from src.monitoring.metrics_manager import MetricsManager
+    from monitoring.metrics_manager import MetricsManager
 
 logger = getLogger(__name__)
 
@@ -131,6 +131,9 @@ class AlertManager:
         self.discord_webhook_url = ""
         print("CRITICAL DEBUG: Discord webhook URL will be loaded from config or environment variables")
         
+        # System webhook URL (for system alerts)
+        self.system_webhook_url = ""
+        
         # Additional configurations from config file
         if 'monitoring' in self.config and 'alerts' in self.config['monitoring']:
             alert_config = self.config['monitoring']['alerts']
@@ -161,6 +164,22 @@ class AlertManager:
                         print("CRITICAL DEBUG: Discord webhook URL from environment is empty after cleaning")
                 else:
                     self.logger.warning("No Discord webhook URL found in config or environment")
+            
+            # Load system webhook URL
+            if 'system_alerts_webhook_url' in alert_config:
+                self.system_webhook_url = alert_config['system_alerts_webhook_url']
+                if self.system_webhook_url:
+                    print(f"CRITICAL DEBUG: System webhook URL from config: {self.system_webhook_url[:20]}...{self.system_webhook_url[-10:]}")
+                else:
+                    print("CRITICAL DEBUG: System webhook URL from config is None or empty")
+            else:
+                self.system_webhook_url = os.getenv('SYSTEM_ALERTS_WEBHOOK_URL', '')
+                if self.system_webhook_url:
+                    self.system_webhook_url = self.system_webhook_url.strip().replace('\n', '')
+                    if self.system_webhook_url:
+                        print(f"CRITICAL DEBUG: System webhook URL from environment: {self.system_webhook_url[:20]}...{self.system_webhook_url[-10:]}")
+                    else:
+                        print("CRITICAL DEBUG: System webhook URL from environment is empty after cleaning")
             
             # Direct discord webhook from config (alternative path)
             if 'discord_network' in alert_config:
@@ -384,7 +403,19 @@ class AlertManager:
             if level not in self.alert_levels:
                 self.logger.error(f"Invalid alert level: {level}")
                 return
+            
+            # Check if this is a market report alert that should be mirrored to system webhook
+            is_market_report = False
+            if details and details.get('type') == 'market_report':
+                is_market_report = True
+                # Check if mirroring is enabled for market reports
+                mirror_config = self.config.get('monitoring', {}).get('alerts', {}).get('system_alerts', {}).get('mirror_alerts', {})
+                should_mirror = mirror_config.get('enabled', False) and mirror_config.get('types', {}).get('market_report', False)
                 
+                if should_mirror and self.system_webhook_url:
+                    self.logger.info(f"Mirroring market report alert to system webhook")
+                    await self._send_system_webhook_alert(message, details)
+
             # Special handling for large order alerts
             if details and details.get('type') == 'large_aggressive_order':
                 symbol = details.get('symbol', 'UNKNOWN')
@@ -397,11 +428,95 @@ class AlertManager:
                 
                 self._last_large_order_alert[symbol] = current_time
             
+                # Send large order Discord embed alert
+                if 'discord' in self.handlers:
+                    # Extract order data
+                    order_data = details.get('data', {})
+                    side = order_data.get('side', 'UNKNOWN').upper()
+                    size = order_data.get('size', 0)
+                    price = order_data.get('price', 0)
+                    usd_value = order_data.get('usd_value', size * price)
+                    
+                    # Determine emoji and color based on side
+                    if side == 'BUY':
+                        emoji = "🟢"
+                        color = 0x00FF00  # Green
+                        impact_text = "buying pressure"
+                    else:
+                        emoji = "🔴"
+                        color = 0xFF0000  # Red
+                        impact_text = "selling pressure"
+                    
+                    # Create description
+                    description = (
+                        f"{emoji} **Large Aggressive Order Detected** for {symbol}\n"
+                        f"• **Side:** {side}\n"
+                        f"• **Size:** {size:,.4f} units\n"
+                        f"• **Price:** ${price:,.4f}\n"
+                        f"• **Value:** ${usd_value:,.2f}\n"
+                        f"• **Impact:** Immediate {impact_text} on market"
+                    )
+                    
+                    # Create Discord embed
+                    embed = DiscordEmbed(
+                        title=f"💥 Large Aggressive Order: {symbol}",
+                        description=description,
+                        color=color
+                    )
+                    
+                    # Add timestamp
+                    embed.set_timestamp()
+                    
+                    # Add order details as fields
+                    embed.add_embed_field(
+                        name="Order Side",
+                        value=side,
+                        inline=True
+                    )
+                    
+                    embed.add_embed_field(
+                        name="Order Size", 
+                        value=f"{size:,.4f}",
+                        inline=True
+                    )
+                    
+                    embed.add_embed_field(
+                        name="USD Value",
+                        value=f"${usd_value:,.2f}",
+                        inline=True
+                    )
+                    
+                    # Add footer
+                    embed.set_footer(text="Virtuoso Large Order Detection")
+                    
+                    # Create webhook and send
+                    webhook = DiscordWebhook(url=self.discord_webhook_url)
+                    webhook.add_embed(embed)
+                    
+                    # Execute webhook
+                    response = webhook.execute()
+                    
+                    # Check response status
+                    if response and hasattr(response, 'status_code') and 200 <= response.status_code < 300:
+                        self.logger.info(f"Sent large order alert for {symbol}: {side} ${usd_value:,.2f}")
+                        self._alert_stats['sent'] = int(self._alert_stats.get('sent', 0)) + 1
+                        return
+                    else:
+                        self.logger.warning(f"Failed to send large order alert: {response}")
+                        # Continue with standard alert as fallback
+            
             # Special handling for whale activity alerts
             if details and details.get('type') == 'whale_activity':
+                # Debug logging to investigate UNKNOWN symbol issue
+                self.logger.debug(f"Whale activity alert details: {details}")
+                self.logger.debug(f"Details keys: {list(details.keys()) if details else 'None'}")
+                
                 symbol = details.get('symbol', 'UNKNOWN')
                 current_time = time.time()
                 subtype = details.get('subtype', 'unknown')
+                
+                # Debug logging for extracted values
+                self.logger.debug(f"Extracted symbol: '{symbol}', subtype: '{subtype}'")
                 
                 # Check symbol-specific cooldown
                 if throttle and (current_time - self._last_whale_activity_alert.get(f"{symbol}:{subtype}", 0) < self.whale_activity_cooldown):
@@ -412,46 +527,138 @@ class AlertManager:
                 
                 # Enhanced formatting for Discord
                 if 'discord' in self.handlers:
-                    # Create a more visually appealing alert
+                    # Create a more visually appealing alert matching the exact format
                     emoji = "🐋📈" if subtype == "accumulation" else "🐋📉" if subtype == "distribution" else "🐋"
                     color = 0x00FF00 if subtype == "accumulation" else 0xFF0000 if subtype == "distribution" else 0x888888
                     
-                    # Create Discord embed
+                    # Extract activity data for proper formatting
+                    activity_data = details.get('data', {})
+                    self.logger.debug(f"Raw activity_data received: {activity_data}")
+                    
+                    # Order book data (existing)
+                    net_volume = activity_data.get('net_whale_volume', 0)
+                    net_usd_value = activity_data.get('net_usd_value', 0)
+                    whale_bid_orders = activity_data.get('whale_bid_orders', 0)
+                    whale_ask_orders = activity_data.get('whale_ask_orders', 0)
+                    bid_percentage = activity_data.get('bid_percentage', 0)
+                    imbalance = activity_data.get('imbalance', 0)
+                    
+                    # Trade data (previously unused!)
+                    whale_trades_count = activity_data.get('whale_trades_count', 0)
+                    whale_buy_volume = activity_data.get('whale_buy_volume', 0)
+                    whale_sell_volume = activity_data.get('whale_sell_volume', 0)
+                    net_trade_volume = activity_data.get('net_trade_volume', 0)
+                    trade_imbalance = activity_data.get('trade_imbalance', 0)
+                    trade_confirmation = activity_data.get('trade_confirmation', False)
+                    
+                    # Calculate current price from available data
+                    bid_usd = activity_data.get('whale_bid_usd', 0)
+                    ask_usd = activity_data.get('whale_ask_usd', 0)
+                    bid_volume = activity_data.get('whale_bid_volume', 0)
+                    ask_volume = activity_data.get('whale_ask_volume', 0)
+                    
+                    # Calculate current price as weighted average if volumes exist
+                    current_price = 0
+                    if bid_volume > 0 or ask_volume > 0:
+                        total_volume = bid_volume + ask_volume
+                        total_usd = bid_usd + ask_usd
+                        if total_volume > 0:
+                            current_price = total_usd / total_volume
+                    
+                    # Debug: Log extracted values including trade data
+                    self.logger.debug(f"Extracted values - Order Volume: {net_volume}, USD: {net_usd_value}, "
+                                    f"Bid orders: {whale_bid_orders}, Ask orders: {whale_ask_orders}, "
+                                    f"Price: {current_price}, Order Imbalance: {imbalance}, "
+                                    f"Trade Count: {whale_trades_count}, Trade Volume: {net_trade_volume}, "
+                                    f"Trade Imbalance: {trade_imbalance}, Trade Confirmation: {trade_confirmation}")
+                    
+                    # Determine signal strength based on both order book and trade data
+                    if trade_confirmation and whale_trades_count > 0:
+                        signal_strength = "CONFIRMED"
+                        strength_emoji = "✅"
+                    elif whale_trades_count > 0:
+                        signal_strength = "EXECUTING"
+                        strength_emoji = "⚡"
+                    else:
+                        signal_strength = "POSITIONING"
+                        strength_emoji = "👀"
+                    
+                    # Enhanced metrics - Calculate risk/reward and price impact
+                    risk_level = "LOW"
+                    if abs(imbalance) > 0.7:
+                        risk_level = "HIGH"
+                    elif abs(imbalance) > 0.4:
+                        risk_level = "MEDIUM"
+                    
+                    # Calculate price targets based on order book depth and imbalance
+                    avg_price = current_price if current_price > 0 else 1.0  # Default to 1 if price is 0
+                    price_impact = 0
+                    
+                    # Calculate price impact based on imbalance and volume
+                    if abs(imbalance) > 0.3 and avg_price > 0:
+                        price_impact = imbalance * min(abs(net_usd_value) / 1000000, 5) * 0.01 * avg_price
+                    
+                    # Set price targets based on subtype and impact
+                    if subtype == "accumulation":
+                        support_level = max(avg_price - (avg_price * 0.005), avg_price - abs(price_impact))
+                        target_level = avg_price + (abs(price_impact) * 1.5)
+                        price_prediction = f"Support: ${support_level:.2f} | Target: ${target_level:.2f}"
+                    else:
+                        resistance_level = min(avg_price + (avg_price * 0.005), avg_price + abs(price_impact))
+                        target_level = avg_price - (abs(price_impact) * 1.5)
+                        price_prediction = f"Resistance: ${resistance_level:.2f} | Target: ${target_level:.2f}"
+                    
+                    # Calculate volume impact percentage safely
+                    volume_impact_pct = "0.00%" if avg_price == 0 else f"{abs(price_impact/avg_price):.2%}"
+                    
+                    # Create the enhanced description with both order book and trade data
+                    description = (
+                        f"{emoji} **Whale {subtype.capitalize()} Detected** for {symbol} {strength_emoji}\n"
+                        f"• **Signal Strength:** {signal_strength}\n"
+                        f"• Net positioning: {abs(net_volume):.2f} units (${abs(net_usd_value):,.2f})\n"
+                        f"• Whale orders: {whale_bid_orders} bids, {whale_ask_orders} asks ({bid_percentage:.1%} of book)\n"
+                        f"• Whale trades: {whale_trades_count} executed ({whale_buy_volume:.0f} buy / {whale_sell_volume:.0f} sell)\n"
+                        f"• Order imbalance: {imbalance:.1%} | Trade imbalance: {trade_imbalance:.1%}\n"
+                        f"• Current price: ${current_price:.2f}\n"
+                        f"• Market Impact: {volume_impact_pct}\n"
+                        f"• Price Prediction: {price_prediction}"
+                    )
+                    
+                    # Create Discord embed with the exact title format
                     embed = DiscordEmbed(
-                        title=f"{emoji} Whale {subtype.capitalize()} Detected for {symbol}",
-                        description=message,
+                        title="Virtuoso Signals APP",
+                        description=description,
                         color=color
                     )
                     
                     # Add timestamp
                     embed.set_timestamp()
                     
-                    # Add activity data
-                    if 'data' in details:
-                        activity_data = details['data']
-                        
-                        # Format amounts for readability
-                        bid_usd = activity_data.get('whale_bid_usd', 0)
-                        ask_usd = activity_data.get('whale_ask_usd', 0)
-                        net_usd = activity_data.get('net_usd_value', 0)
-                        
-                        # Add bid information
-                        embed.add_embed_field(
-                            name="Bid Orders",
-                            value=f"{activity_data.get('whale_bid_orders', 0)} orders\n${bid_usd:,.2f}"
-                        )
-                        
-                        # Add ask information
-                        embed.add_embed_field(
-                            name="Ask Orders",
-                            value=f"{activity_data.get('whale_ask_orders', 0)} orders\n${ask_usd:,.2f}"
-                        )
-                        
-                        # Add imbalance information
-                        embed.add_embed_field(
-                            name="Imbalance",
-                            value=f"{activity_data.get('imbalance', 0):.1%}"
-                        )
+                    # Enhanced four-column table showing both orders and trades
+                    embed.add_embed_field(
+                        name="Order Book",
+                        value=f"{whale_bid_orders} bids\n{whale_ask_orders} asks\n${bid_usd:,.0f} / ${ask_usd:,.0f}",
+                        inline=True
+                    )
+                    
+                    embed.add_embed_field(
+                        name="Trade Execution",
+                        value=f"{whale_trades_count} trades\n{whale_buy_volume:.0f} buy / {whale_sell_volume:.0f} sell",
+                        inline=True
+                    )
+                    
+                    embed.add_embed_field(
+                        name=f"👀 {signal_strength}",
+                        value=f"Imbalances\nOrders: {imbalance:.1%}\nTrades: {trade_imbalance:.1%}\nConfirmed: {'✅' if trade_confirmation else '❌'}",
+                        inline=True
+                    )
+                    
+                    # Add a new row with market impact and price prediction
+                    embed.add_embed_field(
+                        name="Market Analysis",
+                        value=f"Risk Level: {risk_level}\nVolume Impact: {volume_impact_pct}\n{price_prediction}",
+                        inline=True
+                    )
                     
                     # Create webhook and add embed
                     webhook = DiscordWebhook(url=self.discord_webhook_url)
@@ -462,7 +669,7 @@ class AlertManager:
                     
                     # Check response status
                     if response and hasattr(response, 'status_code') and 200 <= response.status_code < 300:
-                        self.logger.info(f"Sent whale activity Discord alert for {symbol} ({subtype})")
+                        self.logger.info(f"Sent enhanced whale activity Discord alert for {symbol} ({subtype}) - {signal_strength}")
                         self._alert_stats['sent'] = int(self._alert_stats.get('sent', 0)) + 1
                         return
                     else:
@@ -682,7 +889,76 @@ class AlertManager:
                 # Create a price action note based on position type and impact level
                 price_action = self._get_price_action_note(position_type, impact_level)
                 
-                # Format message with improved visual elements
+                # Create Discord embed for liquidation alert
+                title = f"{direction_emoji} {position_type} LIQUIDATION: {symbol}"
+                
+                # Build description
+                description = [
+                    f"**{impact_emoji} Large liquidation detected** ({impact_level} impact)",
+                    "",
+                    f"• **Size:** {liquidation_data['size']:.4f} {base_asset}",
+                    f"• **Price:** ${liquidation_data['price']:,.2f}",
+                    f"• **Value:** ${usd_value:,.2f} {threshold_indicator}",
+                    f"• **Time:** {timestamp} ({time_ago})",
+                    "",
+                    f"**Market Impact:**",
+                    f"• Immediate {'buying 📈' if position_type == 'SHORT' else 'selling 📉'} pressure",
+                    f"• Impact Level: **{impact_level}**",
+                    f"• Impact Meter: `{impact_bar}`",
+                    "",
+                    f"**Analysis:** {price_action}"
+                ]
+                
+                # Create Discord embed
+                embed = DiscordEmbed(
+                    title=title,
+                    description="\n".join(description),
+                    color=0xFF0000 if position_type == "LONG" else 0x00FF00  # Red for long liq, green for short liq
+                )
+                
+                # Add timestamp
+                embed.set_timestamp()
+                
+                # Add fields for key metrics
+                embed.add_embed_field(
+                    name="Position Type",
+                    value=position_type,
+                    inline=True
+                )
+                
+                embed.add_embed_field(
+                    name="Liquidation Size",
+                    value=f"{liquidation_data['size']:.4f} {base_asset}",
+                    inline=True
+                )
+                
+                embed.add_embed_field(
+                    name="Impact Level",
+                    value=impact_level,
+                    inline=True
+                )
+                
+                # Add footer
+                embed.set_footer(text=f"Virtuoso Liquidation Monitor • Threshold: ${self.liquidation_threshold:,}")
+                
+                # Send as Discord embed instead of text alert
+                if 'discord' in self.handlers:
+                    webhook = DiscordWebhook(url=self.discord_webhook_url)
+                    webhook.add_embed(embed)
+                    
+                    # Execute webhook
+                    response = webhook.execute()
+                    
+                    if response and hasattr(response, 'status_code') and 200 <= response.status_code < 300:
+                        self.logger.info(f"Sent liquidation Discord embed for {symbol}: ${usd_value:,.2f}")
+                        self._alert_stats['sent'] = int(self._alert_stats.get('sent', 0)) + 1
+                        # Update last alert time for cooldown
+                        self._last_liquidation_alert[symbol] = current_time
+                        return
+                    else:
+                        self.logger.warning(f"Failed to send liquidation Discord embed: {response}")
+                
+                # Fallback to standard alert if Discord embed fails
                 message = (
                     f"{direction_emoji} **{position_type} LIQUIDATION** {impact_emoji}\n"
                     f"**Symbol:** {symbol}\n"
@@ -1547,6 +1823,60 @@ class AlertManager:
             # Fallback to a simple timestamp-based identifier
             return f"{signal_data.get('symbol', 'unknown')}_{int(time.time())}"
 
+    def _determine_impact_level(self, usd_value: float) -> str:
+        """Determine impact level based on USD value.
+        
+        Args:
+            usd_value: USD value of the liquidation
+            
+        Returns:
+            Impact level string
+        """
+        if usd_value >= 1000000:  # $1M+
+            return "CRITICAL"
+        elif usd_value >= 500000:  # $500K+
+            return "HIGH"
+        elif usd_value >= 250000:  # $250K+
+            return "MEDIUM"
+        else:
+            return "LOW"
+    
+    def _generate_impact_bar(self, usd_value: float) -> str:
+        """Generate visual impact bar for liquidation.
+        
+        Args:
+            usd_value: USD value of the liquidation
+            
+        Returns:
+            Visual impact bar string
+        """
+        # Normalize to 0-10 scale based on threshold multiples
+        normalized = min(int(usd_value / self.liquidation_threshold * 5), 10)
+        filled = "█" * normalized
+        empty = "░" * (10 - normalized)
+        return f"{filled}{empty}"
+    
+    def _get_price_action_note(self, position_type: str, impact_level: str) -> str:
+        """Get price action note based on position type and impact.
+        
+        Args:
+            position_type: LONG or SHORT position type
+            impact_level: Impact level of the liquidation
+            
+        Returns:
+            Price action note string
+        """
+        if position_type == "LONG":
+            if impact_level in ["CRITICAL", "HIGH"]:
+                return "Expect immediate downward price pressure as liquidated longs are sold"
+            else:
+                return "Minor selling pressure expected from liquidated long positions"
+        else:  # SHORT
+            if impact_level in ["CRITICAL", "HIGH"]:
+                return "Expect immediate upward price pressure as liquidated shorts are bought"
+            else:
+                return "Minor buying pressure expected from liquidated short positions"
+
     def _validate_alert_config(self) -> None:
         """Validate the alert configuration.
         
@@ -1612,6 +1942,11 @@ class AlertManager:
             message = alert.get('message', 'No message provided')
             details = alert.get('details', {})
             timestamp = alert.get('timestamp', time.time())
+            
+            # Check if this is a whale_activity alert and handle specially
+            if details.get('type') == 'whale_activity':
+                await self._send_whale_activity_discord_alert(alert, alert_id)
+                return
             
             # Format timestamp
             dt = datetime.fromtimestamp(timestamp, tz=timezone.utc)
@@ -2237,6 +2572,190 @@ class AlertManager:
             self.logger.debug(traceback.format_exc())
             raise
 
+    async def send_alpha_opportunity_alert(
+        self,
+        symbol: str,
+        alpha_estimate: float,
+        confidence_score: float,
+        divergence_type: str,
+        risk_level: str,
+        trading_insight: str,
+        market_data: Dict[str, Any],
+        transaction_id: str = None
+    ) -> None:
+        """Send alpha opportunity alert with enhanced formatting for key patterns.
+        
+        Args:
+            symbol: Trading pair symbol
+            alpha_estimate: Estimated alpha (excess return vs Bitcoin)
+            confidence_score: Confidence score (0-1)
+            divergence_type: Type of divergence detected
+            risk_level: Risk level assessment
+            trading_insight: Trading insight description
+            market_data: Market data context
+            transaction_id: Transaction ID for tracking
+        """
+        try:
+            if not self.discord_webhook_url:
+                self.logger.warning("Discord webhook URL not configured for alpha alerts")
+                return
+
+            # Generate transaction ID if not provided
+            transaction_id = transaction_id or str(uuid.uuid4())[:8]
+            
+            # Determine alert urgency and formatting based on pattern type
+            if divergence_type == "beta_expansion":
+                emoji = "🚀"
+                pattern_name = "BETA EXPANSION"
+                alert_color = 0xFF4500  # Orange-red for momentum
+                urgency = "HIGH MOMENTUM"
+                description_prefix = "**📈 AGGRESSIVE MOVEMENT DETECTED**\n"
+                
+            elif divergence_type == "correlation_breakdown":
+                emoji = "🎯"
+                pattern_name = "CORRELATION BREAKDOWN"
+                alert_color = 0x9932CC  # Purple for independence
+                urgency = "INDEPENDENCE OPPORTUNITY"
+                description_prefix = "**🔄 INDEPENDENCE DETECTED**\n"
+                
+            elif divergence_type == "beta_compression":
+                emoji = "📉"
+                pattern_name = "BETA COMPRESSION"
+                alert_color = 0x32CD32  # Green for alpha opportunity
+                urgency = "ALPHA GENERATION"
+                description_prefix = "**⚡ REDUCED CORRELATION**\n"
+                
+            else:
+                emoji = "⚡"
+                pattern_name = divergence_type.upper().replace('_', ' ')
+                alert_color = 0x00CED1  # Default cyan
+                urgency = "ALPHA OPPORTUNITY"
+                description_prefix = "**📊 PATTERN DETECTED**\n"
+
+            # Format confidence with special highlighting
+            if confidence_score >= 0.85:
+                confidence_emoji = "🔥"
+                confidence_text = f"**{confidence_score:.1%}** {confidence_emoji}"
+            elif confidence_score >= 0.70:
+                confidence_emoji = "✨"
+                confidence_text = f"**{confidence_score:.1%}** {confidence_emoji}"
+            else:
+                confidence_emoji = "📊"
+                confidence_text = f"{confidence_score:.1%} {confidence_emoji}"
+
+            # Format alpha with sign and highlighting
+            alpha_sign = "+" if alpha_estimate >= 0 else ""
+            if abs(alpha_estimate) >= 0.05:  # 5%+ alpha
+                alpha_text = f"**{alpha_sign}{alpha_estimate:.1%}** 🎯"
+            elif abs(alpha_estimate) >= 0.02:  # 2%+ alpha
+                alpha_text = f"**{alpha_sign}{alpha_estimate:.1%}** ⭐"
+            else:
+                alpha_text = f"{alpha_sign}{alpha_estimate:.1%}"
+
+            # Get market context
+            current_price = market_data.get('asset', {}).get('price', 0)
+            bitcoin_price = market_data.get('bitcoin', {}).get('price', 0)
+            
+            # Create enhanced alert embed
+            alert_title = f"{emoji} {urgency}: {symbol} vs BTC"
+            
+            description = [
+                description_prefix,
+                f"**{pattern_name}** pattern detected for **{symbol}**",
+                "",
+                f"• **Alpha Estimate:** {alpha_text}",
+                f"• **Confidence:** {confidence_text}",
+                f"• **Risk Level:** {risk_level}",
+                f"• **Pattern:** {pattern_name}",
+                "",
+                f"**📋 Trading Insight:**",
+                f"```{trading_insight}```",
+                "",
+                f"**💰 Market Context:**",
+                f"• {symbol} Price: ${current_price:,.4f}" if current_price else "",
+                f"• Bitcoin Price: ${bitcoin_price:,.2f}" if bitcoin_price else "",
+                f"• Alert ID: `{transaction_id}`",
+            ]
+            
+            # Add pattern-specific guidance
+            if divergence_type == "beta_expansion":
+                description.extend([
+                    "",
+                    f"**🎯 Beta Expansion Strategy:**",
+                    f"• Monitor for sustained momentum above Bitcoin",
+                    f"• Consider momentum entries with tight stops",
+                    f"• Watch for volume confirmation",
+                    f"• Risk: High correlation to Bitcoin moves"
+                ])
+                
+            elif divergence_type == "correlation_breakdown":
+                description.extend([
+                    "",
+                    f"**🎯 Independence Strategy:**",
+                    f"• Look for news catalysts driving independence",
+                    f"• Consider pure alpha plays",
+                    f"• Monitor correlation for reversal",
+                    f"• Opportunity: Reduced Bitcoin dependency"
+                ])
+
+            # Send Discord alert using standard webhook mechanism instead of manual aiohttp
+            webhook = DiscordWebhook(url=self.discord_webhook_url)
+            webhook.add_embed(DiscordEmbed(
+                title=alert_title,
+                description="\n".join(filter(None, description)),
+                color=alert_color
+            ).add_embed_field(
+                name=f"{emoji} Quick Stats",
+                value=f"Alpha: {alpha_text}\nConfidence: {confidence_text}\nRisk: {risk_level}",
+                inline=True
+            ).set_footer(text=f"Virtuoso Alpha Detection • ID: {transaction_id}").set_timestamp())
+            
+            # Execute webhook with retry logic
+            max_retries = self.webhook_max_retries
+            retry_delay = self.webhook_initial_retry_delay
+            response = None
+            
+            for attempt in range(max_retries):
+                try:
+                    response = webhook.execute()
+                    
+                    if response and response.status_code == 200:
+                        self.logger.info(f"Alpha opportunity alert sent successfully for {symbol}")
+                        break
+                    else:
+                        status_code = response.status_code if response else "N/A"
+                        self.logger.warning(f"Failed to send alpha alert (attempt {attempt+1}/{max_retries}): Status code {status_code}")
+                        
+                        if response and response.status_code in self.webhook_recoverable_status_codes:
+                            if attempt < max_retries - 1:
+                                await asyncio.sleep(retry_delay)
+                                if self.webhook_exponential_backoff:
+                                    retry_delay *= 2
+                                continue
+                        
+                except Exception as e:
+                    self.logger.error(f"Error executing alpha webhook (attempt {attempt+1}/{max_retries}): {str(e)}")
+                    if attempt < max_retries - 1:
+                        await asyncio.sleep(retry_delay)
+                        if self.webhook_exponential_backoff:
+                            retry_delay *= 2
+                        continue
+                    else:
+                        raise
+
+            # Update alert statistics using internal tracking
+            if response and response.status_code == 200:
+                self._alert_stats['total'] = int(self._alert_stats.get('total', 0)) + 1
+                self._alert_stats['sent'] = int(self._alert_stats.get('sent', 0)) + 1
+            else:
+                self._alert_stats['total'] = int(self._alert_stats.get('total', 0)) + 1
+                self._alert_stats['errors'] = int(self._alert_stats.get('errors', 0)) + 1
+
+        except Exception as e:
+            self.logger.error(f"Error sending alpha opportunity alert for {symbol}: {str(e)}")
+            import traceback
+            self.logger.debug(traceback.format_exc())
+
     async def send_manipulation_alert(
         self,
         symbol: str,
@@ -2260,81 +2779,138 @@ class AlertManager:
             current_price: Current price of the asset
         """
         try:
-            # Determine alert level based on severity
-            alert_level_map = {
-                'low': 'info',
-                'medium': 'warning', 
-                'high': 'warning',
-                'critical': 'error'
+            # Skip if no webhook URL configured
+            if not self.discord_webhook_url:
+                self.logger.warning("Discord webhook URL not configured for manipulation alerts")
+                return
+
+            # Determine alert color and emoji based on severity
+            severity_color_map = {
+                'low': 0x3498db,      # Blue
+                'medium': 0xf39c12,   # Orange  
+                'high': 0xe74c3c,     # Red
+                'critical': 0x9b59b6  # Purple
             }
-            alert_level = alert_level_map.get(severity, 'info')
+            color = severity_color_map.get(severity, 0x95a5a6)  # Default gray
             
             # Create severity emoji
             severity_emoji_map = {
                 'low': '⚠️',
                 'medium': '🔸',
-                'high': '🔸',
-                'critical': '🚨'
+                'high': '🚨',
+                'critical': '💀'
             }
             severity_emoji = severity_emoji_map.get(severity, '⚠️')
             
             # Format manipulation type for display
             manipulation_type_display = manipulation_type.replace('_', ' ').title()
             
-            # Build detailed message
-            message_parts = [
-                f"{severity_emoji} **Market Manipulation Alert** for {symbol}",
-                f"• **Type**: {manipulation_type_display}",
-                f"• **Confidence**: {confidence_score:.1%}",
-                f"• **Severity**: {severity.upper()}",
+            # Create Discord embed title
+            title = f"{severity_emoji} Market Manipulation Detected: {symbol}"
+            
+            # Build description with key metrics
+            description = [
+                f"**{manipulation_type_display}** pattern detected for **{symbol}**",
+                "",
+                f"• **Confidence:** {confidence_score:.1%}",
+                f"• **Severity:** {severity.upper()}",
+                f"• **Current Price:** ${current_price:,.4f}" if current_price else "",
+                "",
+                f"**📋 Analysis:**",
+                f"```{description}```"
             ]
             
-            if current_price:
-                message_parts.append(f"• **Current Price**: ${current_price:,.4f}")
-                
-            message_parts.extend([
-                "",
-                f"**Details**:",
-                f"• {description}",
-            ])
+            # Add specific metrics as embed fields
+            embed = DiscordEmbed(
+                title=title,
+                description="\n".join(filter(None, description)),
+                color=color
+            )
             
-            # Add specific metrics if available
+            # Add timestamp
+            embed.set_timestamp()
+            
+            # Add metrics as inline fields if available
             if metrics:
                 if metrics.get('oi_change_15m_pct', 0) != 0:
                     oi_pct = metrics['oi_change_15m_pct'] * 100
-                    message_parts.append(f"• OI Change (15m): {oi_pct:+.1f}%")
+                    embed.add_embed_field(
+                        name="OI Change (15m)",
+                        value=f"{oi_pct:+.1f}%",
+                        inline=True
+                    )
                     
                 if metrics.get('volume_spike_ratio', 0) > 1:
                     volume_ratio = metrics['volume_spike_ratio']
-                    message_parts.append(f"• Volume Spike: {volume_ratio:.1f}x average")
+                    embed.add_embed_field(
+                        name="Volume Spike",
+                        value=f"{volume_ratio:.1f}x avg",
+                        inline=True
+                    )
                     
                 if metrics.get('price_change_15m_pct', 0) != 0:
                     price_pct = metrics['price_change_15m_pct'] * 100
-                    message_parts.append(f"• Price Change (15m): {price_pct:+.1f}%")
+                    embed.add_embed_field(
+                        name="Price Change (15m)",
+                        value=f"{price_pct:+.1f}%",
+                        inline=True
+                    )
                     
                 if metrics.get('divergence_detected', False):
                     divergence_strength = metrics.get('divergence_strength', 0) * 100
-                    message_parts.append(f"• OI-Price Divergence: {divergence_strength:.1f}% strength")
+                    embed.add_embed_field(
+                        name="OI-Price Divergence",
+                        value=f"{divergence_strength:.1f}% strength",
+                        inline=True
+                    )
             
-            message = "\n".join(message_parts)
+            # Add footer with tracking info
+            embed.set_footer(text=f"Virtuoso Manipulation Detection • {manipulation_type}")
             
-            # Send alert with detailed information
-            await self.send_alert(
-                level=alert_level,
-                message=message,
-                details={
-                    "type": "manipulation_detection",
-                    "subtype": manipulation_type,
-                    "symbol": symbol,
-                    "confidence_score": confidence_score,
-                    "severity": severity,
-                    "metrics": metrics,
-                    "timestamp": int(time.time())
-                }
-            )
+            # Create webhook and send
+            webhook = DiscordWebhook(url=self.discord_webhook_url)
+            webhook.add_embed(embed)
             
-            self.logger.info(f"Sent manipulation alert for {symbol}: {manipulation_type} "
-                           f"(confidence: {confidence_score:.1%})")
+            # Execute webhook with retry logic
+            max_retries = self.webhook_max_retries
+            retry_delay = self.webhook_initial_retry_delay
+            response = None
+            
+            for attempt in range(max_retries):
+                try:
+                    response = webhook.execute()
+                    
+                    if response and response.status_code == 200:
+                        self.logger.info(f"Manipulation alert sent successfully for {symbol}: {manipulation_type}")
+                        break
+                    else:
+                        status_code = response.status_code if response else "N/A"
+                        self.logger.warning(f"Failed to send manipulation alert (attempt {attempt+1}/{max_retries}): Status code {status_code}")
+                        
+                        if response and response.status_code in self.webhook_recoverable_status_codes:
+                            if attempt < max_retries - 1:
+                                await asyncio.sleep(retry_delay)
+                                if self.webhook_exponential_backoff:
+                                    retry_delay *= 2
+                                continue
+                        
+                except Exception as e:
+                    self.logger.error(f"Error executing manipulation webhook (attempt {attempt+1}/{max_retries}): {str(e)}")
+                    if attempt < max_retries - 1:
+                        await asyncio.sleep(retry_delay)
+                        if self.webhook_exponential_backoff:
+                            retry_delay *= 2
+                        continue
+                    else:
+                        raise
+
+            # Update alert statistics
+            if response and response.status_code == 200:
+                self._alert_stats['total'] = int(self._alert_stats.get('total', 0)) + 1
+                self._alert_stats['sent'] = int(self._alert_stats.get('sent', 0)) + 1
+            else:
+                self._alert_stats['total'] = int(self._alert_stats.get('total', 0)) + 1
+                self._alert_stats['errors'] = int(self._alert_stats.get('errors', 0)) + 1
                            
         except Exception as e:
             self.logger.error(f"Error sending manipulation alert for {symbol}: {str(e)}")
@@ -2576,3 +3152,231 @@ class AlertManager:
             self.logger.error(f"[TXN:{txn_id}][ALERT:{alert_id}] Error sending trade execution alert for {symbol}: {str(e)}")
             self.logger.debug(traceback.format_exc())
             self._alert_stats['errors'] = int(self._alert_stats.get('errors', 0)) + 1
+
+    async def _send_whale_activity_discord_alert(self, alert: Dict[str, Any], alert_id: str) -> None:
+        """Send whale activity alert with proper three-column table format.
+        
+        Args:
+            alert: Alert data containing whale activity information
+            alert_id: Unique alert identifier for tracking
+        """
+        try:
+            details = alert.get('details', {})
+            whale_data = details.get('data', {})
+            symbol = details.get('symbol', 'Unknown')
+            subtype = details.get('subtype', 'activity')  # 'accumulation' or 'distribution'
+            
+            # Extract whale activity data
+            whale_bid_orders = whale_data.get('whale_bid_orders', 0)
+            whale_ask_orders = whale_data.get('whale_ask_orders', 0)
+            bid_usd = whale_data.get('whale_bid_usd', 0)
+            ask_usd = whale_data.get('whale_ask_usd', 0)
+            imbalance = whale_data.get('imbalance', 0)
+            net_usd_value = whale_data.get('net_usd_value', 0)
+            
+            # Determine alert type and color
+            if subtype == 'accumulation':
+                title = f"🐋📈 Whale Accumulation: {symbol}"
+                color = 0x00FF00  # Green
+                description = f"Large whale accumulation detected worth ${abs(net_usd_value):,.2f}"
+            elif subtype == 'distribution':
+                title = f"🐋📉 Whale Distribution: {symbol}"
+                color = 0xFF0000  # Red  
+                description = f"Large whale distribution detected worth ${abs(net_usd_value):,.2f}"
+            else:
+                title = f"🐋 Whale Activity: {symbol}"
+                color = 0x3498db  # Blue
+                description = f"Significant whale activity detected"
+            
+            # Create Discord embed
+            embed = DiscordEmbed(
+                title=title,
+                description=description,
+                color=color
+            )
+            
+            # Add timestamp
+            embed.set_timestamp()
+            
+            # Add the three-column table as inline fields (matching your Discord image format)
+            embed.add_embed_field(
+                name="Bid Orders",
+                value=f"{whale_bid_orders} orders\\n${bid_usd:,.2f}",
+                inline=True
+            )
+            
+            embed.add_embed_field(
+                name="Ask Orders", 
+                value=f"{whale_ask_orders} orders\\n${ask_usd:,.2f}",
+                inline=True
+            )
+            
+            embed.add_embed_field(
+                name="Imbalance",
+                value=f"{imbalance:.1%}",
+                inline=True
+            )
+            
+            # Add footer
+            embed.set_footer(text="Virtuoso Signals APP")
+            
+            # Send Discord webhook
+            webhook = DiscordWebhook(url=self.discord_webhook_url)
+            webhook.add_embed(embed)
+            
+            # Retry logic with exponential backoff
+            max_retries = self.webhook_max_retries
+            retry_delay = self.webhook_initial_retry_delay
+            response = None
+            
+            self.logger.debug(f"[ALERT:{alert_id}] Attempting to send whale activity Discord alert")
+            
+            for attempt in range(max_retries):
+                try:
+                    response = webhook.execute()
+                    
+                    if response and hasattr(response, 'status_code') and 200 <= response.status_code < 300:
+                        self.logger.info(f"[ALERT:{alert_id}] Whale activity Discord alert sent successfully")
+                        self._alert_stats['sent'] = int(self._alert_stats.get('sent', 0)) + 1
+                        return
+                    else:
+                        status_code = response.status_code if response and hasattr(response, 'status_code') else "N/A"
+                        self.logger.warning(f"[ALERT:{alert_id}] Failed whale activity alert (attempt {attempt+1}/{max_retries}): Status {status_code}")
+                        
+                except Exception as e:
+                    self.logger.warning(f"[ALERT:{alert_id}] Error sending whale activity alert (attempt {attempt+1}/{max_retries}): {str(e)}")
+                    
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(retry_delay)
+                    retry_delay *= 2  # Exponential backoff
+            
+            # If all retries failed, log error
+            self.logger.error(f"[ALERT:{alert_id}] Failed to send whale activity Discord alert after all retries")
+            self._alert_stats['errors'] = int(self._alert_stats.get('errors', 0)) + 1
+            
+        except Exception as e:
+            self.logger.error(f"[ALERT:{alert_id}] Error in _send_whale_activity_discord_alert: {str(e)}")
+            self.logger.error(traceback.format_exc())
+            self._alert_stats['errors'] = int(self._alert_stats.get('errors', 0)) + 1
+
+    async def _send_system_webhook_alert(self, message: str, details: Optional[Dict[str, Any]] = None) -> None:
+        """Send an alert to the system webhook.
+        
+        Args:
+            message: Alert message
+            details: Alert details
+        """
+        try:
+            if not self.system_webhook_url:
+                self.logger.warning("Cannot send system alert: webhook URL not set")
+                return
+            
+            # Determine alert type and format accordingly
+            alert_type = details.get('type', 'general') if details else 'general'
+            
+            # Determine alert color
+            color_map = {
+                'info': 0x3498db,     # Blue
+                'warning': 0xf39c12,  # Orange
+                'error': 0xe74c3c,    # Red
+                'critical': 0x9b59b6  # Purple
+            }
+            level = details.get('level', 'info').lower() if details else 'info'
+            color = color_map.get(level, 0x3498db)  # Default to blue
+            
+            # For market reports, customize the message
+            if alert_type == 'market_report':
+                # Get formatted timestamp
+                timestamp = details.get('report_time', None)
+                if timestamp and isinstance(timestamp, str):
+                    try:
+                        dt = datetime.fromisoformat(timestamp)
+                        formatted_date = dt.strftime("%B %d, %Y - %H:%M UTC")
+                    except (ValueError, TypeError):
+                        formatted_date = datetime.now(timezone.utc).strftime("%B %d, %Y - %H:%M UTC")
+                else:
+                    formatted_date = datetime.now(timezone.utc).strftime("%B %d, %Y - %H:%M UTC")
+                
+                # Create webhook payload for market report
+                payload = {
+                    'username': 'Virtuoso Market Intelligence',
+                    'content': '📊 **MARKET REPORT NOTIFICATION** 📊',
+                    'embeds': [{
+                        'title': 'Market Report Generated',
+                        'color': color,
+                        'description': f'A new market report has been generated for {formatted_date}. See main channel for the full report with attachments.',
+                        'fields': [
+                            {
+                                'name': 'Timestamp',
+                                'value': f'<t:{int(time.time())}:F>',
+                                'inline': True
+                            },
+                            {
+                                'name': 'Report Type',
+                                'value': details.get('report_type', 'market_report'),
+                                'inline': True
+                            }
+                        ],
+                        'footer': {
+                            'text': 'Virtuoso Market Intelligence'
+                        }
+                    }]
+                }
+                
+                # Add symbols covered if available
+                symbols_covered = details.get('symbols_covered', None)
+                if symbols_covered and isinstance(symbols_covered, list) and len(symbols_covered) > 0:
+                    symbols_str = ', '.join(symbols_covered[:5])
+                    if len(symbols_covered) > 5:
+                        symbols_str += f' and {len(symbols_covered) - 5} more'
+                    
+                    payload['embeds'][0]['fields'].append({
+                        'name': 'Symbols Covered',
+                        'value': symbols_str,
+                        'inline': True
+                    })
+            else:
+                # Default alert format
+                payload = {
+                    'username': 'Virtuoso System Monitor',
+                    'content': '⚠️ **SYSTEM ALERT** ⚠️',
+                    'embeds': [{
+                        'title': f'{level.capitalize()} Alert',
+                        'color': color,
+                        'description': message,
+                        'fields': [
+                            {
+                                'name': 'Timestamp',
+                                'value': f'<t:{int(time.time())}:F>',
+                                'inline': True
+                            },
+                            {
+                                'name': 'Level',
+                                'value': level,
+                                'inline': True
+                            }
+                        ],
+                        'footer': {
+                            'text': 'Virtuoso System Monitoring'
+                        }
+                    }]
+                }
+            
+            # Send webhook request
+            async with aiohttp.ClientSession() as session:
+                try:
+                    async with session.post(
+                        self.system_webhook_url,
+                        json=payload,
+                        timeout=10
+                    ) as response:
+                        if response.status >= 400:
+                            self.logger.error(f"Error sending system webhook: status {response.status}")
+                        else:
+                            self.logger.debug(f"System webhook sent successfully: {response.status}")
+                except Exception as e:
+                    self.logger.error(f"Error sending system webhook request: {str(e)}")
+                    
+        except Exception as e:
+            self.logger.error(f"Error in _send_system_webhook_alert: {str(e)}")
+            self.logger.debug(traceback.format_exc())
