@@ -106,6 +106,39 @@ To run the test:
 python tests/liquidation_test.py
 ```
 
+## Liquidation Monitor Tool
+
+A dedicated liquidation monitoring tool is available at `src/monitoring/liquidation_monitor.py` to:
+
+1. Verify that WebSocket connections are successfully subscribed to liquidation channels
+2. Validate that liquidation data is being properly cached
+3. Confirm that alerts are triggered when thresholds are exceeded
+
+The monitor tool provides detailed status updates and statistics about liquidation events, including:
+- WebSocket connection status
+- Number and types of detected liquidations
+- Total USD value of liquidations
+- Cache status for liquidation data
+- Alert trigger statistics
+
+To run the liquidation monitor:
+
+```bash
+python src/monitoring/liquidation_monitor.py --symbol BTCUSDT --duration 300 --verbose
+```
+
+Arguments:
+- `--symbol`, `-s`: Symbol to monitor (default: BTCUSDT)
+- `--config`, `-c`: Path to configuration file (default: uses system config)
+- `--duration`, `-d`: Monitoring duration in seconds (default: 300)
+- `--verbose`, `-v`: Enable verbose logging
+
+This tool is particularly useful for:
+- Troubleshooting missing liquidation alerts
+- Confirming that the WebSocket feed is active
+- Verifying that liquidation data is being correctly processed
+- Testing the alert thresholds with real market data
+
 ## Troubleshooting
 
 If liquidation alerts are not working as expected:
