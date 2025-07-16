@@ -5,11 +5,11 @@ This module provides helper functions for indicators to easily use the enhanced
 LogFormatter class for better visualization of analysis results.
 """
 
-from typing import Dict, Any, List, Tuple
+from typing import Dict, Any, List, Tuple, Optional
 import logging
 from src.core.formatting import LogFormatter, AnalysisFormatter
 
-def log_score_contributions(logger: logging.Logger, title: str, component_scores: Dict[str, float], weights: Dict[str, float], symbol: str = "", final_score: float = None) -> None:
+def log_score_contributions(logger: logging.Logger, title: str, component_scores: Dict[str, float], weights: Dict[str, float], symbol: str = "", final_score: float = None, divergence_adjustments: Optional[Dict[str, Any]] = None) -> None:
     """
     Log component score contributions with enhanced formatting.
     
@@ -20,6 +20,7 @@ def log_score_contributions(logger: logging.Logger, title: str, component_scores
         weights: Dictionary of component weights
         symbol: Optional symbol to include in the title
         final_score: Optional final score to override the calculated sum
+        divergence_adjustments: Optional dict of divergence adjustments for display
     """
     # Create list of (component, score, weight, contribution) tuples
     contributions = []
@@ -31,8 +32,16 @@ def log_score_contributions(logger: logging.Logger, title: str, component_scores
     # Sort by contribution (highest first)
     contributions.sort(key=lambda x: x[3], reverse=True)
     
-    # Use enhanced formatter
-    formatted_section = LogFormatter.format_score_contribution_section(title, contributions, symbol, final_score=final_score)
+    # Use enhanced formatter with PrettyTable and single borders for individual component breakdowns
+    formatted_section = LogFormatter.format_score_contribution_section(
+        title=title, 
+        contributions=contributions, 
+        symbol=symbol, 
+        final_score=final_score, 
+        use_pretty_table=True,
+        border_style="single",  # Single borders for individual component breakdowns
+        divergence_adjustments=divergence_adjustments
+    )
     logger.info(formatted_section)
 
 def log_component_analysis(logger: logging.Logger, title: str, components: Dict[str, float]) -> None:
@@ -86,7 +95,7 @@ def log_final_score(logger: logging.Logger, name: str, score: float, symbol: str
 
 def log_indicator_results(logger: logging.Logger, indicator_name: str, final_score: float, 
                          component_scores: Dict[str, float], weights: Dict[str, float], 
-                         symbol: str = "") -> None:
+                         symbol: str = "", divergence_adjustments: Optional[Dict[str, Any]] = None) -> None:
     """
     Log complete indicator results with consistent formatting.
     
@@ -101,10 +110,19 @@ def log_indicator_results(logger: logging.Logger, indicator_name: str, final_sco
         component_scores: Dictionary of component scores
         weights: Dictionary of component weights
         symbol: Optional symbol to include in the title
+        divergence_adjustments: Optional dictionary of divergence adjustments
     """
     # First log the component breakdown
     breakdown_title = f"{indicator_name} Score Contribution Breakdown"
-    log_score_contributions(logger, breakdown_title, component_scores, weights, symbol)
+    log_score_contributions(
+        logger, 
+        breakdown_title, 
+        component_scores, 
+        weights, 
+        symbol, 
+        final_score=final_score,
+        divergence_adjustments=divergence_adjustments
+    )
     
     # Then log the final score
     log_final_score(logger, indicator_name, final_score, symbol)

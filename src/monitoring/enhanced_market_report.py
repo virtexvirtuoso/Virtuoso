@@ -201,22 +201,25 @@ async def get_enhanced_market_data(exchange_manager, symbols: List[str]) -> Dict
                 logger.info(f"Fetching open interest history for {symbol}...")
                 oi_history = await primary_exchange.fetch_open_interest_history(symbol, '5min', 10)
                 if oi_history and oi_history.get('history') and len(oi_history['history']) > 0:
-                    # Use the most recent value
-                    current_oi = float(oi_history['history'][0].get('value', 0))
-                    # And the second most recent if available
-                    previous_oi = float(oi_history['history'][1].get('value', 0)) if len(oi_history['history']) > 1 else 0
-                    
-                    # Update or create the open_interest field
-                    if 'open_interest' not in market_data:
-                        market_data['open_interest'] = {}
-                    
-                    market_data['open_interest']['current'] = current_oi
-                    market_data['open_interest']['previous'] = previous_oi
-                    market_data['open_interest']['timestamp'] = int(time.time() * 1000)
-                    market_data['open_interest']['history'] = oi_history['history']
-                    
-                    # Add direct reference to history for easier access
-                    market_data['open_interest_history'] = oi_history['history']
+                    # Defensive programming: Use .get() to safely access history
+                    history_data = oi_history.get('history', [])
+                    if len(history_data) > 0:
+                        # Use the most recent value
+                        current_oi = float(history_data[0].get('value', 0))
+                        # And the second most recent if available
+                        previous_oi = float(history_data[1].get('value', 0)) if len(history_data) > 1 else 0
+                        
+                        # Update or create the open_interest field
+                        if 'open_interest' not in market_data:
+                            market_data['open_interest'] = {}
+                        
+                        market_data['open_interest']['current'] = current_oi
+                        market_data['open_interest']['previous'] = previous_oi
+                        market_data['open_interest']['timestamp'] = int(time.time() * 1000)
+                        market_data['open_interest']['history'] = history_data
+                        
+                        # Add direct reference to history for easier access
+                        market_data['open_interest_history'] = history_data
             
             # Add more detailed price data if needed
             if not market_data.get('price') or all(v == 0 for v in market_data.get('price', {}).values()):
@@ -256,34 +259,20 @@ async def test_enhanced_market_report():
         return
     
     try:
-        # Initialize components
+        # Initialize components using centralized function
         logger.info("Initializing components...")
         
-        # Initialize config manager
-        config_manager = ConfigManager()
-        logger.info("Config manager initialized")
+        # Use centralized initialization from main.py
+        from src.main import initialize_components
+        components = await initialize_components()
         
-        # Initialize exchange manager
-        exchange_manager = ExchangeManager(config_manager)
-        await exchange_manager.initialize()
-        logger.info("Exchange manager initialized")
+        # Extract components
+        config_manager = components['config_manager']
+        exchange_manager = components['exchange_manager']
+        alert_manager = components['alert_manager']
+        top_symbols_manager = components['top_symbols_manager']
         
-        # Initialize validation service
-        validation_service = AsyncValidationService()
-        
-        # Initialize AlertManager
-        alert_manager = AlertManager(config_manager.config)
-        await alert_manager.start()
-        logger.info("Alert manager initialized and started")
-        
-        # Initialize TopSymbolsManager
-        top_symbols_manager = TopSymbolsManager(
-            exchange_manager=exchange_manager,
-            config=config_manager.config,
-            validation_service=validation_service
-        )
-        await top_symbols_manager.initialize()
-        logger.info("Top symbols manager initialized")
+        logger.info("All components initialized using centralized function")
         
         # Get top trading pairs first
         top_pairs = await top_symbols_manager.get_symbols()

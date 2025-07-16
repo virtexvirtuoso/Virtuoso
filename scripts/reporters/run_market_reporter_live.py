@@ -157,7 +157,7 @@ async def run_market_reporter_live():
                 logger.warning(f"Could not save formatted report: {str(e)}")
                 
             # Step 10: Send the report (if webhook URL is configured)
-            discord_webhook_url = config_manager.get('discord.market_webhook_url', None)
+            discord_webhook_url = config_manager.get_value('discord.market_webhook_url', None)
             if alert_manager and discord_webhook_url:
                 logger.info("Sending report to Discord")
                 try:

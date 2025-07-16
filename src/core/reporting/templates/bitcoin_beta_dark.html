@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bitcoin Beta Analysis Report - {{ timestamp }}</title>
+    <style>
+        /* Overall document styling */
+        @page {
+            size: A4;
+            margin: 1cm;
+        }
+        body {
+            font-family: 'Courier New', monospace;
+            background-color: #121212;
+            color: #E0E0E0;
+            margin: 0;
+            padding: 0;
+            line-height: 1.4;       
+        }
+        .container {
+            max-width: 21cm;
+            margin: 0 auto;
+            padding: 1cm;
+        }
+        
+        /* Header Styling */
+        .header {
+            border-bottom: 2px solid #444;
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .header h1 {
+            font-size: 24px;
+            margin: 0;
+            color: #E0E0E0;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        .header .beta-badge {
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-weight: bold;
+            font-size: 16px;
+            background-color: #FF6600;
+            color: white;
+        }
+        .header .date {
+            font-size: 12px;
+            color: #999;
+            text-align: right;
+        }
+        
+        /* Summary box styling */
+        .summary-box {
+            background-color: #1E1E1E;
+            border: 1px solid #333;
+            border-radius: 5px;
+            padding: 15px;
+            margin-bottom: 20px;
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            grid-gap: 15px;
+        }
+        .summary-item {
+            display: flex;
+            flex-direction: column;
+        }
+        .summary-item .label {
+            font-size: 12px;
+            color: #999;
+            margin-bottom: 5px;
+            text-transform: uppercase;
+        }
+        .summary-item .value {
+            font-size: 20px;
+            font-weight: bold;
+        }
+        .high-beta {
+            color: #F44336;
+        }
+        .medium-beta {
+            color: #FFC107;
+        }
+        .low-beta {
+            color: #4CAF50;
+        }
+        
+        /* Section styling */
+        .section {
+            margin-bottom: 20px;
+        }
+        .section-title {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            padding-bottom: 5px;
+            border-bottom: 1px solid #444;
+            text-transform: uppercase;
+            display: flex;
+            align-items: center;
+        }
+        .section-title::before {
+            content: ">";
+            margin-right: 10px;
+            color: #FF6600;
+        }
+        
+        /* Beta table styling */
+        .beta-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+        .beta-table th {
+            text-align: left;
+            padding: 8px;
+            background-color: #1E1E1E;
+            border-bottom: 1px solid #444;
+            color: #999;
+            text-transform: uppercase;
+            font-size: 12px;
+        }
+        .beta-table td {
+            padding: 8px;
+            border-bottom: 1px solid #222;
+        }
+        .beta-table tr:last-child td {
+            border-bottom: none;
+        }
+        .symbol-name {
+            font-weight: bold;
+            color: #E0E0E0;
+        }
+        .high-correlation {
+            color: #4CAF50;
+        }
+        .medium-correlation {
+            color: #FFC107;
+        }
+        .low-correlation {
+            color: #F44336;
+        }
+        
+        /* Timeframe tabs styling */
+        .timeframe-tabs {
+            display: flex;
+            background-color: #1E1E1E;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            border: 1px solid #333;
+        }
+        .timeframe-tab {
+            flex: 1;
+            padding: 10px;
+            text-align: center;
+            cursor: pointer;
+            border-right: 1px solid #333;
+            background-color: #252525;
+            color: #999;
+            text-transform: uppercase;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .timeframe-tab:last-child {
+            border-right: none;
+        }
+        .timeframe-tab.active {
+            background-color: #FF6600;
+            color: white;
+        }
+        .timeframe-tab:hover {
+            background-color: #333;
+        }
+        
+        /* Charts styling */
+        .chart-container {
+            margin-bottom: 20px;
+            background-color: #1E1E1E;
+            border: 1px solid #333;
+            border-radius: 5px;
+            padding: 15px;
+            text-align: center;
+        }
+        .chart-image {
+            max-width: 100%;
+            height: auto;
+            margin-bottom: 10px;
+            border-radius: 5px;
+        }
+        .chart-caption {
+            font-size: 12px;
+            color: #999;
+            text-align: center;
+        }
+        
+        /* Alpha opportunities styling */
+        .alpha-opportunities {
+            background-color: #1E1E1E;
+            border: 1px solid #333;
+            border-radius: 5px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        .alpha-item {
+            margin-bottom: 15px;
+            padding: 10px;
+            background-color: #252525;
+            border-radius: 5px;
+            border-left: 3px solid #4CAF50;
+        }
+        .alpha-item:last-child {
+            margin-bottom: 0;
+        }
+        .alpha-symbol {
+            font-weight: bold;
+            color: #4CAF50;
+            font-size: 16px;
+        }
+        .alpha-pattern {
+            color: #FFC107;
+            font-style: italic;
+            margin-bottom: 5px;
+        }
+        .alpha-confidence {
+            color: #2196F3;
+            font-size: 12px;
+        }
+        
+        /* Insights styling */
+        .insights {
+            background-color: #1E1E1E;
+            border: 1px solid #333;
+            border-radius: 5px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        .insight-item {
+            margin-bottom: 10px;
+            padding-left: 20px;
+            position: relative;
+        }
+        .insight-item:last-child {
+            margin-bottom: 0;
+        }
+        .insight-item::before {
+            content: "•";
+            position: absolute;
+            left: 0;
+            color: #FF6600;
+        }
+        
+        /* Beta gauge styling */
+        .beta-gauge {
+            width: 100%;
+            background-color: #1E1E1E;
+            height: 15px;
+            border-radius: 8px;
+            overflow: hidden;
+            margin-top: 5px;
+            border: 1px solid #333;
+        }
+        .beta-gauge-fill {
+            height: 100%;
+            border-radius: 8px;
+        }
+        .beta-gauge-markers {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 5px;
+            font-size: 10px;
+            color: #999;
+        }
+        
+        /* Footer styling */
+        .footer {
+            margin-top: 30px;
+            padding-top: 15px;
+            border-top: 1px solid #444;
+            font-size: 12px;
+            color: #999;
+            display: flex;
+            justify-content: space-between;
+        }
+        
+        /* CRT retro effect */
+        .crt-effect {
+            position: relative;
+        }
+        .crt-effect::after {
+            content: "";
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.2) 50%);
+            background-size: 100% 4px;
+            pointer-events: none;
+            z-index: 100;
+            opacity: 0.1;
+        }
+        
+        /* Terminal effect for title */
+        .terminal-title {
+            font-family: 'Courier New', monospace;
+            color: #FF6600;
+            overflow: hidden;
+            border-right: 0.15em solid #FF6600;
+            white-space: nowrap;
+            margin: 0;
+            padding: 0;
+            letter-spacing: 0.1em;
+        }
+        
+        /* Market interpretation callout */
+        .market-interpretation {
+            background-color: #252525;
+            border-left: 3px solid #FF6600;
+            padding: 10px 15px;
+            margin-bottom: 15px;
+            font-style: italic;
+        }
+        
+        /* Correlation heatmap styling */
+        .correlation-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .correlation-cell {
+            background-color: #1E1E1E;
+            border: 1px solid #333;
+            border-radius: 5px;
+            padding: 10px;
+            text-align: center;
+        }
+        .correlation-timeframe {
+            font-size: 12px;
+            color: #999;
+            text-transform: uppercase;
+            margin-bottom: 5px;
+        }
+        .correlation-value {
+            font-size: 18px;
+            font-weight: bold;
+        }
+        
+        /* Risk indicators */
+        .risk-high { color: #F44336; }
+        .risk-medium { color: #FFC107; }
+        .risk-low { color: #4CAF50; }
+        
+        /* Beta interpretation colors */
+        .beta-value-high { color: #F44336; }  /* Beta > 1.2 */
+        .beta-value-medium { color: #FFC107; } /* Beta 0.8-1.2 */
+        .beta-value-low { color: #4CAF50; }   /* Beta < 0.8 */
+        
+        /* Responsive grid for smaller screens */
+        @media (max-width: 768px) {
+            .summary-box {
+                grid-template-columns: 1fr;
+            }
+            .correlation-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+    </style>
+</head>
+<body class="crt-effect">
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <div>
+                <h1 class="terminal-title">BITCOIN BETA ANALYSIS</h1>
+                <div style="margin-top: 5px;">Correlation & Alpha Analysis Report</div>
+            </div>
+            <div>
+                <div class="beta-badge">β ANALYSIS</div>
+                <div class="date">{{ timestamp }}</div>
+            </div>
+        </div>
+        
+        <!-- Executive Summary -->
+        <div class="summary-box">
+            <div class="summary-item">
+                <div class="label">Symbols Analyzed</div>
+                <div class="value" style="color: #4CAF50;">{{ symbols_count }}</div>
+            </div>
+            <div class="summary-item">
+                <div class="label">Avg Beta (4H)</div>
+                {% if avg_beta_htf >= 1.2 %}
+                    <div class="value beta-value-high">{{ avg_beta_htf|format_beta }}</div>
+                {% elif avg_beta_htf <= 0.8 %}
+                    <div class="value beta-value-low">{{ avg_beta_htf|format_beta }}</div>
+                {% else %}
+                    <div class="value beta-value-medium">{{ avg_beta_htf|format_beta }}</div>
+                {% endif %}
+                <div class="beta-gauge">
+                    <div class="beta-gauge-fill" style="width: {{ beta_gauge_width }}%; background-color: {{ beta_gauge_color }};"></div>
+                </div>
+                <div class="beta-gauge-markers">
+                    <span>0.0</span>
+                    <span>0.8</span>
+                    <span>1.2</span>
+                    <span>2.0</span>
+                </div>
+            </div>
+            <div class="summary-item">
+                <div class="label">Alpha Opportunities</div>
+                <div class="value" style="color: #2196F3;">{{ alpha_count }}</div>
+            </div>
+        </div>
+        
+        <!-- Market Interpretation -->
+        {% if market_interpretation %}
+        <div class="market-interpretation">
+            <strong>Market Interpretation</strong>: {{ market_interpretation }}
+        </div>
+        {% endif %}
+        
+        <!-- Beta Analysis Charts -->
+        {% if performance_chart %}
+        <div class="section">
+            <div class="section-title">Normalized Performance</div>
+            <div class="chart-container">
+                <img src="{{ performance_chart }}" alt="Performance Chart" class="chart-image">
+                <div class="chart-caption">Normalized Price Performance vs Bitcoin (4H Timeframe)</div>
+            </div>
+        </div>
+        {% endif %}
+        
+        {% if beta_comparison_chart %}
+        <div class="section">
+            <div class="section-title">Beta Comparison Across Timeframes</div>
+            <div class="chart-container">
+                <img src="{{ beta_comparison_chart }}" alt="Beta Comparison" class="chart-image">
+                <div class="chart-caption">Beta Coefficients: 4H | 30M | 5M | 1M Timeframes</div>
+            </div>
+        </div>
+        {% endif %}
+        
+        {% if correlation_heatmap %}
+        <div class="section">
+            <div class="section-title">Correlation Heatmap</div>
+            <div class="chart-container">
+                <img src="{{ correlation_heatmap }}" alt="Correlation Heatmap" class="chart-image">
+                <div class="chart-caption">Correlation with Bitcoin Across Timeframes</div>
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- Timeframe Analysis Tabs -->
+        <div class="section">
+            <div class="section-title">Multi-Timeframe Beta Analysis</div>
+            <div class="timeframe-tabs">
+                <div class="timeframe-tab active">4H (HTF)</div>
+                <div class="timeframe-tab">30M (MTF)</div>
+                <div class="timeframe-tab">5M (LTF)</div>
+                <div class="timeframe-tab">1M (Base)</div>
+            </div>
+            
+            <!-- HTF Beta Table -->
+            <table class="beta-table">
+                <thead>
+                    <tr>
+                        <th>Symbol</th>
+                        <th>Beta</th>
+                        <th>Correlation</th>
+                        <th>R²</th>
+                        <th>Vol Ratio</th>
+                        <th>Sharpe</th>
+                        <th>Max DD</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for symbol_data in htf_data %}
+                    <tr>
+                        <td class="symbol-name">{{ symbol_data.symbol }}</td>
+                        <td class="{% if symbol_data.beta >= 1.2 %}beta-value-high{% elif symbol_data.beta <= 0.8 %}beta-value-low{% else %}beta-value-medium{% endif %}">{{ symbol_data.beta|format_beta }}</td>
+                        <td class="{% if symbol_data.correlation >= 0.7 %}high-correlation{% elif symbol_data.correlation >= 0.4 %}medium-correlation{% else %}low-correlation{% endif %}">{{ symbol_data.correlation|format_correlation }}</td>
+                        <td>{{ symbol_data.r_squared|format_correlation }}</td>
+                        <td>{{ symbol_data.volatility_ratio|format_beta }}</td>
+                        <td class="{% if symbol_data.sharpe_ratio >= 1.0 %}high-correlation{% elif symbol_data.sharpe_ratio >= 0.5 %}medium-correlation{% else %}low-correlation{% endif %}">{{ symbol_data.sharpe_ratio|format_beta }}</td>
+                        <td class="{% if symbol_data.max_drawdown <= -0.3 %}risk-high{% elif symbol_data.max_drawdown <= -0.15 %}risk-medium{% else %}risk-low{% endif %}">{{ symbol_data.max_drawdown|format_percent }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        
+        <!-- Alpha Generation Opportunities -->
+        {% if alpha_opportunities and alpha_opportunities|length > 0 %}
+        <div class="section">
+            <div class="section-title">Alpha Generation Opportunities</div>
+            <div class="alpha-opportunities">
+                {% for alpha in alpha_opportunities %}
+                <div class="alpha-item">
+                    <div class="alpha-symbol">🎯 {{ alpha.symbol }}</div>
+                    <div class="alpha-pattern">{{ alpha.pattern }}</div>
+                    <div>{{ alpha.insight }}</div>
+                    <div class="alpha-confidence">Confidence: {{ alpha.confidence|format_percent }} | Potential: {{ alpha.potential|format_percent }}</div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- Key Trading Insights -->
+        {% if insights and insights|length > 0 %}
+        <div class="section">
+            <div class="section-title">Key Trading Insights</div>
+            <div class="insights">
+                {% for insight in insights %}
+                <div class="insight-item">{{ insight }}</div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- Risk Assessment -->
+        <div class="section">
+            <div class="section-title">Risk Assessment</div>
+            <div class="correlation-grid">
+                <div class="correlation-cell">
+                    <div class="correlation-timeframe">Portfolio Beta</div>
+                    <div class="correlation-value {% if portfolio_beta >= 1.2 %}risk-high{% elif portfolio_beta <= 0.8 %}risk-low{% else %}risk-medium{% endif %}">{{ portfolio_beta|format_beta }}</div>
+                </div>
+                <div class="correlation-cell">
+                    <div class="correlation-timeframe">Diversification</div>
+                    <div class="correlation-value {% if diversification_score >= 0.7 %}risk-low{% elif diversification_score >= 0.4 %}risk-medium{% else %}risk-high{% endif %}">{{ diversification_score|format_correlation }}</div>
+                </div>
+                <div class="correlation-cell">
+                    <div class="correlation-timeframe">Bitcoin Exposure</div>
+                    <div class="correlation-value {% if btc_exposure >= 0.8 %}risk-high{% elif btc_exposure >= 0.5 %}risk-medium{% else %}risk-low{% endif %}">{{ btc_exposure|format_percent }}</div>
+                </div>
+                <div class="correlation-cell">
+                    <div class="correlation-timeframe">Risk Level</div>
+                    <div class="correlation-value {{ risk_level_class }}">{{ risk_level }}</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Footer -->
+        <div class="footer">
+            <div>Generated by Virtuoso Trading Bot - Bitcoin Beta Analysis</div>
+            <div>{{ hostname }} | {{ timestamp }}</div>
+            <div>Multi-timeframe correlation analysis</div>
+        </div>
+    </div>
+    
+    <script>
+        // Add interactivity for timeframe tabs
+        document.addEventListener('DOMContentLoaded', function() {
+            const tabs = document.querySelectorAll('.timeframe-tab');
+            tabs.forEach(tab => {
+                tab.addEventListener('click', function() {
+                    tabs.forEach(t => t.classList.remove('active'));
+                    this.classList.add('active');
+                    // Here you could switch between different timeframe data
+                    console.log('Switched to timeframe:', this.textContent);
+                });
+            });
+        });
+    </script>
+</body>
+</html> 

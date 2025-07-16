@@ -1,0 +1,1179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Virtuoso Dashboard V9 - Terminal Amber Command</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* Terminal Amber + Navy Blue Theme */
+        :root {
+            --bg-primary: #0c1a2b;
+            --bg-secondary: #0f172a;
+            --bg-hero: #0f172a;
+            --bg-satellite: #0f172a;
+            --bg-header: #0a1525;
+            --text-primary: #ffbf00;
+            --text-secondary: #b8860b;
+            --accent-primary: #ff9900;
+            --accent-positive: #ffc107;
+            --accent-negative: #ff5722;
+            --accent-warning: #ff9900;
+            --border-light: #1a2a40;
+            --glow-amber: #ffbf00;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'JetBrains Mono', 'Courier New', monospace;
+        }
+
+        body {
+            background: linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-secondary) 50%, var(--bg-hero) 100%);
+            color: var(--text-primary);
+            line-height: 1.6;
+            min-height: 100vh;
+            overflow-x: hidden;
+            position: relative;
+            font-weight: 400;
+        }
+
+        /* Subtle hexagonal pattern overlay */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: 
+                radial-gradient(circle at 25% 25%, rgba(255, 191, 0, 0.05) 0%, transparent 50%),
+                radial-gradient(circle at 75% 75%, rgba(255, 153, 0, 0.05) 0%, transparent 50%);
+            background-size: 200px 200px;
+            opacity: 0.3;
+            z-index: -1;
+            pointer-events: none;
+        }
+
+        /* Terminal ambient lighting */
+        .ambient-glow {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 200px;
+            background: linear-gradient(to top, rgba(255, 153, 0, 0.1), transparent);
+            z-index: -1;
+            pointer-events: none;
+        }
+
+        /* Header */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 2rem 2.5rem;
+            border-bottom: 2px solid var(--border-light);
+            background: linear-gradient(135deg, var(--bg-header), var(--bg-satellite));
+            box-shadow: 
+                0 8px 32px rgba(0, 0, 0, 0.4),
+                inset 0 1px 0 rgba(255, 191, 0, 0.3);
+            position: relative;
+        }
+
+        .header::before {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            background: linear-gradient(90deg, 
+                transparent 0%, 
+                var(--accent-primary) 25%, 
+                var(--accent-positive) 50%, 
+                var(--accent-primary) 75%, 
+                transparent 100%);
+            animation: terminalScan 3s ease-in-out infinite;
+        }
+
+        @keyframes terminalScan {
+            0%, 100% { opacity: 0.3; }
+            50% { opacity: 1; }
+        }
+
+        .terminal-title {
+            font-size: 2.4rem;
+            color: var(--text-primary);
+            margin: 0;
+            text-transform: uppercase;
+            letter-spacing: 3px;
+            font-weight: 700;
+            text-shadow: 
+                0 0 20px var(--glow-amber),
+                0 0 40px var(--glow-amber);
+            position: relative;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .terminal-title::before {
+            content: '>>>';
+            position: absolute;
+            left: -60px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--accent-primary);
+            font-size: 1.5rem;
+            text-shadow: 0 0 15px var(--accent-primary);
+        }
+
+        .terminal-title::after {
+            content: '_';
+            animation: blink 1s infinite;
+            color: var(--accent-primary);
+            margin-left: 5px;
+        }
+
+        @keyframes blink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0; }
+        }
+
+        .subtitle {
+            font-size: 0.9rem;
+            color: var(--accent-positive);
+            margin-top: 8px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            font-weight: 400;
+        }
+
+        .header-controls {
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+        }
+
+        .config-toggle {
+            background: linear-gradient(135deg, var(--bg-satellite), var(--bg-header));
+            border: 1px solid var(--border-light);
+            color: var(--text-primary);
+            padding: 0.8rem 1.5rem;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 
+                0 4px 15px rgba(255, 153, 0, 0.2),
+                inset 0 1px 0 rgba(255, 255, 255, 0.1);
+            text-transform: uppercase;
+            font-weight: 500;
+            letter-spacing: 1px;
+            font-family: 'JetBrains Mono', monospace;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .config-toggle::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 153, 0, 0.3), transparent);
+            transition: left 0.5s ease;
+        }
+
+        .config-toggle:hover::before {
+            left: 100%;
+        }
+
+        .config-toggle:hover {
+            transform: translateY(-2px);
+            box-shadow: 
+                0 8px 25px rgba(255, 153, 0, 0.4),
+                inset 0 1px 0 rgba(255, 255, 255, 0.2);
+            border-color: var(--accent-positive);
+            background: var(--accent-primary);
+            color: var(--bg-primary);
+        }
+
+        .real-time-indicator {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            background: linear-gradient(135deg, var(--bg-satellite), var(--bg-header));
+            padding: 12px 20px;
+            border: 1px solid var(--border-light);
+            border-radius: 4px;
+            box-shadow: 
+                inset 0 2px 4px rgba(0, 0, 0, 0.3),
+                0 0 15px rgba(255, 153, 0, 0.2);
+        }
+
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            background: var(--accent-positive);
+            border-radius: 50%;
+            display: inline-block;
+            animation: terminalPulse 2s infinite;
+            box-shadow: 
+                0 0 10px var(--accent-positive),
+                0 0 20px var(--accent-positive);
+        }
+
+        @keyframes terminalPulse {
+            0%, 100% { 
+                opacity: 1; 
+                transform: scale(1);
+                box-shadow: 0 0 10px var(--accent-positive), 0 0 20px var(--accent-positive);
+            }
+            50% { 
+                opacity: 0.7; 
+                transform: scale(1.1);
+                box-shadow: 0 0 15px var(--accent-positive), 0 0 30px var(--accent-positive);
+            }
+        }
+
+        /* Dashboard Grid */
+        .dashboard-container {
+            padding: 30px;
+            max-width: 1800px;
+            margin: 0 auto;
+        }
+
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            grid-template-rows: auto auto auto;
+            gap: 25px;
+            margin-top: 30px;
+        }
+
+        .panel {
+            background: linear-gradient(135deg, var(--bg-satellite), var(--bg-hero));
+            border: 1px solid var(--border-light);
+            border-radius: 8px;
+            padding: 25px;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 
+                0 8px 32px rgba(0, 0, 0, 0.4),
+                inset 0 1px 0 rgba(255, 191, 0, 0.2);
+            transition: all 0.3s ease;
+        }
+
+        .panel::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, var(--accent-primary), var(--accent-positive));
+            opacity: 0.8;
+        }
+
+        .panel:hover {
+            transform: translateY(-3px);
+            box-shadow: 
+                0 15px 45px rgba(255, 153, 0, 0.3),
+                inset 0 1px 0 rgba(255, 191, 0, 0.3);
+            border-color: var(--accent-positive);
+        }
+
+        .panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 25px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid var(--border-light);
+        }
+
+        .panel-title {
+            color: var(--accent-positive);
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 14px;
+            letter-spacing: 2px;
+            text-shadow: 0 0 10px var(--accent-positive);
+            position: relative;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .panel-title::before {
+            content: '[';
+            margin-right: 8px;
+            color: var(--accent-primary);
+            font-size: 16px;
+            font-weight: 700;
+        }
+
+        .panel-title::after {
+            content: ']';
+            margin-left: 8px;
+            color: var(--accent-primary);
+            font-size: 16px;
+            font-weight: 700;
+        }
+
+        .panel-count {
+            background: linear-gradient(135deg, var(--accent-primary), var(--accent-warning));
+            color: var(--bg-primary);
+            padding: 6px 14px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            border-radius: 12px;
+            box-shadow: 0 0 15px rgba(255, 153, 0, 0.4);
+            letter-spacing: 1px;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* Signals Panel */
+        .signals-panel {
+            grid-column: 1 / 3;
+            grid-row: 1;
+        }
+
+        .signal-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 0;
+            border-bottom: 1px solid rgba(26, 42, 64, 0.3);
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .signal-item::before {
+            content: '>';
+            position: absolute;
+            left: -25px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--accent-primary);
+            opacity: 0;
+            transition: all 0.3s ease;
+            font-weight: 700;
+            font-size: 14px;
+        }
+
+        .signal-item:hover {
+            background: linear-gradient(90deg, rgba(255, 153, 0, 0.1), transparent);
+            padding-left: 20px;
+            transform: translateX(5px);
+        }
+
+        .signal-item:hover::before {
+            opacity: 1;
+            left: -15px;
+        }
+
+        .signal-symbol {
+            font-weight: 600;
+            color: var(--text-primary);
+            font-size: 16px;
+            text-shadow: 0 0 10px var(--glow-amber);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .signal-type {
+            margin-left: 15px;
+            font-size: 11px;
+            text-transform: uppercase;
+            padding: 4px 12px;
+            font-weight: 600;
+            border: 1px solid;
+            border-radius: 12px;
+            letter-spacing: 1px;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .signal-score {
+            font-weight: 700;
+            font-size: 18px;
+            text-shadow: 0 0 15px currentColor;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .score-bullish { 
+            color: var(--accent-positive);
+        }
+        .score-bearish { 
+            color: var(--accent-negative);
+        }
+        .score-neutral { 
+            color: var(--accent-warning);
+        }
+
+        .signal-type.score-bullish {
+            background: rgba(255, 193, 7, 0.15);
+            border-color: var(--accent-positive);
+            color: var(--accent-positive);
+        }
+        .signal-type.score-bearish {
+            background: rgba(255, 87, 34, 0.15);
+            border-color: var(--accent-negative);
+            color: var(--accent-negative);
+        }
+        .signal-type.score-neutral {
+            background: rgba(255, 153, 0, 0.15);
+            border-color: var(--accent-warning);
+            color: var(--accent-warning);
+        }
+
+        .signal-time {
+            font-size: 11px;
+            color: var(--text-secondary);
+            margin-left: 15px;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* Alpha Panel */
+        .alpha-panel {
+            grid-column: 3;
+            grid-row: 1 / 3;
+        }
+
+        .alpha-item {
+            background: linear-gradient(135deg, var(--bg-hero), var(--bg-satellite));
+            border-left: 4px solid var(--accent-positive);
+            padding: 18px;
+            margin: 15px 0;
+            position: relative;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+            border-radius: 6px;
+            border: 1px solid var(--border-light);
+        }
+
+        .alpha-item::after {
+            content: '◆';
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            color: var(--accent-primary);
+            font-size: 8px;
+            text-shadow: 0 0 8px var(--accent-primary);
+        }
+
+        .alpha-item:hover {
+            transform: translateX(8px);
+            box-shadow: 0 8px 25px rgba(255, 193, 7, 0.3);
+            border-left-color: var(--accent-primary);
+        }
+
+        .alpha-symbol {
+            font-weight: 600;
+            color: var(--accent-positive);
+            font-size: 16px;
+            font-family: 'JetBrains Mono', monospace;
+            margin-bottom: 8px;
+        }
+
+        .alpha-pattern {
+            font-size: 11px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            margin-bottom: 10px;
+            letter-spacing: 1px;
+        }
+
+        .alpha-stats {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .alpha-confidence {
+            font-size: 13px;
+            color: var(--accent-positive);
+            font-weight: 600;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .alpha-target {
+            font-size: 13px;
+            color: var(--text-primary);
+            font-weight: 600;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* Market Panel */
+        .market-panel {
+            grid-column: 1;
+            grid-row: 2;
+        }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 20px;
+        }
+
+        .metric-card {
+            background: linear-gradient(135deg, var(--bg-hero), var(--bg-primary));
+            border: 1px solid var(--border-light);
+            border-radius: 6px;
+            padding: 20px;
+            text-align: center;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .metric-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: var(--accent-primary);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .metric-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 30px rgba(255, 153, 0, 0.3);
+            border-color: var(--accent-positive);
+        }
+
+        .metric-card:hover::before {
+            opacity: 1;
+        }
+
+        .metric-value {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 8px;
+            text-shadow: 0 0 15px var(--glow-amber);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .metric-label {
+            font-size: 11px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: 500;
+        }
+
+        /* Alerts Panel */
+        .alerts-panel {
+            grid-column: 1;
+            grid-row: 3;
+        }
+
+        .alert-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            padding: 12px 0;
+            border-bottom: 1px solid rgba(26, 42, 64, 0.3);
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .alert-item::before {
+            content: '';
+            position: absolute;
+            left: -25px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            opacity: 0;
+            transition: all 0.3s ease;
+        }
+
+        .alert-item:hover {
+            background: linear-gradient(90deg, rgba(255, 153, 0, 0.1), transparent);
+            padding-left: 15px;
+            transform: translateX(3px);
+        }
+
+        .alert-item:hover::before {
+            opacity: 1;
+            left: -15px;
+        }
+
+        .alert-priority-high::before {
+            background: var(--accent-negative);
+            box-shadow: 0 0 8px var(--accent-negative);
+        }
+
+        .alert-priority-medium::before {
+            background: var(--accent-warning);
+            box-shadow: 0 0 8px var(--accent-warning);
+        }
+
+        .alert-priority-low::before {
+            background: var(--accent-positive);
+            box-shadow: 0 0 8px var(--accent-positive);
+        }
+
+        .alert-item div:first-child {
+            font-size: 13px;
+            color: var(--text-primary);
+            line-height: 1.4;
+        }
+
+        .alert-item strong {
+            color: var(--accent-primary);
+            font-weight: 600;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .alert-time {
+            font-size: 11px;
+            color: var(--text-secondary);
+            font-family: 'JetBrains Mono', monospace;
+            white-space: nowrap;
+            margin-left: 15px;
+        }
+
+        /* Configuration Panel */
+        .config-panel {
+            position: fixed;
+            top: 0;
+            right: -400px;
+            width: 400px;
+            height: 100vh;
+            background: linear-gradient(135deg, var(--bg-header), var(--bg-satellite));
+            border-left: 2px solid var(--border-light);
+            z-index: 1000;
+            overflow-y: auto;
+            transition: right 0.4s ease;
+            padding: 30px;
+            box-shadow: -10px 0 30px rgba(0, 0, 0, 0.5);
+        }
+
+        .config-panel.open {
+            right: 0;
+        }
+
+        .config-section {
+            margin-bottom: 30px;
+        }
+
+        .config-section h3 {
+            color: var(--accent-primary);
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid var(--border-light);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .config-section label {
+            display: block;
+            color: var(--text-primary);
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 8px;
+            margin-top: 15px;
+            font-weight: 500;
+        }
+
+        .config-input {
+            width: 100%;
+            background: var(--bg-primary);
+            border: 1px solid var(--border-light);
+            color: var(--text-primary);
+            padding: 12px;
+            border-radius: 4px;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .config-input:focus {
+            outline: none;
+            border-color: var(--accent-primary);
+            box-shadow: 0 0 15px rgba(255, 153, 0, 0.3);
+        }
+
+        .save-btn {
+            background: linear-gradient(135deg, var(--accent-positive), var(--accent-warning));
+            color: var(--bg-primary);
+            border: none;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+
+        .save-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(255, 193, 7, 0.4);
+        }
+
+        .reset-btn {
+            background: transparent;
+            border: 1px solid var(--accent-negative);
+            color: var(--accent-negative);
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+
+        .reset-btn:hover {
+            background: var(--accent-negative);
+            color: var(--bg-primary);
+        }
+
+        /* Responsive Design */
+        @media (max-width: 1200px) {
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+                grid-template-rows: auto auto auto auto;
+            }
+
+            .signals-panel {
+                grid-column: 1;
+                grid-row: 1;
+            }
+
+            .alpha-panel {
+                grid-column: 1;
+                grid-row: 2;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .dashboard-container {
+                padding: 15px;
+            }
+
+            .header {
+                padding: 1rem;
+                flex-direction: column;
+                gap: 1rem;
+            }
+
+            .terminal-title {
+                font-size: 1.8rem;
+            }
+
+            .terminal-title::before {
+                left: -40px;
+            }
+
+            .metrics-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        /* Terminal visual effects */
+        .panel {
+            animation: terminalGlow 4s ease-in-out infinite alternate;
+        }
+
+        @keyframes terminalGlow {
+            0% { box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 191, 0, 0.2); }
+            100% { box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 191, 0, 0.3); }
+        }
+    </style>
+</head>
+<body>
+    <div class="ambient-glow"></div>
+    
+    <!-- Header -->
+    <div class="header">
+        <div>
+            <h1 class="terminal-title">VIRTUOSO.TERMINAL</h1>
+            <div class="subtitle">FINANCIAL.INTELLIGENCE.V9</div>
+        </div>
+        <div class="header-controls">
+            <div class="real-time-indicator">
+                <span class="status-indicator"></span>
+                <span>SYSTEM.ONLINE</span>
+            </div>
+            <button class="config-toggle" onclick="toggleConfig()">
+                CONFIG.PARAMS
+            </button>
+        </div>
+    </div>
+
+    <div class="dashboard-container">
+        <div class="dashboard-grid">
+            <!-- Signals Panel -->
+            <div class="panel signals-panel">
+                <div class="panel-header">
+                    <span class="panel-title">TRADING.SIGNALS</span>
+                    <span class="panel-count">8.ACTIVE</span>
+                </div>
+                <div>
+                    <div class="signal-item">
+                        <div style="display: flex; align-items: center;">
+                            <span class="signal-symbol">BTC/USDT</span>
+                            <span class="signal-type score-bullish">LONG</span>
+                        </div>
+                        <div style="display: flex; align-items: center;">
+                            <span class="signal-score score-bullish">89.7</span>
+                            <span class="signal-time">01:23</span>
+                        </div>
+                    </div>
+                    
+                    <div class="signal-item">
+                        <div style="display: flex; align-items: center;">
+                            <span class="signal-symbol">ETH/USDT</span>
+                            <span class="signal-type score-neutral">WATCH</span>
+                        </div>
+                        <div style="display: flex; align-items: center;">
+                            <span class="signal-score score-neutral">67.4</span>
+                            <span class="signal-time">03:45</span>
+                        </div>
+                    </div>
+                    
+                    <div class="signal-item">
+                        <div style="display: flex; align-items: center;">
+                            <span class="signal-symbol">SOL/USDT</span>
+                            <span class="signal-type score-bullish">LONG</span>
+                        </div>
+                        <div style="display: flex; align-items: center;">
+                            <span class="signal-score score-bullish">82.1</span>
+                            <span class="signal-time">05:12</span>
+                        </div>
+                    </div>
+                    
+                    <div class="signal-item">
+                        <div style="display: flex; align-items: center;">
+                            <span class="signal-symbol">XRP/USDT</span>
+                            <span class="signal-type score-bearish">SHORT</span>
+                        </div>
+                        <div style="display: flex; align-items: center;">
+                            <span class="signal-score score-bearish">28.9</span>
+                            <span class="signal-time">08:07</span>
+                        </div>
+                    </div>
+                    
+                    <div class="signal-item">
+                        <div style="display: flex; align-items: center;">
+                            <span class="signal-symbol">ADA/USDT</span>
+                            <span class="signal-type score-neutral">WATCH</span>
+                        </div>
+                        <div style="display: flex; align-items: center;">
+                            <span class="signal-score score-neutral">61.3</span>
+                            <span class="signal-time">12:34</span>
+                        </div>
+                    </div>
+                    
+                    <div class="signal-item">
+                        <div style="display: flex; align-items: center;">
+                            <span class="signal-symbol">MATIC/USDT</span>
+                            <span class="signal-type score-bullish">LONG</span>
+                        </div>
+                        <div style="display: flex; align-items: center;">
+                            <span class="signal-score score-bullish">76.8</span>
+                            <span class="signal-time">15:22</span>
+                        </div>
+                    </div>
+                    
+                    <div class="signal-item">
+                        <div style="display: flex; align-items: center;">
+                            <span class="signal-symbol">AVAX/USDT</span>
+                            <span class="signal-type score-bullish">LONG</span>
+                        </div>
+                        <div style="display: flex; align-items: center;">
+                            <span class="signal-score score-bullish">85.2</span>
+                            <span class="signal-time">18:45</span>
+                        </div>
+                    </div>
+                    
+                    <div class="signal-item">
+                        <div style="display: flex; align-items: center;">
+                            <span class="signal-symbol">LUNA/USDT</span>
+                            <span class="signal-type score-bearish">SHORT</span>
+                        </div>
+                        <div style="display: flex; align-items: center;">
+                            <span class="signal-score score-bearish">31.5</span>
+                            <span class="signal-time">21:12</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Alpha Panel -->
+            <div class="panel alpha-panel">
+                <div class="panel-header">
+                    <span class="panel-title">ALPHA.TARGETS</span>
+                    <span class="panel-count">4.IDENTIFIED</span>
+                </div>
+                <div>
+                    <div class="alpha-item">
+                        <div class="alpha-symbol">AVAX/USDT</div>
+                        <div class="alpha-pattern">MOMENTUM_BREAKOUT</div>
+                        <div class="alpha-stats">
+                            <span class="alpha-confidence">91.5%</span>
+                            <span class="alpha-target">+14.7%</span>
+                        </div>
+                    </div>
+                    
+                    <div class="alpha-item">
+                        <div class="alpha-symbol">LINK/USDT</div>
+                        <div class="alpha-pattern">SUPPORT_BOUNCE</div>
+                        <div class="alpha-stats">
+                            <span class="alpha-confidence">76.8%</span>
+                            <span class="alpha-target">+11.9%</span>
+                        </div>
+                    </div>
+                    
+                    <div class="alpha-item">
+                        <div class="alpha-symbol">DOT/USDT</div>
+                        <div class="alpha-pattern">WHALE_ACTIVITY</div>
+                        <div class="alpha-stats">
+                            <span class="alpha-confidence">88.4%</span>
+                            <span class="alpha-target">+16.2%</span>
+                        </div>
+                    </div>
+                    
+                    <div class="alpha-item">
+                        <div class="alpha-symbol">FTM/USDT</div>
+                        <div class="alpha-pattern">VOLUME_SURGE</div>
+                        <div class="alpha-stats">
+                            <span class="alpha-confidence">82.7%</span>
+                            <span class="alpha-target">+8.9%</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Market Panel -->
+            <div class="panel market-panel">
+                <div class="panel-header">
+                    <span class="panel-title">MARKET.STATUS</span>
+                    <span class="panel-count">BULLISH</span>
+                </div>
+                <div class="metrics-grid">
+                    <div class="metric-card">
+                        <div class="metric-value">52</div>
+                        <div class="metric-label">ACTIVE_PAIRS</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value">3.2B</div>
+                        <div class="metric-label">VOLUME_24H</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value">1.4T</div>
+                        <div class="metric-label">TOTAL_MCAP</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value">2.8%</div>
+                        <div class="metric-label">VOLATILITY</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Alerts Panel -->
+            <div class="panel alerts-panel">
+                <div class="panel-header">
+                    <span class="panel-title">SYSTEM.ALERTS</span>
+                    <span class="panel-count">15.TODAY</span>
+                </div>
+                <div>
+                    <div class="alert-item alert-priority-high">
+                        <div>
+                            <strong>[SIGNAL]</strong>: HIGH_PROB_LONG_BTC_DETECTED
+                        </div>
+                        <div class="alert-time">01:23</div>
+                    </div>
+                    <div class="alert-item alert-priority-medium">
+                        <div>
+                            <strong>[PATTERN]</strong>: MOMENTUM_BREAKOUT_AVAX_IDENTIFIED
+                        </div>
+                        <div class="alert-time">04:12</div>
+                    </div>
+                    <div class="alert-item alert-priority-low">
+                        <div>
+                            <strong>[STATUS]</strong>: TERMINAL_SYSTEMS_OPTIMAL_PERFORMANCE
+                        </div>
+                        <div class="alert-time">08:07</div>
+                    </div>
+                    <div class="alert-item alert-priority-medium">
+                        <div>
+                            <strong>[WHALE]</strong>: LARGE_TRANSACTION_DOT_MARKET_DETECTED
+                        </div>
+                        <div class="alert-time">12:34</div>
+                    </div>
+                    <div class="alert-item alert-priority-high">
+                        <div>
+                            <strong>[SIGNAL]</strong>: SHORT_SIGNAL_XRP_POSITION_TRIGGERED
+                        </div>
+                        <div class="alert-time">18:55</div>
+                    </div>
+                    <div class="alert-item alert-priority-low">
+                        <div>
+                            <strong>[SCAN]</strong>: INTELLIGENCE_SWEEP_47_PAIRS_COMPLETED
+                        </div>
+                        <div class="alert-time">25:12</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Configuration Panel -->
+        <div class="config-panel" id="config-panel">
+            <div class="panel-header">
+                <span class="panel-title">SYSTEM.CONFIGURATION</span>
+                <button onclick="toggleConfig()" style="background: none; border: none; color: var(--text-primary); cursor: pointer; font-size: 20px; font-family: 'JetBrains Mono', monospace;">×</button>
+            </div>
+            
+            <div class="config-section">
+                <h3>MONITORING.PARAMETERS</h3>
+                <label>SCAN_FREQUENCY_SECONDS:</label>
+                <input type="number" class="config-input" value="30">
+                
+                <label>ALERT_THRESHOLD:</label>
+                <input type="number" class="config-input" value="5">
+                
+                <label>COOLDOWN_PERIOD_MINUTES:</label>
+                <input type="number" class="config-input" value="45">
+            </div>
+            
+            <div class="config-section">
+                <h3>SIGNAL.FILTERS</h3>
+                <label>MINIMUM_SCORE:</label>
+                <input type="number" class="config-input" value="70">
+                
+                <label>CONFIDENCE_LEVEL:</label>
+                <input type="number" class="config-input" value="80">
+            </div>
+            
+            <div class="config-section">
+                <h3>INTELLIGENCE.SETTINGS</h3>
+                <label>CONFIDENCE_THRESHOLD:</label>
+                <input type="number" class="config-input" value="75">
+                
+                <label>RISK_ASSESSMENT:</label>
+                <select class="config-input">
+                    <option value="CONSERVATIVE">CONSERVATIVE</option>
+                    <option value="MODERATE" selected>MODERATE</option>
+                    <option value="AGGRESSIVE">AGGRESSIVE</option>
+                </select>
+            </div>
+            
+            <div class="config-section">
+                <button class="config-input save-btn">DEPLOY.CONFIGURATION</button>
+                <button class="config-input reset-btn">RESTORE.DEFAULTS</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function toggleConfig() {
+            const panel = document.getElementById('config-panel');
+            panel.classList.toggle('open');
+            console.log('[SYSTEM] Configuration panel toggled');
+        }
+
+        // Update timestamps
+        function updateTimestamps() {
+            const timeElements = document.querySelectorAll('.signal-time, .alert-time');
+            timeElements.forEach(el => {
+                const currentText = el.textContent;
+                if (currentText.includes(':') && !currentText.includes('ago')) {
+                    const match = currentText.match(/(\d+):(\d+)/);
+                    if (match) {
+                        let minutes = parseInt(match[1]);
+                        let seconds = parseInt(match[2]) + 1;
+                        if (seconds >= 60) {
+                            minutes += 1;
+                            seconds = 0;
+                        }
+                        el.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+                    }
+                }
+            });
+        }
+
+        // Terminal signal simulation
+        function simulateSignalUpdate() {
+            if (Math.random() > 0.82) {
+                const symbols = ['BNB/USDT', 'UNI/USDT', 'DOGE/USDT'];
+                const actions = ['LONG', 'SHORT', 'WATCH'];
+                const symbol = symbols[Math.floor(Math.random() * symbols.length)];
+                const action = actions[Math.floor(Math.random() * actions.length)];
+                console.log(`[TERMINAL] Alert: ${symbol} - ${action}`);
+                
+                // Add terminal flash effect
+                document.body.style.background = 'linear-gradient(135deg, #ff9900 0%, var(--bg-secondary) 50%, var(--bg-hero) 100%)';
+                setTimeout(() => {
+                    document.body.style.background = 'linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-secondary) 50%, var(--bg-hero) 100%)';
+                }, 400);
+            }
+        }
+
+        // Enhanced hover effects for terminal elements
+        document.querySelectorAll('.signal-item, .alpha-item, .alert-item, .metric-card').forEach(item => {
+            item.addEventListener('mouseenter', function() {
+                this.style.filter = 'brightness(1.1)';
+                this.style.boxShadow = '0 8px 25px rgba(255, 153, 0, 0.4)';
+            });
+            
+            item.addEventListener('mouseleave', function() {
+                this.style.filter = '';
+                this.style.boxShadow = '';
+            });
+        });
+
+        // Ambient lighting effect
+        function updateAmbientLighting() {
+            const glow = document.querySelector('.ambient-glow');
+            const intensity = 0.05 + Math.random() * 0.05;
+            glow.style.opacity = intensity;
+        }
+
+        // Update intervals
+        setInterval(updateTimestamps, 1000);
+        setInterval(simulateSignalUpdate, 16000);
+        setInterval(updateAmbientLighting, 2000);
+
+        // Terminal click effects
+        document.addEventListener('click', function(e) {
+            if (e.target.tagName === 'BUTTON' || e.target.closest('.panel')) {
+                // Visual terminal feedback
+                const flash = document.createElement('div');
+                flash.style.position = 'fixed';
+                flash.style.top = '0';
+                flash.style.left = '0';
+                flash.style.width = '100%';
+                flash.style.height = '100%';
+                flash.style.background = 'radial-gradient(circle, rgba(255, 153, 0, 0.1) 0%, transparent 70%)';
+                flash.style.pointerEvents = 'none';
+                flash.style.zIndex = '9999';
+                document.body.appendChild(flash);
+                setTimeout(() => flash.remove(), 300);
+            }
+        });
+
+        // Initialize terminal systems
+        window.addEventListener('load', function() {
+            console.log(`
+[SYSTEM] ================================================
+[SYSTEM] VIRTUOSO.TERMINAL v9.0 INITIALIZED
+[SYSTEM] AMBER THEME LOADED
+[SYSTEM] JETBRAINS MONO FONT ACTIVE
+[SYSTEM] GRID LAYOUT READY
+[SYSTEM] ALL MONITORING SYSTEMS ACTIVE
+[SYSTEM] FINANCIAL INTELLIGENCE NETWORK READY
+[SYSTEM] ================================================`);
+        });
+    </script>
+</body>
+</html> 

@@ -117,13 +117,13 @@ class LiquidationCache:
             symbol: Symbol to append to (if None, uses the symbol from the liquidation)
         """
         try:
-            self.logger.debug(f"Appending liquidation to cache for {symbol}")
+            logger.debug(f"Appending liquidation to cache for {symbol}")
             
             if symbol is None:
                 symbol = liquidation.get('symbol', 'unknown')
                 
             if not symbol:
-                self.logger.warning("No symbol provided for liquidation cache append")
+                logger.warning("No symbol provided for liquidation cache append")
                 return
                 
             # Normalize symbol
@@ -138,12 +138,12 @@ class LiquidationCache:
                 try:
                     with open(cache_file, 'r') as f:
                         existing_data = json.load(f)
-                    self.logger.debug(f"Loaded {len(existing_data)} existing liquidation events from cache")
+                    logger.debug(f"Loaded {len(existing_data)} existing liquidation events from cache")
                 except json.JSONDecodeError:
-                    self.logger.warning(f"Could not parse existing cache file: {cache_file}")
+                    logger.warning(f"Could not parse existing cache file: {cache_file}")
                     existing_data = []
                 except Exception as e:
-                    self.logger.warning(f"Error loading existing cache: {str(e)}")
+                    logger.warning(f"Error loading existing cache: {str(e)}")
                     existing_data = []
             
             # Append new data
@@ -173,17 +173,17 @@ class LiquidationCache:
                 json.dump(valid_data, f)
                 
             cleaned_count = len(existing_data) - len(valid_data)
-            self.logger.debug(f"Saved {len(valid_data)} liquidation events to cache (removed {cleaned_count} expired)")
+            logger.debug(f"Saved {len(valid_data)} liquidation events to cache (removed {cleaned_count} expired)")
             
             # Log statistics about the liquidation data
             long_count = sum(1 for e in valid_data if e.get('side', '').lower() == 'long')
             short_count = sum(1 for e in valid_data if e.get('side', '').lower() == 'short')
-            self.logger.debug(f"Cache now contains: {len(valid_data)} events ({long_count} long, {short_count} short)")
+            logger.debug(f"Cache now contains: {len(valid_data)} events ({long_count} long, {short_count} short)")
             
         except Exception as e:
-            self.logger.error(f"Error appending to liquidation cache: {str(e)}")
+            logger.error(f"Error appending to liquidation cache: {str(e)}")
             import traceback
-            self.logger.debug(traceback.format_exc())
+            logger.debug(traceback.format_exc())
     
     def clean_expired(self) -> int:
         """

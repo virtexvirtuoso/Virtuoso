@@ -9,6 +9,7 @@ import random
 
 from src.core.exchanges.rate_limiter import BybitRateLimiter
 from src.core.exchanges.websocket_manager import WebSocketManager
+from src.core.market.smart_intervals import SmartIntervalsManager, MarketActivity
 
 logger = logging.getLogger(__name__)
 
@@ -42,19 +43,22 @@ class MarketDataManager:
         # OHLCV specific cache
         self._ohlcv_cache = {}
         self._cache_enabled = self.config.get('market_data', {}).get('cache', {}).get('enabled', True)
-        self._cache_ttl = self.config.get('market_data', {}).get('cache', {}).get('data_ttl', 60)
+        self._cache_ttl = self.config.get('market_data', {}).get('cache', {}).get('data_ttl', 30)
         
-        # Configure refresh intervals (in seconds)
-        self.refresh_intervals = {
-            'ticker': 60,      # 1 minute
-            'orderbook': 60,   # 1 minute
+        # Initialize smart intervals manager
+        self.smart_intervals = SmartIntervalsManager(config.get('market_data', {}))
+        
+        # Configure refresh intervals (in seconds) - now using smart intervals
+        self.base_refresh_intervals = {
+            'ticker': 60,      # Base: 1 minute (will be adjusted by smart intervals)
+            'orderbook': 60,   # Base: 1 minute (will be adjusted by smart intervals)
             'kline': {
                 'base': 300,   # 5 minutes for 1m candles
                 'ltf': 900,    # 15 minutes for 5m candles
                 'mtf': 3600,   # 1 hour for 30m candles
                 'htf': 14400   # 4 hours for 4h candles
             },
-            'trades': 60,          # 1 minute
+            'trades': 60,          # Base: 1 minute (will be adjusted by smart intervals)
             'long_short_ratio': 3600,  # 1 hour (REST only)
             'risk_limits': 86400       # 1 day (REST only)
         }
@@ -92,6 +96,20 @@ class MarketDataManager:
             'interval': ws_throttle * 2,  # Less frequent for batch logs
             'batch_count': 0
         }
+    
+    def get_refresh_intervals(self) -> Dict[str, Any]:
+        """Get current refresh intervals, adjusted by smart intervals if enabled."""
+        if self.smart_intervals.enabled:
+            return {
+                'ticker': self.smart_intervals.get_current_interval('ticker'),
+                'orderbook': self.smart_intervals.get_current_interval('orderbook'),
+                'trades': self.smart_intervals.get_current_interval('trades'),
+                'kline': self.base_refresh_intervals['kline'],  # Keep kline intervals static
+                'long_short_ratio': self.base_refresh_intervals['long_short_ratio'],
+                'risk_limits': self.base_refresh_intervals['risk_limits']
+            }
+        else:
+            return self.base_refresh_intervals
     
     async def initialize(self, symbols: List[str]) -> None:
         """Initialize data manager with symbols to monitor
@@ -215,32 +233,35 @@ class MarketDataManager:
             # Check each component's last refresh time
             last_refresh = self.last_full_refresh[symbol]['components']
             
+            # Get current refresh intervals (with smart intervals adjustment)
+            refresh_intervals = self.get_refresh_intervals()
+            
             # Check ticker
-            if current_time - last_refresh['ticker'] > self.refresh_intervals['ticker']:
+            if current_time - last_refresh['ticker'] > refresh_intervals['ticker']:
                 components_to_refresh.append('ticker')
                 
             # Check orderbook
-            if current_time - last_refresh['orderbook'] > self.refresh_intervals['orderbook']:
+            if current_time - last_refresh['orderbook'] > refresh_intervals['orderbook']:
                 components_to_refresh.append('orderbook')
                 
             # Check trades
-            if current_time - last_refresh['trades'] > self.refresh_intervals['trades']:
+            if current_time - last_refresh['trades'] > refresh_intervals['trades']:
                 components_to_refresh.append('trades')
                 
             # Check long/short ratio and risk limits (REST API only data)
-            if current_time - last_refresh['long_short_ratio'] > self.refresh_intervals['long_short_ratio']:
+            if current_time - last_refresh['long_short_ratio'] > refresh_intervals['long_short_ratio']:
                 components_to_refresh.append('long_short_ratio')
                 
-            if current_time - last_refresh['risk_limits'] > self.refresh_intervals['risk_limits']:
+            if current_time - last_refresh['risk_limits'] > refresh_intervals['risk_limits']:
                 components_to_refresh.append('risk_limits')
                 
             # Check each timeframe
             kline_last_refresh = last_refresh['kline']
             for tf, interval in [
-                ('base', self.refresh_intervals['kline']['base']),
-                ('ltf', self.refresh_intervals['kline']['ltf']),
-                ('mtf', self.refresh_intervals['kline']['mtf']),
-                ('htf', self.refresh_intervals['kline']['htf'])
+                ('base', refresh_intervals['kline']['base']),
+                ('ltf', refresh_intervals['kline']['ltf']),
+                ('mtf', refresh_intervals['kline']['mtf']),
+                ('htf', refresh_intervals['kline']['htf'])
             ]:
                 if current_time - kline_last_refresh[tf] > interval:
                     components_to_refresh.append(f"kline_{tf}")
@@ -280,8 +301,11 @@ class MarketDataManager:
         last_refresh = self.last_full_refresh[symbol]
         components_to_refresh = []
         
+        # Get current refresh intervals (with smart intervals adjustment)
+        refresh_intervals = self.get_refresh_intervals()
+        
         # Check simple components
-        for component, interval in self.refresh_intervals.items():
+        for component, interval in refresh_intervals.items():
             if component == 'kline':
                 continue  # Handle kline separately
                 
@@ -293,7 +317,7 @@ class MarketDataManager:
         kline_times = last_refresh['components'].get('kline', {})
         tf_needs_refresh = False
         
-        for tf, interval in self.refresh_intervals['kline'].items():
+        for tf, interval in refresh_intervals['kline'].items():
             tf_time = kline_times.get(tf, 0)
             if current_time - tf_time > interval:
                 tf_needs_refresh = True
@@ -342,7 +366,8 @@ class MarketDataManager:
                     if kline_data:
                         self.data_cache[symbol]['kline'] = kline_data
                         # Update all timeframe refresh times
-                        for tf in self.refresh_intervals['kline'].keys():
+                        refresh_intervals = self.get_refresh_intervals()
+                        for tf in refresh_intervals['kline'].keys():
                             self.last_full_refresh[symbol]['components']['kline'][tf] = current_time
                 
                 elif component == 'trades':
@@ -447,21 +472,31 @@ class MarketDataManager:
             for key, task_coro in tasks.items():
                 try:
                     result = await task_coro
+                    # Ensure open interest result is valid, set to empty dict if None
+                    if key == 'open_interest' and result is None:
+                        logger.warning(f"Open interest fetch returned None for {symbol}, will create fallback data")
+                        result = {}  # This will trigger the fallback logic below
                     market_data[key] = result
                 except Exception as e:
                     logger.error(f"Error fetching {key} for {symbol}: {str(e)}")
+                    # For open interest, ensure we set an empty dict to trigger fallback
+                    if key == 'open_interest':
+                        market_data[key] = {}
             
             # Fetch OHLCV data for all timeframes
             try:
                 kline_data = await self._fetch_timeframes(symbol)
                 market_data['kline'] = kline_data
+                # Also store under 'ohlcv' key for compatibility with confluence analyzer
+                market_data['ohlcv'] = kline_data
             except Exception as e:
                 logger.error(f"Error fetching timeframes for {symbol}: {str(e)}")
             
             # Process open interest data if available
             try:
-                if market_data.get('open_interest'):
-                    oi_data = market_data['open_interest']
+                oi_data = market_data.get('open_interest')
+                # Check if OI data exists and has valid history
+                if oi_data and isinstance(oi_data, dict) and oi_data.get('history'):
                     history_list = oi_data.get('history', [])
                     
                     # Get current and previous values from history if available
@@ -1480,55 +1515,69 @@ class MarketDataManager:
         
         Args:
             symbol: Trading pair symbol
-            data: WebSocket message data
+            data: WebSocket message data (official Bybit allLiquidation format)
         """
         if not data:
             return
         
-        # Extract liquidation data
-        liq_data = data.get('data', {})
-        if not liq_data:
+        # Extract liquidation data array (official Bybit format)
+        liquidation_data_array = data.get('data', [])
+        if not liquidation_data_array:
             return
         
-        # Format liquidation data
-        liquidation = {
-            'symbol': liq_data.get('symbol', symbol),
-            'side': liq_data.get('side', ''),
-            'price': float(liq_data.get('price', 0)),
-            'amount': float(liq_data.get('size', 0)),
-            'timestamp': int(liq_data.get('updatedTime', time.time() * 1000))
-        }
+        ts = data.get('ts', int(time.time() * 1000))
         
-        # Add to liquidations list in cache
-        if 'liquidations' not in self.data_cache[symbol]:
-            self.data_cache[symbol]['liquidations'] = []
-        
-        self.data_cache[symbol]['liquidations'].append(liquidation)
-        
-        # Keep only recent liquidations (last 24 hours)
-        recent_time = time.time() * 1000 - 24 * 60 * 60 * 1000
-        self.data_cache[symbol]['liquidations'] = [
-            l for l in self.data_cache[symbol]['liquidations'] 
-            if l['timestamp'] >= recent_time
-        ]
-        
-        logger.info(f"Liquidation detected for {symbol}: {liquidation['side']} {liquidation['amount']} @ {liquidation['price']}")
-        
-        # Send to AlertManager if it's available
-        if hasattr(self, 'alert_manager') and self.alert_manager is not None:
-            # Prepare data for the alert manager format
-            liquidation_data = {
-                'symbol': symbol,
-                'side': liquidation['side'],
-                'price': liquidation['price'],
-                'size': liquidation['amount'],  # Use 'amount' as 'size' for consistency with AlertManager
-                'timestamp': liquidation['timestamp']
+        # Process each liquidation event in the array
+        for liq_data in liquidation_data_array:
+            # Format liquidation data using official field names
+            liquidation = {
+                'symbol': liq_data.get('s', symbol),
+                'side': liq_data.get('S', ''),
+                'price': float(liq_data.get('p', 0)),
+                'amount': float(liq_data.get('v', 0)),
+                'timestamp': int(liq_data.get('T', ts))
             }
             
-            # Use asyncio to call the coroutine
-            asyncio.create_task(
-                self.alert_manager.check_liquidation_threshold(symbol, liquidation_data)
-            )
+            # Add to liquidations list in cache
+            if 'liquidations' not in self.data_cache[liquidation['symbol']]:
+                self.data_cache[liquidation['symbol']]['liquidations'] = []
+            
+            self.data_cache[liquidation['symbol']]['liquidations'].append(liquidation)
+            
+            # Keep only recent liquidations (last 24 hours)
+            recent_time = time.time() * 1000 - 24 * 60 * 60 * 1000
+            self.data_cache[liquidation['symbol']]['liquidations'] = [
+                l for l in self.data_cache[liquidation['symbol']]['liquidations'] 
+                if l['timestamp'] >= recent_time
+            ]
+            
+            logger.info(f"Liquidation detected for {liquidation['symbol']}: {liquidation['side']} {liquidation['amount']} @ {liquidation['price']}")
+            
+            # Send to AlertManager if it's available
+            if hasattr(self, 'alert_manager') and self.alert_manager is not None:
+                # Prepare data for the alert manager format
+                liquidation_data = {
+                    'symbol': liquidation['symbol'],
+                    'side': liquidation['side'],
+                    'price': liquidation['price'],
+                    'size': liquidation['amount'],  # Use 'amount' as 'size' for consistency with AlertManager
+                    'timestamp': liquidation['timestamp']
+                }
+                
+                # Use asyncio to call the coroutine with proper error handling
+                task = asyncio.create_task(
+                    self.alert_manager.check_liquidation_threshold(liquidation['symbol'], liquidation_data)
+                )
+                # Add error callback to handle any exceptions
+                def handle_liquidation_alert_error(task):
+                    try:
+                        task.result()  # This will raise any exception that occurred
+                    except Exception as e:
+                        logger.error(f"Error in liquidation threshold check for {liquidation['symbol']}: {e}")
+                        import traceback
+                        logger.debug(traceback.format_exc())
+                
+                task.add_done_callback(handle_liquidation_alert_error)
     
     async def get_market_data(self, symbol: str) -> Dict[str, Any]:
         """Get all available market data for a symbol.
@@ -1551,7 +1600,10 @@ class MarketDataManager:
             self.logger.error(f"Error refreshing market data for {symbol}: {str(e)}")
             
         # Build the result dict with all available data
-        market_data = {}
+        market_data = {
+            'symbol': symbol,  # Required by validation
+            'timestamp': int(time.time() * 1000)  # Required by validation
+        }
         
         # Always initialize ticker to avoid NoneType errors in validation
         if 'ticker' not in self.data_cache[symbol] or self.data_cache[symbol]['ticker'] is None:
@@ -1579,6 +1631,11 @@ class MarketDataManager:
             # Use the ohlcv data directly from the cache
             market_data['ohlcv'] = self.data_cache[symbol]['ohlcv']
             self.logger.debug(f"Retrieved OHLCV data from symbol cache: {len(market_data['ohlcv'])} timeframes")
+        # FIX: Also check for 'kline' key which is how the data is actually stored
+        elif 'kline' in self.data_cache[symbol] and isinstance(self.data_cache[symbol]['kline'], dict):
+            # Use the kline data from the cache (this is the actual storage key)
+            market_data['ohlcv'] = self.data_cache[symbol]['kline']
+            self.logger.debug(f"Retrieved OHLCV data from kline cache: {len(market_data['ohlcv'])} timeframes")
         else:
             # If no ohlcv data in symbol cache, try to get it from _ohlcv_cache
             self.logger.debug(f"No OHLCV data in symbol cache, fetching from main cache")
@@ -1607,9 +1664,10 @@ class MarketDataManager:
                     if timeframes:
                         # Store in result
                         market_data['ohlcv'] = timeframes
-                        # Also update symbol cache for future use
+                        # Also update symbol cache for future use (store under both keys for compatibility)
                         if symbol in self.data_cache:
                             self.data_cache[symbol]['ohlcv'] = timeframes
+                            self.data_cache[symbol]['kline'] = timeframes  # Store under both keys
                         self.logger.info(f"Fetched and stored OHLCV data for {symbol}: {len(timeframes)} timeframes")
                 except Exception as e:
                     self.logger.error(f"Error fetching OHLCV data: {str(e)}")
@@ -1638,9 +1696,9 @@ class MarketDataManager:
             if key in self.data_cache[symbol]:
                 sentiment[key] = self.data_cache[symbol][key]
         # Log the sentiment dict for debugging
-        self.logger.info(f"[FIX] get_market_data: Sentiment dict keys: {list(sentiment.keys())}")
+        self.logger.info(f"get_market_data: Sentiment dict keys: {list(sentiment.keys())}")
         if 'long_short_ratio' in sentiment:
-            self.logger.info(f"[FIX] get_market_data: long_short_ratio: {sentiment['long_short_ratio']}")
+            self.logger.info(f"get_market_data: long_short_ratio: {sentiment['long_short_ratio']}")
         market_data['sentiment'] = sentiment
         
         # Ensure OHLCV data is fetched if missing
@@ -1650,9 +1708,10 @@ class MarketDataManager:
                 timeframes = await self._fetch_timeframes(symbol)
                 if timeframes:
                     market_data['ohlcv'] = timeframes
-                    # Also update symbol cache for future use
+                    # Also update symbol cache for future use (store under both keys for compatibility)
                     if symbol in self.data_cache:
                         self.data_cache[symbol]['ohlcv'] = timeframes
+                        self.data_cache[symbol]['kline'] = timeframes  # Store under both keys
                     self.logger.info(f"Successfully fetched OHLCV data for {symbol}")
                 else:
                     self.logger.warning(f"Failed to fetch OHLCV data for {symbol}")
@@ -1738,6 +1797,12 @@ class MarketDataManager:
                     
                     # Store in cache using symbol string as key
                     self.data_cache[symbol_str] = market_data
+                    
+                    # Ensure OHLCV data is available under both 'kline' and 'ohlcv' keys for compatibility
+                    if 'kline' in market_data and market_data['kline']:
+                        self.data_cache[symbol_str]['ohlcv'] = market_data['kline']
+                    elif 'ohlcv' in market_data and market_data['ohlcv']:
+                        self.data_cache[symbol_str]['kline'] = market_data['ohlcv']
                     self.last_full_refresh[symbol_str] = {
                         'timestamp': time.time(),
                         'components': {
@@ -1987,3 +2052,59 @@ class MarketDataManager:
             
         except Exception as e:
             self.logger.error(f"Error refreshing components for {symbol}: {str(e)}")
+
+    async def force_websocket_initialization(self):
+        """Force initialize WebSocket connections even if delayed"""
+        try:
+            self.logger.info("Force initializing WebSocket connections for real-time data feeds")
+            
+            # Override delay setting temporarily
+            original_delay = self.delay_websocket
+            self.delay_websocket = False
+            
+            # Initialize WebSocket manager
+            await self._initialize_websocket()
+            
+            # Restore original delay setting
+            self.delay_websocket = original_delay
+            
+            self.logger.info("✅ WebSocket connections successfully initialized")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"❌ Failed to force initialize WebSocket: {str(e)}")
+            self.logger.debug(traceback.format_exc())
+            return False
+
+    async def get_websocket_status(self) -> Dict[str, Any]:
+        """Get current WebSocket connection status"""
+        try:
+            if not hasattr(self, 'websocket_manager') or not self.websocket_manager:
+                return {
+                    "enabled": False,
+                    "connected": False,
+                    "active_connections": 0,
+                    "status": "not_initialized"
+                }
+            
+            # Get status from WebSocket manager
+            status = getattr(self.websocket_manager, 'status', {})
+            return {
+                "enabled": True,
+                "connected": status.get('connected', False),
+                "active_connections": status.get('active_connections', 0),
+                "messages_received": status.get('messages_received', 0),
+                "last_message_time": status.get('last_message_time', 0),
+                "errors": status.get('errors', 0),
+                "status": "connected" if status.get('connected', False) else "disconnected"
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error getting WebSocket status: {str(e)}")
+            return {
+                "enabled": False,
+                "connected": False,
+                "active_connections": 0,
+                "status": "error",
+                "error": str(e)
+            }

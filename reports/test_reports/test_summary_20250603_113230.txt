@@ -1,0 +1,24 @@
+COMPREHENSIVE MARKET REPORTER PIPELINE TEST SUMMARY
+============================================================
+
+Test Suite: Comprehensive Market Reporter Pipeline Test
+Start Time: 2025-06-03 11:28:45.296041
+End Time: 2025-06-03 11:32:30.488266
+Total Duration: 225.19 seconds
+
+Tests Run: 10
+Tests Passed: 9
+Tests Failed: 1
+Success Rate: 90.0%
+
+DETAILED TEST RESULTS:
+  Exchange Initialization: PASSED (7.07s)
+  Market Reporter Initialization: PASSED (2.24s)
+  Live Data Collection: PASSED (2.58s)
+  Calculation Methods: PASSED (66.09s)
+  Market Summary Generation: PASSED (69.09s)
+  PDF Generation: FAILED (0.00s)
+  JSON Export: PASSED (0.00s)
+  Performance Monitoring: PASSED (6.02s)
+  Error Handling: PASSED (6.02s)
+  Complete Pipeline Integration: PASSED (66.07s)

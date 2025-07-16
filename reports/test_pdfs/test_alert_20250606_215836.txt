@@ -1,0 +1,9 @@
+TEST ALERT REPORT
+Generated: 2025-06-06 21:58:36.968495
+Symbol: SOLUSDT
+Signal: BUY
+Confluence Score: 72.5
+Components: Volume, Technical, Orderflow
+Transaction ID: TXN_TEST_1749261516
+
+This would be a PDF in the real system.

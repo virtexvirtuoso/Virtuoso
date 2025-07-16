@@ -5,8 +5,8 @@ from datetime import datetime
 from enum import Enum, auto
 
 if TYPE_CHECKING:
-    from src.monitoring.metrics_manager import MetricsManager
-from src.monitoring.alert_manager import AlertManager
+    from monitoring.metrics_manager import MetricsManager
+    from monitoring.alert_manager import AlertManager
 
 # Type aliases
 ConfigDict = Dict[str, Any]  # Configuration dictionary type

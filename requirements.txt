@@ -32,10 +32,26 @@ pycryptodome>=3.22.0
 humanfriendly>=10.0
 ccxt>=4.4.0  # Added for cryptocurrency exchange integration
 GPUtil>=1.4.0
+prettytable>=3.7.0  # For clean table formatting
 
 # PDF generation and templating dependencies
 weasyprint>=65.0           # For HTML to PDF conversion
+pdfkit>=1.0.0              # Alternative HTML to PDF conversion (requires wkhtmltopdf)
 jinja2>=3.1.0              # For HTML templating
 fpdf>=1.7.2                # For PDF generation
 mplfinance>=0.12.10b0      # For financial charts
 
+# Bitcoin Beta Analysis dependencies
+schedule>=1.1.0            # For automated report scheduling
+reportlab>=4.0.0           # For PDF report generation
+
+# Alpha Scanner specific
+scikit-learn>=1.0.0        # For ML-based scoring
+redis>=4.0.0              # Caching scan results
+
+# Liquidation Intelligence specific
+celery>=5.2.0             # Background task processing
+asyncio-mqtt>=0.11.0      # Real-time message processing
+sqlalchemy>=2.0.0         # Database ORM for liquidation storage
+asyncpg>=0.29.0           # PostgreSQL async driver
+aiosqlite>=0.19.0         # SQLite async driver

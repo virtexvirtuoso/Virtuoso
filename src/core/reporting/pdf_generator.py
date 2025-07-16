@@ -11,6 +11,7 @@ import tempfile
 import socket
 import time
 import traceback
+import asyncio
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple, Union
@@ -18,12 +19,56 @@ import shutil
 import uuid
 import re
 import warnings
+from enum import Enum
 
 # Import the CustomJSONEncoder for proper serialization
-from src.utils.json_encoder import CustomJSONEncoder
+try:
+    from utils.json_encoder import CustomJSONEncoder
+except ImportError:
+    try:
+        from src.utils.json_encoder import CustomJSONEncoder
+    except ImportError:
+        # Fallback if CustomJSONEncoder is not available
+        CustomJSONEncoder = None
+
+# Import error tracking
+try:
+    from src.monitoring.error_tracker import track_error, ErrorSeverity, ErrorCategory
+except ImportError:
+    # Fallback if error tracker is not available
+    def track_error(*args, **kwargs):
+        pass
+    class ErrorSeverity:
+        HIGH = "high"
+        MEDIUM = "medium"
+    class ErrorCategory:
+        TEMPLATE_RENDERING = "template_rendering"
+        STRING_FORMATTING = "string_formatting"
+
+# Import our centralized interpretation system
+try:
+    from src.core.interpretation.interpretation_manager import InterpretationManager
+except ImportError:
+    try:
+        from core.interpretation.interpretation_manager import InterpretationManager
+    except ImportError:
+        # Create dummy class if not available
+        class InterpretationManager:
+            def process_interpretations(self, *args, **kwargs):
+                return None
+            def get_formatted_interpretation(self, *args, **kwargs):
+                return ""
 
 # Import and apply matplotlib silencing before matplotlib imports
-from src.utils.matplotlib_utils import silence_matplotlib_logs
+try:
+    from utils.matplotlib_utils import silence_matplotlib_logs
+except ImportError:
+    try:
+        from src.utils.matplotlib_utils import silence_matplotlib_logs
+    except ImportError:
+        # Fallback if matplotlib_utils is not available
+        def silence_matplotlib_logs():
+            pass
 
 silence_matplotlib_logs()
 
@@ -48,6 +93,40 @@ from matplotlib.dates import AutoDateLocator
 
 # Set matplotlib style for dark mode
 plt.style.use("dark_background")
+
+
+class PDFGenerationError(Exception):
+    """Base exception for PDF generation errors."""
+    pass
+
+
+class ChartGenerationError(PDFGenerationError):
+    """Exception for chart generation errors."""
+    pass
+
+
+class DataValidationError(PDFGenerationError):
+    """Exception for data validation errors."""
+    pass
+
+
+class FileOperationError(PDFGenerationError):
+    """Exception for file operation errors."""
+    pass
+
+
+class TemplateError(PDFGenerationError):
+    """Exception for template processing errors."""
+    pass
+
+
+class ErrorSeverity(Enum):
+    """Error severity levels for better error classification."""
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    CRITICAL = "critical"
+
 
 # Define a professional mplfinance style
 VIRTUOSO_STYLE = {
@@ -161,6 +240,12 @@ class ReportGenerator:
         self._downsample_cache = {}
         self._cache_hits = 0
         self._cache_misses = 0
+        
+        # Error tracking and retry configuration
+        self._error_counts = {}
+        self._max_retries = self.config.get('pdf_generation', {}).get('max_retries', 3)
+        self._retry_delay = self.config.get('pdf_generation', {}).get('retry_delay', 1.0)
+        self._exponential_backoff = self.config.get('pdf_generation', {}).get('exponential_backoff', True)
 
         # Initialize file handlers if not already defined
         if not self.logger.handlers:
@@ -266,6 +351,9 @@ class ReportGenerator:
             }
         )
 
+        # Initialize the centralized interpretation manager
+        self.interpretation_manager = InterpretationManager()
+
         self._log(
             f"ReportGenerator initialized with template directory: {self.template_dir}",
             logging.INFO,
@@ -278,7 +366,7 @@ class ReportGenerator:
         output_path: Optional[str] = None,
     ) -> Union[bool, Tuple[str, str]]:
         """
-        Generate a PDF report for a trading signal.
+        Generate a PDF report for a trading signal with enhanced error handling.
         
         Args:
             signal_data: Dictionary containing signal data
@@ -291,107 +379,97 @@ class ReportGenerator:
         # Create a unique ID for this report generation process
         report_id = str(uuid.uuid4())[:8]
         symbol = signal_data.get('symbol', 'UNKNOWN')
+        start_time = time.time()
         
+        # Validate input data
         try:
-            self._log(f"[PDF_GEN:{report_id}] Starting report generation for {symbol}", level=logging.INFO)
-            
-            # Use the generate_trading_report method to create the PDF
-            self._log(f"[PDF_GEN:{report_id}] Calling generate_trading_report for {symbol}", level=logging.INFO)
-            
-            # If output_path is provided, ensure parent directories exist
-            if output_path:
-                os.makedirs(os.path.dirname(output_path), exist_ok=True)
+            self._validate_signal_data(signal_data, report_id)
+            if ohlcv_data is not None:
+                self._validate_ohlcv_data(ohlcv_data, report_id)
+        except DataValidationError as e:
+            self._log(f"[PDF_GEN:{report_id}] Data validation failed: {str(e)}", level=logging.ERROR)
+            return False
+        
+        # Retry logic with exponential backoff
+        for attempt in range(self._max_retries):
+            try:
+                self._log(f"[PDF_GEN:{report_id}] Starting report generation for {symbol} (attempt {attempt + 1}/{self._max_retries})", level=logging.INFO)
                 
-            pdf_path, json_path = self.generate_trading_report(
-                signal_data=signal_data,
-                ohlcv_data=ohlcv_data,
-                output_dir=output_path,
-            )
-            
-            # Debug output the actual paths
-            self._log(f"[PDF_GEN:{report_id}] generate_trading_report returned - PDF path: {pdf_path}, JSON path: {json_path}", level=logging.INFO)
-            
-            if pdf_path:
-                if os.path.exists(pdf_path):
-                    if os.path.isdir(pdf_path):
-                        self._log(f"[PDF_GEN:{report_id}] ERROR: {pdf_path} is a directory, not a file", level=logging.ERROR)
+                # Use the generate_trading_report method to create the PDF
+                self._log(f"[PDF_GEN:{report_id}] Calling generate_trading_report for {symbol}", level=logging.INFO)
+                
+                # If output_path is provided, ensure parent directories exist
+                if output_path:
+                    try:
+                        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+                    except OSError as e:
+                        raise FileOperationError(f"Failed to create output directory: {str(e)}")
+                    
+                pdf_path, json_path = self.generate_trading_report(
+                    signal_data=signal_data,
+                    ohlcv_data=ohlcv_data,
+                    output_dir=output_path,
+                )
+                
+                # Debug output the actual paths
+                self._log(f"[PDF_GEN:{report_id}] generate_trading_report returned - PDF path: {pdf_path}, JSON path: {json_path}", level=logging.INFO)
+                
+                if pdf_path:
+                    # Validate the generated PDF
+                    try:
+                        validated_path = self._validate_and_process_pdf(pdf_path, signal_data, report_id)
+                        
+                        # Calculate processing time
+                        processing_time = time.time() - start_time
+                        self._log(f"[PDF_GEN:{report_id}] PDF generation completed successfully in {processing_time:.2f}s", level=logging.INFO)
+                        
+                        # Clear the cache after successful generation
+                        self._clear_downsample_cache()
+                        return validated_path, json_path
+                        
+                    except (FileOperationError, DataValidationError) as e:
+                        self._log(f"[PDF_GEN:{report_id}] PDF validation failed: {str(e)}", level=logging.ERROR)
+                        if attempt < self._max_retries - 1:
+                            continue
+                        else:
+                            return False
+                else:
+                    self._log(f"[PDF_GEN:{report_id}] ERROR: No PDF path was returned from generate_trading_report", level=logging.ERROR)
+                    if attempt < self._max_retries - 1:
+                        continue
+                    else:
                         return False
                         
-                    # Check file extension
-                    if not pdf_path.lower().endswith('.pdf'):
-                        self._log(f"[PDF_GEN:{report_id}] WARNING: {pdf_path} does not have .pdf extension", level=logging.WARNING)
-                        
-                    # Move PDF to exports directory for easier access
-                    symbol_safe = symbol.lower().replace('/', '_')
-                    
-                    # Get signal type (default to NEUTRAL if not available)
-                    signal_type = signal_data.get("signal_type", signal_data.get("signal", "NEUTRAL")).upper()
-                    
-                    # Get score and round to one decimal place
-                    score = signal_data.get("score", signal_data.get("confluence_score", 0))
-                    score_str = f"{score:.1f}".replace('.', 'p')  # Replace decimal with 'p' for filename compatibility
-                    
-                    # Create a human-readable timestamp
-                    timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
-                    
-                    exports_dir = os.path.join(os.getcwd(), "exports")
-                    os.makedirs(exports_dir, exist_ok=True)
-                    
-                    # Create a descriptive filename for the exports directory
-                    new_pdf_path = os.path.join(exports_dir, f"{symbol_safe}_{signal_type}_{score_str}_{timestamp_str}.pdf")
-                    self._log(f"[PDF_GEN:{report_id}] Moving PDF report to {new_pdf_path}", level=logging.INFO)
-                    
-                    try:
-                        # Copy the file instead of moving it
-                        shutil.copy2(pdf_path, new_pdf_path)
-                        if os.path.exists(new_pdf_path):
-                            copy_size = os.path.getsize(new_pdf_path) / 1024  # Size in KB
-                            self._log(f"[PDF_GEN:{report_id}] PDF report copied to {new_pdf_path}, size: {copy_size:.2f} KB", level=logging.INFO)
-                            
-                            # Verify file is valid
-                            try:
-                                with open(new_pdf_path, 'rb') as f:
-                                    header = f.read(5)
-                                    if header[:4] != b'%PDF':
-                                        self._log(f"[PDF_GEN:{report_id}] WARNING: {new_pdf_path} is not a valid PDF file", level=logging.WARNING)
-                            except Exception as e:
-                                self._log(f"[PDF_GEN:{report_id}] Error verifying PDF file content: {str(e)}", level=logging.WARNING)
-                        else:
-                            self._log(f"[PDF_GEN:{report_id}] ERROR: PDF copy failed - {new_pdf_path} does not exist", level=logging.ERROR)
-                    except Exception as e:
-                        self._log(f"[PDF_GEN:{report_id}] Error copying PDF report: {str(e)}", level=logging.ERROR)
-                        # If we can't copy, still return the original path
-                        self._log(f"[PDF_GEN:{report_id}] Returning original PDF path: {pdf_path}", level=logging.INFO)
-                        
-                        # Clear the cache after report generation
-                        self._clear_downsample_cache()
-                        return pdf_path, json_path
-                    
-                    # Return path to the newly copied PDF
-                    self._log(f"[PDF_GEN:{report_id}] Returning new PDF path: {new_pdf_path}", level=logging.INFO)
-                    
-                    # Clear the cache after report generation
-                    self._clear_downsample_cache()
-                    return new_pdf_path, json_path
-                else:
-                    self._log(f"[PDF_GEN:{report_id}] ERROR: PDF path was returned but file doesn't exist: {pdf_path}", level=logging.ERROR)
-                    
-                    # Clear the cache even if we had an error
-                    self._clear_downsample_cache()
-                    return False
-            else:
-                self._log(f"[PDF_GEN:{report_id}] ERROR: No PDF path was returned from generate_trading_report", level=logging.ERROR)
+            except ChartGenerationError as e:
+                self._log(f"[PDF_GEN:{report_id}] Chart generation error (attempt {attempt + 1}): {str(e)}", level=logging.ERROR)
+                self._track_error("chart_generation", ErrorSeverity.HIGH)
                 
-                # Clear the cache even if we had an error
-                self._clear_downsample_cache()
-                return False
-        except Exception as e:
-            self._log(f"[PDF_GEN:{report_id}] ERROR: Exception in generate_report: {str(e)}", level=logging.ERROR)
-            self._log(traceback.format_exc(), level=logging.ERROR)
+            except TemplateError as e:
+                self._log(f"[PDF_GEN:{report_id}] Template processing error (attempt {attempt + 1}): {str(e)}", level=logging.ERROR)
+                self._track_error("template_processing", ErrorSeverity.MEDIUM)
+                
+            except FileOperationError as e:
+                self._log(f"[PDF_GEN:{report_id}] File operation error (attempt {attempt + 1}): {str(e)}", level=logging.ERROR)
+                self._track_error("file_operations", ErrorSeverity.HIGH)
+                
+            except Exception as e:
+                self._log(f"[PDF_GEN:{report_id}] Unexpected error (attempt {attempt + 1}): {str(e)}", level=logging.ERROR)
+                self._log(f"[PDF_GEN:{report_id}] Traceback: {traceback.format_exc()}", level=logging.DEBUG)
+                self._track_error("unexpected", ErrorSeverity.CRITICAL)
             
-            # Clear the cache even if we had an error
-            self._clear_downsample_cache()
-            return False
+            # Wait before retry (except on last attempt)
+            if attempt < self._max_retries - 1:
+                delay = self._retry_delay * (2 ** attempt if self._exponential_backoff else 1)
+                self._log(f"[PDF_GEN:{report_id}] Retrying in {delay:.1f}s...", level=logging.INFO)
+                await asyncio.sleep(delay)
+        
+        # All retries failed
+        total_time = time.time() - start_time
+        self._log(f"[PDF_GEN:{report_id}] PDF generation failed after {self._max_retries} attempts in {total_time:.2f}s", level=logging.ERROR)
+        
+        # Clear the cache even if we had an error
+        self._clear_downsample_cache()
+        return False
 
     def _format_number(self, value: Union[int, float]) -> str:
         """
@@ -463,6 +541,185 @@ class ReportGenerator:
             level: Logging level
         """
         self.logger.log(level, message)
+
+    def _validate_signal_data(self, signal_data: Dict[str, Any], report_id: str) -> None:
+        """
+        Validate signal data for PDF generation.
+        
+        Args:
+            signal_data: Signal data to validate
+            report_id: Report ID for logging
+            
+        Raises:
+            DataValidationError: If validation fails
+        """
+        if not isinstance(signal_data, dict):
+            raise DataValidationError("Signal data must be a dictionary")
+        
+        required_fields = ['symbol']
+        for field in required_fields:
+            if field not in signal_data:
+                raise DataValidationError(f"Missing required field: {field}")
+        
+        symbol = signal_data.get('symbol', '')
+        if not symbol or not isinstance(symbol, str):
+            raise DataValidationError("Symbol must be a non-empty string")
+        
+        # Validate score if present
+        score = signal_data.get('score') or signal_data.get('confluence_score')
+        if score is not None:
+            try:
+                score = float(score)
+                if not 0 <= score <= 100:
+                    self._log(f"[PDF_GEN:{report_id}] Warning: Score {score} is outside expected range [0-100]", level=logging.WARNING)
+            except (ValueError, TypeError):
+                raise DataValidationError(f"Invalid score value: {score}")
+        
+        self._log(f"[PDF_GEN:{report_id}] Signal data validation passed for {symbol}", level=logging.DEBUG)
+
+    def _validate_ohlcv_data(self, ohlcv_data: pd.DataFrame, report_id: str) -> None:
+        """
+        Validate OHLCV data for chart generation.
+        
+        Args:
+            ohlcv_data: OHLCV DataFrame to validate
+            report_id: Report ID for logging
+            
+        Raises:
+            DataValidationError: If validation fails
+        """
+        if not isinstance(ohlcv_data, pd.DataFrame):
+            raise DataValidationError("OHLCV data must be a pandas DataFrame")
+        
+        if ohlcv_data.empty:
+            raise DataValidationError("OHLCV data cannot be empty")
+        
+        required_columns = ['open', 'high', 'low', 'close', 'volume']
+        missing_columns = [col for col in required_columns if col not in ohlcv_data.columns]
+        if missing_columns:
+            raise DataValidationError(f"Missing required OHLCV columns: {missing_columns}")
+        
+        # Check for valid numeric data
+        for col in required_columns:
+            if not pd.api.types.is_numeric_dtype(ohlcv_data[col]):
+                raise DataValidationError(f"Column {col} must contain numeric data")
+        
+        # Check for reasonable data ranges
+        if (ohlcv_data[['open', 'high', 'low', 'close']] <= 0).any().any():
+            raise DataValidationError("Price data contains non-positive values")
+        
+        if (ohlcv_data['volume'] < 0).any():
+            raise DataValidationError("Volume data contains negative values")
+        
+        self._log(f"[PDF_GEN:{report_id}] OHLCV data validation passed ({len(ohlcv_data)} rows)", level=logging.DEBUG)
+
+    def _validate_and_process_pdf(self, pdf_path: str, signal_data: Dict[str, Any], report_id: str) -> str:
+        """
+        Validate and process the generated PDF file.
+        
+        Args:
+            pdf_path: Path to the generated PDF
+            signal_data: Original signal data
+            report_id: Report ID for logging
+            
+        Returns:
+            Path to the processed PDF file
+            
+        Raises:
+            FileOperationError: If file operations fail
+            DataValidationError: If PDF validation fails
+        """
+        if not os.path.exists(pdf_path):
+            raise FileOperationError(f"PDF file does not exist: {pdf_path}")
+        
+        if os.path.isdir(pdf_path):
+            raise FileOperationError(f"PDF path is a directory, not a file: {pdf_path}")
+        
+        # Check file extension
+        if not pdf_path.lower().endswith('.pdf'):
+            self._log(f"[PDF_GEN:{report_id}] WARNING: {pdf_path} does not have .pdf extension", level=logging.WARNING)
+        
+        # Validate PDF file content
+        try:
+            with open(pdf_path, 'rb') as f:
+                header = f.read(8)
+                if not header.startswith(b'%PDF'):
+                    raise DataValidationError(f"Invalid PDF file header: {pdf_path}")
+        except IOError as e:
+            raise FileOperationError(f"Cannot read PDF file: {str(e)}")
+        
+        # Get file size
+        try:
+            file_size = os.path.getsize(pdf_path)
+            if file_size == 0:
+                raise DataValidationError("PDF file is empty")
+            
+            # Check for reasonable file size (between 1KB and 50MB)
+            if file_size < 1024:
+                self._log(f"[PDF_GEN:{report_id}] WARNING: PDF file is very small ({file_size} bytes)", level=logging.WARNING)
+            elif file_size > 50 * 1024 * 1024:
+                self._log(f"[PDF_GEN:{report_id}] WARNING: PDF file is very large ({file_size / 1024 / 1024:.1f} MB)", level=logging.WARNING)
+            
+        except OSError as e:
+            raise FileOperationError(f"Cannot get PDF file size: {str(e)}")
+        
+        # Move PDF to exports directory for easier access
+        try:
+            symbol = signal_data.get('symbol', 'UNKNOWN')
+            symbol_safe = symbol.lower().replace('/', '_')
+            
+            # Get signal type (default to NEUTRAL if not available)
+            signal_type = signal_data.get("signal_type", signal_data.get("signal", "NEUTRAL")).upper()
+            
+            # Get score and round to one decimal place
+            score = signal_data.get("score", signal_data.get("confluence_score", 0))
+            score_str = f"{score:.1f}".replace('.', 'p')  # Replace decimal with 'p' for filename compatibility
+            
+            # Create a human-readable timestamp
+            timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+            
+            exports_dir = os.path.join(os.getcwd(), "exports")
+            os.makedirs(exports_dir, exist_ok=True)
+            
+            # Create a descriptive filename for the exports directory
+            new_pdf_path = os.path.join(exports_dir, f"{symbol_safe}_{signal_type}_{score_str}_{timestamp_str}.pdf")
+            self._log(f"[PDF_GEN:{report_id}] Moving PDF report to {new_pdf_path}", level=logging.INFO)
+            
+            # Copy the file instead of moving it
+            shutil.copy2(pdf_path, new_pdf_path)
+            
+            if not os.path.exists(new_pdf_path):
+                raise FileOperationError(f"PDF copy failed - {new_pdf_path} does not exist")
+            
+            copy_size = os.path.getsize(new_pdf_path) / 1024  # Size in KB
+            self._log(f"[PDF_GEN:{report_id}] PDF report copied to {new_pdf_path}, size: {copy_size:.2f} KB", level=logging.INFO)
+            
+            return new_pdf_path
+            
+        except (OSError, IOError) as e:
+            # If we can't copy, still return the original path
+            self._log(f"[PDF_GEN:{report_id}] Error copying PDF report: {str(e)}", level=logging.ERROR)
+            self._log(f"[PDF_GEN:{report_id}] Returning original PDF path: {pdf_path}", level=logging.INFO)
+            return pdf_path
+
+    def _track_error(self, error_type: str, severity: ErrorSeverity) -> None:
+        """
+        Track errors for monitoring and debugging.
+        
+        Args:
+            error_type: Type of error
+            severity: Error severity level
+        """
+        if error_type not in self._error_counts:
+            self._error_counts[error_type] = {'count': 0, 'last_seen': None, 'severity': severity.value}
+        
+        self._error_counts[error_type]['count'] += 1
+        self._error_counts[error_type]['last_seen'] = datetime.now().isoformat()
+        
+        # Log error statistics periodically
+        total_errors = sum(error_data['count'] for error_data in self._error_counts.values())
+        if total_errors % 10 == 0:  # Log every 10 errors
+            self._log(f"Error statistics: {self._error_counts}", level=logging.INFO)
 
     def _configure_axis_ticks(self, ax, max_ticks=20, axis='both'):
         """
@@ -875,7 +1132,7 @@ class ReportGenerator:
 
             # Create output directory if it doesn't exist
             os.makedirs(output_dir, exist_ok=True)
-            
+
             # Check if we have actual OHLCV data to work with
             if ohlcv_data is None or ohlcv_data.empty:
                 self._log("No OHLCV data provided, falling back to simulated chart", logging.WARNING)
@@ -905,7 +1162,7 @@ class ReportGenerator:
                 self._log(f"Downsampled to {len(df)} points", logging.INFO)
             else:
                 self._log(f"No downsampling needed, using original {original_length} data points", logging.INFO)
-                df = ohlcv_data.copy()
+            df = ohlcv_data.copy()
 
             # Ensure DataFrame has a DatetimeIndex, required by mplfinance
             if not isinstance(df.index, pd.DatetimeIndex):
@@ -999,7 +1256,7 @@ class ReportGenerator:
                     # LTF data is more granular (e.g., 5-minute candles) which is ideal for daily VWAP
                     self._log(f"Calculating daily VWAP using LTF data", level=logging.DEBUG)
                     df['daily_vwap'] = self._calculate_vwap(df, periods=min(1440, len(df)))
-                    
+
                     # Calculate weekly VWAP using HTF data or fall back to primary data
                     if htf_data is not None and not htf_data.empty:
                         # HTF data is higher timeframe (e.g., 4-hour candles) which is better for weekly VWAP
@@ -1012,7 +1269,7 @@ class ReportGenerator:
                         if all(col in htf_df.columns for col in ['high', 'low', 'close', 'volume']):
                             # Calculate VWAP on HTF data
                             htf_vwap = self._calculate_vwap(htf_df, periods=min(10080, len(htf_df)))
-                            
+
                             # Resample HTF VWAP to match primary dataframe timestamps
                             if hasattr(htf_df, 'index') and isinstance(htf_df.index, pd.DatetimeIndex):
                                 # Create a Series with HTF VWAP values
@@ -1062,21 +1319,23 @@ class ReportGenerator:
                 y_max = max(y_max, max(prices) * 1.05)
 
             # Prepare plot configuration with enhanced style
+            # Ensure volume data is available and has valid values
+            has_volume = 'volume' in df.columns and df['volume'].notna().any() and (df['volume'] > 0).any()
+            if 'volume' in df.columns:
+                self._log(f"Volume data check: has_volume={has_volume}, vol_sum={df['volume'].sum()}, vol_mean={df['volume'].mean():.2f}", level=logging.DEBUG)
+            
+            # Build kwargs dynamically to avoid validation issues
             kwargs = {
                 "type": "candle",
                 "style": VIRTUOSO_ENHANCED_STYLE,  # Use enhanced style
                 "figsize": (10, 6),
                 "title": f"{symbol} Price Chart",
-                "panel_ratios": (4, 1),
-                "volume": True if 'volume' in df.columns else False,
-                "volume_panel": 1 if 'volume' in df.columns else None,
                 "show_nontrading": False,
                 "returnfig": True,
                 "datetime_format": "%m-%d %H:%M",
                 "xrotation": 0,
                 "tight_layout": False,
                 "ylabel": "Price",
-                "ylabel_lower": "Volume" if 'volume' in df.columns else "",
                 "figratio": (10, 7),
                 "scale_padding": {
                     "left": 0.05,
@@ -1086,17 +1345,35 @@ class ReportGenerator:
                 },
                 "warn_too_much_data": 1000,  # Suppress warning up to 1000 candles
             }
+            
+            # Add volume parameter only if we have valid volume data
+            if has_volume:
+                kwargs["volume"] = True
 
             # Prepare additional plots for entry, stop loss, and targets
             plots = []
             
+            # Ensure targets are always available - generate defaults if none provided
+            if not targets or len(targets) == 0:
+                signal_type = "BULLISH"  # Default assumption for chart generation
+                if stop_loss and entry_price:
+                    if stop_loss > entry_price:
+                        signal_type = "BEARISH"
+                
+                targets = self._generate_default_targets(
+                    entry_price=entry_price,
+                    stop_loss=stop_loss,
+                    signal_type=signal_type
+                )
+                self._log(f"Generated {len(targets)} default targets for chart display", logging.INFO)
+            
             # Add VWAP lines if available
             if has_vwap:
-                # Add daily VWAP (blue line)
+                # Add daily VWAP (blue line) - Swapped colors with entry price
                 plots.append(
                     mpf.make_addplot(
                         df['daily_vwap'],
-                        color='#3b82f6',  # Blue
+                        color='#3b82f6',  # Blue - swapped with entry price
                         width=1.2,
                         panel=0,
                         secondary_y=False,
@@ -1116,12 +1393,12 @@ class ReportGenerator:
                     )
                 )
 
-            # Entry price line (blue)
+            # Entry price line (green)
             if entry_price is not None:
                 plots.append(
                     mpf.make_addplot(
                         [entry_price] * len(df),
-                        color="#3b82f6",
+                        color="#10b981",
                         width=1.5,
                         panel=0,
                         secondary_y=False,
@@ -1140,7 +1417,7 @@ class ReportGenerator:
                         secondary_y=False,
                         linestyle="--",
                     )
-                )
+            )
 
             # Target level lines with different colors
             if targets:
@@ -1168,7 +1445,7 @@ class ReportGenerator:
 
             # Create the plot
             plot_result = mpf.plot(df, **kwargs, addplot=plots if plots else None)
-            
+
             # Safely unpack plot result with robust error handling
             fig, axes = self._safe_plot_result_unpack(plot_result)
             
@@ -1186,25 +1463,25 @@ class ReportGenerator:
                 # Limit ticks to avoid overflow warnings
                 self._configure_axis_ticks(ax1, max_ticks=20)
                 
-                # Custom date formatting for x-axis - REPLACED problematic MinuteLocator
-                # Use AutoDateLocator instead of MinuteLocator to prevent excessive ticks
-                date_locator = AutoDateLocator(maxticks=20)
+                # Custom date formatting for x-axis - Use consistent formatting
+                # Use AutoDateLocator with reasonable tick spacing
+                date_locator = AutoDateLocator(maxticks=10)
                 ax1.xaxis.set_major_locator(date_locator)
                 
-                # Format to show more compact time format
+                # Format to show consistent time format matching mplfinance config
                 time_formatter = DateFormatter('%m-%d %H:%M')
                 ax1.xaxis.set_major_formatter(time_formatter)
                 
                 # Rotate labels for better readability
                 plt.setp(ax1.xaxis.get_majorticklabels(), rotation=45, ha='right')
 
-                # Add custom legend for VWAP if available
-                if has_vwap:
-                    legend_elements = [
-                        Line2D([0], [0], color='#3b82f6', lw=1.2, label='Daily VWAP (LTF)'),
-                        Line2D([0], [0], color='#8b5cf6', lw=1.2, label='Weekly VWAP (HTF)')
-                    ]
-                    ax1.legend(handles=legend_elements, loc='upper left', fontsize=9, framealpha=0.7, facecolor='#0c1a2b')
+            # Add custom legend for VWAP if available
+            if has_vwap:
+                legend_elements = [
+                    Line2D([0], [0], color='#3b82f6', lw=1.2, label='Daily VWAP (LTF)'),
+                    Line2D([0], [0], color='#8b5cf6', lw=1.2, label='Weekly VWAP (HTF)')
+                ]
+                ax1.legend(handles=legend_elements, loc='upper left', fontsize=9, framealpha=0.7, facecolor='#0c1a2b')
 
 
                 # Add labels with improved styling
@@ -1230,63 +1507,63 @@ class ReportGenerator:
                         # Fall back to direct attribute access
                         ax1_x_pos = getattr(position, 'x0', 0)
                         ax1_y_pos = getattr(position, 'y0', 0)
-                        
-                    ax1.annotate(
+                
+                ax1.annotate(
                         f"Entry: ${self._format_number(entry_price)}",
-                        xy=(1.01, entry_pos),
-                        xycoords=("axes fraction", "axes fraction"),
-                        xytext=(1.05, entry_pos),
-                        textcoords="axes fraction",
-                        fontsize=9,
-                        color="#3b82f6",
-                        fontweight="bold",
-                        bbox=dict(
-                            facecolor="#0c1a2b",
-                            edgecolor="#3b82f6",
-                            boxstyle="round,pad=0.3",
-                            alpha=0.9,
-                        ),
-                    )
+                    xy=(1.01, entry_pos),
+                    xycoords=("axes fraction", "axes fraction"),
+                    xytext=(1.05, entry_pos),
+                    textcoords="axes fraction",
+                    fontsize=9,
+                    color="#10b981",
+                    fontweight="bold",
+                    bbox=dict(
+                        facecolor="#0c1a2b",
+                        edgecolor="#3b82f6",
+                        boxstyle="round,pad=0.3",
+                        alpha=0.9,
+                    ),
+                )
 
                 # Stop loss label
                 if stop_loss is not None:
                     stop_pos = (stop_loss - y_min) / (y_max - y_min)
-                    ax1.annotate(
+                ax1.annotate(
                         f"Stop: ${self._format_number(stop_loss)}",
-                        xy=(1.01, stop_pos),
-                        xycoords=("axes fraction", "axes fraction"),
-                        xytext=(1.05, stop_pos),
-                        textcoords="axes fraction",
-                        fontsize=9,
-                        color="#ef4444",
-                        fontweight="bold",
-                        bbox=dict(
-                            facecolor="#0c1a2b",
-                            edgecolor="#ef4444",
-                            boxstyle="round,pad=0.3",
-                            alpha=0.9,
-                        ),
-                    )
+                    xy=(1.01, stop_pos),
+                    xycoords=("axes fraction", "axes fraction"),
+                    xytext=(1.05, stop_pos),
+                    textcoords="axes fraction",
+                    fontsize=9,
+                    color="#ef4444",
+                    fontweight="bold",
+                    bbox=dict(
+                        facecolor="#0c1a2b",
+                        edgecolor="#ef4444",
+                        boxstyle="round,pad=0.3",
+                        alpha=0.9,
+                    ),
+                )
 
-                    # Shade area between entry and stop loss if both exist
-                    if entry_price is not None:
-                        min_idx, max_idx = 0, len(df) - 1
-                        if entry_price > stop_loss:  # Long position
-                            ax1.fill_between(
-                                [min_idx, max_idx],
-                                entry_price,
-                                stop_loss,
-                                color="#ef4444",
-                                alpha=0.1,
-                            )
-                        else:  # Short position
-                            ax1.fill_between(
-                                [min_idx, max_idx],
-                                entry_price,
-                                stop_loss,
-                                color="#22c55e",
-                                alpha=0.1,
-                            )
+                # Shade area between entry and stop loss if both exist
+                if stop_loss is not None and entry_price is not None:
+                    min_idx, max_idx = 0, len(df) - 1
+                    if entry_price > stop_loss:  # Long position
+                        ax1.fill_between(
+                            [min_idx, max_idx],
+                            entry_price,
+                            stop_loss,
+                            color="#ef4444",
+                            alpha=0.1,
+                        )
+                    else:  # Short position
+                        ax1.fill_between(
+                            [min_idx, max_idx],
+                            entry_price,
+                            stop_loss,
+                            color="#22c55e",
+                            alpha=0.1,
+                        )
 
                 # Target labels
                 if targets:
@@ -1343,22 +1620,22 @@ class ReportGenerator:
                                         alpha=0.05,
                                     )
 
-                
-                # Adjust layout with specific settings instead of tight_layout
-                plt.subplots_adjust(right=0.85, left=0.1, top=0.9, bottom=0.15)
 
-                # Create output filename for REAL data chart
-                timestamp = int(time.time())
-                output_file = os.path.join(
-                    output_dir, f"{symbol.replace('/', '_')}_chart_{timestamp}.png"
-                )
+            # Adjust layout with specific settings instead of tight_layout
+            plt.subplots_adjust(right=0.85, left=0.1, top=0.9, bottom=0.15)
 
-                # Save the figure
-                plt.savefig(output_file, dpi=150, bbox_inches="tight")
-                plt.close(fig)
+            # Create output filename for REAL data chart
+            timestamp = int(time.time())
+            output_file = os.path.join(
+                output_dir, f"{symbol.replace('/', '_')}_chart_{timestamp}.png"
+            )
 
-                self._log(f"Real data candlestick chart saved to: {output_file}")
-                return output_file
+            # Save the figure
+            plt.savefig(output_file, dpi=150, bbox_inches="tight")
+            plt.close(fig)
+
+            self._log(f"Real data candlestick chart saved to: {output_file}")
+            return output_file
 
         except Exception as e:
             self._log(f"Error creating candlestick chart: {str(e)}", logging.ERROR)
@@ -1405,7 +1682,9 @@ class ReportGenerator:
             json_path = os.path.join(output_dir, filename)
             reports_json_path = os.path.join(json_dir, filename)
             
-            json_content = json.dumps(data, indent=2, cls=CustomJSONEncoder)
+            # Pre-process data to handle circular references
+            processed_data = self._prepare_for_json(data)
+            json_content = json.dumps(processed_data, indent=2, cls=CustomJSONEncoder)
             
             # Save to output_dir as requested
             with open(json_path, "w") as f:
@@ -1422,36 +1701,80 @@ class ReportGenerator:
             self._log(f"Error exporting JSON data: {str(e)}", logging.ERROR)
             return None
 
-    def _prepare_for_json(self, obj: Any) -> Any:
+    def _prepare_for_json(self, obj: Any, visited: Optional[set] = None) -> Any:
         """
-        Convert objects to JSON serializable types.
+        Convert objects to JSON serializable types with circular reference detection.
         
         Args:
             obj: Object to convert
+            visited: Set of already visited object IDs to prevent circular references
             
         Returns:
             JSON serializable object
         """
-        if isinstance(obj, dict):
-            return {k: self._prepare_for_json(v) for k, v in obj.items()}
-        elif isinstance(obj, list):
-            return [self._prepare_for_json(item) for item in obj]
-        elif isinstance(obj, (datetime, pd.Timestamp)):
-            return obj.isoformat()
-        elif hasattr(pd, "Timestamp") and isinstance(obj, pd.Timestamp):
-            return obj.isoformat()
-        elif isinstance(obj, (np.int64, np.int32, np.int16, np.int8)):
-            return int(obj)
-        elif isinstance(obj, (np.float64, np.float32, np.float16)):
-            return float(obj)
-        elif isinstance(obj, np.ndarray):
-            return obj.tolist()
-        elif isinstance(obj, pd.DataFrame):
-            return obj.to_dict(orient="records")
-        elif isinstance(obj, pd.Series):
-            return obj.to_dict()
-        else:
-            return obj
+        if visited is None:
+            visited = set()
+            
+        # Get object ID for circular reference detection
+        obj_id = id(obj)
+        
+        # Check for circular reference
+        if obj_id in visited:
+            # Return a safe representation instead of recursing
+            return f"<circular_reference:{type(obj).__name__}>"
+            
+        # Add current object to visited set for complex types
+        if isinstance(obj, (dict, list)):
+            visited.add(obj_id)
+            
+        try:
+            if isinstance(obj, dict):
+                result = {}
+                for k, v in obj.items():
+                    try:
+                        result[str(k)] = self._prepare_for_json(v, visited.copy())
+                    except Exception as e:
+                        # Handle problematic values gracefully
+                        result[str(k)] = f"<serialization_error:{type(v).__name__}>"
+                return result
+            elif isinstance(obj, list):
+                result = []
+                for item in obj:
+                    try:
+                        result.append(self._prepare_for_json(item, visited.copy()))
+                    except Exception as e:
+                        # Handle problematic items gracefully
+                        result.append(f"<serialization_error:{type(item).__name__}>")
+                return result
+            elif isinstance(obj, (datetime, pd.Timestamp)):
+                return obj.isoformat()
+            elif hasattr(pd, "Timestamp") and isinstance(obj, pd.Timestamp):
+                return obj.isoformat()
+            elif isinstance(obj, (np.int64, np.int32, np.int16, np.int8)):
+                return int(obj)
+            elif isinstance(obj, (np.float64, np.float32, np.float16)):
+                return float(obj)
+            elif isinstance(obj, np.ndarray):
+                return obj.tolist()
+            elif isinstance(obj, pd.DataFrame):
+                return obj.to_dict(orient="records")
+            elif isinstance(obj, pd.Series):
+                return obj.to_dict()
+            elif hasattr(obj, '__dict__') and not callable(obj) and not isinstance(obj, type):
+                # Handle objects with __dict__ but avoid circular references
+                try:
+                    return self._prepare_for_json(obj.__dict__, visited.copy())
+                except Exception:
+                    return f"<object:{type(obj).__name__}>"
+            else:
+                return obj
+        except Exception as e:
+            # Final fallback for any serialization issues
+            return f"<unserializable:{type(obj).__name__}>"
+        finally:
+            # Remove from visited set when done (for this branch)
+            if isinstance(obj, (dict, list)) and obj_id in visited:
+                visited.discard(obj_id)
 
     def _add_watermark_to_template(
         self, html_content: str, watermark_text: str = "VIRTUOSO CRYPTO"
@@ -1612,9 +1935,19 @@ class ReportGenerator:
 
                     # Get trade parameters if available
                     trade_params = signal_data.get("trade_params", {})
-                    entry_price = trade_params.get("entry_price", None)
-                    stop_loss = trade_params.get("stop_loss", None)
-                    targets = trade_params.get("targets", None)
+                    entry_price = trade_params.get("entry_price", None) or signal_data.get("entry_price", None)
+                    stop_loss = trade_params.get("stop_loss", None) or signal_data.get("stop_loss", None)
+                    targets = trade_params.get("targets", None) or signal_data.get("targets", None)
+                    
+                    # Ensure targets are always available - generate defaults if none provided
+                    if not targets and entry_price:
+                        signal_type = signal_data.get("signal_type", "BULLISH")
+                        targets = self._generate_default_targets(
+                            entry_price=entry_price,
+                            stop_loss=stop_loss,
+                            signal_type=signal_type
+                        )
+                        self._log(f"Generated {len(targets)} default targets for report generation", logging.INFO)
 
                     # Create chart
                     candlestick_chart = self._create_candlestick_chart(
@@ -1691,6 +2024,7 @@ class ReportGenerator:
                             "orderflow": "Orderflow",
                             "sentiment": "Sentiment",
                             "price_structure": "Price Structure",
+                            "range_analysis": "Range Analysis",
                         }
 
                         for key, display_name in component_keys.items():
@@ -1864,30 +2198,47 @@ class ReportGenerator:
                 # Add debug logging for market interpretations format
                 self._log(f"Processing market interpretations for {symbol}", level=logging.DEBUG)
                 
-                # Use market_interpretations as insights if available, otherwise fall back to insights
-                insights = signal_data.get("market_interpretations", signal_data.get("insights", []))
+                # Process market interpretations using centralized InterpretationManager
+                raw_interpretations = signal_data.get("market_interpretations", signal_data.get("insights", []))
                 actionable_insights = signal_data.get("actionable_insights", [])
                 
-                # Debug log for insights format
-                if insights:
-                    if isinstance(insights, list):
-                        self._log(f"Market interpretations found: {len(insights)} items", level=logging.DEBUG)
-                        if len(insights) > 0:
-                            self._log(f"First interpretation type: {type(insights[0]).__name__}", level=logging.DEBUG)
-                            if isinstance(insights[0], dict):
-                                self._log(f"First interpretation keys: {list(insights[0].keys())}", level=logging.DEBUG)
-                                if 'interpretation' in insights[0]:
-                                    self._log(f"Interpretation value type: {type(insights[0]['interpretation']).__name__}", level=logging.DEBUG)
+                # Use InterpretationManager to process and standardize interpretations
+                insights = []
+                try:
+                    if raw_interpretations:
+                        self._log(f"Processing {len(raw_interpretations) if isinstance(raw_interpretations, list) else 1} interpretations with InterpretationManager", level=logging.DEBUG)
+                        
+                        # Process interpretations through centralized manager
+                        interpretation_set = self.interpretation_manager.process_interpretations(
+                            raw_interpretations, 
+                            f"pdf_{symbol}",
+                            market_data=None,
+                            timestamp=datetime.now()
+                        )
+                        
+                        # Format interpretations for PDF (text-only format)
+                        formatted_for_pdf = self.interpretation_manager.get_formatted_interpretation(
+                            interpretation_set, 'pdf'
+                        )
+                        
+                        # Extract text-only interpretations for PDF template
+                        insights = []
+                        for interpretation in interpretation_set.interpretations:
+                            component_name = interpretation.component_name.replace('_', ' ').title()
+                            severity_prefix = "⚠️ " if interpretation.severity.value in ["warning", "critical"] else ""
+                            insights.append(f"{severity_prefix}{component_name}: {interpretation.interpretation_text}")
+                        
+                        self._log(f"Processed {len(insights)} interpretations for PDF", level=logging.DEBUG)
                     else:
-                        self._log(f"Market interpretations not in list format: {type(insights).__name__}", level=logging.DEBUG)
-                else:
-                    self._log("No market interpretations found", level=logging.DEBUG)
+                        self._log("No market interpretations found", level=logging.DEBUG)
                 
-                # If market_interpretations are in object format (dict with 'interpretation' field), extract just the text
+                except Exception as e:
+                    self._log(f"Error processing interpretations with InterpretationManager: {e}", level=logging.ERROR)
+                    # Fallback to original processing
+                    insights = raw_interpretations if isinstance(raw_interpretations, list) else []
+                
                 if insights and isinstance(insights[0], dict) and 'interpretation' in insights[0]:
-                    self._log("Converting structured interpretations to text-only format for PDF", level=logging.DEBUG)
                     insights = [item.get('interpretation', '') for item in insights]
-                    self._log(f"Extracted {len(insights)} text interpretations", level=logging.DEBUG)
             except Exception as e:
                 self._log(f"Error extracting insights: {str(e)}", logging.ERROR)
                 self._log(traceback.format_exc(), logging.DEBUG)
@@ -1941,6 +2292,46 @@ class ReportGenerator:
                                         "size": target_size,
                                     }
                                 )
+                elif isinstance(targets_data, list):
+                    # Handle list format (from generated targets)
+                    for target_data in targets_data:
+                        if isinstance(target_data, dict) and "price" in target_data:
+                            target_price = target_data.get("price", 0)
+                            target_size = target_data.get("size", 0)
+                            target_name = target_data.get("name", f"Target {len(targets) + 1}")
+
+                            if target_price > 0:
+                                target_percent = 0
+                                if entry_price > 0:
+                                    if target_price > entry_price:  # Long position
+                                        target_percent = (
+                                            (target_price / entry_price) - 1
+                                        ) * 100
+                                    else:  # Short position
+                                        target_percent = (
+                                            (entry_price / target_price) - 1
+                                        ) * 100
+
+                                targets.append(
+                                    {
+                                        "name": target_name,
+                                        "price": target_price,
+                                        "percent": target_percent,
+                                        "size": target_size,
+                                    }
+                                )
+                
+                # If no targets found, generate defaults
+                if not targets and entry_price:
+                    signal_type = signal_data.get("signal_type", "BULLISH")
+                    default_targets = self._generate_default_targets(
+                        entry_price=entry_price,
+                        stop_loss=stop_loss,
+                        signal_type=signal_type
+                    )
+                    targets = default_targets
+                    self._log(f"Generated {len(targets)} default targets for PDF display", logging.INFO)
+                    
             except Exception as e:
                 self._log(f"Error formatting targets: {str(e)}", logging.ERROR)
 
@@ -2173,7 +2564,23 @@ class ReportGenerator:
                         except ValueError:
                             timestamp = int(time.time() * 1000)
 
-                    dt = datetime.fromtimestamp(timestamp / 1000)
+                    # Smart timestamp conversion - detect if timestamp is in seconds or milliseconds
+                    # Timestamps after year 2001 in milliseconds are > 1e12
+                    # Timestamps after year 2001 in seconds are > 1e9 but < 1e12
+                    if timestamp > 1e12:
+                        # Already in milliseconds
+                        dt = datetime.fromtimestamp(timestamp / 1000)
+                    elif timestamp > 1e9:
+                        # In seconds, convert to milliseconds first
+                        self.logger.debug(f"Converting timestamp from seconds to milliseconds for filename: {timestamp}")
+                        timestamp = timestamp * 1000
+                        dt = datetime.fromtimestamp(timestamp / 1000)
+                    else:
+                        # Very small timestamp, likely an error - use current time
+                        self.logger.warning(f"Invalid timestamp value for filename: {timestamp}, using current time")
+                        timestamp = int(time.time() * 1000)
+                        dt = datetime.fromtimestamp(timestamp / 1000)
+                    
                     timestamp_str = dt.strftime("%Y%m%d_%H%M%S")
                     
                     # Extract report type or set a default
@@ -2254,7 +2661,24 @@ class ReportGenerator:
                 try:
                     if isinstance(timestamp, str):
                         timestamp = int(timestamp)
-                    dt = datetime.fromtimestamp(timestamp / 1000)
+                    
+                    # Smart timestamp conversion - detect if timestamp is in seconds or milliseconds
+                    # Timestamps after year 2001 in milliseconds are > 1e12
+                    # Timestamps after year 2001 in seconds are > 1e9 but < 1e12
+                    if timestamp > 1e12:
+                        # Already in milliseconds
+                        dt = datetime.fromtimestamp(timestamp / 1000)
+                    elif timestamp > 1e9:
+                        # In seconds, convert to milliseconds first
+                        self.logger.debug(f"Converting timestamp from seconds to milliseconds in market report: {timestamp}")
+                        timestamp = timestamp * 1000
+                        dt = datetime.fromtimestamp(timestamp / 1000)
+                    else:
+                        # Very small timestamp, likely an error - use current time
+                        self.logger.warning(f"Invalid timestamp value in market report: {timestamp}, using current time")
+                        timestamp = int(time.time() * 1000)
+                        dt = datetime.fromtimestamp(timestamp / 1000)
+                        
                     date_str = dt.strftime("%Y-%m-%d %H:%M:%S UTC")
                 except (ValueError, TypeError) as timestamp_error:
                     self.logger.warning(
@@ -2267,6 +2691,59 @@ class ReportGenerator:
                 self.logger.debug(f"Added title and timestamp: {date_str}")
             except Exception as title_error:
                 self.logger.error(f"Error adding title: {str(title_error)}")
+
+            # Add futures premium section if available
+            if "futures_premium" in market_data:
+                self.logger.debug("Adding futures premium section")
+                try:
+                    elements.append(Paragraph("Futures Premium Analysis", section_title_style))
+                    elements.append(Spacer(1, 12))
+                    
+                    futures_premium = market_data["futures_premium"]
+                    
+                    # Create futures premium chart
+                    chart_path = self._create_futures_premium_chart(futures_premium, output_dir or ".")
+                    if chart_path and os.path.exists(chart_path):
+                        from reportlab.platypus import Image
+                        img = Image(chart_path, width=500, height=300)
+                        elements.append(img)
+                        elements.append(Spacer(1, 12))
+                    
+                    # Create term structure chart
+                    term_chart_path = self._create_term_structure_chart(futures_premium, output_dir or ".")
+                    if term_chart_path and os.path.exists(term_chart_path):
+                        from reportlab.platypus import Image
+                        img = Image(term_chart_path, width=500, height=350)
+                        elements.append(img)
+                        elements.append(Spacer(1, 12))
+                    
+                    # Add summary table
+                    market_status = futures_premium.get('market_status', 'NEUTRAL')
+                    average_premium = futures_premium.get('average_premium', 0.0)
+                    
+                    summary_data = [
+                        ['Market Status', market_status],
+                        ['Average Premium', f"{average_premium:.2f}%"],
+                        ['Analysis Time', datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")]
+                    ]
+                    
+                    summary_table = Table(summary_data, colWidths=[150, 200])
+                    summary_table.setStyle(TableStyle([
+                        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                        ('FONTSIZE', (0, 0), (-1, 0), 12),
+                        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+                        ('GRID', (0, 0), (-1, -1), 1, colors.black)
+                    ]))
+                    
+                    elements.append(summary_table)
+                    elements.append(Spacer(1, 20))
+                    
+                except Exception as futures_error:
+                    self.logger.error(f"Error adding futures premium section: {str(futures_error)}")
 
             # Add market overview section
             if "market_overview" in market_data:
@@ -2763,11 +3240,30 @@ class ReportGenerator:
                         )
                         timestamp = int(time.time() * 1000)
 
-                dt = datetime.fromtimestamp(timestamp / 1000)
+                # Smart timestamp conversion - detect if timestamp is in seconds or milliseconds
+                # Timestamps after year 2001 in milliseconds are > 1e12
+                # Timestamps after year 2001 in seconds are > 1e9 but < 1e12
+                current_time_ms = int(time.time() * 1000)
+                
+                if timestamp > 1e12:
+                    # Already in milliseconds
+                    dt = datetime.fromtimestamp(timestamp / 1000)
+                elif timestamp > 1e9:
+                    # In seconds, convert to milliseconds first
+                    self.logger.debug(f"Converting timestamp from seconds to milliseconds: {timestamp}")
+                    timestamp = timestamp * 1000
+                    dt = datetime.fromtimestamp(timestamp / 1000)
+                else:
+                    # Very small timestamp, likely an error - use current time
+                    self.logger.warning(f"Invalid timestamp value: {timestamp}, using current time")
+                    timestamp = current_time_ms
+                    dt = datetime.fromtimestamp(timestamp / 1000)
+                
                 report_date = dt.strftime("%Y-%m-%d %H:%M:%S UTC")
-                # Store both timestamp and report_date for template compatibility
+                # Store both timestamp (in milliseconds) and report_date for template compatibility
                 market_data["report_date"] = report_date
                 market_data["timestamp"] = timestamp
+                market_data["generated_at"] = report_date  # Add this line to fix template variable error
                 self.logger.debug(f"Processed timestamp {timestamp} to {report_date}")
             except Exception as timestamp_error:
                 self.logger.error(f"Error processing timestamp: {str(timestamp_error)}")
@@ -2775,41 +3271,89 @@ class ReportGenerator:
                 report_date = current_time.strftime("%Y-%m-%d %H:%M:%S UTC")
                 market_data["report_date"] = report_date
                 market_data["timestamp"] = int(current_time.timestamp() * 1000)
+                market_data["generated_at"] = report_date  # Add this line to fix template variable error
                 self.logger.info(f"Using current time for report date: {report_date}")
 
-            # Process top performers - ensure it's a list
+            # Process top performers - ensure it's in the correct format for the template
             if "top_performers" in market_data:
                 performers = market_data["top_performers"]
                 if isinstance(performers, dict):
-                    self.logger.info(
-                        "Converting top_performers from dict to list format"
-                    )
-                    # Convert dict format to list format
-                    performers_list = []
-                    for category, items in performers.items():
-                        if isinstance(items, list):
-                            # Add category to each item and append to main list
-                            for item in items:
-                                if isinstance(item, dict):
-                                    item["category"] = category
-                                    performers_list.append(item)
-                                else:
-                                    self.logger.warning(
-                                        f"Skipping non-dict item in {category}: {item}"
-                                    )
-                        else:
-                            self.logger.warning(
-                                f"Unexpected format for {category} in top_performers: {items}"
-                            )
-                    market_data["top_performers"] = performers_list
-                    self.logger.debug(
-                        f"Converted top_performers to list with {len(performers_list)} items"
-                    )
-                elif not isinstance(performers, list):
-                    self.logger.warning(
-                        f"top_performers has unexpected type: {type(performers)}, setting to empty list"
-                    )
-                    market_data["top_performers"] = []
+                    # Check if it's already in the correct format (gainers/losers structure)
+                    if "gainers" in performers and "losers" in performers:
+                        self.logger.debug("top_performers already in correct dict format with gainers/losers")
+                        # Ensure gainers and losers are lists
+                        if not isinstance(performers.get("gainers"), list):
+                            performers["gainers"] = []
+                        if not isinstance(performers.get("losers"), list):
+                            performers["losers"] = []
+                    else:
+                        # Legacy format - convert to gainers/losers structure
+                        self.logger.info("Converting top_performers from legacy dict format to gainers/losers structure")
+                        gainers = []
+                        losers = []
+                        for category, items in performers.items():
+                            if isinstance(items, list):
+                                for item in items:
+                                    if isinstance(item, dict):
+                                        # Determine if it's a gainer or loser based on change
+                                        change = item.get("change_percent", 0)
+                                        if isinstance(change, str):
+                                            try:
+                                                change = float(change.replace("%", ""))
+                                            except:
+                                                change = 0
+                                        
+                                        if change > 0:
+                                            gainers.append(item)
+                                        else:
+                                            losers.append(item)
+                            else:
+                                self.logger.warning(f"Unexpected format for {category} in top_performers: {items}")
+                        
+                        market_data["top_performers"] = {
+                            "gainers": gainers,
+                            "losers": losers,
+                            "total_analyzed": performers.get("total_analyzed", len(gainers) + len(losers)),
+                            "failed_symbols": performers.get("failed_symbols", 0),
+                            "timestamp": performers.get("timestamp", int(time.time() * 1000))
+                        }
+                        self.logger.debug(f"Converted to gainers/losers format: {len(gainers)} gainers, {len(losers)} losers")
+                elif isinstance(performers, list):
+                    # Convert list format to gainers/losers structure
+                    self.logger.info("Converting top_performers from list format to gainers/losers structure")
+                    gainers = []
+                    losers = []
+                    for item in performers:
+                        if isinstance(item, dict):
+                            change = item.get("change_percent", 0)
+                            if isinstance(change, str):
+                                try:
+                                    change = float(change.replace("%", ""))
+                                except:
+                                    change = 0
+                            
+                            if change > 0:
+                                gainers.append(item)
+                            else:
+                                losers.append(item)
+                    
+                    market_data["top_performers"] = {
+                        "gainers": gainers,
+                        "losers": losers,
+                        "total_analyzed": len(performers),
+                        "failed_symbols": 0,
+                        "timestamp": int(time.time() * 1000)
+                    }
+                    self.logger.debug(f"Converted list to gainers/losers format: {len(gainers)} gainers, {len(losers)} losers")
+                else:
+                    self.logger.warning(f"top_performers has unexpected type: {type(performers)}, setting to default structure")
+                    market_data["top_performers"] = {
+                        "gainers": [],
+                        "losers": [],
+                        "total_analyzed": 0,
+                        "failed_symbols": 0,
+                        "timestamp": int(time.time() * 1000)
+                    }
 
             # Generate the filename
             if output_path:
@@ -2819,18 +3363,19 @@ class ReportGenerator:
             else:
                 # Generate a filename based on timestamp
                 try:
-                    timestamp = market_data.get('timestamp', int(time.time()))
+                    # Use the timestamp from market_data which is now guaranteed to be in milliseconds
+                    timestamp = market_data.get('timestamp', int(time.time() * 1000))
                     if isinstance(timestamp, str):
                         try:
                             timestamp = int(timestamp)
                         except ValueError:
-                            timestamp = int(time.time())
+                            timestamp = int(time.time() * 1000)
                     
                     html_filename = f"market_report_{timestamp}.html"
                     html_path = os.path.join(html_dir, html_filename)
                 except Exception as e:
                     self.logger.error(f"Error generating timestamp string: {str(e)}")
-                    html_path = os.path.join(html_dir, f"market_report_{int(time.time())}.html")
+                    html_path = os.path.join(html_dir, f"market_report_{int(time.time() * 1000)}.html")
 
             # Check if output directory exists
             output_dir = os.path.dirname(html_path)
@@ -3012,6 +3557,20 @@ class ReportGenerator:
                 market_data.setdefault("trading_signals", [])
                 market_data.setdefault("notable_news", [])
                 
+                # Generate futures premium charts if data is available
+                if market_data.get("futures_premium") and isinstance(market_data["futures_premium"], dict):
+                    futures_premium = market_data["futures_premium"]
+                    
+                    # Create charts for HTML report
+                    chart_path = self._create_futures_premium_chart(futures_premium, output_dir or ".")
+                    term_chart_path = self._create_term_structure_chart(futures_premium, output_dir or ".")
+                    
+                    # Add chart paths to market data for template
+                    if chart_path:
+                        market_data["futures_premium"]["chart_path"] = os.path.basename(chart_path)
+                    if term_chart_path:
+                        market_data["futures_premium"]["term_structure_chart_path"] = os.path.basename(term_chart_path)
+                
                 # Add comprehensive logging of data structure
                 try:
                     # Use a custom encoder or fallback to simple string conversion for problem values
@@ -3091,8 +3650,19 @@ class ReportGenerator:
                     f"Template rendered successfully, content length: {len(html_content)}"
                 )
             except Exception as render_error:
-                self.logger.error(f"Error rendering template: {str(render_error)}")
+                error_msg = str(render_error)
+                self.logger.error(f"Error rendering template: {error_msg}")
                 self.logger.debug(traceback.format_exc())
+                
+                # Track template rendering errors
+                track_error(
+                    error_type="template_rendering_error",
+                    message=error_msg,
+                    component="pdf_generator",
+                    severity=ErrorSeverity.HIGH,
+                    category=ErrorCategory.TEMPLATE_RENDERING,
+                    details={"template_path": template_path, "error_details": error_msg}
+                )
 
                 # Try to diagnose common issues
                 if "market_data" in market_data:
@@ -3417,46 +3987,190 @@ class ReportGenerator:
                 import pdfkit
 
                 self.logger.debug("Using pdfkit for PDF generation")
-                pdfkit.from_file(html_path, pdf_path, options=options)
+                
+                # Enhanced options for better CSS support in wkhtmltopdf
+                options = {
+                    "page-size": "A4",
+                    "margin-top": "1cm",
+                    "margin-right": "1cm", 
+                    "margin-bottom": "1cm",
+                    "margin-left": "1cm",
+                    "encoding": "UTF-8",
+                    "enable-local-file-access": None,
+                    "print-media-type": None,
+                    "disable-smart-shrinking": None,
+                    "zoom": 1.0,
+                    "dpi": 96,
+                    "image-dpi": 96,
+                    "image-quality": 94,
+                    "quiet": None,
+                    # Enhanced options for better CSS support
+                    "load-error-handling": "ignore",
+                    "load-media-error-handling": "ignore",
+                    "javascript-delay": 1000,
+                    "no-stop-slow-scripts": None,
+                    "debug-javascript": None,
+                    "enable-javascript": None,
+                }
+
+                # Preprocess HTML to improve PDF compatibility
+                processed_html_path = self._preprocess_html_for_pdf(html_path)
+                
+                pdfkit.from_file(processed_html_path, pdf_path, options=options)
+
+                # Clean up temporary file if created
+                if processed_html_path != html_path and os.path.exists(processed_html_path):
+                    os.remove(processed_html_path)
 
                 if os.path.exists(pdf_path):
-                    self.logger.info(f"PDF generated successfully: {pdf_path}")
+                    self.logger.info(f"PDF generated successfully using pdfkit: {pdf_path}")
                     return True
                 else:
-                    self.logger.error(f"PDF file was not created: {pdf_path}")
+                    self.logger.error(f"PDF file was not created by pdfkit: {pdf_path}")
                     return False
 
             except ImportError:
-                self.logger.warning("pdfkit not available, trying alternative method")
+                self.logger.warning("pdfkit not available, trying weasyprint")
 
-                # Try using weasyprint as an alternative
+                # Fall back to weasyprint if pdfkit is not available
                 try:
-                    from weasyprint import HTML
+                    from weasyprint import HTML, CSS
+                    from weasyprint.css import get_all_computed_styles
+                    from weasyprint.css.targets import TargetCollector
 
                     self.logger.debug("Using weasyprint for PDF generation")
-                    HTML(filename=html_path).write_pdf(pdf_path)
+                    
+                    # Read and clean HTML content for WeasyPrint compatibility
+                    with open(html_path, 'r', encoding='utf-8') as f:
+                        html_content = f.read()
+                    
+                    # Remove problematic CSS that WeasyPrint doesn't support
+                    html_content = self._clean_html_for_weasyprint(html_content)
+                    
+                    # Create HTML document from string instead of file to avoid encoding issues
+                    html_doc = HTML(string=html_content, base_url=f"file://{os.path.dirname(html_path)}/")
+                    
+                    # Generate PDF with error handling
+                    try:
+                        html_doc.write_pdf(pdf_path)
+                    except Exception as weasy_error:
+                        self.logger.error(f"WeasyPrint PDF generation failed: {str(weasy_error)}")
+                        # Try with simplified HTML
+                        simplified_html = self._create_simplified_html(html_content)
+                        html_doc = HTML(string=simplified_html)
+                        html_doc.write_pdf(pdf_path)
 
                     if os.path.exists(pdf_path):
-                        self.logger.info(
-                            f"PDF generated successfully using weasyprint: {pdf_path}"
-                        )
+                        self.logger.info(f"PDF generated successfully using weasyprint: {pdf_path}")
                         return True
                     else:
-                        self.logger.error(
-                            f"PDF file was not created by weasyprint: {pdf_path}"
-                        )
+                        self.logger.error(f"PDF file was not created by weasyprint: {pdf_path}")
                         return False
 
                 except ImportError:
-                    self.logger.error(
-                        "Neither pdfkit nor weasyprint is available for PDF generation"
-                    )
+                    self.logger.error("Neither pdfkit nor weasyprint is available for PDF generation")
                     return False
 
         except Exception as e:
             self.logger.error(f"Error generating PDF: {str(e)}")
             self.logger.debug(traceback.format_exc())
             return False
+
+    def _clean_html_for_weasyprint(self, html_content: str) -> str:
+        """
+        Clean HTML content to be compatible with WeasyPrint.
+        
+        Args:
+            html_content: Original HTML content
+            
+        Returns:
+            Cleaned HTML content
+        """
+        import re
+        
+        # Remove problematic CSS properties that WeasyPrint doesn't support
+        problematic_properties = [
+            r'box-shadow:[^;]+;',
+            r'text-shadow:[^;]+;',
+            r'@keyframes[^}]+}[^}]*}',
+            r'animation:[^;]+;',
+            r'transform:[^;]+;',
+            r'transition:[^;]+;'
+        ]
+        
+        for pattern in problematic_properties:
+            html_content = re.sub(pattern, '', html_content, flags=re.IGNORECASE | re.DOTALL)
+        
+        # Fix media queries
+        html_content = re.sub(r'@media\s+\([^)]+\)', '@media screen', html_content)
+        
+        return html_content
+    
+    def _create_simplified_html(self, original_html: str) -> str:
+        """
+        Create a simplified HTML version as fallback.
+        
+        Args:
+            original_html: Original HTML content
+            
+        Returns:
+            Simplified HTML content
+        """
+        import re
+        
+        # Extract title and basic content
+        title_match = re.search(r'<title>([^<]+)</title>', original_html, re.IGNORECASE)
+        title = title_match.group(1) if title_match else "Market Report"
+        
+        # Extract body content (remove complex styling)
+        body_match = re.search(r'<body[^>]*>(.*?)</body>', original_html, re.IGNORECASE | re.DOTALL)
+        body_content = body_match.group(1) if body_match else "Report content unavailable"
+        
+        # Remove complex CSS classes and inline styles
+        body_content = re.sub(r'class="[^"]*"', '', body_content)
+        body_content = re.sub(r'style="[^"]*"', '', body_content)
+        
+        simplified_html = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <title>{title}</title>
+            <style>
+                body {{ 
+                    font-family: Arial, sans-serif; 
+                    margin: 20px; 
+                    line-height: 1.6;
+                    color: #333;
+                }}
+                h1, h2, h3 {{ color: #2c3e50; }}
+                .header {{ 
+                    background-color: #f8f9fa; 
+                    padding: 15px; 
+                    margin-bottom: 20px; 
+                    border: 1px solid #dee2e6;
+                }}
+                .content {{ padding: 10px; }}
+                table {{ 
+                    width: 100%; 
+                    border-collapse: collapse; 
+                    margin: 10px 0;
+                }}
+                th, td {{ 
+                    border: 1px solid #ddd; 
+                    padding: 8px; 
+                    text-align: left;
+                }}
+                th {{ background-color: #f2f2f2; }}
+            </style>
+        </head>
+        <body>
+            {body_content}
+        </body>
+        </html>
+        """
+        
+        return simplified_html
 
     def _format_with_commas(self, value: Union[int, float]) -> str:
         """
@@ -3633,21 +4347,37 @@ class ReportGenerator:
                     <ul>
             """
             
-            # Add market interpretations if available
-            market_interpretations = signal_data.get('market_interpretations', [])
-            if market_interpretations:
-                for interp in market_interpretations:
-                    if isinstance(interp, dict):
-                        component = interp.get('display_name', interp.get('component', 'Unknown'))
-                        interpretation = interp.get('interpretation', 'No interpretation')
-                        if isinstance(interpretation, dict):
-                            # Handle nested interpretation
-                            for key, value in interpretation.items():
-                                html += f"<li><strong>{component} - {key}:</strong> {value}</li>\n"
-                        else:
+            # Process market interpretations using centralized InterpretationManager
+            raw_interpretations = signal_data.get('market_interpretations', [])
+            try:
+                if raw_interpretations:
+                    # Process interpretations through centralized manager
+                    interpretation_set = self.interpretation_manager.process_interpretations(
+                        raw_interpretations, 
+                        f"fallback_pdf_{signal_data.get('symbol', 'UNKNOWN')}",
+                        market_data=None,
+                        timestamp=datetime.now()
+                    )
+                    
+                    # Add standardized interpretations to HTML
+                    for interpretation in interpretation_set.interpretations:
+                        component_name = interpretation.component_name.replace('_', ' ').title()
+                        severity_indicator = "🔴" if interpretation.severity.value == "critical" else "🟡" if interpretation.severity.value == "warning" else "🟢"
+                        html += f"<li>{severity_indicator} <strong>{component_name}:</strong> {interpretation.interpretation_text}</li>\n"
+                else:
+                    html += "<li>No interpretations available</li>\n"
+                    
+            except Exception as e:
+                self._log(f"Error processing interpretations in fallback HTML: {e}", level=logging.ERROR)
+                # Fallback to original processing
+                if raw_interpretations:
+                    for interp in raw_interpretations:
+                        if isinstance(interp, dict):
+                            component = interp.get('display_name', interp.get('component', 'Unknown'))
+                            interpretation = interp.get('interpretation', 'No interpretation')
                             html += f"<li><strong>{component}:</strong> {interpretation}</li>\n"
-                    else:
-                        html += f"<li>{interp}</li>\n"
+                        else:
+                            html += f"<li>{interp}</li>\n"
             else:
                 html += "<li>No interpretations available</li>\n"
             
@@ -3817,7 +4547,7 @@ class ReportGenerator:
                 "type": "candle",
                 "style": VIRTUOSO_ENHANCED_STYLE,  # Use enhanced style
                 "figsize": (10, 6),
-                "title": f"{symbol} Price Chart (Simulated)",
+                "title": f"{symbol} Price Chart ⚠️ SIMULATED DATA ⚠️",
                 "panel_ratios": (4, 1),
                 "volume": True,
                 "volume_panel": 1,
@@ -3843,13 +4573,27 @@ class ReportGenerator:
 
             # Prepare additional plots for entry, stop loss, and targets
             plots = []
+            
+            # Ensure targets are always available - generate defaults if none provided
+            if not targets or len(targets) == 0:
+                signal_type = "BULLISH"  # Default assumption for simulated chart
+                if stop_loss and entry_price:
+                    if stop_loss > entry_price:
+                        signal_type = "BEARISH"
+                
+                targets = self._generate_default_targets(
+                    entry_price=entry_price,
+                    stop_loss=stop_loss,
+                    signal_type=signal_type
+                )
+                self._log(f"Generated {len(targets)} default targets for simulated chart", logging.INFO)
 
-            # Entry price line (blue)
+            # Entry price line (green)
             if entry_price is not None:
                 plots.append(
                     mpf.make_addplot(
                         [entry_price] * len(df),
-                        color="#3b82f6",
+                        color="#10b981",
                         width=1.5,
                         panel=0,
                         secondary_y=False,
@@ -3905,7 +4649,7 @@ class ReportGenerator:
                 plots.append(
                     mpf.make_addplot(
                         df['daily_vwap'],
-                        color='#3b82f6',  # Blue
+                        color='#3b82f6',  # Blue - swapped with entry price
                         width=1.2,
                         panel=0,
                         secondary_y=False,
@@ -4105,19 +4849,8 @@ class ReportGenerator:
                                         alpha=0.05,
                                     )
 
-                # Add watermark
-                fig.text(
-                    0.5,
-                    0.5,
-                    "SIMULATED",
-                    fontsize=40,
-                    color="#e5e7eb",
-                    ha="center",
-                    va="center",
-                    alpha=0.1,
-                    rotation=30,
-                    transform=fig.transFigure,
-                )
+                # Add multiple prominent watermarks for simulated charts
+                self._add_simulated_watermarks(fig, ax1)
                 
                 # Adjust layout with specific settings instead of tight_layout
                 plt.subplots_adjust(right=0.85, left=0.1, top=0.9, bottom=0.15)
@@ -4220,6 +4953,525 @@ class ReportGenerator:
             fig = plt.figure()
             axes = [fig.add_subplot(111)]
             return fig, axes
+
+    def _preprocess_html_for_pdf(self, html_path):
+        """
+        Preprocess HTML for better PDF compatibility by converting CSS variables to actual values.
+        
+        Args:
+            html_path: Path to the HTML file
+            
+        Returns:
+            Path to the preprocessed HTML file
+        """
+        try:
+            self.logger.info(f"Preprocessing HTML for PDF compatibility: {html_path}")
+            # Read the HTML content
+            with open(html_path, 'r', encoding='utf-8') as f:
+                html_content = f.read()
+            
+            # Convert CSS variables to actual values
+            processed_content = self._convert_css_variables(html_content)
+            self.logger.info("CSS variables converted to actual values for PDF compatibility")
+            
+            # Create a temporary file for the processed HTML
+            import tempfile
+            temp_fd, temp_path = tempfile.mkstemp(suffix='.html', prefix='processed_')
+            
+            with os.fdopen(temp_fd, 'w', encoding='utf-8') as temp_file:
+                temp_file.write(processed_content)
+            
+            return temp_path
+            
+        except Exception as e:
+            self.logger.warning(f"Failed to preprocess HTML for PDF: {str(e)}")
+            return html_path
+    
+    def _convert_css_variables(self, html_content):
+        """
+        Convert CSS variables to actual values for better PDF compatibility.
+        
+        Args:
+            html_content: HTML content with CSS variables
+            
+        Returns:
+            HTML content with CSS variables replaced by actual values
+        """
+        import re
+        
+        # Define the CSS variable mappings from the dark theme
+        css_variables = {
+            '--primary-bg': '#0c1a2b',
+            '--secondary-bg': '#1e1e2e',
+            '--border-color': '#1a2a40',
+            '--text-primary': '#e0e0e0',
+            '--text-secondary': '#aaaaaa',
+            '--bullish': '#4caf50',
+            '--bearish': '#f44336',
+            '--neutral': '#ff9800',
+            '--highlight': '#ffbf00',
+            '--accent': '#3b82f6',
+            '--card-bg': '#252535',
+            '--hover-bg': '#2a2a3a',
+        }
+        
+        # Replace CSS variable declarations in :root
+        for var_name, var_value in css_variables.items():
+            # Replace var() usage
+            pattern = rf'var\({re.escape(var_name)}\)'
+            html_content = re.sub(pattern, var_value, html_content)
+        
+        # Remove the :root variable declarations since they're not needed anymore
+        root_pattern = r':root\s*\{[^}]*\}'
+        html_content = re.sub(root_pattern, '', html_content, flags=re.DOTALL)
+        
+        # Simplify complex CSS that PDF generators struggle with
+        simplifications = [
+            # Remove complex animations and transitions
+            (r'animation:[^;]+;', ''),
+            (r'transition:[^;]+;', ''),
+            (r'@keyframes[^}]+\}[^}]*\}', ''),
+            # Simplify complex gradients
+            (r'background:\s*linear-gradient\([^)]+\);', 'background: #252535;'),
+            # Remove transform effects
+            (r'transform:[^;]+;', ''),
+            # Simplify box-shadows
+            (r'box-shadow:[^;]+;', 'border: 1px solid #444;'),
+            # Remove text-shadow
+            (r'text-shadow:[^;]+;', ''),
+        ]
+        
+        for pattern, replacement in simplifications:
+            html_content = re.sub(pattern, replacement, html_content, flags=re.IGNORECASE)
+        
+        return html_content
+
+    def _create_futures_premium_chart(
+        self, futures_premium_data: Dict[str, Any], output_dir: str
+    ) -> Optional[str]:
+        """Create futures premium analysis chart showing contango/backwardation."""
+        try:
+            if not futures_premium_data or not isinstance(futures_premium_data, dict):
+                self.logger.warning("No futures premium data available for chart")
+                return None
+            
+            premiums = futures_premium_data.get('premiums', {})
+            if not premiums:
+                self.logger.warning("No premium data found in futures premium data")
+                return None
+            
+            # Prepare data for visualization
+            symbols = []
+            premium_values = []
+            colors = []
+            
+            for symbol, data in premiums.items():
+                if isinstance(data, dict) and 'premium_value' in data:
+                    symbols.append(symbol.replace('USDT', ''))  # Clean symbol names
+                    premium_value = data['premium_value']
+                    premium_values.append(premium_value)
+                    
+                    # Color coding: green for contango, red for backwardation
+                    if premium_value > 2.0:
+                        colors.append('#00ff00')  # Bright green for strong contango
+                    elif premium_value > 0:
+                        colors.append('#90EE90')  # Light green for contango
+                    elif premium_value < -2.0:
+                        colors.append('#ff0000')  # Bright red for strong backwardation
+                    elif premium_value < 0:
+                        colors.append('#FFA07A')  # Light red for backwardation
+                    else:
+                        colors.append('#808080')  # Gray for neutral
+            
+            if not symbols:
+                self.logger.warning("No valid premium data found for chart")
+                return None
+            
+            # Create the chart
+            plt.style.use('dark_background')
+            fig, ax = plt.subplots(figsize=(14, 8))
+            
+            # Create horizontal bar chart
+            bars = ax.barh(symbols, premium_values, color=colors, alpha=0.8, edgecolor='white', linewidth=0.5)
+            
+            # Customize the chart
+            ax.set_xlabel('Premium (%)', fontsize=12, color='white')
+            ax.set_ylabel('Symbols', fontsize=12, color='white')
+            ax.set_title('Futures Premium Analysis - Contango vs Backwardation', 
+                        fontsize=16, fontweight='bold', color='white', pad=20)
+            
+            # Add zero line
+            ax.axvline(x=0, color='white', linestyle='-', alpha=0.3, linewidth=1)
+            
+            # Add grid
+            ax.grid(True, alpha=0.3, color='white')
+            
+            # Add value labels on bars
+            for i, (bar, value) in enumerate(zip(bars, premium_values)):
+                if value >= 0:
+                    ax.text(value + 0.1, bar.get_y() + bar.get_height()/2, 
+                           f'{value:.2f}%', va='center', ha='left', 
+                           color='white', fontsize=10, fontweight='bold')
+                else:
+                    ax.text(value - 0.1, bar.get_y() + bar.get_height()/2, 
+                           f'{value:.2f}%', va='center', ha='right', 
+                           color='white', fontsize=10, fontweight='bold')
+            
+            # Add legend
+            from matplotlib.patches import Patch
+            legend_elements = [
+                Patch(facecolor='#00ff00', label='Strong Contango (>2%)'),
+                Patch(facecolor='#90EE90', label='Contango (0-2%)'),
+                Patch(facecolor='#808080', label='Neutral (~0%)'),
+                Patch(facecolor='#FFA07A', label='Backwardation (0 to -2%)'),
+                Patch(facecolor='#ff0000', label='Strong Backwardation (<-2%)')
+            ]
+            ax.legend(handles=legend_elements, loc='upper right', 
+                     facecolor='black', edgecolor='white', fontsize=10)
+            
+            # Add market status text
+            market_status = futures_premium_data.get('market_status', 'NEUTRAL')
+            average_premium = futures_premium_data.get('average_premium', 0.0)
+            
+            # Extract numeric value from percentage string if needed
+            if isinstance(average_premium, str):
+                try:
+                    average_premium = float(average_premium.replace('%', ''))
+                except (ValueError, TypeError):
+                    average_premium = 0.0
+            
+            status_text = f"Market Status: {market_status}\nAverage Premium: {average_premium:.2f}%"
+            ax.text(0.02, 0.98, status_text, transform=ax.transAxes, 
+                   fontsize=12, verticalalignment='top', 
+                   bbox=dict(boxstyle='round', facecolor='black', alpha=0.8, edgecolor='white'),
+                   color='white', fontweight='bold')
+            
+            # Style the axes
+            ax.tick_params(colors='white', labelsize=10)
+            ax.spines['bottom'].set_color('white')
+            ax.spines['top'].set_color('white')
+            ax.spines['right'].set_color('white')
+            ax.spines['left'].set_color('white')
+            
+            plt.tight_layout()
+            
+            # Save the chart
+            chart_filename = f"futures_premium_analysis_{int(time.time())}.png"
+            chart_path = os.path.join(output_dir, chart_filename)
+            
+            plt.savefig(chart_path, dpi=300, bbox_inches='tight', 
+                       facecolor='black', edgecolor='white')
+            plt.close()
+            
+            self.logger.info(f"Futures premium chart saved to: {chart_path}")
+            return chart_path
+            
+        except Exception as e:
+            self.logger.error(f"Error creating futures premium chart: {str(e)}")
+            return None
+
+    def _create_term_structure_chart(
+        self, futures_premium_data: Dict[str, Any], output_dir: str
+    ) -> Optional[str]:
+        """Create term structure chart showing quarterly futures basis."""
+        try:
+            if not futures_premium_data or not isinstance(futures_premium_data, dict):
+                self.logger.warning("No futures premium data available for term structure chart")
+                return None
+            
+            quarterly_futures = futures_premium_data.get('quarterly_futures', {})
+            if not quarterly_futures:
+                self.logger.warning("No quarterly futures data found")
+                return None
+            
+            # Create the chart
+            plt.style.use('dark_background')
+            fig, ax = plt.subplots(figsize=(14, 10))
+            
+            colors = ['#00ff00', '#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#feca57']
+            color_idx = 0
+            
+            # Plot term structure for each symbol
+            for symbol, contracts in quarterly_futures.items():
+                if not isinstance(contracts, list) or len(contracts) < 2:
+                    continue
+                
+                # Sort contracts by expiry
+                sorted_contracts = sorted(contracts, key=lambda x: x.get('months_to_expiry', 12))
+                
+                months_to_expiry = []
+                basis_values = []
+                
+                for contract in sorted_contracts:
+                    months = contract.get('months_to_expiry', 0)
+                    basis_str = contract.get('basis', '0%')
+                    try:
+                        basis = float(basis_str.replace('%', ''))
+                        months_to_expiry.append(months)
+                        basis_values.append(basis)
+                    except (ValueError, AttributeError):
+                        continue
+                
+                if len(months_to_expiry) >= 2:
+                    # Plot the term structure
+                    color = colors[color_idx % len(colors)]
+                    ax.plot(months_to_expiry, basis_values, 
+                           marker='o', linewidth=2, markersize=8, 
+                           color=color, label=symbol.replace('USDT', ''), alpha=0.8)
+                    
+                    # Add value labels
+                    for x, y in zip(months_to_expiry, basis_values):
+                        ax.annotate(f'{y:.2f}%', (x, y), 
+                                   textcoords="offset points", xytext=(0,10), 
+                                   ha='center', fontsize=9, color='white', 
+                                   fontweight='bold')
+                    
+                    color_idx += 1
+            
+            # Customize the chart
+            ax.set_xlabel('Months to Expiry', fontsize=12, color='white')
+            ax.set_ylabel('Basis (%)', fontsize=12, color='white')
+            ax.set_title('Quarterly Futures Term Structure', 
+                        fontsize=16, fontweight='bold', color='white', pad=20)
+            
+            # Add zero line
+            ax.axhline(y=0, color='white', linestyle='-', alpha=0.3, linewidth=1)
+            
+            # Add grid
+            ax.grid(True, alpha=0.3, color='white')
+            
+            # Add legend
+            ax.legend(loc='upper left', facecolor='black', edgecolor='white', 
+                     fontsize=10, framealpha=0.8)
+            
+            # Add interpretation text
+            interpretation = "Term Structure Analysis:\n"
+            interpretation += "• Upward sloping = Contango (normal)\n"
+            interpretation += "• Downward sloping = Backwardation (supply shortage)\n"
+            interpretation += "• Flat = Neutral market conditions"
+            
+            ax.text(0.98, 0.02, interpretation, transform=ax.transAxes, 
+                   fontsize=10, verticalalignment='bottom', horizontalalignment='right',
+                   bbox=dict(boxstyle='round', facecolor='black', alpha=0.8, edgecolor='white'),
+                   color='white')
+            
+            # Style the axes
+            ax.tick_params(colors='white', labelsize=10)
+            ax.spines['bottom'].set_color('white')
+            ax.spines['top'].set_color('white')
+            ax.spines['right'].set_color('white')
+            ax.spines['left'].set_color('white')
+            
+            plt.tight_layout()
+            
+            # Save the chart
+            chart_filename = f"term_structure_analysis_{int(time.time())}.png"
+            chart_path = os.path.join(output_dir, chart_filename)
+            
+            plt.savefig(chart_path, dpi=300, bbox_inches='tight', 
+                       facecolor='black', edgecolor='white')
+            plt.close()
+            
+            self.logger.info(f"Term structure chart saved to: {chart_path}")
+            return chart_path
+            
+        except Exception as e:
+            self.logger.error(f"Error creating term structure chart: {str(e)}")
+            return None
+
+    def _generate_default_targets(self, entry_price: float, stop_loss: Optional[float] = None, signal_type: str = "BULLISH") -> List[Dict]:
+        """Generate default targets when none are provided in signal data."""
+        if not entry_price or entry_price <= 0:
+            return []
+            
+        targets = []
+        
+        # Calculate risk distance for target calculation
+        if stop_loss and stop_loss > 0:
+            risk_distance = abs(entry_price - stop_loss)
+        else:
+            # Use default 3% risk if no stop loss provided
+            risk_distance = entry_price * 0.03
+            
+        # Generate targets based on signal type
+        if signal_type.upper() in ['BULLISH', 'LONG', 'BUY']:
+            # Long position targets
+            targets = [
+                {
+                    "name": "Target 1",
+                    "price": entry_price + (risk_distance * 1.5),  # 1.5:1 R:R
+                    "size": 50,
+                    "percent": ((entry_price + (risk_distance * 1.5)) / entry_price - 1) * 100
+                },
+                {
+                    "name": "Target 2", 
+                    "price": entry_price + (risk_distance * 2.5),  # 2.5:1 R:R
+                    "size": 30,
+                    "percent": ((entry_price + (risk_distance * 2.5)) / entry_price - 1) * 100
+                },
+                {
+                    "name": "Target 3",
+                    "price": entry_price + (risk_distance * 4.0),  # 4:1 R:R
+                    "size": 20,
+                    "percent": ((entry_price + (risk_distance * 4.0)) / entry_price - 1) * 100
+                }
+            ]
+        elif signal_type.upper() in ['BEARISH', 'SHORT', 'SELL']:
+            # Short position targets
+            targets = [
+                {
+                    "name": "Target 1",
+                    "price": entry_price - (risk_distance * 1.5),  # 1.5:1 R:R
+                    "size": 50,
+                    "percent": ((entry_price - (risk_distance * 1.5)) / entry_price - 1) * 100
+                },
+                {
+                    "name": "Target 2",
+                    "price": entry_price - (risk_distance * 2.5),  # 2.5:1 R:R
+                    "size": 30,
+                    "percent": ((entry_price - (risk_distance * 2.5)) / entry_price - 1) * 100
+                },
+                {
+                    "name": "Target 3",
+                    "price": entry_price - (risk_distance * 4.0),  # 4:1 R:R
+                    "size": 20,
+                    "percent": ((entry_price - (risk_distance * 4.0)) / entry_price - 1) * 100
+                }
+            ]
+        else:
+            # Neutral - generate symmetric targets
+            targets = [
+                {
+                    "name": "Target 1",
+                    "price": entry_price + (risk_distance * 1.0),
+                    "size": 50,
+                    "percent": ((entry_price + (risk_distance * 1.0)) / entry_price - 1) * 100
+                },
+                {
+                    "name": "Target 2",
+                    "price": entry_price + (risk_distance * 2.0),
+                    "size": 30,
+                    "percent": ((entry_price + (risk_distance * 2.0)) / entry_price - 1) * 100
+                }
+            ]
+            
+        # Ensure all target prices are positive
+        targets = [target for target in targets if target["price"] > 0]
+        
+        self._log(f"Generated {len(targets)} default targets for {signal_type} signal", logging.INFO)
+        return targets
+
+    def _add_simulated_watermarks(self, fig, ax):
+        """
+        Add prominent watermarks to simulated charts to clearly indicate synthetic data.
+        
+        Args:
+            fig: Matplotlib figure object
+            ax: Matplotlib axis object
+        """
+        # Large diagonal watermark across the entire chart
+        fig.text(
+            0.5,
+            0.5,
+            "SIMULATED DATA",
+            fontsize=50,
+            color="#ff6b6b",
+            ha="center",
+            va="center",
+            alpha=0.25,
+            rotation=30,
+            weight="bold",
+            transform=fig.transFigure,
+        )
+        
+        # Secondary diagonal watermark for emphasis
+        fig.text(
+            0.5,
+            0.5,
+            "NOT REAL MARKET DATA",
+            fontsize=24,
+            color="#ffa500",
+            ha="center",
+            va="center",
+            alpha=0.4,
+            rotation=30,
+            weight="bold",
+            transform=fig.transFigure,
+        )
+
+        # Top-right corner indicator
+        ax.text(
+            0.98,
+            0.98,
+            "⚠️ SIMULATED",
+            fontsize=14,
+            color="#ff4444",
+            ha="right",
+            va="top",
+            alpha=0.8,
+            weight="bold",
+            bbox=dict(
+                boxstyle="round,pad=0.3",
+                facecolor="#1a1a1a",
+                edgecolor="#ff4444",
+                alpha=0.9
+            ),
+            transform=ax.transAxes,
+        )
+
+        # Bottom-left corner indicator
+        ax.text(
+            0.02,
+            0.02,
+            "⚠️ SYNTHETIC DATA",
+            fontsize=12,
+            color="#ff6b6b",
+            ha="left",
+            va="bottom",
+            alpha=0.8,
+            weight="bold",
+            bbox=dict(
+                boxstyle="round,pad=0.3",
+                facecolor="#1a1a1a",
+                edgecolor="#ff6b6b",
+                alpha=0.9
+            ),
+            transform=ax.transAxes,
+        )
+
+        # Top-left corner indicator
+        ax.text(
+            0.02,
+            0.98,
+            "DEMO ONLY",
+            fontsize=12,
+            color="#ffa500",
+            ha="left",
+            va="top",
+            alpha=0.8,
+            weight="bold",
+            bbox=dict(
+                boxstyle="round,pad=0.3",
+                facecolor="#1a1a1a",
+                edgecolor="#ffa500",
+                alpha=0.9
+            ),
+            transform=ax.transAxes,
+        )
+        
+        # Add warning text in chart title area
+        fig.text(
+            0.5,
+            0.95,
+            "⚠️ WARNING: This chart contains simulated data for demonstration purposes only ⚠️",
+            fontsize=12,
+            color="#ff4444",
+            ha="center",
+            va="top",
+            alpha=0.9,
+            weight="bold",
+            transform=fig.transFigure,
+        )
 
 
 if __name__ == "__main__":

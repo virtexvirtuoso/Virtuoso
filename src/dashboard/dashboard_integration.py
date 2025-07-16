@@ -1,0 +1,642 @@
+"""Dashboard Integration Service.
+
+This service bridges the real monitoring system with the web dashboard,
+providing real-time data integration and WebSocket updates.
+"""
+
+import asyncio
+import json
+import logging
+import time
+from typing import Dict, List, Any, Optional
+from datetime import datetime, timedelta
+import math
+
+# Import monitoring system components (avoid circular imports)
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from src.monitoring.monitor import MarketMonitor
+
+from src.monitoring.alert_manager import AlertManager
+from src.monitoring.metrics_manager import MetricsManager
+from src.core.market.market_data_manager import MarketDataManager
+from src.signal_generation.signal_generator import SignalGenerator
+from src.core.market.top_symbols import TopSymbolsManager
+
+logger = logging.getLogger(__name__)
+
+
+class DashboardIntegrationService:
+    """Service that provides real-time trading data to the dashboard."""
+    
+    def __init__(self, monitor: Optional["MarketMonitor"] = None):
+        """Initialize the integration service.
+        
+        Args:
+            monitor: MarketMonitor instance with all trading components
+        """
+        self.monitor = monitor
+        self.logger = logger
+        
+        # Dashboard state
+        self._dashboard_data = {
+            'signals': [],
+            'alerts': [],
+            'alpha_opportunities': [],
+            'system_status': {},
+            'market_overview': {}
+        }
+        
+        # Data update tracking
+        self._last_update = 0
+        self._update_interval = 5  # seconds
+        
+        # Running state
+        self._running = False
+        self._update_task = None
+        
+    async def initialize(self) -> bool:
+        """Initialize the service and verify components are available.
+        
+        Returns:
+            True if initialization successful, False otherwise
+        """
+        try:
+            if not self.monitor:
+                self.logger.error("No monitor instance provided")
+                return False
+                
+            # Verify required components
+            if not hasattr(self.monitor, 'market_data_manager') or not self.monitor.market_data_manager:
+                self.logger.error("MarketDataManager not available")
+                return False
+                
+            if not hasattr(self.monitor, 'signal_generator') or not self.monitor.signal_generator:
+                self.logger.error("SignalGenerator not available")
+                return False
+                
+            if not hasattr(self.monitor, 'alert_manager') or not self.monitor.alert_manager:
+                self.logger.error("AlertManager not available")
+                return False
+                
+            self.logger.info("Dashboard integration service initialized successfully")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Error initializing dashboard integration service: {e}")
+            return False
+    
+    async def start(self):
+        """Start the real-time data update loop."""
+        if self._running:
+            return
+            
+        self._running = True
+        self._update_task = asyncio.create_task(self._update_loop())
+        self.logger.info("Dashboard integration service started")
+    
+    async def stop(self):
+        """Stop the real-time data update loop."""
+        self._running = False
+        if self._update_task:
+            self._update_task.cancel()
+            try:
+                await self._update_task
+            except asyncio.CancelledError:
+                pass
+        self.logger.info("Dashboard integration service stopped")
+    
+    async def _update_loop(self):
+        """Main update loop that refreshes dashboard data."""
+        while self._running:
+            try:
+                await self._update_dashboard_data()
+                await asyncio.sleep(self._update_interval)
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                self.logger.error(f"Error in dashboard update loop: {e}")
+                await asyncio.sleep(self._update_interval)
+    
+    async def _update_dashboard_data(self):
+        """Update all dashboard data from the monitoring system."""
+        try:
+            current_time = time.time()
+            
+            # Update signals data
+            await self._update_signals()
+            
+            # Update alerts data
+            await self._update_alerts()
+            
+            # Update alpha opportunities
+            await self._update_alpha_opportunities()
+            
+            # Update system status
+            await self._update_system_status()
+            
+            # Update market overview
+            await self._update_market_overview()
+            
+            self._last_update = current_time
+            
+        except Exception as e:
+            self.logger.error(f"Error updating dashboard data: {e}")
+    
+    async def _update_signals(self):
+        """Update signals data from the signal generator."""
+        try:
+            signals = []
+            
+            # Get symbols from monitor
+            if hasattr(self.monitor, 'symbols') and self.monitor.symbols:
+                symbols = self.monitor.symbols[:10]  # Limit to top 10
+                
+                for symbol in symbols:
+                    try:
+                        # Get market data for symbol
+                        market_data = await self.monitor.market_data_manager.get_market_data(symbol)
+                        if not market_data:
+                            continue
+                            
+                        # Get latest confluence score if available
+                        confluence_score = self._extract_confluence_score(symbol, market_data)
+                        
+                        # Determine signal strength
+                        signal_strength = self._determine_signal_strength(confluence_score)
+                        signal_type = self._determine_signal_type(confluence_score)
+                        
+                        signal = {
+                            'symbol': symbol,
+                            'score': confluence_score,
+                            'strength': signal_strength,
+                            'type': signal_type,
+                            'price': market_data.get('ticker', {}).get('last', 0),
+                            'change_24h': self._calculate_24h_change(market_data),
+                            'volume': market_data.get('ticker', {}).get('volume', 0),
+                            'timestamp': int(time.time() * 1000)
+                        }
+                        
+                        signals.append(signal)
+                        
+                    except Exception as e:
+                        self.logger.error(f"Error processing signal for {symbol}: {e}")
+                        continue
+            
+            self._dashboard_data['signals'] = signals
+            
+        except Exception as e:
+            self.logger.error(f"Error updating signals: {e}")
+    
+    async def _update_alerts(self):
+        """Update alerts data from the alert manager."""
+        try:
+            if hasattr(self.monitor, 'alert_manager') and self.monitor.alert_manager:
+                one_hour_ago = time.time() - 3600
+                alerts = self.monitor.alert_manager.get_alerts(limit=20, start_time=one_hour_ago)
+                self._dashboard_data['alerts'] = alerts
+            else:
+                self._dashboard_data['alerts'] = []
+        except Exception as e:
+            self.logger.error(f"Error updating alerts: {e}")
+            self._dashboard_data['alerts'] = []
+    
+    async def _update_alpha_opportunities(self):
+        """Update alpha opportunities data."""
+        try:
+            opportunities = []
+            
+            # Look for high-confidence signals as alpha opportunities
+            signals = self._dashboard_data.get('signals', [])
+            
+            for signal in signals:
+                if signal.get('score', 0) > 75:  # High confidence threshold
+                    opportunity = {
+                        'symbol': signal['symbol'],
+                        'confidence': signal['score'],
+                        'type': signal.get('type', 'BUY'),
+                        'price': signal['price'],
+                        'potential_return': self._estimate_return(signal),
+                        'risk_level': self._assess_risk(signal),
+                        'timestamp': signal['timestamp']
+                    }
+                    opportunities.append(opportunity)
+            
+            self._dashboard_data['alpha_opportunities'] = opportunities[:5]  # Top 5
+            
+        except Exception as e:
+            self.logger.error(f"Error updating alpha opportunities: {e}")
+    
+    async def _update_system_status(self):
+        """Update system status from monitoring components."""
+        try:
+            if self.monitor and hasattr(self.monitor, '_check_system_health'):
+                status = await self.monitor._check_system_health()
+            else:
+                status = {
+                    'monitoring': 'active' if self.monitor and getattr(self.monitor, 'running', False) else 'inactive',
+                    'data_feed': 'unknown',
+                    'alerts': 'unknown',
+                    'websocket': 'unknown',
+                    'last_update': int(time.time() * 1000)
+                }
+
+            self._dashboard_data['system_status'] = status
+
+        except Exception as e:
+            self.logger.error(f"Error updating system status: {e}")
+            self._dashboard_data['system_status'] = {
+                'monitoring': 'error',
+                'data_feed': 'error',
+                'alerts': 'error',
+                'websocket': 'error',
+                'last_update': int(time.time() * 1000),
+                'error': str(e)
+            }
+
+    async def _update_market_overview(self):
+        """Update market overview data."""
+        try:
+            overview = {
+                'total_symbols': len(getattr(self.monitor, 'symbols', [])),
+                'active_signals': len(self._dashboard_data.get('signals', [])),
+                'strong_signals': len([s for s in self._dashboard_data.get('signals', []) if s.get('strength') == 'strong']),
+                'alpha_opportunities': len(self._dashboard_data.get('alpha_opportunities', [])),
+                'total_alerts': len(self._dashboard_data.get('alerts', [])),
+                'timestamp': int(time.time() * 1000)
+            }
+            
+            self._dashboard_data['market_overview'] = overview
+            
+        except Exception as e:
+            self.logger.error(f"Error updating market overview: {e}")
+    
+    def _extract_confluence_score(self, symbol: str, market_data: Dict[str, Any]) -> float:
+        """Extract confluence score from market data or calculate a simple one."""
+        try:
+            # Use a simple score based on price momentum and volume
+            ticker = market_data.get('ticker', {})
+            volume = ticker.get('volume', 0)
+            change_24h = self._calculate_24h_change(market_data)
+
+            score = 50.0  # Neutral base
+
+            # Add volume factor
+            if volume > 1000000:  # High volume
+                score += 15
+            elif volume > 100000:  # Medium volume
+                score += 5
+            
+            # Momentum factor from 24h change
+            score += (change_24h * 1.5) # Scale change to have a noticeable impact
+
+            return max(0, min(100, score))
+
+        except Exception as e:
+            self.logger.error(f"Error extracting confluence score for {symbol}: {e}")
+            return 50.0
+    
+    def _determine_signal_strength(self, score: float) -> str:
+        """Determine signal strength based on confluence score."""
+        if score >= 75:
+            return 'strong'
+        elif score >= 60:
+            return 'medium'
+        elif score <= 25:
+            return 'strong'  # Strong sell
+        elif score <= 40:
+            return 'medium'  # Medium sell
+        else:
+            return 'weak'
+    
+    def _determine_signal_type(self, score: float) -> str:
+        """Determine signal type based on confluence score."""
+        if score >= 60:
+            return 'BUY'
+        elif score <= 40:
+            return 'SELL'
+        else:
+            return 'NEUTRAL'
+    
+    def _calculate_24h_change(self, market_data: Dict[str, Any]) -> float:
+        """Calculate 24h price change percentage."""
+        try:
+            ticker = market_data.get('ticker', {})
+            if 'percentage' in ticker and ticker['percentage'] is not None:
+                return float(ticker['percentage'])
+            if 'change' in ticker and ticker['change'] is not None:
+                return float(ticker['change'])
+
+            current = ticker.get('last', 0)
+            open_price = ticker.get('open', current)
+            if open_price > 0:
+                return ((current - open_price) / open_price) * 100
+
+            return 0.0
+
+        except Exception as e:
+            self.logger.error(f"Error calculating 24h change: {e}")
+            return 0.0
+    
+    def _estimate_return(self, signal: Dict[str, Any]) -> float:
+        """Estimate potential return for an alpha opportunity."""
+        try:
+            score = signal.get('score', 50)
+            # Use a non-linear function for more realistic returns
+            # Logarithmic scale: higher scores give diminishingly larger returns
+            if score <= 50:
+                return 0.0
+            
+            base_return = 0.5  # Base return for a score of 51
+            # Scale score to be > 1 for log function
+            scaled_score = (score - 50) / 10
+            
+            # Logarithmic growth
+            estimated_return = base_return + math.log(1 + scaled_score)
+            
+            return round(estimated_return, 2)
+
+        except Exception:
+            return 0.0
+    
+    def _assess_risk(self, signal: Dict[str, Any]) -> str:
+        """Assess risk level for an alpha opportunity."""
+        try:
+            score = signal.get('score', 50)
+            volume = signal.get('volume', 0)
+            change_24h = signal.get('change_24h', 0)
+            
+            # Volatility component
+            volatility = abs(change_24h)
+            
+            risk_score = 0
+            
+            # Score-based risk (lower score is higher risk)
+            if score < 60:
+                risk_score += 3
+            elif score < 75:
+                risk_score += 2
+            else:
+                risk_score += 1
+                
+            # Volatility-based risk (higher volatility is higher risk)
+            if volatility > 5:
+                risk_score += 3
+            elif volatility > 2:
+                risk_score += 2
+                
+            # Liquidity-based risk (lower volume is higher risk)
+            if volume < 500000:  # Low liquidity
+                risk_score += 3
+            elif volume < 2000000:  # Medium liquidity
+                risk_score += 1
+                
+            # Determine final risk level
+            if risk_score >= 7:
+                return 'High'
+            elif risk_score >= 4:
+                return 'Medium'
+            else:
+                return 'Low'
+                
+        except Exception:
+            return 'Medium'
+    
+    # Public API methods for dashboard
+    async def get_dashboard_overview(self) -> Dict[str, Any]:
+        """Get complete dashboard overview data."""
+        return {
+            'status': 'success',
+            'timestamp': int(time.time() * 1000),
+            'signals': {
+                'total': len(self._dashboard_data.get('signals', [])),
+                'strong': len([s for s in self._dashboard_data.get('signals', []) if s.get('strength') == 'strong']),
+                'medium': len([s for s in self._dashboard_data.get('signals', []) if s.get('strength') == 'medium']),
+                'weak': len([s for s in self._dashboard_data.get('signals', []) if s.get('strength') == 'weak'])
+            },
+            'alerts': {
+                'total': len(self._dashboard_data.get('alerts', [])),
+                'critical': len([a for a in self._dashboard_data.get('alerts', []) if a.get('severity') == 'CRITICAL']),
+                'warning': len([a for a in self._dashboard_data.get('alerts', []) if a.get('severity') == 'WARNING'])
+            },
+            'alpha_opportunities': {
+                'total': len(self._dashboard_data.get('alpha_opportunities', [])),
+                'high_confidence': len([o for o in self._dashboard_data.get('alpha_opportunities', []) if o.get('confidence', 0) >= 85]),
+                'medium_confidence': len([o for o in self._dashboard_data.get('alpha_opportunities', []) if 70 <= o.get('confidence', 0) < 85])
+            },
+            'system_status': self._dashboard_data.get('system_status', {})
+        }
+    
+    async def get_signals_data(self) -> List[Dict[str, Any]]:
+        """Get current signals data."""
+        return self._dashboard_data.get('signals', [])
+    
+    async def get_alerts_data(self) -> List[Dict[str, Any]]:
+        """Get current alerts data."""
+        return self._dashboard_data.get('alerts', [])
+    
+    async def get_alpha_opportunities(self) -> List[Dict[str, Any]]:
+        """Get current alpha opportunities."""
+        return self._dashboard_data.get('alpha_opportunities', [])
+    
+    async def get_market_overview(self) -> Dict[str, Any]:
+        """Get market overview data."""
+        return self._dashboard_data.get('market_overview', {})
+    
+    def get_symbol_data(self) -> Dict[str, Any]:
+        """Get symbol data with confluence scores for all monitored symbols.
+        
+        Returns:
+            Dict mapping symbol names to their market data including confluence scores
+        """
+        try:
+            symbol_data = {}
+            signals = self._dashboard_data.get('signals', [])
+            
+            for signal in signals:
+                symbol = signal.get('symbol')
+                if symbol:
+                    symbol_data[symbol] = {
+                        'symbol': symbol,
+                        'confluence_score': signal.get('score', 0),
+                        'price': signal.get('price', 0),
+                        'change_24h': signal.get('change_24h', 0),
+                        'volume_24h': signal.get('volume', 0),
+                        'signal_type': signal.get('type', 'NEUTRAL'),
+                        'strength': signal.get('strength', 'weak'),
+                        'timestamp': signal.get('timestamp', 0)
+                    }
+            
+            self.logger.debug(f"Retrieved symbol data for {len(symbol_data)} symbols")
+            return symbol_data
+            
+        except Exception as e:
+            self.logger.error(f"Error getting symbol data: {e}")
+            return {}
+
+    async def get_top_symbols(self, limit: int = 10) -> List[Dict[str, Any]]:
+        """Get top symbols with real market data from the running monitor.
+        
+        Uses the monitor's components to get real Bybit data that's already flowing.
+        
+        Args:
+            limit: Maximum number of symbols to return
+            
+        Returns:
+            List of symbol dictionaries with market data
+        """
+        try:
+            # Get market data manager from monitor
+            market_data_manager = None
+            top_symbols_manager = None
+            
+            if self.monitor:
+                market_data_manager = getattr(self.monitor, 'market_data_manager', None)
+                top_symbols_manager = getattr(self.monitor, 'top_symbols_manager', None)
+            
+            # Try to get symbols and data from the monitor
+            if market_data_manager and top_symbols_manager:
+                try:
+                    # Get dynamic symbols from the working top symbols manager
+                    symbols = await top_symbols_manager.get_symbols(limit=limit)
+                    self.logger.info(f"Retrieved {len(symbols)} dynamic symbols from monitor: {symbols}")
+                    
+                    # Get market data for each symbol using the working market data manager
+                    symbols_data = []
+                    for symbol in symbols:
+                        try:
+                            market_data = await market_data_manager.get_market_data(symbol)
+                            if market_data:
+                                # Extract key metrics from Bybit data
+                                ticker = market_data.get('ticker', {})
+                                
+                                # Try multiple field names for price
+                                price = 0
+                                if 'lastPrice' in ticker:
+                                    price = float(ticker['lastPrice'])
+                                elif 'last' in ticker:
+                                    price = float(ticker['last'])
+                                elif 'close' in ticker:
+                                    price = float(ticker['close'])
+                                
+                                # Try multiple field names for 24h change
+                                change_24h = 0
+                                if 'price24hPcnt' in ticker:
+                                    change_24h = float(ticker['price24hPcnt']) * 100
+                                elif 'percentage' in ticker:
+                                    change_24h = float(ticker['percentage'])
+                                elif 'change' in ticker:
+                                    change_24h = float(ticker['change'])
+                                
+                                # Try multiple field names for volume
+                                volume_24h = 0
+                                if 'volume24h' in ticker:
+                                    volume_24h = float(ticker['volume24h'])
+                                elif 'baseVolume' in ticker:
+                                    volume_24h = float(ticker['baseVolume'])
+                                elif 'volume' in ticker:
+                                    volume_24h = float(ticker['volume'])
+                                
+                                # Try multiple field names for turnover
+                                turnover_24h = 0
+                                if 'turnover24h' in ticker:
+                                    turnover_24h = float(ticker['turnover24h'])
+                                elif 'quoteVolume' in ticker:
+                                    turnover_24h = float(ticker['quoteVolume'])
+                                elif 'turnover' in ticker:
+                                    turnover_24h = float(ticker['turnover'])
+                                
+                                symbols_data.append({
+                                    'symbol': symbol,
+                                    'price': price,
+                                    'change_24h': change_24h,
+                                    'volume_24h': volume_24h,
+                                    'turnover_24h': turnover_24h,
+                                    'status': 'bybit_live'
+                                })
+                                
+                                self.logger.debug(f"Extracted Bybit data for {symbol}: price={price}, change={change_24h}%")
+                                
+                        except Exception as e:
+                            self.logger.error(f"Error getting market data for {symbol}: {str(e)}")
+                            # Add symbol with error status
+                            symbols_data.append({
+                                'symbol': symbol,
+                                'price': 0,
+                                'change_24h': 0,
+                                'volume_24h': 0,
+                                'turnover_24h': 0,
+                                'status': 'extraction_error'
+                            })
+                    
+                    # Sort by turnover (highest first)
+                    symbols_data.sort(key=lambda x: x['turnover_24h'], reverse=True)
+                    
+                    if symbols_data:
+                        self.logger.info(f"Successfully retrieved {len(symbols_data)} symbols with Bybit data")
+                        return symbols_data[:limit]
+                    
+                except Exception as e:
+                    self.logger.error(f"Error getting symbols from monitor: {str(e)}")
+            
+            # Fallback: Try to get symbols from monitor.symbols if available
+            if self.monitor and hasattr(self.monitor, 'symbols') and getattr(self.monitor, 'symbols'):
+                monitor_symbols = getattr(self.monitor, 'symbols', [])[:limit]
+                self.logger.info(f"Using monitor.symbols fallback: {monitor_symbols}")
+                
+                symbols_data = []
+                for symbol in monitor_symbols:
+                    # Return with minimal data but real symbol names
+                    symbols_data.append({
+                        'symbol': symbol,
+                        'price': 100000 if 'BTC' in symbol else 3000,  # Reasonable fallback prices
+                        'change_24h': 1.5,
+                        'volume_24h': 5000000,
+                        'turnover_24h': 150000000,
+                        'status': 'monitor_fallback'
+                    })
+                    
+                return symbols_data
+            
+            # Final fallback
+            self.logger.warning("No monitor available, using static fallback")
+            fallback_symbols = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'AVAXUSDT']
+            return [
+                {
+                    'symbol': symbol,
+                    'price': 103000 if 'BTC' in symbol else 3000,
+                    'change_24h': 1.2,
+                    'volume_24h': 2000000,
+                    'turnover_24h': 200000000000,
+                    'status': 'static_fallback'
+                }
+                for symbol in fallback_symbols[:limit]
+            ]
+                
+        except Exception as e:
+            self.logger.error(f"Error getting top symbols: {str(e)}")
+            # Emergency fallback
+            return [
+                {
+                    'symbol': 'BTCUSDT',
+                    'price': 103000,
+                    'change_24h': 1.2,
+                    'volume_24h': 2000000,
+                    'turnover_24h': 200000000000,
+                    'status': 'emergency_fallback'
+                }
+            ]
+
+
+# Global instance for use across the application
+dashboard_integration = None
+
+def get_dashboard_integration() -> Optional[DashboardIntegrationService]:
+    """Get the global dashboard integration instance."""
+    return dashboard_integration
+
+def set_dashboard_integration(service: DashboardIntegrationService):
+    """Set the global dashboard integration instance."""
+    global dashboard_integration
+    dashboard_integration = service 

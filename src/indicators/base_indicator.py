@@ -1,4 +1,9 @@
-from typing import Dict, Any, Optional, List, Union, TypedDict
+from typing import Dict, Any, Optional, List, Union
+try:
+    from typing import TypedDict
+except ImportError:
+    # Python < 3.8 compatibility
+    from typing_extensions import TypedDict
 import time
 import logging
 import traceback

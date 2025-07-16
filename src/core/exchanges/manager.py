@@ -74,6 +74,10 @@ class ExchangeManager:
             
             self.initialized = True
             self.logger.info("Exchange initialization completed successfully")
+            
+            # Force cleanup of any orphaned aiohttp sessions created during initialization
+            await self._cleanup_orphaned_sessions()
+            
             return True
             
         except Exception as e:
@@ -104,14 +108,140 @@ class ExchangeManager:
         
     async def cleanup(self):
         """Cleanup all exchange connections"""
+        cleanup_tasks = []
+        
         for exchange_id, exchange in self.exchanges.items():
-            try:
-                await exchange.close()
-                logger.info(f"Successfully closed {exchange_id} exchange connection")
-            except Exception as e:
-                logger.error(f"Error closing {exchange_id} exchange connection: {str(e)}")
+            cleanup_tasks.append(self._cleanup_single_exchange(exchange_id, exchange))
+        
+        # Run all cleanup tasks concurrently
+        if cleanup_tasks:
+            await asyncio.gather(*cleanup_tasks, return_exceptions=True)
         
         self.exchanges.clear()
+        logger.info("Exchange manager cleanup completed")
+    
+    async def _cleanup_single_exchange(self, exchange_id: str, exchange):
+        """Cleanup a single exchange with comprehensive error handling"""
+        try:
+            logger.info(f"Cleaning up {exchange_id} exchange...")
+            
+            # Close the custom exchange wrapper first
+            try:
+                await exchange.close()
+                logger.info(f"Successfully closed {exchange_id} exchange wrapper")
+            except Exception as e:
+                logger.warning(f"Error closing {exchange_id} exchange wrapper: {str(e)}")
+            
+            # Handle integrated Binance client specifically
+            if hasattr(exchange, 'integrated_client') and exchange.integrated_client:
+                try:
+                    await exchange.integrated_client.close()
+                    logger.info(f"Successfully closed integrated client for {exchange_id}")
+                except Exception as e:
+                    logger.warning(f"Error closing integrated client for {exchange_id}: {str(e)}")
+            
+            # Handle CCXT exchange if it exists directly on the exchange
+            if hasattr(exchange, 'ccxt_exchange') and exchange.ccxt_exchange:
+                try:
+                    await exchange.ccxt_exchange.close()
+                    logger.info(f"Successfully closed CCXT exchange for {exchange_id}")
+                except Exception as e:
+                    logger.warning(f"Error closing CCXT exchange for {exchange_id}: {str(e)}")
+            
+            # Handle any other CCXT-related attributes
+            if hasattr(exchange, 'ccxt') and exchange.ccxt:
+                try:
+                    await exchange.ccxt.close()
+                    logger.info(f"Successfully closed CCXT client for {exchange_id}")
+                except Exception as e:
+                    logger.warning(f"Error closing CCXT client for {exchange_id}: {str(e)}")
+            
+            # Handle futures client if it exists
+            if hasattr(exchange, 'futures_client') and exchange.futures_client:
+                try:
+                    if hasattr(exchange.futures_client, '__aexit__'):
+                        await exchange.futures_client.__aexit__(None, None, None)
+                    elif hasattr(exchange.futures_client, 'close'):
+                        await exchange.futures_client.close()
+                    logger.info(f"Successfully closed futures client for {exchange_id}")
+                except Exception as e:
+                    logger.warning(f"Error closing futures client for {exchange_id}: {str(e)}")
+            
+            # Additional cleanup for any remaining CCXT instances
+            await self._cleanup_ccxt_instances(exchange_id, exchange)
+                        
+        except Exception as e:
+            logger.error(f"Error during cleanup of {exchange_id} exchange: {str(e)}")
+            # Continue with cleanup of other exchanges
+    
+    async def _cleanup_ccxt_instances(self, exchange_id: str, exchange):
+        """Clean up any remaining CCXT instances for a specific exchange"""
+        try:
+            import gc
+            import weakref
+            
+            # Look for any CCXT instances that might be associated with this exchange
+            ccxt_instances_found = 0
+            
+            # Use a more conservative approach - only clean up instances we can safely identify
+            for obj in gc.get_objects():
+                if hasattr(obj, '__class__') and hasattr(obj.__class__, '__module__'):
+                    if 'ccxt' in str(obj.__class__.__module__) and hasattr(obj, 'close'):
+                        try:
+                            # Check if this instance might belong to our exchange
+                            if hasattr(obj, 'id') and obj.id == exchange_id.lower():
+                                # Additional safety check - ensure it's not currently in use
+                                if not getattr(obj, 'closed', True) and not hasattr(obj, '_in_use'):
+                                    await obj.close()
+                                    ccxt_instances_found += 1
+                        except Exception as e:
+                            logger.debug(f"Error closing CCXT instance for {exchange_id}: {e}")
+            
+            if ccxt_instances_found > 0:
+                logger.info(f"Cleaned up {ccxt_instances_found} additional CCXT instances for {exchange_id}")
+            
+            # Force a small garbage collection to help clean up references
+            gc.collect()
+                
+        except Exception as e:
+            logger.debug(f"Error during additional CCXT cleanup for {exchange_id}: {e}")
+    
+    async def _cleanup_orphaned_sessions(self):
+        """Clean up any orphaned aiohttp sessions created during initialization"""
+        try:
+            import gc
+            import aiohttp
+            
+            # Force garbage collection to identify unclosed sessions
+            gc.collect()
+            
+            # Find all aiohttp ClientSession objects
+            sessions_found = 0
+            connectors_found = 0
+            
+            for obj in gc.get_objects():
+                if isinstance(obj, aiohttp.ClientSession):
+                    if not obj.closed:
+                        try:
+                            await obj.close()
+                            sessions_found += 1
+                        except Exception as e:
+                            logger.debug(f"Error closing orphaned session: {e}")
+                elif isinstance(obj, aiohttp.TCPConnector):
+                    if not obj.closed:
+                        try:
+                            await obj.close()
+                            connectors_found += 1
+                        except Exception as e:
+                            logger.debug(f"Error closing orphaned connector: {e}")
+            
+            if sessions_found > 0 or connectors_found > 0:
+                logger.info(f"Cleaned up {sessions_found} orphaned sessions and {connectors_found} connectors")
+            else:
+                logger.debug("No orphaned sessions or connectors found")
+                
+        except Exception as e:
+            logger.warning(f"Error during orphaned session cleanup: {e}")
         
     async def get_market_data(
         self,
@@ -285,6 +415,13 @@ class ExchangeManager:
                 self.logger.error("No primary exchange configured")
                 return False
             
+            # For demo mode, check if API credentials are placeholder values
+            api_key = getattr(primary_exchange, 'api_key', '')
+            self.logger.info(f"Exchange API key status: {'empty' if not api_key else 'configured'}")
+            if api_key in ['', 'demo-key', 'placeholder', None]:
+                self.logger.info("Exchange running in demo mode - skipping connection test")
+                return True
+            
             # Check if the primary exchange can fetch market data
             is_primary_healthy = await primary_exchange.is_healthy()
             if not is_primary_healthy:
@@ -391,7 +528,7 @@ class ExchangeManager:
                 return {}
             
             # Log the ticker data for debugging
-            self.logger.debug(f"Ticker data for {symbol}: volume={ticker.get('volume', 'N/A')}, turnover={ticker.get('turnover', 'N/A')}")
+            self.logger.debug(f"Ticker data for {symbol}: volume={ticker.get('baseVolume', 'N/A')}, turnover={ticker.get('quoteVolume', 'N/A')}")
             
             # Include the raw ticker data for full access to all fields
             if 'raw_data' in ticker:
@@ -415,8 +552,8 @@ class ExchangeManager:
                     'high': float(ticker.get('high', 0)),
                     'low': float(ticker.get('low', 0)),
                     'change_24h': float(ticker.get('change', 0)),
-                    'volume': float(ticker.get('volume', 0)),
-                    'turnover': float(ticker.get('turnover', 0))
+                    'volume': float(ticker.get('baseVolume', 0)),
+                    'turnover': float(ticker.get('quoteVolume', 0))
                 }
                 
                 # Add open interest to price structure if available
