@@ -43,6 +43,8 @@ from src.models.schema import SignalData, SignalType
 import uuid
 from uuid import uuid4
 from pydantic import ValidationError
+from src.core.analysis.interpretation_generator import InterpretationGenerator
+from src.core.interpretation.interpretation_manager import InterpretationManager
 
 logger = logging.getLogger(__name__)
 
@@ -147,13 +149,31 @@ class SignalGenerator:
                 self.logger.error(f"Failed to initialize ReportManager: {str(e)}")
                 self.logger.debug(traceback.format_exc())
         
+        # Initialize InterpretationGenerator for market interpretations
+        self.interpretation_generator = InterpretationGenerator()
+        self.logger.info("InterpretationGenerator initialized for market analysis")
+        
+        # Initialize centralized InterpretationManager
+        self.interpretation_manager = InterpretationManager()
+        self.logger.info("Centralized InterpretationManager initialized")
+        
         # Verify AlertManager initialization
         if self.alert_manager and hasattr(self.alert_manager, 'discord_webhook_url') and self.alert_manager.discord_webhook_url:
-            self.logger.info(f"AlertManager initialized with Discord webhook URL")
+            self.logger.info(f"✅ AlertManager initialized with Discord webhook URL")
             if hasattr(self.alert_manager, 'alert_handlers'):
-                self.logger.info(f"Registered handlers: {list(self.alert_manager.alert_handlers.keys())}")
+                self.logger.info(f"✅ Registered handlers: {list(self.alert_manager.alert_handlers.keys())}")
+            elif hasattr(self.alert_manager, 'handlers'):
+                self.logger.info(f"✅ Registered handlers: {self.alert_manager.handlers}")
         else:
-            self.logger.warning("AlertManager not properly initialized")
+            # More detailed diagnostic information
+            if not self.alert_manager:
+                self.logger.warning("⚠️  WARNING: AlertManager is None")
+            elif not hasattr(self.alert_manager, 'discord_webhook_url'):
+                self.logger.warning("⚠️  WARNING: AlertManager missing discord_webhook_url attribute")
+            elif not self.alert_manager.discord_webhook_url:
+                self.logger.warning("⚠️  WARNING: AlertManager discord_webhook_url is empty")
+            else:
+                self.logger.warning("⚠️  WARNING: AlertManager not properly initialized")
         
         logger.debug("SignalGenerator initialized")
         
@@ -471,10 +491,54 @@ class SignalGenerator:
         """Generate trading signals based on indicator values."""
         try:
             # Get confluence score and current price from indicators
-            confluence_score = indicators.get('confluence', indicators.get('score', 0.0))
-            current_price = indicators.get('current_price', 0.0)
             symbol = indicators.get('symbol', 'UNKNOWN')
-
+            current_price = indicators.get('current_price', 0.0)
+            
+            # Extract individual component scores first
+            component_scores = {
+                'momentum': indicators.get('momentum_score', 50.0),
+                'volume': indicators.get('volume_score', 50.0),
+                'orderflow': indicators.get('orderflow_score', 50.0),
+                'orderbook': indicators.get('orderbook_score', 50.0),
+                'sentiment': indicators.get('sentiment_score', 50.0),
+                'price_structure': indicators.get('price_structure_score', 50.0),
+                'futures_premium': indicators.get('futures_premium_score', 50.0)  # Add futures premium
+            }
+            
+            # Calculate confluence score if not provided
+            confluence_score = indicators.get('confluence', indicators.get('score', 0.0))
+            if confluence_score == 0.0:
+                # Calculate weighted confluence score from individual components
+                weights = self.confluence_weights
+                
+                # Fallback to equal weights if no weights configured
+                if not weights:
+                    weights = {
+                        'momentum': 1.0,
+                        'volume': 1.0, 
+                        'orderflow': 1.0,
+                        'orderbook': 1.0,
+                        'sentiment': 1.0,
+                        'price_structure': 1.0
+                    }
+                    logger.debug(f"Using default equal weights for confluence calculation")
+                
+                # Calculate weighted average
+                total_weight = 0
+                weighted_sum = 0
+                for comp, weight in weights.items():
+                    if comp in component_scores:
+                        weighted_sum += component_scores[comp] * weight
+                        total_weight += weight
+                
+                if total_weight > 0:
+                    confluence_score = weighted_sum / total_weight
+                else:
+                    confluence_score = sum(component_scores.values()) / len(component_scores)
+                
+                logger.info(f"Calculated confluence score for {symbol}: {confluence_score:.2f} from components: {component_scores}")
+                logger.debug(f"Used weights: {weights}")
+            
             logger.debug(f"Received data for {symbol}:")
             logger.debug(f"Raw indicators: {indicators}")
             logger.debug(f"Extracted score: {confluence_score}")
@@ -491,35 +555,67 @@ class SignalGenerator:
             signal = None  # Initialize signal as None
             alerts_sent = False  # Track if alerts were sent
             
-            # Extract component scores for the formatted alert
+            # Extract component scores for the formatted alert (use calculated scores)
             components = {
-                'volume': indicators.get('volume_score', 50),
-                'technical': indicators.get('technical_score', indicators.get('momentum_score', 50)),
-                'orderflow': indicators.get('orderflow_score', 50),
-                'orderbook': indicators.get('orderbook_score', 50),
-                'sentiment': indicators.get('sentiment_score', 50),
-                'price_structure': indicators.get('price_structure_score', indicators.get('position_score', 50))
+                'volume': component_scores['volume'],
+                'technical': component_scores['momentum'],  # Use momentum for technical
+                'orderflow': component_scores['orderflow'],
+                'orderbook': component_scores['orderbook'],
+                'sentiment': component_scores['sentiment'],
+                'price_structure': component_scores['price_structure'],
+                'futures_premium': indicators.get('futures_premium_score', 50.0)  # Add futures premium
             }
             
             # Prepare results object with detailed interpretations for each component
             results = {}
             for component_name, component_score in components.items():
                 # Get the appropriate interpretation method based on component name
-                interpret_method = getattr(self, f"_interpret_{component_name}", None)
+                # Use InterpretationGenerator instead of local interpretation methods
                 
-                if not interpret_method:
-                    # Fallback for missing methods
-                    self.logger.warning(f"No interpretation method found for {component_name}")
-                    interpretation = f"No interpretation available for {component_name}"
-                else:
-                    # Get detailed interpretation for this component's score
-                    interpretation = interpret_method(component_score, indicators)
-                
-                # Extract sub-components if available
-                extract_method = getattr(self, f"_extract_{component_name}_components", None)
-                sub_components = {}
-                if extract_method:
-                    sub_components = extract_method(indicators)
+                try:
+                    # Prepare component data for the InterpretationGenerator
+                    component_data = {
+                        'score': component_score,
+                        'signals': {},
+                        'components': {},
+                        'metadata': {'raw_values': indicators}
+                    }
+                    
+                    # Extract sub-components if available
+                    extract_method = getattr(self, f"_extract_{component_name}_components", None)
+                    sub_components = {}
+                    if extract_method:
+                        sub_components = extract_method(indicators)
+                        component_data['components'] = sub_components
+                    
+                    # Get detailed interpretation from InterpretationGenerator
+                    interpretation = self.interpretation_generator.get_component_interpretation(
+                        component_name, component_data
+                    )
+                    
+                    raw_interpretations.append({
+                        'component': component_name,
+                        'display_name': component_name.replace('_', ' ').title(),
+                        'interpretation': interpretation
+                    })
+                    
+                except Exception as e:
+                    self.logger.warning(f"Error generating interpretation for {component_name}: {str(e)}")
+                    # Fallback to simple interpretation
+                    if component_name == 'futures_premium':
+                        # Special handling for futures premium
+                        if component_score > 70:
+                            interpretation = f"Strong Contango - Score: {component_score:.1f} - Futures trading at significant premium to spot"
+                        elif component_score > 55:
+                            interpretation = f"Contango - Score: {component_score:.1f} - Futures trading above spot prices"
+                        elif component_score < 30:
+                            interpretation = f"Strong Backwardation - Score: {component_score:.1f} - Futures trading at significant discount to spot"
+                        elif component_score < 45:
+                            interpretation = f"Backwardation - Score: {component_score:.1f} - Futures trading below spot prices"
+                        else:
+                            interpretation = f"Neutral Premium - Score: {component_score:.1f} - Balanced futures-spot relationship"
+                    else:
+                        interpretation = f"Score: {component_score:.1f} - {'Bullish' if component_score > 50 else 'Bearish'} bias"
                 
                 # Create component entry with full interpretation text
                 results[component_name] = {
@@ -596,6 +692,9 @@ class SignalGenerator:
                 if json_path:
                     signal_result['json_path'] = json_path
                 
+                # Check for futures premium alerts
+                await self._check_futures_premium_alerts(indicators, symbol)
+                
                 # Let the AlertManager handle all alerts in a centralized way
                 # to avoid duplication
                 return signal_result
@@ -611,6 +710,16 @@ class SignalGenerator:
             # Extract signal ID or create a new one
             transaction_id = signal.get('transaction_id', str(uuid.uuid4())[:8])
             signal_id = signal.get('signal_id', str(uuid.uuid4())[:8])
+            
+            # Extract call tracking information
+            call_source = indicators.get('call_source', 'UNKNOWN_SOURCE')
+            call_id = indicators.get('call_id', 'UNKNOWN_CALL')
+            cycle_call_source = indicators.get('cycle_call_source', 'UNKNOWN_CYCLE')
+            cycle_call_id = indicators.get('cycle_call_id', 'UNKNOWN_CYCLE_CALL')
+            
+            # CALL SOURCE TRACKING: Log alert sending with full call chain
+            symbol = signal.get('symbol', 'UNKNOWN')
+            self.logger.info(f"[CALL_TRACKING][ALERT_SEND][{call_source}→{cycle_call_source}][CALL_ID:{call_id}→{cycle_call_id}][TXN:{transaction_id}][SIG:{signal_id}] Sending alert for {symbol}")
             
             # Get price from signal data or try to resolve it
             price = signal.get('price')
@@ -646,144 +755,19 @@ class SignalGenerator:
             else:
                 direction = 'NEUTRAL'
             
-            # Skip processing if the signal is NEUTRAL
+            # Skip processing if the signal is NEUTRAL or reliability is less than 100%
             if direction == 'NEUTRAL':
                 self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}] Skipping alert for NEUTRAL signal on {symbol}")
                 return
+                
+            # Check if reliability is less than 100% (1.0), if so, skip alert
+            if reliability < 1.0:
+                self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}] Skipping alert for {symbol} due to reliability {reliability*100:.1f}% < 100%")
+                return
             
-            # Get or generate report data for alert
-            pdf_path = signal.get('pdf_path')
-            self.logger.info(f"[DIAGNOSTICS] [PDF_GENERATION] [TXN:{transaction_id}][SIG:{signal_id}] Starting PDF report generation for {symbol}")
-            
-            if not pdf_path and hasattr(self, 'report_manager') and self.report_manager:
-                try:
-                    # Log PDF generation attempt with diagnostics-friendly format
-                    self.logger.info(f"[DIAGNOSTICS] [PDF_GENERATION] [TXN:{transaction_id}][SIG:{signal_id}] Using ReportManager to generate PDF")
-                    
-                    # Check if report_manager is properly initialized
-                    if self.report_manager is None:
-                        self.logger.error(f"[DIAGNOSTICS] [PDF_GENERATION] [TXN:{transaction_id}][SIG:{signal_id}] ERROR: ReportManager is None")
-                    else:
-                        self.logger.info(f"[DIAGNOSTICS] [PDF_GENERATION] [TXN:{transaction_id}][SIG:{signal_id}] ReportManager initialized: {type(self.report_manager).__name__}")
-                    
-                    # Generate PDF report if not already provided
-                    report_data = {
-                        'symbol': symbol, 
-                        'score': score,
-                        'direction': direction,
-                        'price': price,
-                        'components': components,
-                        'results': results
-                    }
-                    
-                    # Try to get chart data for the symbol
-                    self.logger.info(f"[DIAGNOSTICS] [PDF_GENERATION] [TXN:{transaction_id}][SIG:{signal_id}] Fetching OHLCV data for chart")
-                    ohlcv_data = await self._fetch_ohlcv_data(symbol) if not 'ohlcv_data' in signal else signal.get('ohlcv_data')
-                    
-                    # Check if we got valid OHLCV data
-                    if ohlcv_data is not None:
-                        if hasattr(ohlcv_data, 'empty'):
-                            is_empty = ohlcv_data.empty
-                        else:
-                            is_empty = len(ohlcv_data) == 0 if hasattr(ohlcv_data, '__len__') else True
-                            
-                        if is_empty:
-                            self.logger.error(f"[DIAGNOSTICS] [PDF_GENERATION] [TXN:{transaction_id}][SIG:{signal_id}] ERROR: OHLCV data is empty")
-                        else:
-                            self.logger.info(f"[DIAGNOSTICS] [PDF_GENERATION] [TXN:{transaction_id}][SIG:{signal_id}] OHLCV data retrieved with {len(ohlcv_data)} candles")
-                    else:
-                        self.logger.error(f"[DIAGNOSTICS] [PDF_GENERATION] [TXN:{transaction_id}][SIG:{signal_id}] ERROR: Failed to retrieve OHLCV data")
-                    
-                    # Generate report with chart if data is available
-                    if ohlcv_data is not None and not (hasattr(ohlcv_data, 'empty') and ohlcv_data.empty):
-                        self.logger.info(f"[DIAGNOSTICS] [PDF_GENERATION] [TXN:{transaction_id}][SIG:{signal_id}] Generating PDF report with OHLCV data")
-                        try:
-                            report_result = await self.report_manager.generate_report(
-                                signal_data=report_data,
-                                ohlcv_data=ohlcv_data
-                            )
-                            
-                            self.logger.info(f"[DIAGNOSTICS] [PDF_GENERATION] [TXN:{transaction_id}][SIG:{signal_id}] Report result: {report_result}")
-                            
-                            # Handle different types of return values from report_generator
-                            if isinstance(report_result, tuple) and len(report_result) >= 1 and report_result[0]:
-                                # Report generator returned (pdf_path, json_path)
-                                pdf_path = report_result[0]
-                                self.logger.info(f"[DIAGNOSTICS] [PDF_GENERATION] [TXN:{transaction_id}][SIG:{signal_id}] Generated PDF at: {pdf_path}")
-                                
-                                # Verify file exists
-                                if os.path.exists(pdf_path):
-                                    self.logger.info(f"[DIAGNOSTICS] [PDF_GENERATION] [TXN:{transaction_id}][SIG:{signal_id}] Verified PDF exists: {pdf_path}")
-                                else:
-                                    self.logger.error(f"[DIAGNOSTICS] [PDF_GENERATION] [TXN:{transaction_id}][SIG:{signal_id}] ERROR: PDF file does not exist: {pdf_path}")
-                                    pdf_path = None
-                            elif isinstance(report_result, bool) and report_result:
-                                # Report generator returned True but no path, try to find the PDF
-                                self.logger.info(f"[DIAGNOSTICS] [PDF_GENERATION] [TXN:{transaction_id}][SIG:{signal_id}] Report generated successfully but no path returned")
-                                
-                                # Look for PDF in expected locations
-                                symbol_safe = symbol.lower().replace('/', '_')
-                                timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
-                                timestamp_unix = int(time.time())
-                                
-                                search_dirs = [
-                                    os.path.join(os.getcwd(), 'reports', 'pdf'),
-                                    os.path.join(os.getcwd(), 'exports')
-                                ]
-                                
-                                for search_dir in search_dirs:
-                                    if os.path.exists(search_dir):
-                                        pdfs = [f for f in os.listdir(search_dir) 
-                                              if f.lower().startswith(symbol_safe.lower()) and f.endswith('.pdf')]
-                                        if pdfs:
-                                            # Sort by creation time, newest first
-                                            pdfs.sort(key=lambda f: os.path.getctime(os.path.join(search_dir, f)), reverse=True)
-                                            pdf_path = os.path.join(search_dir, pdfs[0])
-                                            self.logger.info(f"[DIAGNOSTICS] [PDF_GENERATION] [TXN:{transaction_id}][SIG:{signal_id}] Found recent PDF: {pdf_path}")
-                                            break
-                            else:
-                                self.logger.error(f"[DIAGNOSTICS] [PDF_GENERATION] [TXN:{transaction_id}][SIG:{signal_id}] ERROR: Report generation failed or returned unexpected result: {report_result}")
-                        except Exception as report_error:
-                            self.logger.error(f"[DIAGNOSTICS] [PDF_GENERATION] [TXN:{transaction_id}][SIG:{signal_id}] ERROR generating report: {str(report_error)}")
-                            self.logger.error(traceback.format_exc())
-                    else:
-                        self.logger.info(f"[DIAGNOSTICS] [PDF_GENERATION] [TXN:{transaction_id}][SIG:{signal_id}] Generating PDF report without OHLCV data")
-                        try:
-                            success, pdf_path, _ = await self.report_manager.generate_and_attach_report(
-                                signal_data=report_data,
-                                signal_type=direction.lower()
-                            )
-                            
-                            # Log detailed results
-                            if success:
-                                self.logger.info(f"[DIAGNOSTICS] [PDF_GENERATION] [TXN:{transaction_id}][SIG:{signal_id}] PDF generated successfully: {pdf_path}")
-                                
-                                # Verify file exists and has content
-                                if pdf_path and os.path.exists(pdf_path):
-                                    file_size = os.path.getsize(pdf_path) / 1024  # KB
-                                    self.logger.info(f"[DIAGNOSTICS] [PDF_GENERATION] [TXN:{transaction_id}][SIG:{signal_id}] PDF file exists, size: {file_size:.2f} KB")
-                                else:
-                                    self.logger.error(f"[DIAGNOSTICS] [PDF_GENERATION] [TXN:{transaction_id}][SIG:{signal_id}] ERROR: PDF file does not exist at path: {pdf_path}")
-                            else:
-                                self.logger.error(f"[DIAGNOSTICS] [PDF_GENERATION] [TXN:{transaction_id}][SIG:{signal_id}] ERROR: PDF generation returned failure status")
-                        except Exception as pdf_err:
-                            self.logger.error(f"[DIAGNOSTICS] [PDF_GENERATION] [TXN:{transaction_id}][SIG:{signal_id}] ERROR: Exception in PDF generation without OHLCV: {str(pdf_err)}")
-                            self.logger.error(f"[DIAGNOSTICS] [PDF_GENERATION] [TXN:{transaction_id}][SIG:{signal_id}] Error traceback: {traceback.format_exc()}")
-                    
-                    if success and pdf_path:
-                        self.logger.info(f"[DIAGNOSTICS] [PDF_GENERATION] [TXN:{transaction_id}][SIG:{signal_id}] PDF report generation complete: {pdf_path}")
-                    else:
-                        self.logger.warning(f"[DIAGNOSTICS] [PDF_GENERATION] [TXN:{transaction_id}][SIG:{signal_id}] Failed to generate PDF report")
-                        pdf_path = None
-                except Exception as e:
-                    self.logger.error(f"[DIAGNOSTICS] [PDF_GENERATION] [TXN:{transaction_id}][SIG:{signal_id}] ERROR: Error generating PDF report: {str(e)}")
-                    self.logger.error(f"[DIAGNOSTICS] [PDF_GENERATION] [TXN:{transaction_id}][SIG:{signal_id}] Error traceback: {traceback.format_exc()}")
-                    pdf_path = None
-            else:
-                if pdf_path:
-                    self.logger.info(f"[DIAGNOSTICS] [PDF_GENERATION] [TXN:{transaction_id}][SIG:{signal_id}] Using provided PDF path: {pdf_path}")
-                else:
-                    self.logger.warning(f"[DIAGNOSTICS] [PDF_GENERATION] [TXN:{transaction_id}][SIG:{signal_id}] No PDF path provided and no ReportManager available")
+            # Note: PDF generation is handled internally by AlertManager.send_confluence_alert()
+            # No need for separate PDF handling here as AlertManager generates and sends PDFs automatically
+            self.logger.info(f"[DIAGNOSTICS] [PDF_GENERATION] [TXN:{transaction_id}][SIG:{signal_id}] PDF generation will be handled by AlertManager for {symbol}")
             
             # Create alert data for the alert manager
             alert_data = {
@@ -803,27 +787,15 @@ class SignalGenerator:
             if enhanced_data:
                 alert_data.update(enhanced_data)
             
-            # Add PDF path if available for attachment
-            files = None
-            if pdf_path and os.path.exists(pdf_path):
-                files = [{
-                    'path': pdf_path,
-                    'filename': os.path.basename(pdf_path),
-                    'description': f"Report for {symbol}"
-                }]
-                self.logger.info(f"[DIAGNOSTICS] [PDF_ATTACHMENT] [TXN:{transaction_id}][SIG:{signal_id}] Adding PDF attachment: {pdf_path}")
-            else:
-                self.logger.warning(f"[DIAGNOSTICS] [PDF_ATTACHMENT] [TXN:{transaction_id}][SIG:{signal_id}] No valid PDF path found for attachment. Path: {pdf_path}")
-                if pdf_path:
-                    self.logger.warning(f"[DIAGNOSTICS] [PDF_ATTACHMENT] [TXN:{transaction_id}][SIG:{signal_id}] File exists check: {os.path.exists(pdf_path) if pdf_path else False}")
+            # PDF attachments are handled automatically by AlertManager.send_confluence_alert()
+            # No need for manual PDF attachment logic here
             
             self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}] Calling alert_manager.send_confluence_alert")
             
             # Add diagnostic logging to check alert data before sending
             self.logger.info(f"[DIAGNOSTICS] [ALERT_DATA] [TXN:{transaction_id}][SIG:{signal_id}] Preparing to send alert:")
             self.logger.info(f"[DIAGNOSTICS] [ALERT_DATA] [TXN:{transaction_id}][SIG:{signal_id}] - Confluence score: {score}")
-            self.logger.info(f"[DIAGNOSTICS] [ALERT_DATA] [TXN:{transaction_id}][SIG:{signal_id}] - PDF path: {pdf_path}")
-            self.logger.info(f"[DIAGNOSTICS] [ALERT_DATA] [TXN:{transaction_id}][SIG:{signal_id}] - Files to attach: {files}")
+            self.logger.info(f"[DIAGNOSTICS] [ALERT_DATA] [TXN:{transaction_id}][SIG:{signal_id}] - PDF generation: Handled by AlertManager")
             
             if enhanced_data:
                 self.logger.info(f"[DIAGNOSTICS] [ALERT_DATA] [TXN:{transaction_id}][SIG:{signal_id}] - Influential components count: {len(enhanced_data.get('influential_components', []))}")
@@ -864,22 +836,8 @@ class SignalGenerator:
                 top_weighted_subcomponents=enhanced_data.get('top_weighted_subcomponents') if enhanced_data else None
             )
             
-            # Log success and check if files were attached
-            self.logger.info(f"[DIAGNOSTICS] [ALERT_SENT] [TXN:{transaction_id}][SIG:{signal_id}] Alert sent successfully for {symbol}")
-            
-            # Send PDF file as a separate message immediately after the alert, if not included directly in the alert
-            if files and hasattr(self.alert_manager, 'send_discord_webhook_message'):
-                webhook_message = {
-                    'content': f"📑 PDF report for {symbol} {direction} signal (score: {score:.1f})",
-                    'username': "Virtuoso Reports"
-                }
-                
-                # Log the separate PDF file attachment attempt
-                self.logger.info(f"[DIAGNOSTICS] [PDF_ATTACHMENT] [TXN:{transaction_id}][SIG:{signal_id}] Sending PDF report as separate message")
-                
-                await self.alert_manager.send_discord_webhook_message(webhook_message, files=files)
-                self.logger.info(f"[DIAGNOSTICS] [PDF_ATTACHMENT] [TXN:{transaction_id}][SIG:{signal_id}] PDF report sent as separate message")
-            
+            # Log success - PDF attachment is handled automatically by AlertManager
+            self.logger.info(f"[DIAGNOSTICS] [ALERT_SENT] [TXN:{transaction_id}][SIG:{signal_id}] Alert sent successfully for {symbol} (PDF handled by AlertManager)")
             self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}] Alert sent successfully for {symbol}")
         except Exception as e:
             self.logger.error(f"[DIAGNOSTICS] [ALERT_ERROR] [TXN:{transaction_id}][SIG:{signal_id}] ERROR: Error sending confluence alert: {str(e)}")
@@ -907,1530 +865,1072 @@ class SignalGenerator:
 
     def _collect_indicator_results(self, indicators: Dict[str, Any]) -> Dict[str, Any]:
         """Collect detailed indicator results for formatted alerts."""
-        return {
-            'volume': {
-                'components': self._extract_volume_components(indicators),
-                'interpretation': self._interpret_volume(indicators.get('volume_score', 50), indicators)
-            },
-            'orderflow': {
-                'components': self._extract_orderflow_components(indicators),
-                'interpretation': self._interpret_orderflow(indicators.get('orderflow_score', 50), indicators)
-            },
-            'orderbook': {
-                'components': self._extract_orderbook_components(indicators),
-                'interpretation': self._interpret_orderbook(indicators.get('orderbook_score', 50), indicators)
-            },
-            'technical': {
-                'components': self._extract_technical_components(indicators),
-                'interpretation': self._interpret_technical(indicators.get('technical_score', indicators.get('momentum_score', 50)), indicators)
-            },
-            'sentiment': {
-                'components': self._extract_sentiment_components(indicators),
-                'interpretation': self._interpret_sentiment(indicators.get('sentiment_score', 50), indicators)
-            },
-            'price_structure': {
-                'components': self._extract_price_structure_components(indicators),
-                'interpretation': self._interpret_price_structure(indicators.get('price_structure_score', indicators.get('position_score', 50)), indicators)
-            }
+        results = {}
+        
+        # Define component mappings
+        component_mappings = {
+            'volume': 'volume_score',
+            'orderflow': 'orderflow_score', 
+            'orderbook': 'orderbook_score',
+            'technical': 'technical_score',
+            'sentiment': 'sentiment_score',
+            'price_structure': 'price_structure_score'
         }
-
-    def _extract_volume_components(self, indicators: Dict[str, Any]) -> Dict[str, float]:
-        """Extract volume-related component scores from indicators."""
-        components = {}
-        # Look for specific volume indicators
-        for key, value in indicators.items():
-            if key.startswith('volume_') and isinstance(value, (int, float)) and key != 'volume_score':
-                # Convert key from volume_indicator to indicator format
-                component_name = key.replace('volume_', '')
-                components[component_name] = float(value)
         
-        # Add some default components if none found
-        if not components:
-            components = {
-                'volume_delta': indicators.get('volume_delta', 75.0),
-                'cmf': indicators.get('cmf', 100.0),
-                'adl': indicators.get('adl', 50.7)
-            }
-        
-        return components
-
-    def _extract_orderflow_components(self, indicators: Dict[str, Any]) -> Dict[str, float]:
-        """Extract orderflow-related component scores from indicators."""
-        components = {}
-        # Look for specific orderflow indicators
-        for key, value in indicators.items():
-            if key.startswith('orderflow_') and isinstance(value, (int, float)) and key != 'orderflow_score':
-                component_name = key.replace('orderflow_', '')
-                components[component_name] = float(value)
-        
-        # Add some default components if none found
-        if not components:
-            components = {
-                'trade_flow_score': indicators.get('trade_flow_score', 75.07),
-                'imbalance_score': indicators.get('imbalance_score', 71.67),
-                'cvd': indicators.get('cvd', 57.42)
-            }
-        
-        return components
-
-    def _extract_orderbook_components(self, indicators: Dict[str, Any]) -> Dict[str, float]:
-        """Extract orderbook-related component scores from indicators."""
-        components = {}
-        # Look for specific orderbook indicators
-        for key, value in indicators.items():
-            if key.startswith('orderbook_') and isinstance(value, (int, float)) and key != 'orderbook_score':
-                component_name = key.replace('orderbook_', '')
-                components[component_name] = float(value)
-        
-        # Add some default components if none found
-        if not components:
-            components = {
-                'support_resistance': indicators.get('support_resistance', 100.0),
-                'price_impact': indicators.get('price_impact', 99.99),
-                'liquidity': indicators.get('liquidity', 78.69)
-            }
-        
-        return components
-
-    def _extract_technical_components(self, indicators: Dict[str, Any]) -> Dict[str, float]:
-        """Extract technical indicators from the provided data."""
-        return {
-            'rsi': indicators.get('rsi', 50.0),
-            'macd': indicators.get('macd', 50.0),
-            'ao': indicators.get('ao', 50.0),
-            'williams_r': indicators.get('williams_r', 50.0),
-            'atr': indicators.get('atr', 50.0),
-            'cci': indicators.get('cci', 50.0)
-        }
-
-    def _extract_sentiment_components(self, indicators: Dict[str, Any]) -> Dict[str, float]:
-        """Extract sentiment-related component scores from indicators."""
-        components = {}
-        # Look for specific sentiment indicators
-        for key, value in indicators.items():
-            if key.startswith('sentiment_') and isinstance(value, (int, float)) and key != 'sentiment_score':
-                component_name = key.replace('sentiment_', '')
-                components[component_name] = float(value)
-        
-        # Add some default components if none found
-        if not components:
-            components = {
-                'risk_score': indicators.get('risk_score', 56.52),
-                'funding_rate': indicators.get('funding_rate', 50.5),
-                'long_short_ratio': indicators.get('long_short_ratio', 50.0)
-            }
-        
-        return components
-
-    def _extract_price_structure_components(self, indicators: Dict[str, Any]) -> Dict[str, float]:
-        """Extract price structure-related component scores from indicators."""
-        components = {}
-        # Look for specific price structure indicators
-        for key, value in indicators.items():
-            if key.startswith('price_structure_') and isinstance(value, (int, float)) and key != 'price_structure_score':
-                component_name = key.replace('price_structure_', '')
-                components[component_name] = float(value)
-        
-        # Add some default components if none found
-        if not components:
-            components = {
-                'vwap': indicators.get('vwap', 49.15),
-                'composite_value': indicators.get('composite_value', 48.63),
-                'market_structure': indicators.get('market_structure', 45.0)
-            }
-        
-        return components
-
-    def _interpret_volume(self, score: float, indicators: Dict[str, Any] = None) -> str:
-        """Interpret volume score with detailed market insights.
-        
-        Args:
-            score: Volume score (0-100)
-            indicators: Optional indicator data for more sophisticated interpretation
-            
-        Returns:
-            Detailed market interpretation
-        """
-        # If indicators data is available, provide more nuanced analysis
-        if indicators:
-            # Extract specific volume indicators if available
-            volume_delta = indicators.get('volume_delta', indicators.get('volume_change', 0))
-            volume_sma_ratio = indicators.get('volume_sma_ratio', 0)
-            adl = indicators.get('adl_score', indicators.get('adl', 0))
-            mfi = indicators.get('mfi', 50)
-            obv = indicators.get('obv_score', indicators.get('obv', 0))
-            cmf = indicators.get('cmf', 0)
-            
-            # Check for volume-price divergence
-            price_change = indicators.get('price_change_pct', 0)
-            divergence = (volume_delta > 20 and price_change < 0) or (volume_delta < -20 and price_change > 0)
-            
-            # Check for specific volume patterns based on combination of indicators
-            if score >= 80:
-                if mfi > 80:
-                    return "Strong Bullish Volume with High MFI - Heavy Institutional Buying 📈 (Potential Breakout Setup)"
-                elif cmf > 0.2:
-                    return "Strong Bullish Volume with High CMF - Significant Money Flow Into Asset 💰 (Accumulation Phase)"
-                elif divergence:
-                    return "Bullish Volume-Price Divergence - High Volume Despite Price Decline 💹 (Potential Reversal Signal)"
-                else:
-                    return "Strong Bullish Volume - Consistent Buying Pressure Across Timeframes 📈 (Strong Accumulation)"
-                    
-            elif score >= 65:
-                if adl > 70:
-                    return "Increasing Accumulation/Distribution Line - Steady Accumulation By Smart Money 📈 (Early Bull Phase)"
-                elif volume_sma_ratio > 1.5:
-                    return "Above Average Volume Trend - Rising Interest With Bullish Bias 📊 (Growing Institutional Interest)"
-                else:
-                    return "Moderate Bullish Volume - Buying Pressure Building 📈 (Accumulation Phase)"
-                    
-            elif score >= 50:
-                if mfi > 60 and mfi < 80:
-                    return "Moderate Money Flow - Slightly Bullish Without Overextension ↗️ (Sustainable Buying)"
-                elif divergence:
-                    return "Volume-Price Alignment - Healthy Volume Supporting Price Action ⚖️ (Equilibrium)"
-                else:
-                    return "Neutral Volume Trend - Balanced Trading Flow ↔️ (Consolidation Phase)"
-                    
-            elif score >= 35:
-                if volume_sma_ratio < 0.7:
-                    return "Below Average Volume With Bearish Bias - Lack of Buying Interest 📉 (Fading Bull Trend)"
-                elif mfi < 30:
-                    return "Low Money Flow Index - Selling Pressure Increasing 📉 (Early Distribution)"
-                else:
-                    return "Moderate Bearish Volume - Gradual Selling Pressure ⬇️ (Distribution Phase Beginning)"
-                    
+        for component_name, score_key in component_mappings.items():
+            # Get component score with fallbacks
+            if component_name == 'technical':
+                component_score = indicators.get(score_key, indicators.get('momentum_score', 50))
+            elif component_name == 'price_structure':
+                component_score = indicators.get(score_key, indicators.get('position_score', 50))
             else:
-                if cmf < -0.2:
-                    return "Strong Negative Money Flow - Heavy Capital Outflow 💸 (Institutional Selling)"
-                elif volume_sma_ratio > 1.5 and price_change < -3:
-                    return "High Volume Sell-Off - Panic Selling Across All Traders 📉 (Capitulation Phase)"
-                elif divergence:
-                    return "Bearish Volume-Price Divergence - Price Rising On Decreasing Volume ⚠️ (Potential Bull Trap)"
-                else:
-                    return "Strong Bearish Volume - Persistent Selling Pressure 📉 (Active Distribution)"
-        
-        # Default interpretations (when detailed indicators aren't available)
-        if score >= 70: return "Strong Bullish Volume - Heavy Buying Flow 📈 (Accumulation)"
-        elif score >= 60: return "Moderate Bullish Volume - Increased Buying 📈 (Accumulation Phase)"
-        elif score >= 45: return "Neutral Volume - Balanced Trading ↔️ (Equilibrium)"
-        elif score >= 30: return "Moderate Bearish Volume - Increased Selling ⬇️ (Distribution Phase)"
-        else: return "Strong Bearish Volume - Heavy Selling Flow 📉 (Distribution)"
-
-    def _interpret_orderbook(self, score: float, indicators: Dict[str, Any] = None) -> str:
-        """Interpret orderbook score with market depth insights.
-        
-        Args:
-            score: Orderbook score (0-100)
-            indicators: Optional indicator data for more sophisticated interpretation
+                component_score = indicators.get(score_key, 50)
             
-        Returns:
-            Detailed market interpretation
-        """
-        if indicators:
-            # Extract specific orderbook metrics if available
-            bid_ask_ratio = indicators.get('bid_ask_ratio', 1.0)
-            liquidity_score = indicators.get('liquidity', indicators.get('liquidity_score', 50))
-            price_impact = indicators.get('price_impact', 50)
-            support_resistance = indicators.get('support_resistance', 50)
-            depth_imbalance = indicators.get('depth_imbalance', 0)
-            spread = indicators.get('spread', 0)
+            # Extract sub-components
+            extract_method = getattr(self, f"_extract_{component_name}_components", None)
+            sub_components = {}
+            if extract_method:
+                sub_components = extract_method(indicators)
             
-            # Get current price
-            current_price = indicators.get('current_price', 0)
-            
-            # More sophisticated analysis based on multiple factors
-            if score >= 80:
-                if bid_ask_ratio > 2:
-                    return f"Heavy Bid Wall Dominance - Buy Orders Significantly Outweighing Asks 🧱 (Strong Support at {current_price:.2f})"
-                elif liquidity_score > 80:
-                    return "Exceptionally Deep Orderbook - High Liquidity Preventing Sharp Moves 💧 (Institutional Interest)"
-                elif support_resistance > 90:
-                    return "Major Support Level Active - Strong Buying Interest Defending Current Levels 💪 (Key Psychological Support)"
-                else:
-                    return "Strong Buy-Side Pressure Across All Depths - Robust Demand 📈 (Multiple Support Levels)"
-                    
-            elif score >= 65:
-                if price_impact < 20:
-                    return "Low Price Impact for Large Orders - Sufficient Liquidity For Institutional Entry 🛡️ (Deep Market)"
-                elif bid_ask_ratio > 1.5:
-                    return "Moderate Bid Dominance - More Buy Orders Than Sell Orders 📊 (Bullish Order Flow)"
-                else:
-                    return "Solid Buy-Side Depth - Stacked Limit Buy Orders 📈 (Building Support Structure)"
-                    
-            elif score >= 50:
-                if spread < 0.05:
-                    return "Tight Spread with Balanced Orders - High Market Efficiency ⚖️ (Liquid Trading Range)"
-                elif abs(depth_imbalance) < 0.1:
-                    return "Balanced Orderbook Depths - Equilibrium Between Buyers and Sellers ↔️ (Neutral Market Structure)"
-                else:
-                    return "Neutral Order Flow - Even Distribution of Buy and Sell Pressure ⚖️ (Range-Bound Market)"
-                    
-            elif score >= 35:
-                if bid_ask_ratio < 0.7:
-                    return "Ask-Side Dominance - Sell Orders Outweighing Buys 📉 (Overhead Resistance)"
-                elif support_resistance < 30:
-                    return "Weak Support Levels - Limited Buying Interest Below Current Price ⚠️ (Vulnerability to Breakdowns)"
-                else:
-                    return "Moderate Sell Pressure - Building Sell Orders Above Current Price ⬇️ (Forming Resistance)"
-                    
-            else:
-                if bid_ask_ratio < 0.5:
-                    return f"Heavy Ask Wall Dominance - Sell Orders Significantly Outweighing Bids 🧱 (Strong Resistance at {current_price:.2f})"
-                elif depth_imbalance < -0.5:
-                    return "Severely Imbalanced Orderbook - Overwhelming Sell Pressure 📉 (Potential Sharp Decline)"
-                elif support_resistance < 20:
-                    return "Critical Support Absence - Few Buy Orders Below Current Price 🕳️ (Air Pocket Risk)"
-                else:
-                    return "Strong Sell-Side Pressure Across All Depths - Minimal Demand 📉 (Multiple Resistance Levels)"
-        
-        # Default interpretations based solely on score
-        if score >= 70: return "Strong Buy Pressure - Large Buy Orders 📈 (Demand Zone)"
-        elif score >= 60: return "Moderate Buy Pressure - Buy Orders Stacking 📈 (Accumulation)"
-        elif score >= 45: return "Neutral Order Flow - Balanced Orders ↔️ (Range-Bound)"
-        elif score >= 30: return "Moderate Sell Pressure - Sell Orders Building ⬇️ (Supply Zone)"
-        else: return "Strong Sell Pressure - Large Sell Orders 📉 (Distribution)"
-
-    def _interpret_orderflow(self, score: float, indicators: Dict[str, Any] = None) -> str:
-        """Interpret orderflow with detailed market dynamics.
-        
-        Args:
-            score: Orderflow score (0-100)
-            indicators: Optional indicator data for more sophisticated interpretation
-            
-        Returns:
-            Detailed market interpretation
-        """
-        if indicators:
-            # Extract specific orderflow metrics
-            cvd = indicators.get('cvd', 0)
-            cvd_slope = indicators.get('cvd_slope', 0) 
-            trade_flow = indicators.get('trade_flow_score', indicators.get('trade_flow', 50))
-            aggressive_buys = indicators.get('aggressive_buys', 0)
-            aggressive_sells = indicators.get('aggressive_sells', 0)
-            trade_size = indicators.get('avg_trade_size', 0)
-            imbalance = indicators.get('imbalance_score', indicators.get('imbalance', 0))
-            
-            # Calculate buy/sell ratio if data available
-            buy_sell_ratio = 1.0
-            if aggressive_sells > 0:
-                buy_sell_ratio = aggressive_buys / aggressive_sells
-                
-            # Check for absorption patterns (high aggressive counters to market direction)
-            absorption = abs(cvd_slope) < 0.2 and max(aggressive_buys, aggressive_sells) > 0
-            
-            if score >= 80:
-                if cvd > 0.8:
-                    return "Extremely Positive Cumulative Volume Delta - Strong Buying Dominance 🚀 (Potential Breakout)"
-                elif buy_sell_ratio > 3:
-                    return "Heavy Aggressive Buying - Market Orders Absorbing All Available Asks 💫 (Strong Institutional Demand)"
-                elif trade_size > 2 and imbalance > 70:
-                    return "Large Traders Heavily Buying - Whales Entering Long Positions 🐋 (Smart Money Accumulation)"
-                else:
-                    return "Strong Bullish Order Flow - Consistent Large Buy Orders 📈 (Powerful Upward Pressure)"
-                    
-            elif score >= 65:
-                if cvd_slope > 0.5:
-                    return "Rising Cumulative Volume Delta - Consistent Buying Pressure ⬆️ (Building Momentum)"
-                elif absorption and aggressive_buys > aggressive_sells:
-                    return "Buy-Side Absorption - Limit Orders Containing Sell Pressure 🛡️ (Sellers Exhausting)"
-                else:
-                    return "Moderate Bullish Order Flow - More Market Buy Orders Than Sells 📈 (Healthy Demand)"
-                    
-            elif score >= 50:
-                if abs(cvd) < 0.2:
-                    return "Balanced Cumulative Volume Delta - Equilibrium Between Buying and Selling Forces ⚖️ (Range Trading)"
-                elif abs(buy_sell_ratio - 1.0) < 0.2:
-                    return "Even Trade Flow - Balanced Market Orders on Both Sides ↔️ (No Directional Edge)"
-                else:
-                    return "Neutral Order Flow - Mixed Trading Activity Without Clear Direction ↔️ (Consolidation Phase)"
-                    
-            elif score >= 35:
-                if cvd_slope < -0.5:
-                    return "Declining Cumulative Volume Delta - Consistent Selling Pressure ⬇️ (Building Downward Momentum)"
-                elif absorption and aggressive_sells > aggressive_buys:
-                    return "Sell-Side Absorption - Limit Orders Containing Buy Pressure 🛡️ (Buyers Exhausting)"
-                else:
-                    return "Moderate Bearish Order Flow - More Market Sell Orders Than Buys 📉 (Weakening Demand)"
-                    
-            else:
-                if cvd < -0.8:
-                    return "Extremely Negative Cumulative Volume Delta - Strong Selling Dominance 📉 (Potential Breakdown)"
-                elif buy_sell_ratio < 0.33:
-                    return "Heavy Aggressive Selling - Market Orders Absorbing All Available Bids 💥 (Strong Distribution)"
-                elif trade_size > 2 and imbalance < 30:
-                    return "Large Traders Heavily Selling - Whales Exiting Positions 🐋 (Smart Money Distribution)"
-                else:
-                    return "Strong Bearish Order Flow - Consistent Large Sell Orders 📉 (Powerful Downward Pressure)"
-        
-        # Default interpretations
-        if score >= 80:
-            return "Aggressive Buying - Large Orders Absorbing Asks 💫 (Strong Momentum)"
-        elif score >= 65:
-            return "Steady Buying Flow - Consistent Bid Support ⬆️ (Accumulation)"
-        elif score >= 55:
-            return "Mild Buying - Small Orders Stacking ↗️ (Early Trend Formation)"
-        elif score >= 45:
-            return "Mixed Flow - Balanced Buy/Sell Activity ↔️ (Range-Bound)"
-        elif score >= 35:
-            return "Mild Selling - Small Orders Hitting Bids ↘️ (Early Weakness)"
-        elif score >= 20:
-            return "Steady Selling Flow - Consistent Ask Pressure ⬇️ (Distribution)"
-        else:
-            return "Aggressive Selling - Large Orders Hitting Bids 🔻 (Strong Downside)"
-
-    def _interpret_price_structure(self, score: float, indicators: Dict[str, Any] = None) -> str:
-        """Interpret price structure with detailed market positioning.
-        
-        Args:
-            score: Position/price structure score (0-100)
-            indicators: Optional indicator data for more sophisticated interpretation
-            
-        Returns:
-            Detailed market interpretation
-        """
-        if indicators:
-            # Extract relevant position/structure indicators
-            vwap_position = indicators.get('vwap_position', 0)  # -1 to 1, where positive means price > VWAP
-            market_structure = indicators.get('market_structure', indicators.get('market_structure_score', 50))
-            key_level_proximity = indicators.get('key_level_proximity', 0)  # 0-100, higher means closer to key level
-            support_resistance = indicators.get('support_resistance', 50)
-            trend_strength = indicators.get('trend_strength', 0)
-            
-            # Get price information
-            current_price = indicators.get('current_price', 0)
-            
-            # Additional pattern indicators
-            is_inside_bar = indicators.get('is_inside_bar', False)
-            is_engulfing = indicators.get('is_engulfing', False)
-            pivot_points = indicators.get('pivot_points', {})
-            
-            if score >= 80:
-                if vwap_position > 0.5:
-                    return f"Price Well Above VWAP - Strong Bullish Position Above Value Area 📈 (High-Probability Long Setup)"
-                elif support_resistance > 80 and key_level_proximity > 80:
-                    return "Trading At Major Support Zone - Heavy Buying Interest 🛡️ (Strong Technical Foundation)"
-                elif market_structure > 80:
-                    return "Higher Highs and Higher Lows - Textbook Bullish Structure 📈 (Strong Uptrend Confirmation)"
-                else:
-                    return "Optimal Bullish Position - Multiple Technical Supports Aligned 🎯 (Strategic Long Entry Point)"
-                    
-            elif score >= 65:
-                if vwap_position > 0.1:
-                    return "Price Above VWAP - Trading Above Value Area 📈 (Bullish Edge)"
-                elif pivot_points and 'S1' in pivot_points:
-                    return f"Price Near S1 Pivot Support - Technical Bounce Zone at {pivot_points['S1']:.2f} 📊 (Dip Buying Opportunity)"
-                elif is_engulfing and market_structure > 60:
-                    return "Bullish Engulfing Pattern Within Uptrend - Key Reversal Signal 🔄 (Trend Continuation Setup)"
-                else:
-                    return "Established Support Level - Historical Demand Zone 📈 (Technical Support Structure)"
-                    
-            elif score >= 50:
-                if abs(vwap_position) < 0.1:
-                    return "Price At VWAP - Trading At Fair Value ⚖️ (Equilibrium Point)"
-                elif is_inside_bar:
-                    return "Inside Bar Pattern - Compression Before Next Move 🔄 (Volatility Contraction)"
-                elif support_resistance > 40 and support_resistance < 60:
-                    return "Trading Between Support and Resistance - Balanced Structure ↔️ (Range-Bound Environment)"
-                else:
-                    return "Neutral Price Position - No Clear Structural Advantage ⚖️ (Waiting Pattern)"
-                    
-            elif score >= 35:
-                if vwap_position < -0.1:
-                    return "Price Below VWAP - Trading Below Value Area 📉 (Bearish Edge)"
-                elif pivot_points and 'R1' in pivot_points:
-                    return f"Price Near R1 Pivot Resistance - Technical Rejection Zone at {pivot_points['R1']:.2f} 📊 (Short Opportunity)"
-                elif is_engulfing and market_structure < 40:
-                    return "Bearish Engulfing Pattern Within Downtrend - Key Reversal Signal 🔄 (Trend Continuation Setup)"
-                else:
-                    return "Approaching Overhead Resistance - Historical Supply Zone 📉 (Technical Resistance Structure)"
-                    
-            else:
-                if vwap_position < -0.5:
-                    return f"Price Well Below VWAP - Strong Bearish Position Below Value Area 📉 (High-Probability Short Setup)"
-                elif support_resistance < 20 and key_level_proximity > 80:
-                    return "Trading At Major Resistance Zone - Heavy Selling Interest 🧱 (Strong Technical Ceiling)"
-                elif market_structure < 20:
-                    return "Lower Lows and Lower Highs - Textbook Bearish Structure 📉 (Strong Downtrend Confirmation)"
-                else:
-                    return "Weak Technical Position - Multiple Resistance Levels Aligned 🎯 (Strategic Short Entry Point)"
-        
-        # Default interpretations
-        if score >= 80:
-            return "Major Support Zone - High-Value Area 💪 (Strong Accumulation Base)"
-        elif score >= 65:
-            return "Established Support - Key Price Level 📈 (Historical Demand Zone)"
-        elif score >= 55:
-            return "Minor Support - Developing Structure ⬆️ (Early Formation)"
-        elif score >= 45:
-            return "Equilibrium Zone - Price Discovery Area ↔️ (Balance Point)"
-        elif score >= 35:
-            return "Minor Resistance - Overhead Supply ⬇️ (Selling Pressure Zone)"
-        elif score >= 20:
-            return "Established Resistance - Key Price Level 📉 (Historical Supply Zone)"
-        else:
-            return "Major Resistance Zone - Distribution Area ⚠️ (Strong Supply Level)"
-
-    def _interpret_technical(self, score: float, indicators: Dict[str, Any] = None) -> str:
-        """Interpret technical momentum with trend strength analysis.
-        
-        Args:
-            score: Technical/momentum score (0-100)
-            indicators: Optional indicator data for more sophisticated interpretation
-            
-        Returns:
-            Detailed market interpretation
-        """
-        if indicators:
-            # Extract relevant technical indicators
-            rsi = indicators.get('rsi', 50)
-            macd = indicators.get('macd', 0)
-            macd_signal = indicators.get('macd_signal', 0)
-            macd_hist = indicators.get('macd_hist', 0)
-            ao = indicators.get('ao', 0)
-            stochastic = indicators.get('stoch_k', 50)
-            ema_trend = indicators.get('ema_trend', 0)  # 1 for bullish alignment, -1 for bearish, 0 for mixed
-            atr = indicators.get('atr', 0)
-            bb_width = indicators.get('bb_width', 1)  # Bollinger Band width, higher means more volatility
-            
-            # Check for MACD crossover
-            macd_crossover = (macd > macd_signal and macd_signal > 0) or (macd > 0 and macd_hist > 0)
-            
-            # Check for overbought/oversold conditions
-            overbought = rsi > 70 or stochastic > 80
-            oversold = rsi < 30 or stochastic < 20
-            
-            if score >= 80:
-                if macd_crossover and rsi > 60 and not overbought:
-                    return "Strong MACD Bullish Crossover with Rising RSI - Powerful Momentum Signal 🚀 (High Probability Uptrend)"
-                elif ao > 0.5 and ema_trend > 0:
-                    return "Awesome Oscillator Bullish with Aligned EMAs - Strong Trend Structure 📈 (Multiple Timeframe Confirmation)"
-                elif oversold and macd_hist > 0:
-                    return "Bullish Divergence From Oversold - Technical Spring Formation 🔄 (Strong Reversal Signal)"
-                else:
-                    return "Powerful Upward Momentum Across Multiple Indicators - Market Strength 🚀 (Confirmed Uptrend)"
-                    
-            elif score >= 65:
-                if macd > 0 and rsi > 50:
-                    return "Positive MACD with Bullish RSI - Healthy Momentum Development 📈 (Trending Market)"
-                elif ema_trend > 0 and bb_width < 1.2:
-                    return "Aligned EMAs with Narrowing Bollinger Bands - Controlled Momentum Growth 📊 (Low Volatility Uptrend)"
-                else:
-                    return "Bullish Momentum with Moderating Strength - Sustainable Trend 📈 (Higher Highs/Lows Formation)"
-                    
-            elif score >= 50:
-                if abs(macd) < 0.1 and abs(rsi - 50) < 10:
-                    return "Neutral MACD and RSI - Technical Equilibrium ⚖️ (Momentum Consolidation)"
-                elif bb_width < 0.7:
-                    return "Contracting Bollinger Bands - Low Volatility Compression 🔄 (Breakout Pending)"
-                else:
-                    return "Mixed Technical Signals - Balanced Momentum Indicators ↔️ (Sideways Pattern)"
-                    
-            elif score >= 35:
-                if macd < 0 and rsi < 50:
-                    return "Negative MACD with Bearish RSI - Deteriorating Momentum 📉 (Weakening Price Action)"
-                elif ema_trend < 0 and bb_width < 1.2:
-                    return "Bearish EMA Alignment with Narrowing Bollinger Bands - Controlled Downward Movement 📊 (Low Volatility Downtrend)"
-                else:
-                    return "Bearish Momentum Building - Early Trend Deterioration 📉 (Lower Highs Formation)"
-                    
-            else:
-                if macd < 0 and macd < macd_signal and rsi < 40:
-                    return "Strong MACD Bearish Crossover with Declining RSI - Powerful Momentum Breakdown 📉 (High Probability Downtrend)"
-                elif ao < -0.5 and ema_trend < 0:
-                    return "Awesome Oscillator Bearish with Aligned EMAs - Strong Downtrend Structure 📉 (Multiple Timeframe Confirmation)"
-                elif overbought and macd_hist < 0:
-                    return "Bearish Divergence From Overbought - Technical Exhaustion 🔄 (Strong Reversal Signal)"
-                else:
-                    return "Powerful Downward Momentum Across Multiple Indicators - Market Weakness 📉 (Confirmed Downtrend)"
-        
-        # Default interpretations
-        if score >= 80:
-            return "Powerful Upward Momentum - Strong Trend Force 🚀 (Breakout Phase)"
-        elif score >= 65:
-            return "Bullish Momentum - Trend Continuation 📈 (Higher Highs/Lows)"
-        elif score >= 55:
-            return "Rising Momentum - Early Trend Phase ⬆️ (Building Strength)"
-        elif score >= 45:
-            return "Neutral Momentum - Sideways Movement ↔️ (Consolidation)"
-        elif score >= 35:
-            return "Falling Momentum - Early Weakness ⬇️ (Losing Steam)"
-        elif score >= 20:
-            return "Bearish Momentum - Trend Continuation 📉 (Lower Highs/Lows)"
-        else:
-            return "Strong Downward Force - Accelerating Decline 💥 (Breakdown Phase)"
-
-    def _interpret_sentiment(self, score: float, indicators: Dict[str, Any] = None) -> str:
-        """Interpret sentiment with market psychology insights.
-        
-        Args:
-            score: Sentiment score (0-100)
-            indicators: Optional indicator data for more sophisticated interpretation
-            
-        Returns:
-            Detailed market interpretation
-        """
-        if indicators:
-            # Extract relevant sentiment indicators
-            funding_rate = indicators.get('funding_rate', 0)  # Positive means longs pay shorts
-            long_short_ratio = indicators.get('long_short_ratio', 1.0)  # >1 means more longs than shorts
-            risk_score = indicators.get('risk_score', 50)
-            fear_greed = indicators.get('fear_greed_index', 50)
-            option_sentiment = indicators.get('option_put_call_ratio', 1.0)  # <1 means more calls than puts
-            liquidations = indicators.get('liquidations', {})
-            
-            # Calculate liquidation imbalance if data is available
-            liq_imbalance = 0
-            if 'longs' in liquidations and 'shorts' in liquidations:
-                longs = liquidations.get('longs', 0)
-                shorts = liquidations.get('shorts', 0)
-                total = max(longs + shorts, 1)
-                liq_imbalance = (longs - shorts) / total  # -1 to 1, positive means more longs liquidated
-            
-            if score >= 80:
-                if funding_rate < -0.01 and long_short_ratio > 1.5:
-                    return "Negative Funding Rate Despite Long Bias - Contrarian Bullish Signal 🔄 (Shorts Paying Longs)"
-                elif fear_greed < 30 and long_short_ratio > 1.0:
-                    return "Extreme Fear With Accumulation - Strong Contrarian Buy Signal 💹 (Market Capitulation)"
-                elif option_sentiment < 0.7:
-                    return "Heavy Call Option Buying - Strong Bullish Conviction in Derivatives Market 📈 (Leveraged Upside Bets)"
-                else:
-                    return "Extremely Bullish Sentiment Metrics - Market Confidence Across Indicators 🚀 (FOMO Cycle Beginning)"
-                    
-            elif score >= 65:
-                if funding_rate > 0 and long_short_ratio > 1.2:
-                    return "Positive Funding With Healthy Long Interest - Sustainable Bullish Sentiment 📈 (Strong Hands Holding)"
-                elif fear_greed > 40 and fear_greed < 60:
-                    return "Balanced Fear/Greed With Bullish Bias - Rational Optimism 📊 (Healthy Market Psychology)"
-                else:
-                    return "Confidently Bullish Without Euphoria - Positive Market Outlook 📈 (Constructive Sentiment)"
-                    
-            elif score >= 50:
-                if abs(funding_rate) < 0.005:
-                    return "Neutral Funding Rate - Balanced Derivatives Positioning ⚖️ (No Overcrowding)"
-                elif abs(liq_imbalance) < 0.1:
-                    return "Balanced Liquidations - No Capitulation On Either Side ⚖️ (Stable Market Positioning)"
-                else:
-                    return "Neutral Market Sentiment - Mixed Signals Without Clear Bias ↔️ (Wait And See Approach)"
-                    
-            elif score >= 35:
-                if funding_rate < 0 and long_short_ratio < 0.8:
-                    return "Negative Funding With Bearish Positioning - Cautious Market Approach 📉 (Risk-Off Sentiment)"
-                elif fear_greed > 60:
-                    return "Elevated Greed Index - Early Warning Sign of Complacency ⚠️ (Potential Overextension)"
-                else:
-                    return "Mildly Bearish Sentiment Metrics - Growing Market Concerns 📉 (Defensive Positioning)"
-                    
-            else:
-                if funding_rate > 0.01 and long_short_ratio < 0.7:
-                    return "Positive Funding Rate Despite Short Bias - Contrarian Bearish Signal 🔄 (Longs Paying Shorts)"
-                elif fear_greed > 70 and long_short_ratio < 1.0:
-                    return "Extreme Greed With Distribution - Strong Contrarian Sell Signal 📉 (Market Euphoria)"
-                elif option_sentiment > 1.5:
-                    return "Heavy Put Option Buying - Strong Bearish Conviction in Derivatives Market 📉 (Leveraged Downside Protection)"
-                else:
-                    return "Extremely Bearish Sentiment Metrics - Market Fear Dominant Across Indicators 📉 (Capitulation Phase)"
-        
-        # Default interpretations
-        if score >= 80:
-            return "Extremely Bullish - Strong Market Confidence 🚀 (FOMO Phase)"
-        elif score >= 65:
-            return "Confidently Bullish - Positive Expectations 📈 (Uptrend Bias)"
-        elif score >= 55:
-            return "Mildly Bullish - Cautious Optimism ⬆️ (Building Confidence)"
-        elif score >= 45:
-            return "Market Equilibrium - Mixed Sentiment ⚖️ (Wait and See)"
-        elif score >= 35:
-            return "Mildly Bearish - Growing Concerns ⬇️ (Risk-Off Bias)"
-        elif score >= 20:
-            return "Confidently Bearish - Negative Outlook 📉 (Risk Aversion)"
-        else:
-            return "Extremely Bearish - Market Fear Dominant 💥 (Capitulation Risk)"
-
-    async def generate_signals(self, market_data: Dict[str, Any], analysis: Dict[str, Any], symbol: str = None) -> List[Dict[str, Any]]:
-        """Generate trading signals based on market data and analysis.
-        
-        Args:
-            market_data: Dictionary containing market data
-            analysis: Dictionary containing analysis results
-            symbol: Optional symbol override
-            
-        Returns:
-            List of signal dictionaries
-        """
-        try:
-            self.logger.info("🚨 SIGNAL GENERATOR: === Generating Signals ===")
-            self.logger.debug(f"🚨 SIGNAL GENERATOR: Input - Market Data Keys: {market_data.keys()}")
-            self.logger.debug(f"🚨 SIGNAL GENERATOR: Input - Analysis Keys: {analysis.keys()}")
-            
-            # Get symbol from market data or use override
-            symbol = symbol or market_data.get('symbol', 'UNKNOWN')
-            self.logger.info(f"🚨 SIGNAL GENERATOR: Generating signals for {symbol}")
-            
-            # Get processor instance
-            processor = await self.processor
-            
-            # Process raw data
-            processed_data = await processor.process(market_data)
-            self.logger.info(f"🚨 SIGNAL GENERATOR: Processed market data for {symbol}")
-            
-            # Calculate all indicator scores
-            self.logger.info(f"🚨 SIGNAL GENERATOR: Calculating indicator scores for {symbol}")
-            indicators = {
-                'momentum': await self.technical_indicators.calculate(processed_data),
-                'volume': await self.volume_indicators.calculate(processed_data),
-                'orderflow': await self.orderflow_indicators.calculate(processed_data),
-                'orderbook': await self.orderbook_indicators.calculate(processed_data),
-                'price_structure': await self.price_structure_indicators.calculate(processed_data),
-                'sentiment': await self.sentiment_indicators.calculate(processed_data)
-            }
-            self.logger.info(f"🚨 SIGNAL GENERATOR: Completed indicator calculations for {symbol}")
-            
-            # Combine all indicators
-            combined_indicators = {
-                'symbol': symbol,
-                'timestamp': datetime.utcnow(),
-                'current_price': processed_data.get('price', 0),
-                'volume_24h': processed_data.get('volume_24h', 0),
-                'funding_rate': processed_data.get('funding_rate', 0),
-                'volatility': processed_data.get('volatility', 0),
-                'timeframe': processed_data.get('timeframe', '1m'),
-                'session': processed_data.get('session', 'unknown'),
-                'market_type': processed_data.get('market_type', 'unknown'),
-                'volatility_regime': processed_data.get('volatility_regime', 'unknown'),
-            }
-            
-            # Add individual scores
-            for category, scores in indicators.items():
-                combined_indicators.update({
-                    f"{category}_score": scores.get('score', 50.0),
-                    **{f"{category}_{k}": v for k, v in scores.items() if k != 'score'}
-                })
-            
-            # Generate final signal
-            self.logger.info(f"🚨 SIGNAL GENERATOR: Generating final signal for {symbol}")
-            signal_result = await self.generate_signal(combined_indicators)
-            
-            if signal_result:
-                self.logger.info(f"🚨 SIGNAL GENERATOR: Generated {signal_result.get('signal', 'UNKNOWN')} signal for {symbol} with score {signal_result.get('score', 0):.2f}")
-                
-                # Check alert manager
-                if not self.alert_manager:
-                    self.logger.error(f"🚨 SIGNAL GENERATOR: Alert manager not available for {symbol} - alerts won't be sent")
-                else:
-                    self.logger.info(f"🚨 SIGNAL GENERATOR: Alert manager available with handlers: {self.alert_manager.handlers if hasattr(self.alert_manager, 'handlers') else 'No handlers'}")
-            else:
-                self.logger.info(f"🚨 SIGNAL GENERATOR: No signal generated for {symbol}")
-            
-            return [signal_result]
-            
-        except Exception as e:
-            logger.error(f"🚨 SIGNAL GENERATOR: Error generating signals: {str(e)}")
-            logger.error(traceback.format_exc())
-            raise RuntimeError(f"Failed to generate signals: {str(e)}") from e
-
-    async def process_signal(self, signal_data: Dict[str, Any]) -> None:
-        """
-        Process a trading signal and send alerts.
-        
-        This method standardizes and validates the signal data, performs post-processing,
-        and dispatches the signal to the appropriate handlers (alerts, database, etc).
-        
-        Args:
-            signal_data: Dictionary containing the signal data
-        """
-        try:
-            # Generate unique ID for this signal
-            signal_id = str(uuid4())[:8]
-            transaction_id = signal_data.get('transaction_id', 'unknown')
-            
-            self.logger.info(f"[TXN:{transaction_id}] Starting signal processing with signal_id={signal_id}")
-            
-            # Debug log received signal data keys
-            self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] Received signal data keys: {list(signal_data.keys())}")
-            
-            # Standardize field names
-            self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] Standardizing signal data")
-            standardized_data = self._standardize_signal_data(signal_data)
-            
-            # Validate signal data with Pydantic model
-            self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] Validating with Pydantic model")
+            # Use InterpretationGenerator for interpretation
             try:
-                validated_data = SignalData(**standardized_data)
-                self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}] Signal data validated for {validated_data.symbol}")
-            except ValidationError as e:
-                self.logger.error(f"[TXN:{transaction_id}][SIG:{signal_id}] Validation error: {str(e)}")
-                raise
-            
-            # Extract key data for processing
-            symbol = validated_data.symbol
-            score = validated_data.score
-            price = validated_data.price
-            components = validated_data.components
-            reliability = validated_data.reliability  # Use the validated reliability
-            
-            # Extract results data from signal_data
-            results = signal_data.get('results', {})
-            
-            # If results is empty but we have a 'debug' field with raw component results, use that
-            if not results and 'debug' in signal_data and 'results' in signal_data['debug']:
-                results = signal_data['debug']['results']
-                self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] Using results from debug.results field")
-                
-            # Determine signal direction
-            direction = signal_data.get('direction', 'NEUTRAL').upper()
-            if score >= self.thresholds['buy']:
-                direction = "BUY"
-            elif score <= self.thresholds['sell']:
-                direction = "SELL"
-            else:
-                # Default to direction from signal data or leave as NEUTRAL
-                pass
-                
-            self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}] Processing {direction} signal for {symbol} with score {score}")
-            standardized_data['signal'] = direction  # Update signal with final direction
-
-            # Get components 
-            self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] Components: {list(components.keys())}")
-            self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] Results: {list(results.keys() if isinstance(results, dict) else [])}")
-            
-            # Generate PDF report if possible
-            self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}] Generating PDF report for {symbol}")
-            pdf_path = None
-            json_path = None
-            
-            try:
-                # Try to get OHLCV data for the symbol
-                ohlcv_data = await self._fetch_ohlcv_data(symbol)
-                
-                if ohlcv_data is not None:
-                    # Generate report with OHLCV data
-                    try:
-                        # Get the coroutine result
-                        result = await self.report_manager.generate_and_attach_report(
-                            signal_data={
-                                'symbol': symbol,
-                                'score': score,
-                                'signal_type': direction,
-                                'price': price,
-                                'components': components,
-                                'results': results,
-                                'reliability': reliability
-                            },
-                            ohlcv_data=ohlcv_data
-                        )
-                        
-                        # Check if we need to await again (double-awaiting pattern)
-                        if asyncio.iscoroutine(result):
-                            result = await result
-                        
-                        # Initialize default values
-                        success = False
-                        pdf_path = None
-                        json_path = None
-                        
-                        # Safely extract tuple values if available
-                        if isinstance(result, tuple):
-                            if len(result) >= 1:
-                                success = result[0]
-                            if len(result) >= 2:
-                                pdf_path = result[1]
-                            if len(result) >= 3:
-                                json_path = result[2]
-                        
-                        # Check if PDF was generated successfully
-                        if success and pdf_path and os.path.exists(pdf_path):
-                            self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}] PDF report generated at {pdf_path}")
-                        else:
-                            self.logger.warning(f"[TXN:{transaction_id}][SIG:{signal_id}] PDF report generation failed or not found")
-                            pdf_path = None
-                    except Exception as e:
-                        self.logger.error(f"[TXN:{transaction_id}][SIG:{signal_id}] Error generating PDF report: {str(e)}")
-                        self.logger.debug(traceback.format_exc())
-                        success = False
-                        pdf_path = None
-                        json_path = None
-                else:
-                    self.logger.warning(f"[TXN:{transaction_id}][SIG:{signal_id}] No OHLCV data found for {symbol}")
-                    
-                    # Generate report without OHLCV data
-                    try:
-                        # Get the coroutine result
-                        result = await self.report_manager.generate_and_attach_report(
-                            signal_data={
-                                'symbol': symbol,
-                                'score': score,
-                                'signal_type': direction,
-                                'price': price,
-                                'components': components,
-                                'results': results,
-                                'reliability': reliability
-                            }
-                        )
-                        
-                        # Check if we need to await again (double-awaiting pattern)
-                        if asyncio.iscoroutine(result):
-                            result = await result
-                        
-                        # Initialize default values
-                        success = False
-                        pdf_path = None
-                        json_path = None
-                        
-                        # Safely extract tuple values if available
-                        if isinstance(result, tuple):
-                            if len(result) >= 1:
-                                success = result[0]
-                            if len(result) >= 2:
-                                pdf_path = result[1]
-                            if len(result) >= 3:
-                                json_path = result[2]
-                        
-                        # Check if PDF was generated successfully
-                        if success and pdf_path and os.path.exists(pdf_path):
-                            self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}] PDF report generated at {pdf_path}")
-                        else:
-                            self.logger.warning(f"[TXN:{transaction_id}][SIG:{signal_id}] PDF report generation failed or not found")
-                            pdf_path = None
-                    except Exception as e:
-                        self.logger.error(f"[TXN:{transaction_id}][SIG:{signal_id}] Error generating PDF report: {str(e)}")
-                        self.logger.debug(traceback.format_exc())
-                        success = False
-                        pdf_path = None
-                        json_path = None
-            except Exception as e:
-                self.logger.error(f"[TXN:{transaction_id}][SIG:{signal_id}] Error generating PDF report: {str(e)}")
-                self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] {traceback.format_exc()}")
-
-            # Send signal alert
-            self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}] Sending confluence alert for {symbol}")
-            
-            # Serialize data for alert sending to avoid JSON serialization issues
-            try:
-                # Prepare data for transmission
-                self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] Serializing data for alert")
-                serialized_components = serialize_for_json(components)
-                serialized_results = serialize_for_json(results)
-                
-                # Generate enhanced formatted data for the signal
-                self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] Generating enhanced formatted data")
-                enhanced_data = self._generate_enhanced_formatted_data(
-                    symbol, 
-                    score, 
-                    serialized_components, 
-                    serialized_results, 
-                    reliability,
-                    self.thresholds['buy'],
-                    self.thresholds['sell']
-                )
-                
-                # Store the enhanced data in standardized_data
-                if enhanced_data:
-                    standardized_data.update(enhanced_data)
-                    self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] Enhanced data added to signal")
-                
-                # Add transaction ID for tracing
-                alert_data = {
-                    'symbol': symbol,
-                    'confluence_score': score,
-                    'components': serialized_components,
-                    'results': serialized_results,
-                    'reliability': reliability if reliability <= 1 else reliability / 100.0,  # Normalize to 0-1 range
-                    'buy_threshold': self.thresholds['buy'],
-                    'sell_threshold': self.thresholds['sell'],
-                    'price': price,
-                    'transaction_id': transaction_id,
-                    'signal_id': signal_id
+                component_data = {
+                    'score': component_score,
+                    'signals': {},
+                    'components': sub_components,
+                    'metadata': {'raw_values': indicators}
                 }
                 
-                # Add enhanced formatted data to alert if available
-                if enhanced_data:
-                    alert_data.update(enhanced_data)
-                
-                # Add PDF path if available for attachment
-                files = None
-                if pdf_path and os.path.exists(pdf_path):
-                    files = [{
-                        'path': pdf_path,
-                        'filename': os.path.basename(pdf_path),
-                        'description': f"Report for {symbol}"
-                    }]
-                    self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] Adding PDF attachment: {pdf_path}")
-                
-                self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] Calling alert_manager.send_confluence_alert")
-                
-                # Add diagnostic logging to check alert data before sending
-                self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] ALERT DATA CHECK - Preparing to send alert:")
-                self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] - Confluence score: {score}")
-                self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] - Influential components count: {len(enhanced_data.get('influential_components', []))}")
-                self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] - Market interpretations count: {len(enhanced_data.get('market_interpretations', []))}")
-                self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] - Top weighted subcomponents count: {len(enhanced_data.get('top_weighted_subcomponents', []))}")
-                self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] - Actionable insights count: {len(enhanced_data.get('actionable_insights', []))}")
-                
-                # Check market interpretations format
-                market_interpretations = enhanced_data.get('market_interpretations', [])
-                if market_interpretations:
-                    self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] - Sample market interpretation: {market_interpretations[0]}")
-                
-                # Pass top_weighted_subcomponents to the alert manager
-                await self.alert_manager.send_confluence_alert(
-                    symbol=symbol,
-                    confluence_score=score,  # This is validated_data.score
-                    components=serialized_components,
-                    results=serialized_results,
-                    reliability=reliability,  # Use reliability directly without normalization
-                    buy_threshold=self.thresholds['buy'],
-                    sell_threshold=self.thresholds['sell'],
-                    price=price,
-                    transaction_id=transaction_id,
-                    signal_id=signal_id,
-                    influential_components=enhanced_data.get('influential_components'),
-                    market_interpretations=enhanced_data.get('market_interpretations'),
-                    actionable_insights=enhanced_data.get('actionable_insights'),
-                    top_weighted_subcomponents=enhanced_data.get('top_weighted_subcomponents')
+                interpretation = self.interpretation_generator.get_component_interpretation(
+                    component_name, component_data
                 )
-                
-                # If we have files to attach but couldn't attach them directly through send_confluence_alert,
-                # send them separately through the send_discord_webhook_message method
-                if files and hasattr(self.alert_manager, 'send_discord_webhook_message'):
-                    webhook_message = {
-                        'content': f"📑 PDF report for {symbol} {direction} signal",
-                        'username': "Virtuoso Reports"
-                    }
-                    await self.alert_manager.send_discord_webhook_message(webhook_message, files=files)
-                    self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}] PDF report sent as separate message")
-                
-                self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}] Alert sent successfully for {symbol}")
             except Exception as e:
-                self.logger.error(f"[TXN:{transaction_id}][SIG:{signal_id}] Error sending confluence alert: {str(e)}")
-                self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] {traceback.format_exc()}")
-                
-                # Try direct send_alert method as fallback
-                try:
-                    if hasattr(self.alert_manager, 'send_alert'):
-                        self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}] Using fallback alert method for {symbol}")
-                        fallback_message = f"{direction} SIGNAL: {symbol} with score {score:.2f}/100"
-                        
-                        # Add transaction info to details
-                        standardized_data['transaction_id'] = transaction_id
-                        standardized_data['signal_id'] = signal_id
-                        
-                        await self.alert_manager.send_alert(
-                            level="INFO",
-                            message=fallback_message,
-                            details=standardized_data
-                        )
-                        self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}] Fallback alert sent for {symbol}")
-                except Exception as e2:
-                    self.logger.error(f"[TXN:{transaction_id}][SIG:{signal_id}] Error in fallback alert: {str(e2)}")
-                    self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] Fallback error traceback: {traceback.format_exc()}")
+                self.logger.error(f"Error generating interpretation for {component_name}: {str(e)}")
+                interpretation = f"Score: {component_score:.1f} - {'Bullish' if component_score > 50 else 'Bearish'} bias"
             
-            # Send to registered callback if available
-            if self._on_signal_callback:
-                try:
-                    self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}] Notifying external callback")
-                    await self._on_signal_callback(standardized_data)
-                except Exception as e:
-                    self.logger.error(f"[TXN:{transaction_id}][SIG:{signal_id}] Error in signal callback: {str(e)}")
-                    self.logger.debug(traceback.format_exc())
-        except Exception as e:
-            self.logger.error(f"[TXN:{transaction_id}][SIG:{signal_id}] Error processing signal: {str(e)}")
-            self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] {traceback.format_exc()}")
+            results[component_name] = {
+                'components': sub_components,
+                'interpretation': interpretation
+            }
+        
+        return results
 
-    def _standardize_signal_data(self, signal_data: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Standardize signal data field names to ensure consistency.
-        Normalizes various field naming conventions from different sources.
+    def _extract_volume_components(self, indicators: Dict[str, Any]) -> Dict[str, float]:
+        """Extract volume-related component scores from indicators with robust error handling."""
+        components = {}
         
-        Args:
-            signal_data: Raw signal data with potentially inconsistent field names
-            
-        Returns:
-            Dict with standardized field names
-        """
-        standardized = signal_data.copy()
-        
-        # Score field standardization
-        if 'confluence_score' in standardized and 'score' not in standardized:
-            # This is the preferred case - confluence_score is present, copy to score for backward compatibility
-            standardized['score'] = standardized['confluence_score']
-        elif 'score' in standardized and 'confluence_score' not in standardized:
-            # Old format - copy to confluence_score
-            standardized['confluence_score'] = standardized['score']
-        elif 'score' not in standardized and 'confluence_score' not in standardized:
-            # Default score if both missing
-            standardized['confluence_score'] = 50.0
-            standardized['score'] = standardized['confluence_score']  # Copy from confluence_score
-        
-        # Always ensure both score fields are set to the same value
-        if 'score' in standardized and 'confluence_score' in standardized:
-            # Use confluence_score as the canonical value (changed from using 'score')
-            standardized['score'] = standardized['confluence_score']
-        
-        # Technical/momentum score standardization
-        if 'technical_score' in standardized and 'momentum_score' not in standardized:
-            standardized['momentum_score'] = standardized['technical_score']
-        elif 'momentum_score' in standardized and 'technical_score' not in standardized:
-            standardized['technical_score'] = standardized['momentum_score']
-            
-        # Position/price structure score standardization
-        if 'position_score' in standardized and 'price_structure_score' not in standardized:
-            standardized['price_structure_score'] = standardized['position_score']
-        elif 'price_structure_score' in standardized and 'position_score' not in standardized:
-            standardized['position_score'] = standardized['price_structure_score']
-            
-        # Direction/signal standardization
-        if 'direction' in standardized:
-            direction = standardized['direction'].upper()
-            if direction in ['BUY', 'SELL', 'NEUTRAL'] and 'signal' not in standardized:
-                standardized['signal'] = direction
-        
-        # Ensure components dictionary exists
-        if 'components' not in standardized:
-            standardized['components'] = {}
-            # Try to build components from individual scores
-            component_keys = [
-                ('technical_score', 'technical'), 
-                ('momentum_score', 'technical'),
-                ('volume_score', 'volume'),
-                ('orderflow_score', 'orderflow'),
-                ('orderbook_score', 'orderbook'),
-                ('sentiment_score', 'sentiment'),
-                ('price_structure_score', 'price_structure'),
-                ('position_score', 'price_structure')
-            ]
-            
-            for source_key, target_key in component_keys:
-                if source_key in standardized and standardized.get(source_key) is not None:
-                    standardized['components'][target_key] = standardized[source_key]
-        
-        return standardized
-
-    def _resolve_price(self, signal_data: Dict[str, Any], signal_id: str) -> float:
-        """
-        Resolve price using the centralized utility function.
-        
-        Args:
-            signal_data: Signal data dictionary
-            signal_id: Logging identifier for tracing
-            
-        Returns:
-            Resolved price value or None if not available
-        """
-        symbol = signal_data.get('symbol', 'UNKNOWN')
-        price = resolve_price(signal_data, symbol)
-        
-        if price is not None:
-            self.logger.info(f"[{signal_id}] Resolved price for {symbol}: {price}")
-            return price
-        else:
-            self.logger.warning(f"[{signal_id}] Failed to resolve price for {symbol}")
-            return None
-
-    def _calculate_reliability(self, signal_data: Dict[str, Any]) -> float:
-        """Calculate reliability based on various factors.
-        
-        Calculates reliability score (0-100) based on:
-        1. Component agreement (standard deviation of scores)
-        2. Data quality
-        3. Signal strength
-        
-        Returns:
-            float: Reliability score between 0 and 100
-        """
         try:
-            # Get component scores
-            components = signal_data.get('components', {})
+            # Input validation
+            if not isinstance(indicators, dict):
+                self.logger.error(f"Invalid indicators input type: {type(indicators)}")
+                return {}
+            
+            # First, check if we have the nested volume indicator structure from actual analysis
+            volume_data = indicators.get('volume', {})
+            if isinstance(volume_data, dict) and 'components' in volume_data:
+                # Use the actual calculated component scores
+                actual_components = volume_data['components']
+                if isinstance(actual_components, dict):
+                    for key, value in actual_components.items():
+                        if isinstance(value, (int, float)) and not np.isnan(value) and np.isfinite(value):
+                            if 0 <= value <= 100:  # Validate range
+                                components[key] = float(value)
+                    
+                    # If we got actual components, return them
+                    if components:
+                        self.logger.debug(f"Using actual volume components: {components}")
+                        return components
+            
+            # Second, look for direct volume indicators in the results
+            for key, value in indicators.items():
+                if key.startswith('volume_') and isinstance(value, (int, float)) and key != 'volume_score':
+                    # Convert key from volume_indicator to indicator format
+                    component_name = key.replace('volume_', '')
+                    if not np.isnan(value) and np.isfinite(value) and 0 <= value <= 100:
+                        components[component_name] = float(value)
+            
+            # Third, look for volume-related indicators with common names (avoid duplicates)
+            volume_indicators = {
+                'volume_delta': indicators.get('volume_delta'),
+                'cmf': indicators.get('cmf'),  # Chaikin Money Flow
+                'adl': indicators.get('adl'),  # Accumulation/Distribution Line
+                'obv': indicators.get('obv'),  # On-Balance Volume
+                'vwap': indicators.get('vwap'),  # Volume Weighted Average Price
+                'pvt': indicators.get('pvt'),  # Price Volume Trend
+                'mfi': indicators.get('mfi'),  # Money Flow Index
+                'volume_oscillator': indicators.get('volume_oscillator'),
+                'volume_rate_of_change': indicators.get('volume_rate_of_change'),
+                'ease_of_movement': indicators.get('ease_of_movement')
+            }
+            
+            for key, value in volume_indicators.items():
+                if value is not None and isinstance(value, (int, float)):
+                    if not np.isnan(value) and np.isfinite(value) and 0 <= value <= 100:
+                        # Only add if not already present (avoid duplicates from prefixed keys)
+                        if key not in components:
+                            # For volume_delta, check if it was already added as 'delta'
+                            if key == 'volume_delta' and 'delta' in components:
+                                continue  # Skip adding volume_delta if delta already exists
+                            components[key] = float(value)
+            
+            # Log result
             if not components:
-                self.logger.warning("No components found for reliability calculation")
-                return 100.0  # Default to full reliability if no components
-                
-            # Calculate standard deviation of scores
-            values = list(components.values())
-            if not values:
-                self.logger.warning("No component values found for reliability calculation")
-                return 100.0
-                
-            std_dev = np.std(values)
+                self.logger.debug("No actual volume components found, returning empty dictionary")
             
-            # Calculate base reliability from standard deviation
-            # Lower std_dev = higher reliability
-            # Max std_dev considered is 50 (gives 0% reliability)
-            base_reliability = max(0.0, 100.0 - (std_dev * 2))
-            
-            # Get signal strength based on deviation from neutral
-            score = signal_data.get('score', 50.0)
-            deviation = abs(score - 50.0)
-            signal_strength = min(100.0, (deviation / 30.0) * 100)
-            
-            # Calculate final reliability
-            # Weight the components:
-            # - Base reliability (component agreement): 70%
-            # - Signal strength: 30%
-            final_reliability = (base_reliability * 0.7) + (signal_strength * 0.3)
-            
-            # Ensure result is in 0-100 range
-            final_reliability = max(0.0, min(100.0, final_reliability))
-            
-            self.logger.debug(f"Calculated reliability: {final_reliability:.2f}% (base: {base_reliability:.2f}%, strength: {signal_strength:.2f}%)")
-            
-            return final_reliability
+            return components
             
         except Exception as e:
-            self.logger.error(f"Error calculating reliability: {str(e)}")
-            self.logger.debug(f"Traceback: {traceback.format_exc()}")
-            return 100.0  # Default to full reliability on error
+            self.logger.error(f"Error in volume component extraction: {str(e)}")
+            return {}
 
-    async def _fetch_ohlcv_data(self, symbol: str, timeframe: str = '1h', limit: int = 50) -> Optional[pd.DataFrame]:
-        """Fetch OHLCV data for a symbol to use in PDF reports.
+    def _extract_orderflow_components(self, indicators: Dict[str, Any]) -> Dict[str, float]:
+        """Extract orderflow-related component scores from indicators with robust error handling."""
+        components = {}
+        
+        try:
+            # Input validation
+            if not isinstance(indicators, dict):
+                self.logger.error(f"Invalid indicators input type: {type(indicators)}")
+                return {}
+            
+            # First, check if we have the nested orderflow indicator structure from actual analysis
+            orderflow_data = indicators.get('orderflow', {})
+            if isinstance(orderflow_data, dict) and 'components' in orderflow_data:
+                # Use the actual calculated component scores
+                actual_components = orderflow_data['components']
+                if isinstance(actual_components, dict):
+                    for key, value in actual_components.items():
+                        if isinstance(value, (int, float)) and not np.isnan(value) and np.isfinite(value):
+                            if 0 <= value <= 100:  # Validate range
+                                components[key] = float(value)
+                    
+                    # If we got actual components, return them
+                    if components:
+                        self.logger.debug(f"Using actual orderflow components: {components}")
+                        return components
+            
+            # Second, look for direct orderflow indicators in the results
+            for key, value in indicators.items():
+                if key.startswith('orderflow_') and isinstance(value, (int, float)) and key != 'orderflow_score':
+                    component_name = key.replace('orderflow_', '')
+                    if not np.isnan(value) and np.isfinite(value) and 0 <= value <= 100:
+                        components[component_name] = float(value)
+            
+            # Third, look for orderflow-related indicators with common names
+            orderflow_indicators = {
+                'trade_flow_score': indicators.get('trade_flow_score'),
+                'imbalance_score': indicators.get('imbalance_score'),
+                'cvd': indicators.get('cvd'),  # Cumulative Volume Delta
+                'delta': indicators.get('delta'),
+                'buy_sell_ratio': indicators.get('buy_sell_ratio'),
+                'aggressive_fills': indicators.get('aggressive_fills'),
+                'passive_fills': indicators.get('passive_fills'),
+                'large_trades': indicators.get('large_trades'),
+                'block_trades': indicators.get('block_trades'),
+                'market_impact': indicators.get('market_impact')
+            }
+            
+            for key, value in orderflow_indicators.items():
+                if value is not None and isinstance(value, (int, float)):
+                    if not np.isnan(value) and np.isfinite(value) and 0 <= value <= 100:
+                        components[key] = float(value)
+            
+            # Log result
+            if not components:
+                self.logger.debug("No actual orderflow components found, returning empty dictionary")
+            
+            return components
+            
+        except Exception as e:
+            self.logger.error(f"Error in orderflow component extraction: {str(e)}")
+            return {}
+
+    def _extract_orderbook_components(self, indicators: Dict[str, Any]) -> Dict[str, float]:
+        """Extract orderbook-related component scores from indicators with robust error handling."""
+        components = {}
+        
+        try:
+            # Input validation
+            if not isinstance(indicators, dict):
+                self.logger.error(f"Invalid indicators input type: {type(indicators)}")
+                return {}
+            
+            # First, check if we have the nested orderbook indicator structure from actual analysis
+            orderbook_data = indicators.get('orderbook', {})
+            if isinstance(orderbook_data, dict) and 'components' in orderbook_data:
+                # Use the actual calculated component scores
+                actual_components = orderbook_data['components']
+                if isinstance(actual_components, dict):
+                    for key, value in actual_components.items():
+                        if isinstance(value, (int, float)) and not np.isnan(value) and np.isfinite(value):
+                            if 0 <= value <= 100:  # Validate range
+                                components[key] = float(value)
+                    
+                    # If we got actual components, return them
+                    if components:
+                        self.logger.debug(f"Using actual orderbook components: {components}")
+                        return components
+            
+            # Second, look for direct orderbook indicators in the results
+            for key, value in indicators.items():
+                if key.startswith('orderbook_') and isinstance(value, (int, float)) and key != 'orderbook_score':
+                    component_name = key.replace('orderbook_', '')
+                    if not np.isnan(value) and np.isfinite(value) and 0 <= value <= 100:
+                        components[component_name] = float(value)
+            
+            # Third, look for orderbook-related indicators with common names
+            orderbook_indicators = {
+                'support_resistance': indicators.get('support_resistance'),
+                'price_impact': indicators.get('price_impact'),
+                'liquidity': indicators.get('liquidity'),
+                'spread': indicators.get('spread'),
+                'depth': indicators.get('depth'),
+                'bid_ask_strength': indicators.get('bid_ask_strength'),
+                'order_imbalance': indicators.get('order_imbalance'),
+                'level_2_pressure': indicators.get('level_2_pressure'),
+                'liquidity_gaps': indicators.get('liquidity_gaps'),
+                'wall_strength': indicators.get('wall_strength')
+            }
+            
+            for key, value in orderbook_indicators.items():
+                if value is not None and isinstance(value, (int, float)):
+                    if not np.isnan(value) and np.isfinite(value) and 0 <= value <= 100:
+                        components[key] = float(value)
+            
+            # Log result
+            if not components:
+                self.logger.debug("No actual orderbook components found, returning empty dictionary")
+            
+            return components
+            
+        except Exception as e:
+            self.logger.error(f"Error in orderbook component extraction: {str(e)}")
+            return {}
+
+    def _extract_technical_components(self, indicators: Dict[str, Any]) -> Dict[str, float]:
+        """Extract technical indicators from the provided data with robust error handling."""
+        components = {}
+        
+        try:
+            # Input validation
+            if not isinstance(indicators, dict):
+                self.logger.error(f"Invalid indicators input type: {type(indicators)}")
+                return {}
+            
+            # First, check if we have the nested technical indicator structure from actual analysis
+            technical_data = indicators.get('technical', {})
+            if isinstance(technical_data, dict) and 'components' in technical_data:
+                # Use the actual calculated component scores
+                actual_components = technical_data['components']
+                if isinstance(actual_components, dict):
+                    for key, value in actual_components.items():
+                        if isinstance(value, (int, float)) and not np.isnan(value) and np.isfinite(value):
+                            if 0 <= value <= 100:  # Validate range
+                                components[key] = float(value)
+                    
+                    # If we got actual components, return them
+                    if components:
+                        self.logger.debug(f"Using actual technical components: {components}")
+                        return components
+            
+            # Second, look for direct technical indicators in the results
+            technical_indicators = {
+                'rsi': indicators.get('rsi'),
+                'macd': indicators.get('macd'),
+                'ao': indicators.get('ao'),  # Awesome Oscillator
+                'williams_r': indicators.get('williams_r'),
+                'atr': indicators.get('atr'),  # Average True Range
+                'cci': indicators.get('cci'),  # Commodity Channel Index
+                'stoch': indicators.get('stoch'),  # Stochastic
+                'bb': indicators.get('bb'),  # Bollinger Bands
+                'ema': indicators.get('ema'),  # Exponential Moving Average
+                'sma': indicators.get('sma'),  # Simple Moving Average
+                'momentum': indicators.get('momentum'),
+                'roc': indicators.get('roc'),  # Rate of Change
+                'adx': indicators.get('adx'),  # Average Directional Index
+                'ppo': indicators.get('ppo'),  # Percentage Price Oscillator
+                'ultimate_oscillator': indicators.get('ultimate_oscillator')
+            }
+            
+            for key, value in technical_indicators.items():
+                if value is not None and isinstance(value, (int, float)):
+                    if not np.isnan(value) and np.isfinite(value) and 0 <= value <= 100:
+                        components[key] = float(value)
+            
+            # Log result
+            if not components:
+                self.logger.debug("No actual technical components found, returning empty dictionary")
+            
+            return components
+            
+        except Exception as e:
+            self.logger.error(f"Error in technical component extraction: {str(e)}")
+            return {}
+
+    def _extract_sentiment_components(self, indicators: Dict[str, Any]) -> Dict[str, float]:
+        """Extract sentiment-related component scores from indicators with robust error handling."""
+        components = {}
+        
+        try:
+            # Input validation
+            if not isinstance(indicators, dict):
+                self.logger.error(f"Invalid indicators input type: {type(indicators)}")
+                return {}
+            
+            # First, check if we have the nested sentiment indicator structure from actual analysis
+            sentiment_data = indicators.get('sentiment', {})
+            if isinstance(sentiment_data, dict) and 'components' in sentiment_data:
+                # Use the actual calculated component scores
+                actual_components = sentiment_data['components']
+                if isinstance(actual_components, dict):
+                    for key, value in actual_components.items():
+                        if isinstance(value, (int, float)) and not np.isnan(value) and np.isfinite(value):
+                            if 0 <= value <= 100:  # Validate range
+                                components[key] = float(value)
+                    
+                    # If we got actual components, return them
+                    if components:
+                        self.logger.debug(f"Using actual sentiment components: {components}")
+                        return components
+            
+            # Second, look for direct sentiment indicators in the results
+            for key, value in indicators.items():
+                if key.startswith('sentiment_') and isinstance(value, (int, float)) and key != 'sentiment_score':
+                    component_name = key.replace('sentiment_', '')
+                    if not np.isnan(value) and np.isfinite(value) and 0 <= value <= 100:
+                        components[component_name] = float(value)
+            
+            # Third, look for sentiment-related indicators with common names
+            sentiment_indicators = {
+                'risk_score': indicators.get('risk_score'),
+                'funding_rate': indicators.get('funding_rate'),
+                'long_short_ratio': indicators.get('long_short_ratio'),
+                'fear_greed_index': indicators.get('fear_greed_index'),
+                'put_call_ratio': indicators.get('put_call_ratio'),
+                'volatility_index': indicators.get('volatility_index'),
+                'social_sentiment': indicators.get('social_sentiment'),
+                'news_sentiment': indicators.get('news_sentiment'),
+                'whale_sentiment': indicators.get('whale_sentiment'),
+                'institutional_flow': indicators.get('institutional_flow')
+            }
+            
+            for key, value in sentiment_indicators.items():
+                if value is not None and isinstance(value, (int, float)):
+                    if not np.isnan(value) and np.isfinite(value) and 0 <= value <= 100:
+                        components[key] = float(value)
+            
+            # Log result
+            if not components:
+                self.logger.debug("No actual sentiment components found, returning empty dictionary")
+            
+            return components
+            
+        except Exception as e:
+            self.logger.error(f"Error in sentiment component extraction: {str(e)}")
+            return {}
+
+    def _extract_price_structure_components(self, indicators: Dict[str, Any]) -> Dict[str, float]:
+        """Extract price structure-related component scores from indicators with robust error handling."""
+        components = {}
+        
+        try:
+            # Input validation
+            if not isinstance(indicators, dict):
+                self.logger.error(f"Invalid indicators input type: {type(indicators)}")
+                return {}
+            
+            # First, check if we have the nested price structure indicator structure from actual analysis
+            price_structure_data = indicators.get('price_structure', {})
+            if isinstance(price_structure_data, dict) and 'components' in price_structure_data:
+                # Use the actual calculated component scores
+                actual_components = price_structure_data['components']
+                if isinstance(actual_components, dict):
+                    for key, value in actual_components.items():
+                        if isinstance(value, (int, float)) and not np.isnan(value) and np.isfinite(value):
+                            if 0 <= value <= 100:  # Validate range
+                                components[key] = float(value)
+                    
+                    # If we got actual components, return them
+                    if components:
+                        self.logger.debug(f"Using actual price structure components: {components}")
+                        return components
+            
+            # Second, look for direct price structure indicators in the results
+            for key, value in indicators.items():
+                if key.startswith('price_structure_') and isinstance(value, (int, float)) and key != 'price_structure_score':
+                    component_name = key.replace('price_structure_', '')
+                    if not np.isnan(value) and np.isfinite(value) and 0 <= value <= 100:
+                        components[component_name] = float(value)
+            
+            # Third, look for price structure-related indicators with common names
+            price_structure_indicators = {
+                'support_resistance': indicators.get('support_resistance'),
+                'order_block': indicators.get('order_block'),
+                'trend_position': indicators.get('trend_position'),
+                'swing_structure': indicators.get('swing_structure'),
+                'composite_value': indicators.get('composite_value'),
+                'fair_value_gaps': indicators.get('fair_value_gaps'),
+                'bos_choch': indicators.get('bos_choch'),  # Break of Structure / Change of Character
+                'range_score': indicators.get('range_score'),
+                'liquidity_pools': indicators.get('liquidity_pools'),
+                'market_structure': indicators.get('market_structure'),
+                'pivot_points': indicators.get('pivot_points'),
+                'fibonacci_levels': indicators.get('fibonacci_levels')
+            }
+            
+            for key, value in price_structure_indicators.items():
+                if value is not None and isinstance(value, (int, float)):
+                    if not np.isnan(value) and np.isfinite(value) and 0 <= value <= 100:
+                        components[key] = float(value)
+            
+            # Log result
+            if not components:
+                self.logger.debug("No actual price structure components found, returning empty dictionary")
+            
+            return components
+            
+        except Exception as e:
+            self.logger.error(f"Error in price structure component extraction: {str(e)}")
+            return {}
+    
+    def _clean_interpretation_text(self, text: str) -> str:
+        """
+        Clean up malformed interpretation text by removing unwanted prefixes and duplications.
         
         Args:
-            symbol: Trading pair symbol
-            timeframe: Chart timeframe (default: 1h)
-            limit: Number of candles to fetch
+            text: Raw interpretation text that may contain prefixes like "Signal [TOKEN] [NUMBER]:"
             
         Returns:
-            DataFrame with OHLCV data or None if error
+            str: Cleaned interpretation text
         """
-        try:
-            self.logger.debug(f"Fetching OHLCV data for {symbol} ({timeframe}, {limit} candles)")
-            
-            # Get the processor instance
-            processor = await self.processor
-            
-            # Fetch OHLCV data
-            ohlcv_data = await processor.fetch_ohlcv(
-                symbol=symbol,
-                timeframe=timeframe,
-                limit=limit
-            )
-            
-            if ohlcv_data is None or len(ohlcv_data) == 0:
-                self.logger.warning(f"No OHLCV data found for {symbol}")
-                return None
-                
-            self.logger.debug(f"Retrieved {len(ohlcv_data)} OHLCV candles for {symbol}")
-            return ohlcv_data
-            
-        except Exception as e:
-            self.logger.error(f"Error fetching OHLCV data for {symbol}: {str(e)}")
-            self.logger.debug(traceback.format_exc())
-            return None
+        if not isinstance(text, str):
+            return str(text)
+        
+        import re
+        
+        # Remove "Signal [TOKEN] [NUMBER]:" patterns
+        text = re.sub(r'^Signal\s+\w+\s+\d+:\s*', '', text)
+        
+        # Remove duplicate market context patterns (more comprehensive)
+        text = re.sub(r'Under neutral market conditions:\s*Under neutral market conditions:\s*', '', text)
+        text = re.sub(r'Under (bullish|bearish) market conditions:\s*Under (bullish|bearish) market conditions:\s*', r'Under \1 market conditions: ', text)
+        
+        # Remove single market context prefixes
+        text = re.sub(r'^Under (neutral|bullish|bearish) market conditions:\s*', '', text)
+        
+        # Remove duplicate momentum/conditions patterns
+        text = re.sub(r'In current (neutral|bullish|bearish) momentum conditions:\s*In current (neutral|bullish|bearish) momentum conditions:\s*', r'In current \1 momentum conditions: ', text)
+        text = re.sub(r'In current (neutral|bullish|bearish) conditions conditions:\s*', r'In current \1 conditions: ', text)
+        text = re.sub(r'In current (neutral|bullish|bearish) momentum conditions:\s*', '', text)
+        
+        # Remove duplicate risk environment patterns
+        text = re.sub(r'In this (favorable|elevated|stable) risk environment:\s*In this (favorable|elevated|stable) risk environment:\s*', r'In this \1 risk environment: ', text)
+        text = re.sub(r'In this (favorable|elevated|stable) risk environment:\s*', '', text)
+        
+        # Remove duplicate buying/selling pressure patterns
+        text = re.sub(r'With (buying|selling) pressure evident:\s*With (buying|selling) pressure evident:\s*', r'With \1 pressure evident: ', text)
+        text = re.sub(r'With (buying|selling|typical) (pressure|participation) evident:\s*', '', text)
+        
+        # Remove duplicate sentiment patterns
+        text = re.sub(r'Given (positive|negative) market sentiment:\s*Given (positive|negative) market sentiment:\s*', r'Given \1 market sentiment: ', text)
+        text = re.sub(r'Given (positive|negative) market sentiment:\s*', '', text)
+        
+        # Clean up any remaining duplicate colons or spaces
+        text = re.sub(r':\s*:', ':', text)
+        text = re.sub(r'\s+', ' ', text)
+        text = text.strip()
+        
+        return text
 
     def _generate_enhanced_formatted_data(
         self, 
-        symbol: str, 
-        confluence_score: float, 
-        components: Dict[str, float], 
-        results: Dict[str, Any],
+        symbol: str,
+        confluence_score: float,
+        components: Dict[str, Any],
+        results: Dict[str, Any], 
         reliability: float,
         buy_threshold: float,
         sell_threshold: float
     ) -> Dict[str, Any]:
-        """Generate enhanced formatted data for signal display.
-        
-        Args:
-            symbol: Trading symbol
-            confluence_score: Overall confluence score
-            components: Component scores
-            results: Detailed analysis results
-            reliability: Reliability score (0-1)
-            buy_threshold: Buy signal threshold
-            sell_threshold: Sell signal threshold
-            
-        Returns:
-            Enhanced formatted data for display
         """
-        enhanced_data = {
-            'influential_components': [],
-            'market_interpretations': [],
-            'actionable_insights': [],
-            'top_weighted_subcomponents': []
-        }
+        Generate enhanced formatted data for Discord alerts with proper component analysis.
+        
+        This method creates detailed market interpretations, actionable insights, and 
+        identifies the top weighted subcomponents that contribute most to the confluence score.
+        """
+        enhanced_data = {}
         
         try:
-            # Normalize component weights if provided
-            weights = {}
-            total_weight = 0
+            # Generate transaction and signal IDs for tracking
+            transaction_id = str(uuid.uuid4())
+            signal_id = str(uuid.uuid4())[:8]
             
-            # Build weights dict based on component names
-            for comp_name in components:
-                # Default weight is 1 for each component
-                weights[comp_name] = 1
-                total_weight += 1
+            self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] Generating enhanced formatted data for {symbol}")
+            
+            # Determine signal direction
+            if confluence_score >= buy_threshold:
+                signal_direction = "BUY"
+            elif confluence_score <= sell_threshold:
+                signal_direction = "SELL"
+            else:
+                signal_direction = "NEUTRAL"
                 
-            # Normalize weights to sum to 1
-            weights = {k: v/total_weight for k, v in weights.items()}
-            
-            # Use the normalized weights
-            self.logger.debug(f"Component weights: {weights}")
-            
-            # Process main components
-            main_components = []
-            self.logger.debug(f"Processing {len(components)} main components")
-            
-            for component_name, component_score in components.items():
-                # Calculate weighted impact
-                weighted_impact = component_score * weights.get(component_name, 0)
+            # Determine market state based on component alignment
+            component_scores = [score for score in components.values() if isinstance(score, (int, float))]
+            if component_scores:
+                score_std = np.std(component_scores)
+                avg_score = np.mean(component_scores)
                 
-                # Format main component
-                main_component = {
-                    'name': component_name,
-                    'display_name': component_name.replace('_', ' ').title(),
-                    'score': component_score,
-                    'is_main': True,
-                    'weight': weights.get(component_name, 0)
-                }
-                
-                # Look for sub-components for this component in results
-                sub_components = []
-                if component_name in results:
-                    # Extract components field from results
-                    component_data = results[component_name]
-                    
-                    if isinstance(component_data, dict) and 'components' in component_data:
-                        sub_comp_data = component_data.get('components', {})
-                        self.logger.debug(f"Found {len(sub_comp_data)} subcomponents in results for {component_name}")
-                        
-                        # Process each sub-component
-                        for sub_name, sub_score in sub_comp_data.items():
-                            if isinstance(sub_score, (int, float)) and not pd.isna(sub_score):
-                                # Determine direction indicator
-                                indicator = '→'  # Default neutral
-                                if sub_score >= 70:
-                                    indicator = '↑'  # Bullish
-                                elif sub_score <= 30:
-                                    indicator = '↓'  # Bearish
-                                    
-                                # Calculate this subcomponent's weighted impact on overall score
-                                # Formula: (sub_score * parent_weight) / number of subs
-                                parent_weight = weights.get(component_name, 0)
-                                sub_count = len(sub_comp_data)
-                                weighted_sub_impact = 0
-                                if sub_count > 0:
-                                    weighted_sub_impact = sub_score * parent_weight
-                                
-                                # Safeguard: Cap weighted_impact to 1.0 (100%) to prevent inflated values
-                                weighted_sub_impact = min(weighted_sub_impact, 1.0)
-                                
-                                # Convert weighted_impact to percentage (0-100 range)
-                                weighted_sub_impact = weighted_sub_impact * 100
-                                
-                                # Add to sub-components list
-                                sub_component = {
-                                    'name': sub_name,
-                                    'display_name': sub_name.replace('_', ' ').title(),
-                                    'score': sub_score,
-                                    'indicator': indicator,
-                                    'is_main': False,
-                                    'parent': component_name,
-                                    'parent_display_name': component_name.replace('_', ' ').title(),
-                                    'parent_weight': parent_weight,
-                                    'weighted_impact': weighted_sub_impact
+                if score_std < 10 and avg_score > 65:
+                    market_state = "TRENDING_BULLISH"
+                elif score_std < 10 and avg_score < 35:
+                    market_state = "TRENDING_BEARISH"
+                elif score_std < 15 and 45 <= avg_score <= 55:
+                    market_state = "RANGING"
+                elif avg_score > 55:
+                    market_state = "LEANING_BULLISH"
+                elif avg_score < 45:
+                    market_state = "LEANING_BEARISH"
+                else:
+                    market_state = "MIXED"
+            else:
+                market_state = "UNKNOWN"
+            
+            # Check for conflicting signals
+            bullish_components = [name for name, score in components.items() if isinstance(score, (int, float)) and score > 60]
+            bearish_components = [name for name, score in components.items() if isinstance(score, (int, float)) and score < 40]
+            has_conflicts = len(bullish_components) > 0 and len(bearish_components) > 0
+            
+            # Generate market interpretations using InterpretationGenerator
+            raw_interpretations = []
+            
+            # Use InterpretationGenerator if available
+            if hasattr(self, 'interpretation_generator') and self.interpretation_generator:
+                try:
+                    # Component-specific interpretations
+                    for component_name, component_score in components.items():
+                        if isinstance(component_score, (int, float)):
+                            try:
+                                # Use InterpretationGenerator for detailed interpretation
+                                component_data = {
+                                    'score': component_score,
+                                    'signals': {},
+                                    'components': {},
+                                    'metadata': {'raw_values': results}
                                 }
-                                sub_components.append(sub_component)
-                
-                # Add sub-components to this main component
-                main_component['sub_components'] = sub_components
-                main_components.append(main_component)
-                
-            # Generate detailed component breakdown
-            influential_components = sorted(main_components, key=lambda x: x['weight'], reverse=True)
-            enhanced_data['influential_components'] = influential_components
-            self.logger.debug(f"Generated detailed component breakdown with {len(influential_components)} components")
-            
-            # Generate top weighted sub-components by impact
-            all_sub_components = []
-            for main_comp in main_components:
-                all_sub_components.extend(main_comp.get('sub_components', []))
-                
-            # Sort by weighted impact
-            sorted_sub_components = sorted(all_sub_components, key=lambda x: x.get('weighted_impact', 0), reverse=True)
-            enhanced_data['top_weighted_subcomponents'] = sorted_sub_components[:10]
-            self.logger.debug(f"Generated top {len(enhanced_data['top_weighted_subcomponents'])} weighted sub-components by impact")
-            
-            # Get main components sorted by score for interpretation generation
-            sorted_main_components = sorted([(c['name'], c['score']) for c in main_components], key=lambda x: x[1], reverse=True)
-            
-            # Get market interpretations
-            try:
-                # Extract interpretations from results
-                market_interpretations = []
-                
-                # Log the results for debugging
-                self.logger.debug(f"Extracting interpretations from {len(results)} result components")
-                
-                # Extract interpretations from individual component results
-                for component_name, component_data in results.items():
-                    self.logger.debug(f"Processing component {component_name} for interpretations: {type(component_data)}")
-                    if not isinstance(component_data, dict):
-                        self.logger.debug(f"Skipping non-dict component data for {component_name}: {type(component_data)}")
-                        continue
-                        
-                    # First, check if there's a direct interpretation field
-                    if 'interpretation' in component_data:
-                        interpretation_text = component_data['interpretation']
-                        self.logger.debug(f"Found interpretation for {component_name}: {type(interpretation_text)}")
-                        
-                        # Format interpretation object
-                        interpretation_obj = {
-                            'component': component_name,
-                            'display_name': component_name.replace('_', ' ').title(),
-                            'interpretation': interpretation_text
+                                
+                                # Get sub-components if available
+                                extract_method = getattr(self, f"_extract_{component_name}_components", None)
+                                if extract_method:
+                                    try:
+                                        component_data['components'] = extract_method(results)
+                                    except Exception as e:
+                                        self.logger.warning(f"Error extracting {component_name} components: {str(e)}")
+                                
+                                interpretation = self.interpretation_generator.get_component_interpretation(
+                                    component_name, component_data
+                                )
+                                
+                                raw_interpretations.append({
+                                    'component': component_name,
+                                    'display_name': component_name.replace('_', ' ').title(),
+                                    'interpretation': interpretation
+                                })
+                                
+                            except Exception as e:
+                                self.logger.warning(f"Error generating interpretation for {component_name}: {str(e)}")
+                                # Fallback to simple interpretation
+                                interpretation = self._generate_simple_interpretation(component_name, component_score)
+                                raw_interpretations.append({
+                                    'component': component_name,
+                                    'display_name': component_name.replace('_', ' ').title(),
+                                    'interpretation': interpretation
+                                })
+                    
+                    # Process interpretations through InterpretationManager if available
+                    if hasattr(self, 'interpretation_manager') and self.interpretation_manager:
+                        # Prepare market data for context
+                        market_data = {
+                            'market_overview': {
+                                'regime': 'BULLISH' if signal_direction == 'BUY' else 'BEARISH' if signal_direction == 'SELL' else 'NEUTRAL',
+                                'volatility': results.get('volatility', {}).get('atr_percentage', 2.0),
+                                'trend_strength': components.get('technical', 50.0) / 100.0,
+                                'volume_change': components.get('volume', 50.0) / 100.0
+                            },
+                            'smart_money_index': {'index': components.get('sentiment', 50.0)},
+                            'whale_activity': {'sentiment': 'BULLISH' if components.get('orderflow', 50.0) > 60 else 'BEARISH' if components.get('orderflow', 50.0) < 40 else 'NEUTRAL'},
+                            'funding_rate': {'average': results.get('funding_rate', {}).get('average', 0.0)}
                         }
                         
-                        market_interpretations.append(interpretation_obj)
-                    
-                    # Alternatively check for interpretations in signals or in a nested structure
-                    elif 'signals' in component_data:
-                        signals = component_data['signals']
-                        self.logger.debug(f"Checking signals for {component_name}: {type(signals)}")
+                        interpretation_set = self.interpretation_manager.process_interpretations(
+                            raw_interpretations, 
+                            f"confluence_{symbol}",
+                            market_data,
+                            datetime.now()
+                        )
                         
-                        # Special case for sentiment which has an 'interpretation' directly
-                        if component_name == 'sentiment' and isinstance(signals, dict) and 'interpretation' in signals:
-                            interp_data = signals['interpretation']
-                            self.logger.debug(f"Found sentiment interpretation: {type(interp_data)}")
-                            
-                            # Create interpretation object
-                            interpretation_obj = {
-                                'component': component_name,
-                                'display_name': component_name.replace('_', ' ').title(),
-                                'interpretation': interp_data
-                            }
-                            
-                            market_interpretations.append(interpretation_obj)
-                            continue
+                        # Generate enhanced synthesis with conflict detection and market state analysis
+                        enhanced_synthesis = self.interpretation_manager._generate_enhanced_synthesis(
+                            interpretation_set
+                        )
                         
-                        # Extract interpretation data from signals
-                        if isinstance(signals, dict) and 'interpretation' in signals:
-                            interp_data = signals['interpretation']
-                            
-                            # Extract message if available or use fallback
-                            if isinstance(interp_data, dict) and 'message' in interp_data:
-                                interpretation_text = interp_data['message']
-                            else:
-                                interpretation_text = str(interp_data)
-                            
-                            # Format interpretation object
-                            interpretation_obj = {
-                                'component': component_name,
-                                'display_name': component_name.replace('_', ' ').title(),
-                                'interpretation': interpretation_text
-                            }
-                            
-                            market_interpretations.append(interpretation_obj)
-                    
-                    # Check for sentiment-specific format
-                    elif component_name == 'sentiment' and 'interpretation' in component_data:
-                        interp_data = component_data['interpretation']
-                        self.logger.debug(f"Found sentiment interpretation (special case): {type(interp_data)}")
+                        # CRITICAL FIX: Pass raw interpretations to AlertManager instead of converting to strings
+                        # This allows AlertManager to properly process them through InterpretationManager
+                        market_interpretations = raw_interpretations.copy()
                         
-                        # Create interpretation object
-                        interpretation_obj = {
-                            'component': component_name,
-                            'display_name': component_name.replace('_', ' ').title(),
-                            'interpretation': interp_data
-                        }
-                        
-                        market_interpretations.append(interpretation_obj)
-                    
-                # Sort interpretations by component priority
-                component_priority = {
-                    'orderflow': 1,
-                    'technical': 2,
-                    'sentiment': 3,
-                    'orderbook': 4,
-                    'price_structure': 5,
-                    'volume': 6
-                }
-                
-                market_interpretations.sort(key=lambda x: component_priority.get(x['component'], 99))
-                            
-                # If we still don't have interpretations, add fallbacks
-                if not market_interpretations:
-                    self.logger.debug(f"No interpretations found, adding defaults")
-                    
-                    # Create default interpretations based on component scores
-                    for comp_name, comp_score in sorted_main_components[:3]:
-                        # Skip components with NaN scores
-                        if pd.isna(comp_score):
-                            continue
-                        
-                        # Generate default interpretation text
-                        if comp_score >= 70:
-                            strength = "Strong bullish signal"
-                        elif comp_score >= 60:
-                            strength = "Moderately bullish"
-                        elif comp_score >= 45:
-                            strength = "Neutral with slight bullish bias"
-                        elif comp_score >= 35:
-                            strength = "Neutral with slight bearish bias"
-                        elif comp_score >= 25:
-                            strength = "Moderately bearish"
-                        else:
-                            strength = "Strong bearish signal"
-                            
-                        default_interp = {
-                            'component': comp_name,
-                            'display_name': comp_name.replace('_', ' ').title(),
-                            'interpretation': f"{strength} with score {comp_score:.1f}"
-                        }
-                        
-                        market_interpretations.append(default_interp)
-                        self.logger.debug(f"Added default interpretation for {comp_name}")
-                
-                # Add to enhanced data
-                enhanced_data['market_interpretations'] = market_interpretations
-                self.logger.debug(f"Generated {len(market_interpretations)} market interpretations")
-                
-                # Generate actionable insights
-                # Basic trading insights based on score
-                actionable_insights = []
-                
-                # Add directional bias insight
-                if confluence_score >= buy_threshold + 5:
-                    actionable_insights.append(f"BUY BIAS: Score ({confluence_score:.2f}) above buy threshold - consider long entries")
-                elif confluence_score >= buy_threshold:
-                    actionable_insights.append(f"NEUTRAL-BULLISH BIAS: Score ({confluence_score:.2f}) approaching buy threshold - monitor for confirmation")
-                elif confluence_score <= sell_threshold - 5:
-                    actionable_insights.append(f"SELL BIAS: Score ({confluence_score:.2f}) below sell threshold - consider short entries")
-                elif confluence_score <= sell_threshold:
-                    actionable_insights.append(f"NEUTRAL-BEARISH BIAS: Score ({confluence_score:.2f}) approaching sell threshold - monitor for confirmation")
-                else:
-                    actionable_insights.append(f"NEUTRAL BIAS: Score ({confluence_score:.2f}) suggests ranging conditions - avoid directional bias")
-                
-                # Add risk assessment based on reliability and volatility
-                if reliability >= 0.9:
-                    if 'sentiment' in components and components.get('sentiment', 50) > 65:
-                        actionable_insights.append("RISK ASSESSMENT: LOW - Market conditions favorable for standard position sizing")
                     else:
-                        actionable_insights.append("RISK ASSESSMENT: MODERATE - Use standard position sizing with defined risk parameters")
-                elif reliability >= 0.7:
-                    actionable_insights.append("RISK ASSESSMENT: MODERATE - Use standard position sizing with defined risk parameters")
+                        # Use raw interpretations without InterpretationManager processing
+                        market_interpretations = raw_interpretations.copy()
+                        
+                except Exception as e:
+                    self.logger.error(f"Error processing interpretations: {str(e)}")
+                    # Fallback to simple string interpretations
+                    market_interpretations = [f"{interp['display_name']}: {interp['interpretation']}" for interp in raw_interpretations]
+            else:
+                # Fallback: Generate simple interpretations
+                market_interpretations = []
+                for component_name, component_score in components.items():
+                    if isinstance(component_score, (int, float)):
+                        interpretation = self._generate_simple_interpretation(component_name, component_score)
+                        market_interpretations.append(f"{component_name.replace('_', ' ').title()}: {interpretation}")
+            
+            # Generate actionable insights based on signal direction and market state
+            actionable_insights = []
+            
+            if signal_direction == "SELL":
+                if market_state == "TRENDING_BEARISH":
+                    actionable_insights.extend([
+                        f"🔴 Strong bearish trend confirmed - High confidence signal",
+                        f"Consider short positions with trend-following strategy",
+                        f"Trail stop losses to capture maximum downside"
+                    ])
+                elif market_state == "LEANING_BEARISH":
+                    actionable_insights.extend([
+                        f"📉 Moderate bearish bias - Standard position sizing recommended",
+                        f"Monitor for trend confirmation before increasing exposure"
+                    ])
                 else:
-                    actionable_insights.append("RISK ASSESSMENT: HIGH - Reduce position size despite bullish bias and use tighter stops")
+                    actionable_insights.extend([
+                        f"Strong bearish confluence suggests potential downward momentum",
+                        f"Consider short positions with stop loss above key resistance levels",
+                        f"Monitor volume confirmation for entry timing"
+                    ])
                 
-                # Add timing insight based on momentum and orderflow
-                if 'technical' in components and components.get('technical', 50) > 65:
-                    actionable_insights.append("TIMING: Strong directional momentum; favorable for trend-following entries")
-                elif 'orderflow' in components and components.get('orderflow', 50) > 65:
-                    actionable_insights.append("TIMING: Strong directional momentum; favorable for trend-following entries")
-                elif 'technical' in components and components.get('technical', 50) > 55:
-                    actionable_insights.append("TIMING: Moderate momentum; consider entry on pullbacks/breakouts")
+                # Add component-specific insights
+                if components.get('volume', 0) > 60:
+                    actionable_insights.append("High volume score supports sell signal strength")
+                if components.get('orderflow', 0) < 40:
+                    actionable_insights.append("Negative orderflow indicates institutional selling pressure")
+                if components.get('technical', 0) < 40:
+                    actionable_insights.append("Technical indicators align with bearish trend")
+                
+            elif signal_direction == "BUY":
+                if market_state == "TRENDING_BULLISH":
+                    actionable_insights.extend([
+                        f"🚀 Strong bullish trend confirmed - High confidence signal",
+                        f"Consider larger position sizes with trend-following strategy",
+                        f"Trail stop losses to capture maximum upside"
+                    ])
+                elif market_state == "LEANING_BULLISH":
+                    actionable_insights.extend([
+                        f"📈 Moderate bullish bias - Standard position sizing recommended",
+                        f"Monitor for trend confirmation before increasing exposure"
+                    ])
                 else:
-                    actionable_insights.append("TIMING: Declining sell pressure; potential for reversal")
+                    actionable_insights.extend([
+                        f"Strong bullish confluence suggests potential upward momentum",
+                        f"Consider long positions with stop loss below key support levels",
+                        f"Monitor volume confirmation for entry timing"
+                    ])
                 
-                # Add to enhanced data
-                enhanced_data['actionable_insights'] = actionable_insights
-                self.logger.debug(f"Generated {len(actionable_insights)} actionable insights")
+                # Add component-specific insights
+                if components.get('volume', 0) > 60:
+                    actionable_insights.append("High volume score supports buy signal strength")
+                if components.get('orderflow', 0) > 60:
+                    actionable_insights.append("Positive orderflow indicates institutional buying interest")
+                if components.get('technical', 0) > 60:
+                    actionable_insights.append("Technical indicators align with bullish trend")
                 
-            except Exception as e:
-                self.logger.error(f"Error generating interpretations: {str(e)}")
-                self.logger.debug(f"Traceback: {traceback.format_exc()}")
-                
+            else:
+                if market_state == "RANGING":
+                    actionable_insights.extend([
+                        f"📊 Range-bound market confirmed - Use range trading strategies",
+                        f"Buy near support, sell near resistance",
+                        f"Avoid breakout trades until clear direction emerges"
+                    ])
+                else:
+                    actionable_insights.extend([
+                        f"Neutral confluence suggests range-bound price action",
+                        f"Wait for clear breakout direction before entering positions",
+                        f"Consider range trading strategies between support and resistance"
+                    ])
+            
+            # Add reliability and risk management insights
+            if has_conflicts:
+                actionable_insights.append("🔴 HIGH RISK: Conflicting signals require minimal position sizing")
+            elif reliability > 0.8:
+                actionable_insights.append("✅ High reliability score increases signal confidence")
+            elif reliability < 0.5:
+                actionable_insights.append("⚠️ Low reliability suggests cautious position sizing")
+            
+            # Identify influential components (top performing components)
+            influential_components = []
+            sorted_components = sorted(
+                [(name, score) for name, score in components.items() if isinstance(score, (int, float))],
+                key=lambda x: abs(x[1] - 50),  # Sort by distance from neutral (50)
+                reverse=True
+            )
+            
+            for component_name, score in sorted_components[:3]:  # Top 3 most influential
+                influence_type = "bullish" if score > 50 else "bearish"
+                strength = abs(score - 50)
+                influence_desc = "strong" if strength > 20 else "moderate" if strength > 10 else "weak"
+                influential_components.append({
+                    'component': component_name,
+                    'score': score,
+                    'influence': f"{influence_desc} {influence_type}",
+                    'weight': self.confluence_weights.get(component_name, 1.0)
+                })
+            
+            # FIXED: Generate top weighted subcomponents with proper impact calculation
+            # This creates the data structure that the alert manager expects with accurate weighted impact
+            top_weighted_subcomponents = []
+            
+            # Calculate total weighted score for proper impact calculation
+            total_weighted_score = 0
+            component_weighted_scores = {}
+            
+            for component_name, score in components.items():
+                if isinstance(score, (int, float)):
+                    weight = self.confluence_weights.get(component_name, 1.0)
+                    weighted_score = score * weight
+                    component_weighted_scores[component_name] = weighted_score
+                    total_weighted_score += weighted_score
+            
+            # Extract subcomponents and calculate their true impact
+            for component_name in components.keys():
+                extract_method = getattr(self, f"_extract_{component_name}_components", None)
+                if extract_method:
+                    try:
+                        sub_components = extract_method(results)
+                        component_weight = self.confluence_weights.get(component_name, 1.0)
+                        component_score = components.get(component_name, 50.0)
+                        
+                        # Skip if no valid subcomponents found
+                        if not sub_components or not isinstance(sub_components, dict):
+                            continue
+                            
+                        # Calculate the component's contribution to the overall score
+                        component_contribution = component_weighted_scores.get(component_name, 0)
+                        
+                        for sub_name, sub_score in sub_components.items():
+                            if isinstance(sub_score, (int, float)):
+                                # Calculate the subcomponent's contribution to the parent component
+                                sub_component_count = len([s for s in sub_components.values() if isinstance(s, (int, float))])
+                                if sub_component_count > 0:
+                                    # Each subcomponent contributes equally to the parent component
+                                    sub_contribution_to_parent = sub_score / sub_component_count
+                                    
+                                    # Calculate the subcomponent's impact on the overall confluence score
+                                    # This is the subcomponent's contribution to its parent * parent's weight * parent's influence
+                                    weighted_impact = (sub_contribution_to_parent / 100.0) * component_weight * (component_score / 100.0) * 100
+                                    
+                                    # Create display names
+                                    parent_display_name = component_name.replace('_', ' ').title()
+                                    sub_display_name = sub_name.replace('_', ' ').title()
+                                    
+                                    # Clean up display names
+                                    if sub_display_name.endswith(' Score'):
+                                        sub_display_name = sub_display_name[:-6]
+                                    
+                                    # Determine indicator based on score
+                                    if sub_score >= 70:
+                                        indicator = "↑"  # Strong bullish
+                                    elif sub_score >= 55:
+                                        indicator = "•"  # Moderate bullish
+                                    elif sub_score >= 45:
+                                        indicator = "•"  # Neutral
+                                    elif sub_score >= 30:
+                                        indicator = "•"  # Moderate bearish
+                                    else:
+                                        indicator = "↓"  # Strong bearish
+                                    
+                                    # Only include components with meaningful impact
+                                    if weighted_impact > 0.5:  # Threshold for meaningful impact
+                                        top_weighted_subcomponents.append({
+                                            'component': f"{component_name}.{sub_name}",
+                                            'name': sub_name,  # Add name field for filtering
+                                            'display_name': sub_display_name,
+                                            'parent_display_name': parent_display_name,
+                                            'score': sub_score,
+                                            'weighted_score': sub_score * component_weight,
+                                            'weighted_impact': weighted_impact,
+                                            'weight': component_weight,
+                                            'indicator': indicator
+                                        })
+                    except Exception as e:
+                        self.logger.warning(f"Error extracting subcomponents for {component_name}: {str(e)}")
+            
+            # Sort by weighted impact (highest impact first) and limit to top 5
+            top_weighted_subcomponents.sort(key=lambda x: x['weighted_impact'], reverse=True)
+            top_weighted_subcomponents = top_weighted_subcomponents[:5]
+            
+            # Log the top weighted subcomponents for debugging
+            self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] Top weighted subcomponents for {symbol}:")
+            for i, comp in enumerate(top_weighted_subcomponents):
+                self.logger.debug(f"  {i+1}. {comp['display_name']} ({comp['parent_display_name']}): "
+                                f"Score={comp['score']:.1f}, Impact={comp['weighted_impact']:.2f}%")
+            
+            # Compile enhanced data
+            enhanced_data = {
+                'market_interpretations': market_interpretations,
+                'actionable_insights': actionable_insights,
+                'influential_components': influential_components,
+                'top_weighted_subcomponents': top_weighted_subcomponents
+            }
+            
+            self.logger.debug(f"Generated enhanced data for {symbol}: "
+                            f"{len(market_interpretations)} interpretations, "
+                            f"{len(actionable_insights)} insights, "
+                            f"{len(influential_components)} influential components, "
+                            f"{len(top_weighted_subcomponents)} weighted subcomponents")
+            
         except Exception as e:
-            self.logger.error(f"Error generating enhanced formatted data: {str(e)}")
-            self.logger.error(f"Traceback: {traceback.format_exc()}")
-            return {}
+            self.logger.error(f"Error generating enhanced formatted data for {symbol}: {str(e)}")
+            self.logger.debug(traceback.format_exc())
+            # Return minimal data on error
+            enhanced_data = {
+                'market_interpretations': [f"{symbol} confluence score: {confluence_score:.1f}"],
+                'actionable_insights': ["Monitor price action for trading opportunities"],
+                'influential_components': [],
+                'top_weighted_subcomponents': []
+            }
         
         return enhanced_data
+    
+    def _generate_simple_interpretation(self, component_name: str, score: float) -> str:
+        """Generate a simple interpretation for a component score."""
+        if component_name == 'futures_premium':
+            if score > 70:
+                return f"Strong Contango - Score: {score:.1f} - Futures trading at significant premium to spot"
+            elif score > 55:
+                return f"Contango - Score: {score:.1f} - Futures trading above spot prices"
+            elif score < 30:
+                return f"Strong Backwardation - Score: {score:.1f} - Futures trading at significant discount to spot"
+            elif score < 45:
+                return f"Backwardation - Score: {score:.1f} - Futures trading below spot prices"
+            else:
+                return f"Neutral Premium - Score: {score:.1f} - Balanced futures-spot relationship"
+        else:
+            bias = "Bullish" if score > 50 else "Bearish" if score < 50 else "Neutral"
+            strength = "Strong" if abs(score - 50) > 20 else "Moderate" if abs(score - 50) > 10 else "Weak"
+            return f"{strength} {bias} bias - Score: {score:.1f}"
+
+    def _extract_futures_premium_components(self, indicators: Dict[str, Any]) -> Dict[str, float]:
+        """Extract futures premium components from indicators data."""
+        try:
+            components = {}
+            
+            # Extract futures premium data if available
+            futures_premium = indicators.get('futures_premium', {})
+            if isinstance(futures_premium, dict) and futures_premium:  # Only process if dict has actual data
+                # Extract overall premium metrics
+                average_premium = futures_premium.get('average_premium')
+                market_status = futures_premium.get('market_status')
+                
+                # Only add market structure if we have actual market status data
+                if market_status and market_status != 'NEUTRAL':
+                    # Convert market status to numeric score
+                    status_scores = {
+                        'STRONG_CONTANGO': 85.0,
+                        'CONTANGO': 70.0,
+                        'NEUTRAL': 50.0,
+                        'BACKWARDATION': 30.0,
+                        'STRONG_BACKWARDATION': 15.0
+                    }
+                    components['market_structure'] = status_scores.get(market_status, 50.0)
+                
+                # Extract individual symbol premiums
+                premiums = futures_premium.get('premiums', {})
+                if premiums:
+                    premium_values = []
+                    contango_count = 0
+                    backwardation_count = 0
+                    
+                    for symbol, data in premiums.items():
+                        if isinstance(data, dict):
+                            premium_value = data.get('premium_value', 0.0)
+                            premium_values.append(premium_value)
+                            
+                            # Count contango vs backwardation
+                            if premium_value > 0:
+                                contango_count += 1
+                            elif premium_value < 0:
+                                backwardation_count += 1
+                    
+                    if premium_values:
+                        # Calculate premium distribution metrics
+                        avg_premium = sum(premium_values) / len(premium_values)
+                        components['average_premium'] = 50.0 + (avg_premium * 2)  # Scale to 0-100
+                        
+                        # Calculate market breadth (percentage in contango)
+                        total_symbols = len(premium_values)
+                        contango_ratio = contango_count / total_symbols if total_symbols > 0 else 0.5
+                        components['market_breadth'] = contango_ratio * 100
+                        
+                        # Calculate premium volatility (spread of premiums)
+                        if len(premium_values) > 1:
+                            premium_std = (sum((x - avg_premium) ** 2 for x in premium_values) / len(premium_values)) ** 0.5
+                            components['premium_volatility'] = min(100, max(0, 50 - (premium_std * 10)))
+                        else:
+                            components['premium_volatility'] = 50.0
+                
+                # Extract quarterly futures data
+                quarterly_futures = futures_premium.get('quarterly_futures', {})
+                if quarterly_futures:
+                    term_structure_score = 50.0
+                    
+                    # Analyze term structure for major symbols
+                    for symbol, contracts in quarterly_futures.items():
+                        if isinstance(contracts, list) and len(contracts) > 1:
+                            # Sort by expiry
+                            sorted_contracts = sorted(contracts, key=lambda x: x.get('months_to_expiry', 12))
+                            
+                            # Check if term structure is in contango (upward sloping)
+                            if len(sorted_contracts) >= 2:
+                                near_basis = float(sorted_contracts[0].get('basis', '0%').replace('%', ''))
+                                far_basis = float(sorted_contracts[-1].get('basis', '0%').replace('%', ''))
+                                
+                                if far_basis > near_basis:
+                                    term_structure_score += 10  # Contango term structure
+                                elif far_basis < near_basis:
+                                    term_structure_score -= 10  # Backwardation term structure
+                    
+                    components['term_structure'] = max(0, min(100, term_structure_score))
+                
+                # Extract funding rates correlation
+                funding_rates = futures_premium.get('funding_rates', {})
+                if funding_rates:
+                    funding_scores = []
+                    for symbol, funding_data in funding_rates.items():
+                        if isinstance(funding_data, dict):
+                            current_rate = funding_data.get('current_rate', 0.0)
+                            # Convert funding rate to score (positive funding = bullish)
+                            funding_score = 50.0 + (current_rate * 10000)  # Scale funding rate
+                            funding_scores.append(max(0, min(100, funding_score)))
+                    
+                    if funding_scores:
+                        components['funding_sentiment'] = sum(funding_scores) / len(funding_scores)
+            
+            # REMOVED: No more hardcoded fallback values - return only actual calculated components
+            if not components:
+                self.logger.debug("No actual futures premium components found, returning empty dictionary")
+            
+            return components
+            
+        except Exception as e:
+            self.logger.error(f"Error extracting futures premium components: {str(e)}")
+            return {}
+
+    async def _check_futures_premium_alerts(self, indicators: Dict[str, Any], symbol: str) -> None:
+        """Check for extreme futures premium conditions and send alerts."""
+        try:
+            futures_premium = indicators.get('futures_premium', {})
+            if not isinstance(futures_premium, dict):
+                return
+            
+            # Check market-wide conditions
+            market_status = futures_premium.get('market_status', 'NEUTRAL')
+            average_premium = futures_premium.get('average_premium', 0.0)
+            
+            # Alert for extreme market-wide conditions
+            if market_status in ['STRONG_CONTANGO', 'STRONG_BACKWARDATION']:
+                alert_type = "FUTURES_PREMIUM_EXTREME"
+                severity = "high"
+                
+                if market_status == 'STRONG_CONTANGO':
+                    message = f"🚨 EXTREME CONTANGO DETECTED\n"
+                    message += f"Market-wide average premium: {average_premium:.2f}%\n"
+                    message += f"Futures significantly overpriced vs spot - potential short opportunity"
+                else:
+                    message = f"🚨 EXTREME BACKWARDATION DETECTED\n"
+                    message += f"Market-wide average premium: {average_premium:.2f}%\n"
+                    message += f"Futures significantly underpriced vs spot - potential long opportunity"
+                
+                await self._send_alert(alert_type, message, severity)
+            
+            # Check individual symbol conditions
+            premiums = futures_premium.get('premiums', {})
+            for symbol_name, data in premiums.items():
+                if not isinstance(data, dict):
+                    continue
+                    
+                premium_value = data.get('premium_value', 0.0)
+                premium_type = data.get('premium_type', 'NEUTRAL')
+                
+                # Alert for extreme individual premiums
+                if abs(premium_value) > 5.0:  # More than 5% premium/discount
+                    alert_type = "SYMBOL_PREMIUM_EXTREME"
+                    severity = "medium"
+                    
+                    if premium_value > 5.0:
+                        message = f"📈 EXTREME CONTANGO: {symbol_name}\n"
+                        message += f"Premium: {premium_value:.2f}%\n"
+                        message += f"Futures significantly overpriced - consider shorting futures or buying spot"
+                    else:
+                        message = f"📉 EXTREME BACKWARDATION: {symbol_name}\n"
+                        message += f"Premium: {premium_value:.2f}%\n"
+                        message += f"Futures significantly underpriced - consider buying futures or shorting spot"
+                    
+                    await self._send_alert(alert_type, message, severity)
+            
+            # Check quarterly futures term structure
+            quarterly_futures = futures_premium.get('quarterly_futures', {})
+            for symbol_name, contracts in quarterly_futures.items():
+                if not isinstance(contracts, list) or len(contracts) < 2:
+                    continue
+                
+                # Sort by expiry
+                sorted_contracts = sorted(contracts, key=lambda x: x.get('months_to_expiry', 12))
+                
+                if len(sorted_contracts) >= 2:
+                    near_basis = float(sorted_contracts[0].get('basis', '0%').replace('%', ''))
+                    far_basis = float(sorted_contracts[-1].get('basis', '0%').replace('%', ''))
+                    
+                    # Check for inverted term structure (backwardation)
+                    if near_basis - far_basis > 3.0:  # Near future more than 3% above far future
+                        alert_type = "TERM_STRUCTURE_INVERTED"
+                        severity = "medium"
+                        message = f"⚠️ INVERTED TERM STRUCTURE: {symbol_name}\n"
+                        message += f"Near contract: {near_basis:.2f}% | Far contract: {far_basis:.2f}%\n"
+                        message += f"Term structure in backwardation - potential supply shortage or high demand"
+                        
+                        await self._send_alert(alert_type, message, severity)
+                    
+                    # Check for steep contango
+                    elif far_basis - near_basis > 5.0:  # Far future more than 5% above near future
+                        alert_type = "TERM_STRUCTURE_STEEP"
+                        severity = "medium"
+                        message = f"📊 STEEP CONTANGO: {symbol_name}\n"
+                        message += f"Near contract: {near_basis:.2f}% | Far contract: {far_basis:.2f}%\n"
+                        message += f"Steep upward term structure - potential oversupply or low current demand"
+                        
+                        await self._send_alert(alert_type, message, severity)
+                        
+        except Exception as e:
+            self.logger.error(f"Error checking futures premium alerts: {str(e)}")
+
+    async def _send_alert(self, alert_type: str, message: str, severity: str = "info") -> None:
+        """Send alert through the alert manager."""
+        try:
+            if self.alert_manager:
+                await self.alert_manager.send_alert(
+                    alert_type=alert_type,
+                    message=message,
+                    severity=severity,
+                    source="SignalGenerator"
+                )
+            else:
+                self.logger.warning(f"No alert manager available for {alert_type}: {message}")
+        except Exception as e:
+            self.logger.error(f"Error sending alert: {str(e)}")

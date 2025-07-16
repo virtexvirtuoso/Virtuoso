@@ -491,4 +491,265 @@ class ManipulationDetector:
         if symbol:
             self._historical_data.pop(symbol, None)
         else:
-            self._historical_data.clear() 
+            self._historical_data.clear()
+    
+    async def get_recent_alerts(self, since: datetime, limit: int = 20) -> List[Dict[str, Any]]:
+        """
+        Get recent manipulation alerts.
+        
+        Args:
+            since: Get alerts since this datetime
+            limit: Maximum number of alerts to return
+            
+        Returns:
+            List of recent manipulation alerts
+        """
+        try:
+            since_timestamp = int(since.timestamp())
+            alerts = []
+            
+            # Get alerts from manipulation history
+            for symbol, symbol_history in self._manipulation_history.items():
+                for alert_data in symbol_history:
+                    if isinstance(alert_data, dict) and alert_data.get('timestamp', 0) >= since_timestamp:
+                        alerts.append({
+                            "id": f"{symbol}_{alert_data.get('timestamp', 0)}",
+                            "timestamp": datetime.fromtimestamp(alert_data.get('timestamp', 0)).isoformat(),
+                            "symbol": symbol,
+                            "exchange": "unknown",
+                            "type": alert_data.get('manipulation_type', 'unknown'),
+                            "severity": alert_data.get('severity', 'medium'),
+                            "confidence": alert_data.get('confidence_score', 0.0),
+                            "description": alert_data.get('description', ''),
+                            "metrics": alert_data.get('metrics', {}),
+                            "price_impact": alert_data.get('metrics', {}).get('price_change_15m_pct', 0.0),
+                            "volume_anomaly": alert_data.get('metrics', {}).get('volume_spike_ratio', 0.0)
+                        })
+                    elif isinstance(alert_data, ManipulationAlert) and alert_data.timestamp >= since_timestamp:
+                        alerts.append({
+                            "id": f"{alert_data.symbol}_{alert_data.timestamp}",
+                            "timestamp": datetime.fromtimestamp(alert_data.timestamp).isoformat(),
+                            "symbol": alert_data.symbol,
+                            "exchange": "unknown",
+                            "type": alert_data.manipulation_type,
+                            "severity": alert_data.severity,
+                            "confidence": alert_data.confidence_score,
+                            "description": alert_data.description,
+                            "metrics": alert_data.metrics,
+                            "price_impact": alert_data.metrics.get('price_change_15m_pct', 0.0),
+                            "volume_anomaly": alert_data.metrics.get('volume_spike_ratio', 0.0)
+                        })
+            
+            # Sort by timestamp descending and limit results
+            alerts.sort(key=lambda x: x['timestamp'], reverse=True)
+            return alerts[:limit]
+            
+        except Exception as e:
+            self.logger.error(f"Error getting recent alerts: {e}")
+            return []
+    
+    async def get_detection_stats(self) -> Dict[str, Any]:
+        """
+        Get manipulation detection statistics.
+        
+        Returns:
+            Dictionary with detection statistics
+        """
+        try:
+            now = datetime.utcnow()
+            yesterday = now - timedelta(days=1)
+            week_ago = now - timedelta(days=7)
+            
+            yesterday_timestamp = int(yesterday.timestamp())
+            week_ago_timestamp = int(week_ago.timestamp())
+            
+            # Count alerts by time period and confidence
+            alerts_24h = 0
+            alerts_7d = 0
+            high_confidence = 0
+            medium_confidence = 0
+            low_confidence = 0
+            
+            symbol_counts = {}
+            
+            for symbol, symbol_history in self._manipulation_history.items():
+                for alert_data in symbol_history:
+                    if isinstance(alert_data, dict):
+                        timestamp = alert_data.get('timestamp', 0)
+                        confidence = alert_data.get('confidence_score', 0.0)
+                    elif isinstance(alert_data, ManipulationAlert):
+                        timestamp = alert_data.timestamp
+                        confidence = alert_data.confidence_score
+                    else:
+                        continue
+                    
+                    # Count by time periods
+                    if timestamp >= yesterday_timestamp:
+                        alerts_24h += 1
+                    if timestamp >= week_ago_timestamp:
+                        alerts_7d += 1
+                    
+                    # Count by confidence levels
+                    if confidence >= 0.85:
+                        high_confidence += 1
+                    elif confidence >= 0.7:
+                        medium_confidence += 1
+                    else:
+                        low_confidence += 1
+                    
+                    # Count by symbol
+                    symbol_counts[symbol] = symbol_counts.get(symbol, 0) + 1
+            
+            # Get top affected symbols
+            top_symbols = sorted(symbol_counts.items(), key=lambda x: x[1], reverse=True)[:10]
+            top_symbols = [{"symbol": symbol, "count": count} for symbol, count in top_symbols]
+            
+            return {
+                "alerts_24h": alerts_24h,
+                "alerts_7d": alerts_7d,
+                "high_confidence": high_confidence,
+                "medium_confidence": medium_confidence,
+                "low_confidence": low_confidence,
+                "top_symbols": top_symbols,
+                "accuracy": self.stats.get('avg_confidence', 0.0),
+                "false_positive_rate": max(0.0, 1.0 - self.stats.get('avg_confidence', 0.0)),
+                "avg_detection_time": 15.0,  # Mock value in seconds
+                "exchanges": ["unknown"],  # Mock value
+                "symbol_count": len(self._historical_data)
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error getting detection stats: {e}")
+            return {
+                "alerts_24h": 0,
+                "alerts_7d": 0,
+                "high_confidence": 0,
+                "medium_confidence": 0,
+                "low_confidence": 0,
+                "top_symbols": [],
+                "accuracy": 0.0,
+                "false_positive_rate": 0.0,
+                "avg_detection_time": 0.0,
+                "exchanges": [],
+                "symbol_count": 0
+            }
+    
+    async def analyze_symbol(self, symbol: str) -> Dict[str, Any]:
+        """
+        Analyze a specific symbol for manipulation patterns.
+        
+        Args:
+            symbol: Trading pair symbol
+            
+        Returns:
+            Analysis results for the symbol
+        """
+        try:
+            symbol = symbol.upper()
+            
+            # Get historical data for this symbol
+            historical_data = self._historical_data.get(symbol, [])
+            
+            if not historical_data:
+                return {
+                    "status": "no_data",
+                    "message": f"No historical data available for {symbol}",
+                    "manipulation_risk": "unknown",
+                    "confidence": 0.0,
+                    "last_analysis": None
+                }
+            
+            # Check if we have sufficient data
+            if len(historical_data) < self.manipulation_config.get('min_data_points', 15):
+                return {
+                    "status": "insufficient_data",
+                    "message": f"Insufficient data points for analysis ({len(historical_data)} available, need {self.manipulation_config.get('min_data_points', 15)})",
+                    "manipulation_risk": "unknown",
+                    "confidence": 0.0,
+                    "data_points": len(historical_data),
+                    "last_analysis": None
+                }
+            
+            # Analyze recent data patterns
+            recent_data = historical_data[-20:]  # Last 20 data points
+            
+            # Calculate basic metrics
+            prices = [dp['price'] for dp in recent_data if dp['price'] > 0]
+            volumes = [dp['volume'] for dp in recent_data if dp['volume'] > 0]
+            oi_values = [dp['open_interest'] for dp in recent_data if dp['open_interest'] > 0]
+            
+            if not prices:
+                return {
+                    "status": "invalid_data",
+                    "message": "No valid price data available",
+                    "manipulation_risk": "unknown",
+                    "confidence": 0.0
+                }
+            
+            # Calculate volatility and anomalies
+            price_changes = [abs(prices[i] - prices[i-1]) / prices[i-1] for i in range(1, len(prices))]
+            avg_price_change = np.mean(price_changes) if price_changes else 0.0
+            
+            volume_avg = np.mean(volumes) if volumes else 0.0
+            volume_spikes = [v for v in volumes if v > volume_avg * 2] if volume_avg > 0 else []
+            
+            # Determine manipulation risk
+            risk_factors = 0
+            risk_details = []
+            
+            if avg_price_change > 0.02:  # > 2% average price change
+                risk_factors += 1
+                risk_details.append(f"High price volatility: {avg_price_change*100:.1f}%")
+            
+            if len(volume_spikes) > 0:
+                risk_factors += 1
+                risk_details.append(f"Volume spikes detected: {len(volume_spikes)}")
+            
+            if len(oi_values) > 5:
+                oi_changes = [abs(oi_values[i] - oi_values[i-1]) / oi_values[i-1] for i in range(1, len(oi_values)) if oi_values[i-1] > 0]
+                avg_oi_change = np.mean(oi_changes) if oi_changes else 0.0
+                if avg_oi_change > 0.05:  # > 5% average OI change
+                    risk_factors += 1
+                    risk_details.append(f"High OI volatility: {avg_oi_change*100:.1f}%")
+            
+            # Calculate confidence and risk level
+            if risk_factors >= 3:
+                manipulation_risk = "high"
+                confidence = 0.8 + (risk_factors - 3) * 0.05
+            elif risk_factors >= 2:
+                manipulation_risk = "medium"
+                confidence = 0.6 + (risk_factors - 2) * 0.1
+            elif risk_factors >= 1:
+                manipulation_risk = "low"
+                confidence = 0.3 + (risk_factors - 1) * 0.15
+            else:
+                manipulation_risk = "minimal"
+                confidence = 0.1
+            
+            confidence = min(0.95, confidence)  # Cap at 95%
+            
+            return {
+                "status": "analyzed",
+                "manipulation_risk": manipulation_risk,
+                "confidence": round(confidence, 2),
+                "risk_factors": risk_factors,
+                "risk_details": risk_details,
+                "data_points": len(historical_data),
+                "analysis_period": "recent_20_points",
+                "metrics": {
+                    "avg_price_volatility": round(avg_price_change * 100, 2),
+                    "volume_spikes": len(volume_spikes),
+                    "avg_oi_volatility": round(np.mean([abs(oi_values[i] - oi_values[i-1]) / oi_values[i-1] for i in range(1, len(oi_values)) if oi_values[i-1] > 0]) * 100, 2) if len(oi_values) > 1 else 0.0
+                },
+                "last_analysis": datetime.utcnow().isoformat()
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error analyzing symbol {symbol}: {e}")
+            return {
+                "status": "error",
+                "message": f"Error analyzing symbol: {str(e)}",
+                "manipulation_risk": "unknown",
+                "confidence": 0.0,
+                "last_analysis": datetime.utcnow().isoformat()
+            } 

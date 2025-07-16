@@ -42,7 +42,7 @@ async def test_basis_analysis():
         analyzer = BasisAnalysis()
         
         # Test symbols
-        symbols = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT']
+        symbols = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT']
         
         for symbol in symbols:
             logger.info(f"\nAnalyzing {symbol} spot-futures basis...")

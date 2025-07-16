@@ -188,11 +188,13 @@ def configure_logging(config: Dict[str, Any] = None) -> None:
             'level': 'DEBUG',
             'handlers': ['console', 'file', 'error_file', 'critical_file']
         },
-        'loggers': {
+                    'loggers': {
             'urllib3': {'level': 'WARNING'},
             'websockets': {'level': 'WARNING'},
             'asyncio': {'level': 'WARNING'},
             'ccxt': {'level': 'WARNING'},
+            # Suppress aiohttp SSL cleanup timeout messages (harmless)
+            'aiohttp.client': {'level': 'WARNING'},
             # Silence matplotlib's verbose debug logs
             'matplotlib': {'level': 'WARNING'},
             'matplotlib.font_manager': {'level': 'INFO'},

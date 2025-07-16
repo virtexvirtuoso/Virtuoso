@@ -246,15 +246,15 @@ class HealthMonitor:
         
         # Background task
         self.monitoring_task = None
-        self.is_running = False
+        self.running = False
     
     async def start_monitoring(self) -> None:
         """Start the health monitoring background task."""
-        if self.is_running:
+        if self.running:
             self.logger.warning("Health monitoring is already running")
             return
         
-        self.is_running = True
+        self.running = True
         self.logger.info("Starting health monitoring")
         
         # Create the monitoring task
@@ -262,11 +262,11 @@ class HealthMonitor:
     
     async def stop_monitoring(self) -> None:
         """Stop the health monitoring background task."""
-        if not self.is_running:
+        if not self.running:
             self.logger.warning("Health monitoring is not running")
             return
         
-        self.is_running = False
+        self.running = False
         self.logger.info("Stopping health monitoring")
         
         if self.monitoring_task:
@@ -281,7 +281,7 @@ class HealthMonitor:
     async def _monitoring_loop(self) -> None:
         """Background task to monitor system health."""
         try:
-            while self.is_running:
+            while self.running:
                 operation = self.metrics_manager.start_operation("health_check")
                 
                 try:

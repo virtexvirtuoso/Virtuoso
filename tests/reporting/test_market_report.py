@@ -44,12 +44,12 @@ async def test_market_report():
     
     try:
         # Get the correct template directory path
-        template_dir = os.path.join(os.getcwd(), "templates")
+        template_dir = os.path.join(os.getcwd(), "src", "core", "reporting", "templates")
         logger.info(f"Using template directory: {template_dir}")
         
         # Set up Bybit API credentials
         bybit_api_key = 'TjaG5KducWssxy9Z1m'
-        bybit_api_secret = 'test_api_secret_placeholder'
+        bybit_api_secret = '6x6VAFOrwhc4EJJNmda7PdEYYKbcndo6povm'
         
         # Set environment variables for the exchange to use
         os.environ['BYBIT_API_KEY'] = bybit_api_key

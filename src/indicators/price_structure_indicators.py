@@ -1,26 +1,30 @@
 import logging
-from typing import Any, Dict, List, Tuple, Optional, Union
-import numpy as np
-import pandas as pd
-from pandas import Series
-from src.utils.helpers import TimeframeUtils
-from scipy.stats import gaussian_kde
-from scipy.signal import find_peaks
 import traceback
-from src.utils.error_handling import handle_indicator_error
+from typing import Dict, Any, List, Optional, Tuple, Union
+import pandas as pd
+import numpy as np
+from datetime import datetime, timedelta
 import time
+from src.utils.error_handling import handle_indicator_error
+from src.core.logger import Logger
+from .base_indicator import BaseIndicator, DebugLevel, debug_method, DebugMetrics
+from .debug_template import DebugLoggingMixin
+from src.core.analysis.indicator_utils import log_score_contributions, log_component_analysis, log_final_score, log_calculation_details
+import talib
+from sklearn.cluster import KMeans
+from scipy.signal import argrelextrema
 from sklearn.mixture import GaussianMixture
 from sklearn.cluster import DBSCAN
 from collections import defaultdict
-from .base_indicator import BaseIndicator, debug_method, DebugLevel, DebugMetrics
-from ..core.logger import Logger
-import talib
+from src.utils.helpers import TimeframeUtils
+from scipy.stats import gaussian_kde
+from scipy.signal import find_peaks
 from sklearn.cluster import KMeans
 from scipy.signal import argrelextrema
 
 logger = logging.getLogger('PriceStructureIndicators')
 
-class PriceStructureIndicators(BaseIndicator):
+class PriceStructureIndicators(BaseIndicator, DebugLoggingMixin):
     """Price-based trading indicators that analyze market structure and price action.
     
     The Market Prism Concept - Price Structure Analysis Face:
@@ -32,30 +36,35 @@ class PriceStructureIndicators(BaseIndicator):
     analysis results including component scores, signals, and interpretation.
     
     Components and weights:
-    1. Support/Resistance levels (20%)
+    1. Support/Resistance levels (16.67%)
        - Identifies key price levels where market has shown significant reaction
        - Uses historical price action to map support and resistance zones
        - Incorporates volume profile for level validation
        
-    2. Order blocks and supply/demand zones (20%)
+    2. Order blocks and supply/demand zones (16.67%)
        - Maps significant supply and demand areas
        - Identifies institutional order blocks
        - Tracks zone reaction strength and validity
        
-    3. Trend position relative to key moving averages (20%)
+    3. Trend position relative to key moving averages (16.67%)
        - Analyzes price position relative to major MAs
        - Tracks MA crossovers and alignments
        - Measures trend strength and momentum
        
-    4. Volume analysis including profile and VWAP (20%)
+    4. Volume analysis including profile and VWAP (16.67%)
        - Volume Profile analysis for price acceptance/rejection
        - VWAP deviation analysis
        - Volume node identification
        
-    5. Market structure including swing points (20%)
+    5. Market structure including swing points (16.67%)
        - Tracks higher highs/lows or lower highs/lows
        - Identifies swing points and pivots
        - Analyzes structural breaks and continuations
+       
+    6. Range analysis (16.67%)
+       - Identifies consolidation ranges and price position within them
+       - Detects sweeps/deviations, MSBs, SFPs, and untapped liquidity
+       - Incorporates MTF for comprehensive bias scoring
     
     Timeframe weights:
     - Base (1m): 40%
@@ -92,29 +101,27 @@ class PriceStructureIndicators(BaseIndicator):
         # Set indicator type before calling super().__init__
         self.indicator_type = 'price_structure'
         
-        # Default component weights
+        # Default component weights - Match the documented 6 components at 16.67% each
         default_weights = {
-            'order_block': 0.15,
-            'volume_profile': 0.25,
-            'vwap': 0.2,
-            'composite_value': 0.15,
-            'support_resistance': 0.1,
-            'market_structure': 0.15
+            'support_resistance': 1/6,
+            'order_blocks': 1/6,
+            'trend_position': 1/6,
+            'volume_profile': 1/6,
+            'market_structure': 1/6,
+            'range_analysis': 1/6
         }
         
         # Component name mapping to handle inconsistencies between config and internal names
         self.component_mapping = {
-            # Config name -> Internal calculation name
-            'order_block': 'order_blocks',
-            'volume_profile': 'volume_profile',
-            'vwap': 'vwap',
-            'composite_value': 'composite_value',
+            # Config name -> Internal calculation name (simplified and consistent)
             'support_resistance': 'support_resistance',
-            # Internal calculation name -> Config name
-            'order_blocks': 'order_block',
-            'volume_analysis': 'volume_profile',
-            'trend_position': 'vwap',
-            'market_structure': 'market_structure'  # Map market_structure to itself
+            'order_blocks': 'order_blocks',
+            'trend_position': 'trend_position',
+            'volume_profile': 'volume_profile',
+            'market_structure': 'market_structure',
+            'range_analysis': 'range_analysis',
+            # Internal calculation name -> Config name (for reverse mapping)
+            'volume_analysis': 'volume_profile',  # Map volume_analysis to volume_profile
         }
         
         # Get price structure specific config
@@ -163,6 +170,16 @@ class PriceStructureIndicators(BaseIndicator):
         self.order_block_lookback = price_structure_config.get('parameters', {}).get('order_block', {}).get('lookback', 20)
         self.volume_profile_bins = price_structure_config.get('parameters', {}).get('volume_profile', {}).get('bins', 100)
         self.value_area_volume = price_structure_config.get('parameters', {}).get('volume_profile', {}).get('value_area', 0.7)
+        
+        # Range analysis parameters
+        self.range_lookback = price_structure_config.get('parameters', {}).get('range', {}).get('lookback', 50)  # Candles for range detection
+        self.sfp_threshold = price_structure_config.get('parameters', {}).get('range', {}).get('sfp_threshold', 0.005)  # 0.5% deviation for SFP detection
+        self.msb_window = price_structure_config.get('parameters', {}).get('range', {}).get('msb_window', 5)  # Candles for MSB confirmation
+        
+        # Volume confirmation parameters for SMC validation
+        self.vol_threshold = price_structure_config.get('parameters', {}).get('volume_confirmation', {}).get('threshold', 1.5)  # Volume multiplier for validation
+        self.vol_sweep_threshold = price_structure_config.get('parameters', {}).get('volume_confirmation', {}).get('sweep_threshold', 1.5)  # Volume threshold for sweep validation
+        self.vol_range_threshold = price_structure_config.get('parameters', {}).get('volume_confirmation', {}).get('range_threshold', 1.2)  # Volume threshold for range validation
         
         # Timeframe mapping from config
         self.timeframe_map = {
@@ -214,8 +231,9 @@ class PriceStructureIndicators(BaseIndicator):
                 'support_resistance': self._analyze_sr_levels(ohlcv_data),
                 'order_blocks': self._analyze_orderblock_zones(ohlcv_data),
                 'trend_position': self._analyze_trend_position(ohlcv_data),
-                'volume_analysis': self._analyze_volume(ohlcv_data),
-                'market_structure': self._analyze_market_structure(ohlcv_data)
+                'volume_profile': self._analyze_volume(ohlcv_data),
+                'market_structure': self._analyze_market_structure(ohlcv_data),
+                'range_analysis': self._analyze_range(ohlcv_data)
             }
             
             if not all(comp in scores for comp in self.component_weights):
@@ -2327,52 +2345,38 @@ class PriceStructureIndicators(BaseIndicator):
             symbol = market_data.get('symbol', '')
             self.log_multi_timeframe_analysis(timeframe_scores, divergences, symbol)
             
-            # Calculate component scores
+            # Calculate component scores for the 6 main components
             component_scores = {}
             
-            # Support/Resistance levels
+            # Support/Resistance levels (16.67%)
             sr_score = self._analyze_sr_levels(ohlcv_data)
             component_scores['support_resistance'] = sr_score
             self.logger.info(f"Support/Resistance: Score={sr_score:.2f}")
             
-            # Order blocks and supply/demand zones
+            # Order blocks and supply/demand zones (16.67%)
             ob_score = self._analyze_orderblock_zones(ohlcv_data)
             component_scores['order_blocks'] = ob_score
             self.logger.info(f"Order Blocks: Score={ob_score:.2f}")
             
-            # Trend position relative to key moving averages
+            # Trend position relative to key moving averages (16.67%)
             trend_score = self._analyze_trend_position(ohlcv_data)
             component_scores['trend_position'] = trend_score
             self.logger.info(f"Trend Position: Score={trend_score:.2f}")
             
-            # Volume analysis including profile and VWAP
+            # Volume analysis including profile and VWAP (16.67%)
             volume_score = self._analyze_volume(ohlcv_data)
             component_scores['volume_profile'] = volume_score
             self.logger.info(f"Volume Profile: Score={volume_score:.2f}")
             
-            # Market structure including swing points
+            # Market structure including swing points (16.67%)
             structure_score = self._analyze_market_structure(ohlcv_data)
             component_scores['market_structure'] = structure_score
             self.logger.info(f"Market Structure: Score={structure_score:.2f}")
             
-            # Calculate composite value score (separate from market structure)
-            # Use base timeframe for composite value calculation
-            base_df = None
-            for tf in ['base', 'ltf', 'mtf', 'htf']:
-                if tf in ohlcv_data and isinstance(ohlcv_data[tf], pd.DataFrame) and not ohlcv_data[tf].empty:
-                    base_df = ohlcv_data[tf]
-                    break
-            
-            if base_df is not None:
-                composite_result = self._calculate_composite_value(base_df)
-                composite_value_score = composite_result['score']
-                # Ensure score is on 0-100 scale where 100 is bullish
-                component_scores['composite_value'] = float(np.clip(composite_value_score, 0, 100))
-                self.logger.info(f"Composite Value: Score={composite_value_score:.2f}")
-            else:
-                # Default to neutral if no data available
-                component_scores['composite_value'] = 50.0
-                self.logger.warning("No valid data for composite value calculation, using default score")
+            # Range analysis including sweeps, MSBs, and liquidity (16.67%)
+            range_score = self._analyze_range(ohlcv_data)
+            component_scores['range_analysis'] = range_score
+            self.logger.info(f"Range Analysis: Score={range_score:.2f}")
             
             # Apply divergence bonuses if available
             for key, div_info in divergences.items():
@@ -2441,10 +2445,11 @@ class PriceStructureIndicators(BaseIndicator):
             
             # Calculate all component signals
             sr_score = self._analyze_sr_levels(ohlcv_data)
+            ob_score = self._analyze_orderblock_zones(ohlcv_data)
             trend_score = self._analyze_trend_position(ohlcv_data)
-            structure_score = self._analyze_market_structure(ohlcv_data)
-            orderblock_score = self._analyze_orderblock_zones(ohlcv_data)
             volume_score = self._analyze_volume(ohlcv_data)
+            structure_score = self._analyze_market_structure(ohlcv_data)
+            range_score = self._analyze_range(ohlcv_data)
             
             # Generate signals with more detailed information
             signals = {
@@ -2454,27 +2459,33 @@ class PriceStructureIndicators(BaseIndicator):
                     'bias': 'bullish' if sr_score > 60 else ('bearish' if sr_score < 40 else 'neutral'),
                     'strength': 'strong' if abs(sr_score - 50) > 25 else 'moderate'
                 },
-                'trend': {
+                'order_blocks': {
+                    'value': ob_score,
+                    'signal': 'strong' if ob_score > 70 else ('weak' if ob_score < 40 else 'neutral'),
+                    'bias': 'bullish' if ob_score > 60 else ('bearish' if ob_score < 40 else 'neutral'),
+                    'strength': 'strong' if abs(ob_score - 50) > 25 else 'moderate'
+                },
+                'trend_position': {
                     'value': trend_score,
                     'signal': 'uptrend' if trend_score > 60 else ('downtrend' if trend_score < 40 else 'sideways'),
                     'bias': 'bullish' if trend_score > 60 else ('bearish' if trend_score < 40 else 'neutral'),
                     'strength': 'strong' if abs(trend_score - 50) > 25 else 'moderate'
                 },
-                'structure': {
+                'volume_profile': {
+                    'value': volume_score,
+                    'signal': 'high' if volume_score > 70 else ('low' if volume_score < 40 else 'neutral'),
+                    'strength': 'strong' if abs(volume_score - 50) > 25 else 'moderate'
+                },
+                'market_structure': {
                     'value': structure_score,
                     'signal': 'bullish' if structure_score > 60 else ('bearish' if structure_score < 40 else 'neutral'),
                     'strength': 'strong' if abs(structure_score - 50) > 25 else 'moderate'
                 },
-                'orderblock': {
-                    'value': orderblock_score,
-                    'signal': 'strong' if orderblock_score > 70 else ('weak' if orderblock_score < 40 else 'neutral'),
-                    'bias': 'bullish' if orderblock_score > 60 else ('bearish' if orderblock_score < 40 else 'neutral'),
-                    'strength': 'strong' if abs(orderblock_score - 50) > 25 else 'moderate'
-                },
-                'volume': {
-                    'value': volume_score,
-                    'signal': 'high' if volume_score > 70 else ('low' if volume_score < 40 else 'neutral'),
-                    'strength': 'strong' if abs(volume_score - 50) > 25 else 'moderate'
+                'range_analysis': {
+                    'value': range_score,
+                    'signal': 'bullish_range' if range_score > 60 else ('bearish_range' if range_score < 40 else 'neutral_range'),
+                    'bias': 'bullish' if range_score > 60 else ('bearish' if range_score < 40 else 'neutral'),
+                    'strength': 'strong' if abs(range_score - 50) > 25 else 'moderate'
                 }
             }
             
@@ -2984,10 +2995,20 @@ class PriceStructureIndicators(BaseIndicator):
                     current_range = df['high'].iloc[i] - df['low'].iloc[i]
                     
                     if current_range > prev_range * 1.5:  # Expansion after consolidation
-                        # This is a potential bullish order block
-                        block_low = min(df['low'].iloc[i-3:i])
-                        block_high = max(df['high'].iloc[i-3:i])
-                        bullish_blocks.append((i-3, i-1, block_low, block_high))
+                        # Volume confirmation for order block validity (SMC enhancement)
+                        current_volume = df['volume'].iloc[i]
+                        prev_vol_mean = df['volume'].iloc[i-5:i].mean() if i >= 5 else df['volume'].iloc[:i].mean()
+                        
+                        # Only create order block if volume confirms the move
+                        if current_volume >= prev_vol_mean * self.vol_threshold:
+                            # This is a potential bullish order block with volume confirmation
+                            block_low = min(df['low'].iloc[i-3:i])
+                            block_high = max(df['high'].iloc[i-3:i])
+                            bullish_blocks.append((i-3, i-1, block_low, block_high))
+                            
+                            self.logger.debug(f"Bullish order block confirmed with volume: {current_volume:.0f} >= {prev_vol_mean * self.vol_threshold:.0f}")
+                        else:
+                            self.logger.debug(f"Bullish order block rejected due to low volume: {current_volume:.0f} < {prev_vol_mean * self.vol_threshold:.0f}")
             
             return bullish_blocks
             
@@ -3020,10 +3041,20 @@ class PriceStructureIndicators(BaseIndicator):
                     current_range = df['high'].iloc[i] - df['low'].iloc[i]
                     
                     if current_range > prev_range * 1.5:  # Expansion after consolidation
-                        # This is a potential bearish order block
-                        block_low = min(df['low'].iloc[i-3:i])
-                        block_high = max(df['high'].iloc[i-3:i])
-                        bearish_blocks.append((i-3, i-1, block_low, block_high))
+                        # Volume confirmation for order block validity (SMC enhancement)
+                        current_volume = df['volume'].iloc[i]
+                        prev_vol_mean = df['volume'].iloc[i-5:i].mean() if i >= 5 else df['volume'].iloc[:i].mean()
+                        
+                        # Only create order block if volume confirms the move
+                        if current_volume >= prev_vol_mean * self.vol_threshold:
+                            # This is a potential bearish order block with volume confirmation
+                            block_low = min(df['low'].iloc[i-3:i])
+                            block_high = max(df['high'].iloc[i-3:i])
+                            bearish_blocks.append((i-3, i-1, block_low, block_high))
+                            
+                            self.logger.debug(f"Bearish order block confirmed with volume: {current_volume:.0f} >= {prev_vol_mean * self.vol_threshold:.0f}")
+                        else:
+                            self.logger.debug(f"Bearish order block rejected due to low volume: {current_volume:.0f} < {prev_vol_mean * self.vol_threshold:.0f}")
             
             return bearish_blocks
             
@@ -3300,27 +3331,45 @@ class PriceStructureIndicators(BaseIndicator):
             for i in range(5, len(df) - 5):
                 # Bullish order blocks (support)
                 if df['swing_low'].iloc[i]:
-                    # Look for strong volume and price rejection
-                    if df['volume'].iloc[i] > df['volume'].iloc[i-5:i].mean() * 1.5:
+                    # Look for strong volume and price rejection with enhanced SMC validation
+                    prev_vol_mean = df['volume'].iloc[i-5:i].mean() if i >= 5 else df['volume'].iloc[:i].mean()
+                    current_volume = df['volume'].iloc[i]
+                    
+                    if current_volume > prev_vol_mean * self.vol_threshold:
                         price_level = df['low'].iloc[i]
-                        strength = min(100, df['volume'].iloc[i] / df['volume'].iloc[i-5:i].mean() * 50)
+                        # Enhanced strength calculation with volume confirmation
+                        vol_multiplier = current_volume / prev_vol_mean
+                        strength = min(100, vol_multiplier * 50)  # Volume-based strength
+                        
                         order_blocks['bullish'].append({
                             'price': price_level,
                             'strength': strength,
-                            'timestamp': df.index[i]
+                            'timestamp': df.index[i],
+                            'volume_multiplier': vol_multiplier
                         })
+                        
+                        self.logger.debug(f"Bullish order block: price={price_level:.4f}, strength={strength:.2f}, volume={vol_multiplier:.2f}x")
                 
                 # Bearish order blocks (resistance)
                 if df['swing_high'].iloc[i]:
-                    # Look for strong volume and price rejection
-                    if df['volume'].iloc[i] > df['volume'].iloc[i-5:i].mean() * 1.5:
+                    # Look for strong volume and price rejection with enhanced SMC validation
+                    prev_vol_mean = df['volume'].iloc[i-5:i].mean() if i >= 5 else df['volume'].iloc[:i].mean()
+                    current_volume = df['volume'].iloc[i]
+                    
+                    if current_volume > prev_vol_mean * self.vol_threshold:
                         price_level = df['high'].iloc[i]
-                        strength = min(100, df['volume'].iloc[i] / df['volume'].iloc[i-5:i].mean() * 50)
+                        # Enhanced strength calculation with volume confirmation
+                        vol_multiplier = current_volume / prev_vol_mean
+                        strength = min(100, vol_multiplier * 50)  # Volume-based strength
+                        
                         order_blocks['bearish'].append({
                             'price': price_level,
                             'strength': strength,
-                            'timestamp': df.index[i]
+                            'timestamp': df.index[i],
+                            'volume_multiplier': vol_multiplier
                         })
+                        
+                        self.logger.debug(f"Bearish order block: price={price_level:.4f}, strength={strength:.2f}, volume={vol_multiplier:.2f}x")
             
             # Sort by strength
             order_blocks['bullish'] = sorted(order_blocks['bullish'], key=lambda x: x['strength'], reverse=True)
@@ -3491,6 +3540,545 @@ class PriceStructureIndicators(BaseIndicator):
             self.logger.debug(f"Stack trace for potential default value in {component_name}:")
             self.logger.debug(''.join(traceback.format_stack(limit=5)))
 
+    @handle_indicator_error
+    def _identify_range(self, df: pd.DataFrame) -> Dict[str, Any]:
+        """Identify current range (consolidation between swing points) per RektProof PA with volume confirmation.
+        
+        Enhanced with SMC volume validation to filter out low-conviction ranges.
+        
+        Args:
+            df: DataFrame containing OHLCV data
+            
+        Returns:
+            Dict containing:
+                - low: float - Range low boundary
+                - high: float - Range high boundary  
+                - quarters: List[float] - Range divided into 4 quarters
+                - is_valid: bool - Whether range is significant enough (includes volume validation)
+                - atr: float - Average True Range for validation
+        """
+        try:
+            if df.empty or len(df) < self.range_lookback:
+                self.logger.debug("Insufficient data for range identification")
+                return {'low': 0, 'high': 0, 'quarters': [], 'is_valid': False, 'atr': 0}
+            
+            # Use recent data for range detection
+            recent_df = df.tail(self.range_lookback).copy()
+            
+            # Calculate ATR for range significance validation
+            recent_df['hl'] = recent_df['high'] - recent_df['low']
+            recent_df['hc'] = abs(recent_df['high'] - recent_df['close'].shift(1))
+            recent_df['lc'] = abs(recent_df['low'] - recent_df['close'].shift(1))
+            recent_df['tr'] = recent_df[['hl', 'hc', 'lc']].max(axis=1)
+            atr = recent_df['tr'].rolling(window=14).mean().iloc[-1]
+            
+            if pd.isna(atr) or atr == 0:
+                atr = recent_df['close'].std() * 0.02  # Fallback to 2% of price std
+            
+            # Find swing points using scipy's argrelextrema
+            window = min(5, len(recent_df) // 4)  # Adaptive window size
+            if window < 2:
+                return {'low': 0, 'high': 0, 'quarters': [], 'is_valid': False, 'atr': atr}
+            
+            highs = recent_df['high'].values
+            lows = recent_df['low'].values
+            
+            # Find local maxima and minima
+            high_indices = argrelextrema(highs, np.greater_equal, order=window)[0]
+            low_indices = argrelextrema(lows, np.less_equal, order=window)[0]
+            
+            # Get swing highs and lows
+            swing_highs = [(idx, highs[idx]) for idx in high_indices]
+            swing_lows = [(idx, lows[idx]) for idx in low_indices]
+            
+            if len(swing_highs) < 2 or len(swing_lows) < 2:
+                self.logger.debug("Insufficient swing points for range identification")
+                return {'low': 0, 'high': 0, 'quarters': [], 'is_valid': False, 'atr': atr}
+            
+            # Identify range bounds (consolidation zone)
+            # Look for price oscillating between relatively stable highs and lows
+            recent_swing_highs = [price for _, price in swing_highs[-3:]]  # Last 3 swing highs
+            recent_swing_lows = [price for _, price in swing_lows[-3:]]   # Last 3 swing lows
+            
+            # Range bounds: max of recent swing highs and min of recent swing lows
+            range_high = max(recent_swing_highs)
+            range_low = min(recent_swing_lows)
+            range_width = range_high - range_low
+            
+            # Validate range significance (should be at least 2x ATR)
+            is_valid = range_width >= (atr * 2) and range_width > 0
+            
+            # Add volume confirmation for range validity (SMC enhancement)
+            if is_valid:
+                # Calculate average volume during consolidation period
+                range_vol_mean = recent_df['volume'].mean()
+                historical_vol_mean = df['volume'].mean()
+                
+                # Range should have sufficient volume interest to be valid
+                if range_vol_mean < historical_vol_mean * self.vol_range_threshold:
+                    self.logger.debug(f"Range invalidated by low volume: {range_vol_mean:.2f} < {historical_vol_mean * self.vol_range_threshold:.2f}")
+                    is_valid = False
+                else:
+                    self.logger.debug(f"Range validated by volume: {range_vol_mean:.2f} >= {historical_vol_mean * self.vol_range_threshold:.2f}")
+            
+            # Divide range into quarters (Hsaka strategy)
+            if is_valid:
+                quarter_size = range_width / 4
+                quarters = [
+                    range_low,                          # Q1 start (low)
+                    range_low + quarter_size,           # Q2 start (lower mid)
+                    range_low + (quarter_size * 2),     # Q3 start (upper mid)
+                    range_low + (quarter_size * 3),     # Q4 start (high)
+                    range_high                          # Q4 end (high)
+                ]
+            else:
+                quarters = []
+            
+            self.logger.debug(f"Range identified: Low={range_low:.4f}, High={range_high:.4f}, "
+                            f"Width={range_width:.4f}, ATR={atr:.4f}, Valid={is_valid}")
+            
+            return {
+                'low': float(range_low),
+                'high': float(range_high),
+                'quarters': quarters,
+                'is_valid': is_valid,
+                'atr': float(atr)
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error identifying range: {str(e)}")
+            self.logger.debug(traceback.format_exc())
+            return {'low': 0, 'high': 0, 'quarters': [], 'is_valid': False, 'atr': 0}
+
+    @handle_indicator_error
+    def _detect_sweep_deviation(self, df: pd.DataFrame, range_bounds: Dict[str, Any]) -> Dict[str, Any]:
+        """Detect price sweeps/deviations (liquidity runs/traps) and SFPs per RektProof/Hsaka with volume confirmation.
+        
+        Enhanced with SMC volume validation to distinguish high-conviction sweeps from noise.
+        
+        Args:
+            df: DataFrame containing OHLCV data
+            range_bounds: Dict from _identify_range with range boundaries
+            
+        Returns:
+            Dict containing:
+                - sweep_type: str - 'low'/'high'/'none' indicating sweep direction
+                - score_adjust: float - Score adjustment based on sweep (+bullish/-bearish, enhanced by volume)
+                - strength: float - Strength of the sweep/SFP (0-1, enhanced by volume)
+                - recent_candles: int - How many candles ago the sweep occurred
+        """
+        try:
+            if df.empty or not range_bounds.get('is_valid', False):
+                return {'sweep_type': 'none', 'score_adjust': 0.0, 'strength': 0.0, 'recent_candles': 0}
+            
+            range_low = range_bounds['low']
+            range_high = range_bounds['high']
+            
+            # Look at recent candles for sweep detection (last 10 candles)
+            lookback = min(10, len(df))
+            recent_df = df.tail(lookback).copy()
+            
+            sweep_type = 'none'
+            score_adjust = 0.0
+            strength = 0.0
+            recent_candles = 0
+            
+            # Check for sweeps in recent candles
+            for i in range(len(recent_df)):
+                candle = recent_df.iloc[i]
+                candles_ago = len(recent_df) - i - 1
+                
+                # Check for low sweep (SFP at range low)
+                if candle['low'] < range_low:
+                    # Calculate deviation percentage
+                    deviation = (range_low - candle['low']) / range_low
+                    
+                    if deviation >= self.sfp_threshold:
+                        # Check if price closed back inside range (SFP confirmation)
+                        if candle['close'] > range_low:
+                            # Calculate volume confirmation for sweep validity
+                            avg_volume = recent_df['volume'].mean()
+                            candle_volume = candle['volume']
+                            vol_multiplier = candle_volume / avg_volume if avg_volume > 0 else 1.0
+                            
+                            # This is a bullish SFP - swept lows but closed back inside
+                            sweep_type = 'low'
+                            base_adjust = 20.0  # Base bullish adjustment
+                            
+                            # Enhance score adjustment with volume confirmation
+                            if vol_multiplier >= self.vol_sweep_threshold:
+                                score_adjust = base_adjust * min(2.0, vol_multiplier / self.vol_sweep_threshold)
+                                self.logger.debug(f"Low sweep volume confirmed: {vol_multiplier:.2f}x avg, enhanced score")
+                            else:
+                                score_adjust = base_adjust * 0.7  # Reduce without volume confirmation
+                                self.logger.debug(f"Low sweep low volume: {vol_multiplier:.2f}x avg, reduced score")
+                            
+                            strength = min(deviation / (self.sfp_threshold * 2), 1.0)  # Normalize strength
+                            # Enhance strength with volume confirmation
+                            strength *= min(2.0, vol_multiplier) if vol_multiplier >= 1.0 else vol_multiplier
+                            
+                            recent_candles = candles_ago
+                            
+                            self.logger.debug(f"Low sweep detected: deviation={deviation:.4f}, "
+                                            f"strength={strength:.2f}, volume={vol_multiplier:.2f}x, {candles_ago} candles ago")
+                            break
+                
+                # Check for high sweep (SFP at range high)
+                elif candle['high'] > range_high:
+                    # Calculate deviation percentage
+                    deviation = (candle['high'] - range_high) / range_high
+                    
+                    if deviation >= self.sfp_threshold:
+                        # Check if price closed back inside range (SFP confirmation)
+                        if candle['close'] < range_high:
+                            # Calculate volume confirmation for sweep validity
+                            avg_volume = recent_df['volume'].mean()
+                            candle_volume = candle['volume']
+                            vol_multiplier = candle_volume / avg_volume if avg_volume > 0 else 1.0
+                            
+                            # This is a bearish SFP - swept highs but closed back inside
+                            sweep_type = 'high'
+                            base_adjust = -20.0  # Base bearish adjustment
+                            
+                            # Enhance score adjustment with volume confirmation
+                            if vol_multiplier >= self.vol_sweep_threshold:
+                                score_adjust = base_adjust * min(2.0, vol_multiplier / self.vol_sweep_threshold)
+                                self.logger.debug(f"High sweep volume confirmed: {vol_multiplier:.2f}x avg, enhanced score")
+                            else:
+                                score_adjust = base_adjust * 0.7  # Reduce without volume confirmation
+                                self.logger.debug(f"High sweep low volume: {vol_multiplier:.2f}x avg, reduced score")
+                            
+                            strength = min(deviation / (self.sfp_threshold * 2), 1.0)  # Normalize strength
+                            # Enhance strength with volume confirmation
+                            strength *= min(2.0, vol_multiplier) if vol_multiplier >= 1.0 else vol_multiplier
+                            
+                            recent_candles = candles_ago
+                            
+                            self.logger.debug(f"High sweep detected: deviation={deviation:.4f}, "
+                                            f"strength={strength:.2f}, volume={vol_multiplier:.2f}x, {candles_ago} candles ago")
+                            break
+            
+            # Reduce score adjustment based on how old the sweep is
+            if recent_candles > 0:
+                time_decay = max(0.1, 1.0 - (recent_candles / 10.0))  # Decay over 10 candles
+                score_adjust *= time_decay
+                
+                self.logger.debug(f"Sweep analysis: type={sweep_type}, adjust={score_adjust:.2f}, "
+                                f"strength={strength:.2f}, age={recent_candles}")
+            
+            return {
+                'sweep_type': sweep_type,
+                'score_adjust': score_adjust,
+                'strength': strength,
+                'recent_candles': recent_candles
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error detecting sweep/deviation: {str(e)}")
+            self.logger.debug(traceback.format_exc())
+            return {'sweep_type': 'none', 'score_adjust': 0.0, 'strength': 0.0, 'recent_candles': 0}
+
+    @handle_indicator_error
+    def _detect_msb(self, df: pd.DataFrame, range_bounds: Dict[str, Any], sweep_info: Dict[str, Any]) -> bool:
+        """Detect Market Structure Break (MSB) confirmation per RektProof.
+        
+        Args:
+            df: DataFrame containing OHLCV data
+            range_bounds: Dict from _identify_range with range boundaries
+            sweep_info: Dict from _detect_sweep_deviation with sweep information
+            
+        Returns:
+            bool: True if MSB confirms the reversal direction after sweep
+        """
+        try:
+            if df.empty or not range_bounds.get('is_valid', False) or sweep_info['sweep_type'] == 'none':
+                return False
+            
+            # Look at recent candles after the sweep for MSB confirmation
+            lookback = min(self.msb_window, len(df))
+            recent_df = df.tail(lookback).copy()
+            
+            if len(recent_df) < 3:  # Need at least 3 candles for MSB analysis
+                return False
+            
+            sweep_type = sweep_info['sweep_type']
+            
+            # MSB logic: After a sweep, look for failure to continue in the sweep direction
+            if sweep_type == 'low':
+                # After low sweep (bullish SFP), MSB confirmed if:
+                # 1. Price doesn't make new lower lows
+                # 2. Price shows signs of reversal (higher lows forming)
+                
+                lows = recent_df['low'].values
+                closes = recent_df['close'].values
+                
+                # Check if recent lows are not making new lows (structure holding)
+                recent_low = min(lows)
+                previous_low = range_bounds['low']
+                
+                # MSB confirmed if we're not making significantly lower lows
+                if recent_low >= previous_low * (1 - self.sfp_threshold):
+                    # Additional confirmation: look for higher lows pattern
+                    if len(lows) >= 3:
+                        # Check if last 3 lows show higher low pattern
+                        last_3_lows = lows[-3:]
+                        if last_3_lows[-1] > last_3_lows[0]:  # Most recent low higher than 3 candles ago
+                            self.logger.debug("MSB confirmed: Bullish structure holding after low sweep")
+                            return True
+                
+            elif sweep_type == 'high':
+                # After high sweep (bearish SFP), MSB confirmed if:
+                # 1. Price doesn't make new higher highs
+                # 2. Price shows signs of reversal (lower highs forming)
+                
+                highs = recent_df['high'].values
+                closes = recent_df['close'].values
+                
+                # Check if recent highs are not making new highs (structure holding)
+                recent_high = max(highs)
+                previous_high = range_bounds['high']
+                
+                # MSB confirmed if we're not making significantly higher highs
+                if recent_high <= previous_high * (1 + self.sfp_threshold):
+                    # Additional confirmation: look for lower highs pattern
+                    if len(highs) >= 3:
+                        # Check if last 3 highs show lower high pattern
+                        last_3_highs = highs[-3:]
+                        if last_3_highs[-1] < last_3_highs[0]:  # Most recent high lower than 3 candles ago
+                            self.logger.debug("MSB confirmed: Bearish structure holding after high sweep")
+                            return True
+            
+            return False
+            
+        except Exception as e:
+            self.logger.error(f"Error detecting MSB: {str(e)}")
+            self.logger.debug(traceback.format_exc())
+            return False
+
+    @handle_indicator_error
+    def _analyze_range_position(self, df: pd.DataFrame) -> float:
+        """Analyze price position within identified range for timeframe-specific scoring.
+        
+        Args:
+            df: DataFrame containing OHLCV data for specific timeframe
+            
+        Returns:
+            float: Range position score (0-100) where:
+                - >50 = Bullish bias (price in lower quarters, expecting move up)
+                - <50 = Bearish bias (price in upper quarters, expecting move down)  
+                - ~50 = Neutral (price in middle, no clear bias)
+        """
+        try:
+            if df.empty or len(df) < 20:
+                self.logger.debug("Insufficient data for range position analysis")
+                return 50.0
+            
+            # Step 1: Identify range
+            range_bounds = self._identify_range(df)
+            if not range_bounds['is_valid']:
+                self.logger.debug("No valid range identified")
+                return 50.0
+            
+            # Step 2: Get current price
+            current_price = df['close'].iloc[-1]
+            range_low = range_bounds['low']
+            range_high = range_bounds['high']
+            quarters = range_bounds['quarters']
+            
+            # Step 3: Calculate base position score
+            # Normalize price position within range (0-1)
+            if range_high == range_low:
+                position_ratio = 0.5  # Neutral if no range
+            else:
+                position_ratio = (current_price - range_low) / (range_high - range_low)
+                position_ratio = max(0.0, min(1.0, position_ratio))  # Clamp to 0-1
+            
+            # Base scoring per Hsaka strategy:
+            # - Lower quarters (0-0.5) = Bullish bias (bid lower quarter)
+            # - Upper quarters (0.5-1.0) = Bearish bias (sell upper quarter)
+            if position_ratio <= 0.25:
+                # Q1 (lowest quarter) - Very bullish
+                base_score = 75.0
+            elif position_ratio <= 0.5:
+                # Q2 (lower mid) - Moderately bullish
+                base_score = 65.0
+            elif position_ratio <= 0.75:
+                # Q3 (upper mid) - Moderately bearish
+                base_score = 35.0
+            else:
+                # Q4 (highest quarter) - Very bearish
+                base_score = 25.0
+            
+            self.logger.debug(f"Base range position: {position_ratio:.3f}, base_score: {base_score:.2f}")
+            
+            # Step 4: Detect sweeps/deviations and adjust score
+            sweep_info = self._detect_sweep_deviation(df, range_bounds)
+            sweep_adjust = sweep_info['score_adjust']
+            
+            # Step 5: Check for MSB confirmation
+            msb_confirmed = self._detect_msb(df, range_bounds, sweep_info)
+            msb_adjust = 0.0
+            if msb_confirmed:
+                # MSB confirmation strengthens the sweep signal
+                if sweep_info['sweep_type'] == 'low':
+                    msb_adjust = 10.0  # Additional bullish confirmation
+                elif sweep_info['sweep_type'] == 'high':
+                    msb_adjust = -10.0  # Additional bearish confirmation
+            
+            # Step 6: Check for untapped liquidity (RektProof concept)
+            liquidity_adjust = 0.0
+            
+            # Look for untapped liquidity on opposite side
+            if position_ratio < 0.5:  # Price in lower half
+                # Check if upper range has been recently tested
+                recent_high = df['high'].tail(10).max()
+                if recent_high < range_high * 0.98:  # Upper range not tested recently
+                    liquidity_adjust = 15.0  # Bullish - untapped liquidity above
+            else:  # Price in upper half
+                # Check if lower range has been recently tested
+                recent_low = df['low'].tail(10).min()
+                if recent_low > range_low * 1.02:  # Lower range not tested recently
+                    liquidity_adjust = -15.0  # Bearish - untapped liquidity below
+            
+            # Step 7: Add volume-enhanced sweep bonus
+            volume_bonus = 0.0
+            if sweep_info['sweep_type'] != 'none' and sweep_info['strength'] > 0:
+                # Additional bonus for high-volume sweeps (already incorporated in sweep_adjust)
+                # This provides extra confirmation for strong volume sweeps
+                if 'volume_multiplier' in sweep_info:
+                    vol_mult = sweep_info.get('volume_multiplier', 1.0)
+                    if vol_mult >= self.vol_sweep_threshold:
+                        volume_bonus = 5.0 * min(vol_mult / self.vol_sweep_threshold, 2.0)
+                        if sweep_info['sweep_type'] == 'high':
+                            volume_bonus = -volume_bonus  # Bearish volume bonus
+                        
+                        self.logger.debug(f"Volume bonus applied: {volume_bonus:.2f} for {vol_mult:.2f}x volume")
+            
+            # Step 8: Calculate final score
+            final_score = base_score + sweep_adjust + msb_adjust + liquidity_adjust + volume_bonus
+            final_score = float(np.clip(final_score, 0, 100))
+            
+            self.logger.debug(f"Range analysis complete: base={base_score:.2f}, "
+                            f"sweep={sweep_adjust:.2f}, msb={msb_adjust:.2f}, "
+                            f"liquidity={liquidity_adjust:.2f}, volume={volume_bonus:.2f}, final={final_score:.2f}")
+            
+            return final_score
+            
+        except Exception as e:
+            self.logger.error(f"Error analyzing range position: {str(e)}")
+            self.logger.debug(traceback.format_exc())
+            return 50.0
+
+    @handle_indicator_error
+    def _analyze_range(self, ohlcv_data: Dict[str, pd.DataFrame]) -> float:
+        """Analyze range across multiple timeframes with weighted aggregation.
+        
+        Args:
+            ohlcv_data: Dictionary of OHLCV DataFrames for different timeframes
+            
+        Returns:
+            float: Multi-timeframe range analysis score (0-100) where:
+                - >50 = Bullish bias (expecting upward movement from range)
+                - <50 = Bearish bias (expecting downward movement from range)
+                - ~50 = Neutral (no clear range bias)
+        """
+        try:
+            self.logger.debug("Starting multi-timeframe range analysis")
+            
+            # Validate input
+            if not isinstance(ohlcv_data, dict) or not ohlcv_data:
+                self.logger.error("Invalid OHLCV data for range analysis")
+                return 50.0
+                
+            # Get available timeframes
+            available_timeframes = set(ohlcv_data.keys()) & set(self.required_timeframes)
+            missing_timeframes = set(self.required_timeframes) - available_timeframes
+            
+            if missing_timeframes:
+                self.logger.warning(f"Missing timeframes for range analysis: {', '.join(missing_timeframes)}")
+            
+            if not available_timeframes:
+                self.logger.error("No valid timeframes available for range analysis")
+                return 50.0
+                
+            # Calculate scores for each timeframe
+            timeframe_scores = {}
+            valid_scores = []
+            
+            for tf in available_timeframes:
+                data = ohlcv_data[tf]
+                if not isinstance(data, pd.DataFrame) or data.empty:
+                    self.logger.warning(f"Invalid DataFrame for timeframe {tf}")
+                    continue
+                    
+                if len(data) < 30:  # Need sufficient data for range analysis
+                    self.logger.warning(f"Insufficient data points for timeframe {tf}: {len(data)} rows")
+                    continue
+                
+                try:
+                    # Calculate range position score for this timeframe
+                    tf_score = self._analyze_range_position(data)
+                    timeframe_scores[tf] = tf_score
+                    valid_scores.append((tf, tf_score))
+                    
+                    self.logger.debug(f"Range score for {tf}: {tf_score:.2f}")
+                    
+                except Exception as e:
+                    self.logger.error(f"Error calculating range score for timeframe {tf}: {str(e)}")
+                    timeframe_scores[tf] = 50.0
+            
+            if not valid_scores:
+                self.logger.warning("No valid timeframe scores for range analysis")
+                return 50.0
+                
+            # Normalize weights based on available timeframes
+            total_weight = sum(self.timeframe_weights[tf] for tf, _ in valid_scores)
+            if total_weight == 0:
+                self.logger.error("Total weight for available timeframes is zero")
+                return 50.0
+                
+            normalized_weights = {tf: self.timeframe_weights[tf] / total_weight for tf, _ in valid_scores}
+            
+            # Calculate weighted average
+            weighted_score = 0.0
+            for tf, score in valid_scores:
+                weight = normalized_weights[tf]
+                weighted_score += score * weight
+                self.logger.debug(f"  {tf}: {score:.2f} * {weight:.3f} = {score * weight:.2f}")
+            
+            # Apply confluence bonus if multiple timeframes agree
+            if len(valid_scores) >= 2:
+                bullish_count = sum(1 for _, score in valid_scores if score > 60)
+                bearish_count = sum(1 for _, score in valid_scores if score < 40)
+                
+                confluence_bonus = 0.0
+                if bullish_count >= 2:
+                    confluence_bonus = 5.0  # Bullish confluence
+                    self.logger.debug(f"Bullish confluence detected: {bullish_count} timeframes > 60")
+                elif bearish_count >= 2:
+                    confluence_bonus = -5.0  # Bearish confluence
+                    self.logger.debug(f"Bearish confluence detected: {bearish_count} timeframes < 40")
+                
+                weighted_score += confluence_bonus
+            
+            # Ensure score is within bounds
+            final_score = float(np.clip(weighted_score, 0, 100))
+            
+            self.logger.debug(f"Range analysis summary:")
+            self.logger.debug(f"  Available timeframes: {len(valid_scores)}")
+            self.logger.debug(f"  Weighted score: {weighted_score:.2f}")
+            self.logger.debug(f"  Final score: {final_score:.2f}")
+            
+            # Verify if the score is suspiciously close to the default value
+            self._verify_score_not_default(final_score, "Range Analysis")
+            
+            return final_score
+            
+        except Exception as e:
+            self.logger.error(f"Error in multi-timeframe range analysis: {str(e)}")
+            self.logger.debug(traceback.format_exc())
+            return 50.0
+
     def _calculate_single_vwap_score(self, df: pd.DataFrame) -> float:
         """Calculate VWAP score for a single timeframe DataFrame using daily and weekly session VWAPs."""
         try:
@@ -3558,3 +4146,48 @@ class PriceStructureIndicators(BaseIndicator):
             self.logger.error(f"Error in _calculate_single_vwap_score: {str(e)}")
             self.logger.warning("Using DEFAULT value 50.0 due to error")
             return 50.0
+
+    def _log_component_specific_alerts(self, component_scores: Dict[str, float], 
+                                     alerts: List[str], indicator_name: str) -> None:
+        """Log Price Structure Indicators specific alerts."""
+        # Support/Resistance alerts
+        sr_score = component_scores.get('support_resistance', 50)
+        if sr_score >= 80:
+            alerts.append("Support/Resistance Extremely Strong - Key levels holding firm")
+        elif sr_score <= 20:
+            alerts.append("❌ Support/Resistance Extremely Weak - Key levels breaking down")
+        
+        # Order blocks alerts
+        ob_score = component_scores.get('order_blocks', 50)
+        if ob_score >= 80:
+            alerts.append("Order Blocks Extremely Strong - Significant institutional zones")
+        elif ob_score <= 20:
+            alerts.append("❌ Order Blocks Extremely Weak - No significant institutional zones")
+        
+        # Trend position alerts
+        trend_score = component_scores.get('trend_position', 50)
+        if trend_score >= 75:
+            alerts.append("Trend Position Extremely Strong - Clear directional momentum")
+        elif trend_score <= 25:
+            alerts.append("Trend Position Extremely Weak - Lack of directional momentum")
+        
+        # Volume profile alerts (includes VWAP)
+        volume_score = component_scores.get('volume_profile', 50)
+        if volume_score >= 80:
+            alerts.append("Volume Profile Extremely Strong - Strong volume confirmation")
+        elif volume_score <= 20:
+            alerts.append("❌ Volume Profile Extremely Weak - Volume divergence detected")
+        
+        # Market structure alerts
+        structure_score = component_scores.get('market_structure', 50)
+        if structure_score >= 75:
+            alerts.append("Market Structure Extremely Strong - Clear structural pattern")
+        elif structure_score <= 25:
+            alerts.append("Market Structure Extremely Weak - Structural breakdown")
+        
+        # Range analysis alerts
+        range_score = component_scores.get('range_analysis', 50)
+        if range_score >= 80:
+            alerts.append("Range Analysis Extremely Strong - Clear range bias with confluence")
+        elif range_score <= 20:
+            alerts.append("❌ Range Analysis Extremely Weak - No clear range structure")

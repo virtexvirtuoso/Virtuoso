@@ -6,6 +6,7 @@ Provides rich, context-aware interpretations across different market components.
 import logging
 import textwrap
 from typing import Dict, Any, List, Optional, Tuple
+import numpy as np
 
 class InterpretationGenerator:
     """Generates enhanced market interpretations from confluence analysis results."""
@@ -49,146 +50,181 @@ class InterpretationGenerator:
     
     def _interpret_technical(self, data: Dict[str, Any]) -> str:
         """Generate rich interpretation for technical analysis component."""
-        # Extract key values from the data
-        trend = data.get('signals', {}).get('trend', 'neutral')
-        strength = data.get('signals', {}).get('strength', 0)
-        score = data.get('score', 50)
-        components = data.get('components', {})
-        raw_values = data.get('metadata', {}).get('raw_values', {})
-        
-        # Identify strongest components and separate oscillators from trend indicators
-        strongest_components = sorted(components.items(), key=lambda x: x[1], reverse=True)[:3]
-        
-        # Start with trend description
-        if trend == 'bullish':
-            strength_desc = 'strong' if strength > 0.6 else 'moderate' if strength > 0.3 else 'weak'
-            message = f"Technical indicators show a {strength_desc} bullish trend"
-        elif trend == 'bearish':
-            strength_desc = 'strong' if abs(strength) > 0.6 else 'moderate' if abs(strength) > 0.3 else 'weak'
-            message = f"Technical indicators show a {strength_desc} bearish trend"
-        else:
-            if score > 55:
-                message = "Technical indicators show slight bullish bias within overall neutrality"
-            elif score < 45:
-                message = "Technical indicators show slight bearish bias within overall neutrality"
-            else:
-                message = "Technical indicators reflect market indecision with no clear directional bias"
-        
-        # Add insights about strongest components with categorization
-        trend_indicators = {}
-        oscillators = {}
-        
-        # Categorize indicators
-        for comp_name, comp_value in components.items():
-            if comp_name.lower() in ['macd', 'adx', 'dmi', 'moving_averages', 'ichimoku', 'supertrend', 'trend', 'ma_cross']:
-                trend_indicators[comp_name] = comp_value
-            elif comp_name.lower() in ['rsi', 'stoch', 'cci', 'mfi', 'williams_r', 'stoch_rsi', 'ultimate_oscillator']:
-                oscillators[comp_name] = comp_value
-        
-        # Add trend indicator insights
-        if trend_indicators:
-            strongest_trend = sorted(trend_indicators.items(), key=lambda x: x[1], reverse=True)[0]
-            trend_name, trend_value = strongest_trend
-            trend_name = trend_name.upper()
+        try:
+            # Validate input data
+            if not isinstance(data, dict):
+                self.logger.warning(f"Invalid data type for technical interpretation: {type(data)}")
+                return "Unable to analyze technical indicators: invalid data format"
             
-            if trend_value > 65:
-                message += f". {trend_name} strongly confirms bullish trend ({trend_value:.1f})"
-            elif trend_value < 35:
-                message += f". {trend_name} strongly confirms bearish trend ({trend_value:.1f})"
-            else:
-                message += f". {trend_name} shows neutral trend conditions ({trend_value:.1f})"
-                
-            # Add moving averages crossover context if available
-            ma_cross = components.get('ma_cross', None)
-            if ma_cross is not None:
-                if ma_cross > 65:
-                    message += ". Moving averages showing bullish crossover pattern"
-                elif ma_cross < 35:
-                    message += ". Moving averages showing bearish crossover pattern"
-        
-        # Add oscillator insights
-        if oscillators:
-            strongest_osc = sorted(oscillators.items(), key=lambda x: x[1], reverse=True)[0]
-            osc_name, osc_value = strongest_osc
-            osc_name = osc_name.upper()
+            # Extract key values with safe defaults
+            score = float(data.get('score', 50))
+            components = data.get('components', {})
+            raw_values = data.get('metadata', {}).get('raw_values', {})
             
-            if osc_value > 70:
-                message += f". {osc_name} indicates overbought conditions ({osc_value:.1f}), potential reversal zone"
-            elif osc_value < 30:
-                message += f". {osc_name} indicates oversold conditions ({osc_value:.1f}), potential reversal zone"
-            elif osc_value > 60:
-                message += f". {osc_name} shows bullish momentum without being overbought ({osc_value:.1f})"
-            elif osc_value < 40:
-                message += f". {osc_name} shows bearish momentum without being oversold ({osc_value:.1f})"
-            else:
-                message += f". {osc_name} in neutral territory ({osc_value:.1f})"
-        
-        # Add momentum context
-        momentum = components.get('momentum', 50)
-        if momentum > 65:
-            message += ". Strong positive momentum supporting price action"
-            if 'rsi' in components and components['rsi'] > 65:
-                message += ", confirmed by RSI strength"
-        elif momentum < 35:
-            message += ". Weak momentum suggesting limited directional conviction"
-            if 'rsi' in components and components['rsi'] < 35:
-                message += ", confirmed by RSI weakness"
-        
-        # Add pattern recognition insights if available
-        patterns = data.get('signals', {}).get('patterns', [])
-        if patterns and len(patterns) > 0:
-            top_pattern = patterns[0]
-            pattern_name = top_pattern.get('name', '')
-            pattern_type = top_pattern.get('type', '')
+            # Extract key values from the data
+            signals = data.get('signals', {})
+            trend = signals.get('trend', 'neutral')
+            strength = signals.get('strength', 0)
             
-            if pattern_name and pattern_type:
-                if pattern_type == 'bullish':
-                    message += f". {pattern_name} pattern detected suggesting bullish continuation/reversal"
-                elif pattern_type == 'bearish':
-                    message += f". {pattern_name} pattern detected suggesting bearish continuation/reversal"
-        
-        # Add divergence insights
-        divergences_bearish = data.get('signals', {}).get('divergences_bearish', [])
-        divergences_bullish = data.get('signals', {}).get('divergences_bullish', [])
-        
-        if divergences_bearish:
-            message += f". Bearish divergence detected: {divergences_bearish[0]}"
-            if score > 65:
-                message += ", signaling potential trend exhaustion despite overall bullish reading"
-        elif divergences_bullish:
-            message += f". Bullish divergence detected: {divergences_bullish[0]}"
-            if score < 35:
-                message += ", signaling potential trend exhaustion despite overall bearish reading"
-        
-        # Add volatility context
-        volatility = components.get('volatility', 50)
-        if volatility > 65:
-            message += ". Increased market volatility may amplify price movements"
+            # Handle trend_signal which can be either a string or a dictionary
+            trend_signal = signals.get('trend', {})
+            if isinstance(trend_signal, dict):
+                trend_value = trend_signal.get('value', 50)
+                trend_type = trend_signal.get('signal', 'neutral')
+                trend_strength = trend_signal.get('strength', 0.5)
+            else:
+                # If trend_signal is a string, use it as trend_type and set defaults
+                trend_value = 50
+                trend_type = str(trend_signal) if trend_signal else 'neutral'
+                trend_strength = 0.5
+            
+            # Identify strongest components and separate oscillators from trend indicators
+            strongest_components = sorted(components.items(), key=lambda x: x[1], reverse=True)[:3]
+            
+            # Start with trend description
             if trend == 'bullish':
-                message += " in the bullish direction"
+                strength_desc = 'strong' if strength > 0.6 else 'moderate' if strength > 0.3 else 'weak'
+                message = f"Technical indicators show a {strength_desc} bullish trend"
             elif trend == 'bearish':
-                message += " in the bearish direction"
-        elif volatility < 35:
-            message += ". Low market volatility suggests consolidation before next directional move"
+                strength_desc = 'strong' if abs(strength) > 0.6 else 'moderate' if abs(strength) > 0.3 else 'weak'
+                message = f"Technical indicators show a {strength_desc} bearish trend"
+            else:
+                if score > 55:
+                    message = "Technical indicators show slight bullish bias within overall neutrality"
+                elif score < 45:
+                    message = "Technical indicators show slight bearish bias within overall neutrality"
+                else:
+                    message = "Technical indicators reflect market indecision with no clear directional bias"
             
-        # Add timeframe analysis if available
-        timeframe_scores = data.get('timeframe_scores', {})
-        if timeframe_scores:
-            tf_insights = self._analyze_timeframes(timeframe_scores)
-            if tf_insights:
-                message += f". {tf_insights}"
-        
-        return message
+            # Add insights about strongest components with categorization
+            trend_indicators = {}
+            oscillators = {}
+            
+            # Categorize indicators
+            for comp_name, comp_value in components.items():
+                if comp_name.lower() in ['macd', 'adx', 'dmi', 'moving_averages', 'ichimoku', 'supertrend', 'trend', 'ma_cross']:
+                    trend_indicators[comp_name] = comp_value
+                elif comp_name.lower() in ['rsi', 'stoch', 'cci', 'mfi', 'williams_r', 'stoch_rsi', 'ultimate_oscillator']:
+                    oscillators[comp_name] = comp_value
+            
+            # Add trend indicator insights
+            if trend_indicators:
+                strongest_trend = sorted(trend_indicators.items(), key=lambda x: x[1], reverse=True)[0]
+                trend_name, trend_value = strongest_trend
+                trend_name = trend_name.upper()
+                
+                if trend_value > 65:
+                    message += f". {trend_name} strongly confirms bullish trend ({trend_value:.1f})"
+                elif trend_value < 35:
+                    message += f". {trend_name} strongly confirms bearish trend ({trend_value:.1f})"
+                else:
+                    message += f". {trend_name} shows neutral trend conditions ({trend_value:.1f})"
+                    
+                # Add moving averages crossover context if available
+                ma_cross = components.get('ma_cross', None)
+                if ma_cross is not None:
+                    if ma_cross > 65:
+                        message += ". Moving averages showing bullish crossover pattern"
+                    elif ma_cross < 35:
+                        message += ". Moving averages showing bearish crossover pattern"
+            
+            # Add oscillator insights
+            if oscillators:
+                strongest_osc = sorted(oscillators.items(), key=lambda x: x[1], reverse=True)[0]
+                osc_name, osc_value = strongest_osc
+                osc_name = osc_name.upper()
+                
+                if osc_value > 70:
+                    message += f". {osc_name} indicates overbought conditions ({osc_value:.1f}), potential reversal zone"
+                elif osc_value < 30:
+                    message += f". {osc_name} indicates oversold conditions ({osc_value:.1f}), potential reversal zone"
+                elif osc_value > 60:
+                    message += f". {osc_name} shows bullish momentum without being overbought ({osc_value:.1f})"
+                elif osc_value < 40:
+                    message += f". {osc_name} shows bearish momentum without being oversold ({osc_value:.1f})"
+                else:
+                    message += f". {osc_name} in neutral territory ({osc_value:.1f})"
+            
+            # Add momentum context
+            momentum = components.get('momentum', 50)
+            if momentum > 65:
+                message += ". Strong positive momentum supporting price action"
+                if 'rsi' in components and components['rsi'] > 65:
+                    message += ", confirmed by RSI strength"
+            elif momentum < 35:
+                message += ". Weak momentum suggesting limited directional conviction"
+                if 'rsi' in components and components['rsi'] < 35:
+                    message += ", confirmed by RSI weakness"
+            
+            # Add pattern recognition insights if available
+            patterns = data.get('signals', {}).get('patterns', [])
+            if patterns and len(patterns) > 0:
+                top_pattern = patterns[0]
+                pattern_name = top_pattern.get('name', '')
+                pattern_type = top_pattern.get('type', '')
+                
+                if pattern_name and pattern_type:
+                    if pattern_type == 'bullish':
+                        message += f". {pattern_name} pattern detected suggesting bullish continuation/reversal"
+                    elif pattern_type == 'bearish':
+                        message += f". {pattern_name} pattern detected suggesting bearish continuation/reversal"
+            
+            # Add divergence insights
+            divergences_bearish = data.get('signals', {}).get('divergences_bearish', [])
+            divergences_bullish = data.get('signals', {}).get('divergences_bullish', [])
+            
+            if divergences_bearish:
+                message += f". Bearish divergence detected: {divergences_bearish[0]}"
+                if score > 65:
+                    message += ", signaling potential trend exhaustion despite overall bullish reading"
+            elif divergences_bullish:
+                message += f". Bullish divergence detected: {divergences_bullish[0]}"
+                if score < 35:
+                    message += ", signaling potential trend exhaustion despite overall bearish reading"
+            
+            # Add volatility context
+            volatility = components.get('volatility', 50)
+            if volatility > 65:
+                message += ". Increased market volatility may amplify price movements"
+                if trend == 'bullish':
+                    message += " in the bullish direction"
+                elif trend == 'bearish':
+                    message += " in the bearish direction"
+            elif volatility < 35:
+                message += ". Low market volatility suggests consolidation before next directional move"
+            
+            # Add timeframe analysis if available
+            timeframe_scores = data.get('timeframe_scores', {})
+            if timeframe_scores:
+                tf_insights = self._analyze_timeframes(timeframe_scores)
+                if tf_insights:
+                    message += f". {tf_insights}"
+            
+            # Add probabilistic context to make interpretation more actionable
+            component_confidence = {name: score for name, score in components.items() if isinstance(score, (int, float))}
+            enhanced_message = self._add_probabilistic_context(message, score, component_confidence)
+            return enhanced_message
+            
+        except Exception as e:
+            self.logger.error(f"Error generating technical interpretation: {str(e)}")
+            return "Unable to analyze technical indicators: an error occurred"
     
     def _interpret_volume(self, data: Dict[str, Any]) -> str:
         """Generate rich interpretation for volume analysis component."""
         # Extract key values
         score = data.get('score', 50)
-        volume_sma = data.get('signals', {}).get('volume_sma', {}).get('signal', 'neutral')
-        volume_trend = data.get('signals', {}).get('volume_trend', {}).get('signal', 'neutral')
-        volume_profile = data.get('signals', {}).get('volume_profile', {}).get('signal', 'neutral')
         signals = data.get('signals', {})
         raw_values = data.get('metadata', {}).get('raw_values', {})
+        
+        # Safely extract volume signals
+        volume_sma_data = signals.get('volume_sma', {})
+        volume_sma = volume_sma_data.get('signal', 'neutral') if isinstance(volume_sma_data, dict) else str(volume_sma_data) if volume_sma_data else 'neutral'
+        
+        volume_trend_data = signals.get('volume_trend', {})
+        volume_trend = volume_trend_data.get('signal', 'neutral') if isinstance(volume_trend_data, dict) else str(volume_trend_data) if volume_trend_data else 'neutral'
+        
+        volume_profile_data = signals.get('volume_profile', {})
+        volume_profile = volume_profile_data.get('signal', 'neutral') if isinstance(volume_profile_data, dict) else str(volume_profile_data) if volume_profile_data else 'neutral'
         
         # Get strongest components
         components = data.get('components', {})
@@ -325,7 +361,10 @@ class InterpretationGenerator:
         elif abs(score - 50) < 10:
             message += ". Overall volume analysis suggests consolidation phase with balanced trading activity"
         
-        return message
+        # Add probabilistic context to make interpretation more actionable
+        component_confidence = {name: score for name, score in components.items() if isinstance(score, (int, float))}
+        enhanced_message = self._add_probabilistic_context(message, score, component_confidence)
+        return enhanced_message
     
     def _interpret_orderbook(self, data: Dict[str, Any]) -> str:
         """Generate rich interpretation for orderbook analysis component."""
@@ -420,6 +459,38 @@ class InterpretationGenerator:
             message += ". Market makers showing bearish positioning"
             message += ", often precedes downward price movement"
         
+        # Add OIR (Order Imbalance Ratio) insights - 
+        oir = components.get('oir', None)
+        if oir is not None:
+            if oir > 70:
+                message += ". Order Imbalance Ratio strongly bullish"
+                message += ", indicating dominant buying pressure with high predictive power for short-term upward movement"
+            elif oir > 60:
+                message += ". Order Imbalance Ratio moderately bullish"
+                message += ", suggesting buying pressure likely to support price advance"
+            elif oir < 30:
+                message += ". Order Imbalance Ratio strongly bearish"
+                message += ", indicating dominant selling pressure with high predictive power for short-term downward movement"
+            elif oir < 40:
+                message += ". Order Imbalance Ratio moderately bearish"
+                message += ", suggesting selling pressure likely to weigh on price"
+            else:
+                message += ". Order Imbalance Ratio neutral"
+                message += ", indicating balanced order flow with no clear directional bias"
+        
+        # Add DI (Depth Imbalance) insights -
+        di = components.get('di', None)
+        if di is not None:
+            if di > 65:
+                message += ". Depth Imbalance shows significant bid-side volume excess"
+                message += ", providing strong support foundation and absorption capacity"
+            elif di < 35:
+                message += ". Depth Imbalance shows significant ask-side volume excess"
+                message += ", creating substantial resistance overhead and supply pressure"
+            else:
+                message += ". Depth Imbalance relatively balanced"
+                message += ", suggesting proportional liquidity distribution"
+        
         # Add hidden liquidity insights if available
         hidden_liquidity = components.get('hidden_liquidity', None)
         if hidden_liquidity is not None:
@@ -461,316 +532,346 @@ class InterpretationGenerator:
         elif abs(score - 50) < 10 and abs(imbalance - 50) < 10:
             message += ". Overall orderbook structure suggests consolidation or sideways movement"
         
-        return message
+        # Add probabilistic context to make interpretation more actionable
+        component_confidence = {name: score for name, score in components.items() if isinstance(score, (int, float))}
+        enhanced_message = self._add_probabilistic_context(message, score, component_confidence)
+        return enhanced_message
     
     def _interpret_orderflow(self, data: Dict[str, Any]) -> str:
         """Generate rich interpretation for orderflow analysis component."""
-        # Extract key values
-        score = data.get('score', 50)
-        components = data.get('components', {})
-        signals = data.get('signals', {})
-        interpretation = signals.get('interpretation', {})
-        raw_values = data.get('metadata', {}).get('raw_values', {})
-        
-        # Get the main interpretation message
-        if isinstance(interpretation, dict) and 'message' in interpretation:
-            message = interpretation['message']
-        else:
-            # Create detailed interpretation based on score with enhanced context
-            if score > 65:
-                if score > 80:
-                    message = "Extremely strong bullish orderflow indicating aggressive buying pressure"
-                else:
-                    message = "Strong bullish orderflow indicating steady buying pressure"
-            elif score < 35:
-                if score < 20:
-                    message = "Extremely strong bearish orderflow indicating aggressive selling pressure"
-                else:
-                    message = "Strong bearish orderflow indicating steady selling pressure"
+        try:
+            # Validate input data
+            if not isinstance(data, dict):
+                self.logger.warning(f"Invalid data type for orderflow interpretation: {type(data)}")
+                return "Unable to analyze orderflow: invalid data format"
+            
+            # Extract key values with safe defaults
+            score = float(data.get('score', 50))
+            components = data.get('components', {})
+            signals = data.get('signals', {})
+            interpretation = signals.get('interpretation', {})
+            raw_values = data.get('metadata', {}).get('raw_values', {})
+            
+            # Get the main interpretation message
+            if isinstance(interpretation, dict) and 'message' in interpretation:
+                message = interpretation['message']
             else:
-                if score > 55:
-                    message = "Neutral orderflow with slight buying bias"
-                elif score < 45:
-                    message = "Neutral orderflow with slight selling bias"
+                # Create detailed interpretation based on score with enhanced context
+                if score > 65:
+                    if score > 80:
+                        message = "Extremely strong bullish orderflow indicating aggressive buying pressure"
+                    else:
+                        message = "Strong bullish orderflow indicating steady buying pressure"
+                elif score < 35:
+                    if score < 20:
+                        message = "Extremely strong bearish orderflow indicating aggressive selling pressure"
+                    else:
+                        message = "Strong bearish orderflow indicating steady selling pressure"
                 else:
-                    message = "Balanced orderflow with equilibrium between buyers and sellers"
-        
-        # Add open interest insights with enhanced market context
-        oi_score = components.get('open_interest_score', 50)
-        oi_change = components.get('open_interest_change', 0)
-        if oi_score > 65:
-            message += ". Rising open interest confirms trend strength"
-            if oi_change > 0.1:
-                message += " with significant new position creation"
-                if score > 60:
-                    message += ", indicating fresh buying entering the market"
-                elif score < 40:
-                    message += ", indicating fresh selling entering the market"
-            message += ", typically seen in strong trend continuation"
-        elif oi_score < 35:
-            message += ". Declining open interest suggests trend exhaustion"
-            if oi_change < -0.1:
-                message += " with significant position reduction"
-                if score < 40:
-                    message += " and possible short covering"
-                elif score > 60:
-                    message += " and possible profit taking"
-            message += ", often precedes consolidation or reversal"
-        
-        # Add CVD (Cumulative Volume Delta) insights with enhanced price impact assessment
-        cvd = components.get('cvd', 50)
-        cvd_slope = components.get('cvd_slope', 0)
-        if cvd > 65:
-            message += ". Strong positive cumulative volume delta showing dominant buying activity"
-            if cvd_slope > 0.1:
-                message += " with accelerating momentum"
-            elif cvd_slope < -0.05:
-                message += " though momentum is slowing"
+                    if score > 55:
+                        message = "Neutral orderflow with slight buying bias"
+                    elif score < 45:
+                        message = "Neutral orderflow with slight selling bias"
+                    else:
+                        message = "Balanced orderflow with equilibrium between buyers and sellers"
             
-            if score < 50:
-                message += "; divergence between CVD and price action suggests potential bullish reversal"
-        elif cvd < 35:
-            message += ". Strong negative cumulative volume delta showing dominant selling activity"
-            if cvd_slope < -0.1:
-                message += " with accelerating momentum"
-            elif cvd_slope > 0.05:
-                message += " though momentum is slowing"
+            # Add open interest insights with enhanced market context
+            oi_score = components.get('open_interest_score', 50)
+            oi_change = components.get('open_interest_change', 0)
+            if oi_score > 65:
+                message += ". Rising open interest confirms trend strength"
+                if oi_change > 0.1:
+                    message += " with significant new position creation"
+                    if score > 60:
+                        message += ", indicating fresh buying entering the market"
+                    elif score < 40:
+                        message += ", indicating fresh selling entering the market"
+                message += ", typically seen in strong trend continuation"
+            elif oi_score < 35:
+                message += ". Declining open interest suggests trend exhaustion"
+                if oi_change < -0.1:
+                    message += " with significant position reduction"
+                    if score < 40:
+                        message += " and possible short covering"
+                    elif score > 60:
+                        message += " and possible profit taking"
+                message += ", often precedes consolidation or reversal"
             
-            if score > 50:
-                message += "; divergence between CVD and price action suggests potential bearish reversal"
-        
-        # Add trade flow insights with enhanced institutional analysis
-        trade_flow = components.get('trade_flow_score', 50)
-        large_trades = components.get('large_trades', 50)
-        if trade_flow > 65:
-            message += ". Large trades predominantly executed on the buy side"
-            if large_trades > 70:
-                message += ", indicating likely institutional accumulation"
-            if cvd > 60:
-                message += " with strong absorption of selling pressure"
-        elif trade_flow < 35:
-            message += ". Large trades predominantly executed on the sell side"
-            if large_trades > 70:
-                message += ", indicating likely institutional distribution"
-            if cvd < 40:
-                message += " with weak absorption of selling pressure"
-        elif large_trades > 65:
-            message += ". Significant large trade activity with balanced buying and selling"
-        
-        # Add market maker activity insights
-        mm_activity = components.get('market_maker_activity', 50)
-        if mm_activity is not None:
-            if mm_activity > 65:
-                message += ". Market makers actively providing liquidity"
+            # Add CVD (Cumulative Volume Delta) insights with enhanced price impact assessment
+            cvd = components.get('cvd', 50)
+            cvd_slope = components.get('cvd_slope', 0)
+            if cvd > 65:
+                message += ". Strong positive cumulative volume delta showing dominant buying activity"
+                if cvd_slope > 0.1:
+                    message += " with accelerating momentum"
+                elif cvd_slope < -0.05:
+                    message += " though momentum is slowing"
+                
+                if score < 50:
+                    message += "; divergence between CVD and price action suggests potential bullish reversal"
+            elif cvd < 35:
+                message += ". Strong negative cumulative volume delta showing dominant selling activity"
+                if cvd_slope < -0.1:
+                    message += " with accelerating momentum"
+                elif cvd_slope > 0.05:
+                    message += " though momentum is slowing"
+                
+                if score > 50:
+                    message += "; divergence between CVD and price action suggests potential bearish reversal"
+            
+            # Add trade flow insights with enhanced institutional analysis
+            trade_flow = components.get('trade_flow_score', 50)
+            large_trades = components.get('large_trades', 50)
+            if trade_flow > 65:
+                message += ". Large trades predominantly executed on the buy side"
+                if large_trades > 70:
+                    message += ", indicating likely institutional accumulation"
+                if cvd > 60:
+                    message += " with strong absorption of selling pressure"
+            elif trade_flow < 35:
+                message += ". Large trades predominantly executed on the sell side"
+                if large_trades > 70:
+                    message += ", indicating likely institutional distribution"
+                if cvd < 40:
+                    message += " with weak absorption of selling pressure"
+            elif large_trades > 65:
+                message += ". Significant large trade activity with balanced buying and selling"
+            
+            # Add market maker activity insights
+            mm_activity = components.get('market_maker_activity', 50)
+            if mm_activity is not None:
+                if mm_activity > 65:
+                    message += ". Market makers actively providing liquidity"
+                    if score > 60:
+                        message += " with bullish positioning"
+                    elif score < 40:
+                        message += " with bearish positioning"
+                elif mm_activity < 35:
+                    message += ". Limited market maker activity suggesting thin liquidity conditions"
+            
+            # Add aggressive orders analysis
+            aggr_buys = components.get('aggressive_buys', 50)
+            aggr_sells = components.get('aggressive_sells', 50)
+            if aggr_buys > 65 and aggr_sells < 45:
+                message += ". Buyers aggressively lifting offers, indicating urgent demand"
+                if score > 65:
+                    message += " and potential for upside acceleration"
+            elif aggr_sells > 65 and aggr_buys < 45:
+                message += ". Sellers aggressively hitting bids, indicating urgent liquidation"
+                if score < 35:
+                    message += " and potential for downside acceleration"
+            elif aggr_buys > 60 and aggr_sells > 60:
+                message += ". High aggression on both sides indicating volatile, two-way trading"
+            
+            # Add volume profile distribution insights
+            vol_concentration = components.get('volume_concentration', None)
+            if vol_concentration is not None:
+                if vol_concentration > 65:
+                    message += ". Volume concentrated at specific price levels"
+                    vol_nodes = components.get('volume_nodes', [])
+                    if isinstance(vol_nodes, list) and len(vol_nodes) > 0:
+                        if vol_nodes[0].get('type') == 'HVN' and vol_nodes[0].get('proximity', 1) < 0.05:
+                            message += ", with high volume node near current price suggesting significant interest"
+                        elif vol_nodes[0].get('type') == 'LVN' and vol_nodes[0].get('proximity', 1) < 0.05:
+                            message += ", with low volume node near current price suggesting potential for quick price movement"
+                elif vol_concentration < 35:
+                    message += ". Volume evenly distributed across price range, lacking clear reference points"
+            
+            # Add order book sweep insights
+            sweeps = components.get('sweeps', 50)
+            if sweeps > 65:
+                message += ". Multiple orderbook sweeps detected"
                 if score > 60:
-                    message += " with bullish positioning"
+                    message += ", with buy-side sweeps dominating"
                 elif score < 40:
-                    message += " with bearish positioning"
-            elif mm_activity < 35:
-                message += ". Limited market maker activity suggesting thin liquidity conditions"
-        
-        # Add aggressive orders analysis
-        aggr_buys = components.get('aggressive_buys', 50)
-        aggr_sells = components.get('aggressive_sells', 50)
-        if aggr_buys > 65 and aggr_sells < 45:
-            message += ". Buyers aggressively lifting offers, indicating urgent demand"
-            if score > 65:
-                message += " and potential for upside acceleration"
-        elif aggr_sells > 65 and aggr_buys < 45:
-            message += ". Sellers aggressively hitting bids, indicating urgent liquidation"
-            if score < 35:
-                message += " and potential for downside acceleration"
-        elif aggr_buys > 60 and aggr_sells > 60:
-            message += ". High aggression on both sides indicating volatile, two-way trading"
-        
-        # Add volume profile distribution insights
-        vol_concentration = components.get('volume_concentration', None)
-        if vol_concentration is not None:
-            if vol_concentration > 65:
-                message += ". Volume concentrated at specific price levels"
-                vol_nodes = components.get('volume_nodes', [])
-                if isinstance(vol_nodes, list) and len(vol_nodes) > 0:
-                    if vol_nodes[0].get('type') == 'HVN' and vol_nodes[0].get('proximity', 1) < 0.05:
-                        message += ", with high volume node near current price suggesting significant interest"
-                    elif vol_nodes[0].get('type') == 'LVN' and vol_nodes[0].get('proximity', 1) < 0.05:
-                        message += ", with low volume node near current price suggesting potential for quick price movement"
-            elif vol_concentration < 35:
-                message += ". Volume evenly distributed across price range, lacking clear reference points"
-        
-        # Add order book sweep insights
-        sweeps = components.get('sweeps', 50)
-        if sweeps > 65:
-            message += ". Multiple orderbook sweeps detected"
-            if score > 60:
-                message += ", with buy-side sweeps dominating"
-            elif score < 40:
-                message += ", with sell-side sweeps dominating"
-            message += " - often signals strong conviction and potential for price acceleration"
-        
-        # Add iceberg order detection
-        icebergs = components.get('iceberg_orders', None)
-        if icebergs is not None and icebergs > 65:
-            message += ". Iceberg order activity detected"
-            if components.get('iceberg_side', 'neutral') == 'buy':
-                message += " on the buy side, suggesting hidden support"
-            elif components.get('iceberg_side', 'neutral') == 'sell':
-                message += " on the sell side, suggesting hidden resistance"
-        
-        # Add divergence insights with enhanced implications
-        divergences = signals.get('divergences', {})
-        if divergences:
-            price_cvd = divergences.get('price_cvd', {})
-            if price_cvd.get('type') == 'bullish' and price_cvd.get('strength', 0) > 30:
-                message += ". Bullish divergence between price and orderflow detected"
-                message += ", suggesting potential upside reversal as price declines despite improving flows"
-            elif price_cvd.get('type') == 'bearish' and price_cvd.get('strength', 0) > 30:
-                message += ". Bearish divergence between price and orderflow detected"
-                message += ", suggesting potential downside reversal as price rises despite deteriorating flows"
-        
-        # Add tape reading signals
-        tape_signals = signals.get('tape_signals', [])
-        if tape_signals and len(tape_signals) > 0:
-            top_signal = tape_signals[0]
-            if isinstance(top_signal, dict) and 'type' in top_signal and 'strength' in top_signal:
-                if top_signal['type'] == 'absorption' and top_signal['strength'] > 0.6:
-                    message += ". Strong absorption of selling pressure detected on the tape"
-                elif top_signal['type'] == 'distribution' and top_signal['strength'] > 0.6:
-                    message += ". Strong distribution pattern detected on the tape"
-                elif top_signal['type'] == 'climax' and top_signal['strength'] > 0.7:
-                    message += ". Volume climax detected, suggesting potential exhaustion and reversal"
-        
-        # Add trading imbalance assessment
-        if 'imbalance' in components:
-            imbalance = components['imbalance']
-            if imbalance > 70:
-                message += ". Significant order imbalance favoring buyers"
-                if 'absorption' in components and components['absorption'] > 65:
-                    message += ", with strong absorption of incoming supply"
-            elif imbalance < 30:
-                message += ". Significant order imbalance favoring sellers"
-                if 'absorption' in components and components['absorption'] > 65:
-                    message += ", with strong absorption of incoming demand"
-        
-        # Add overall market structure context
-        if score > 65 and components.get('persistence', 50) > 65:
-            message += ". Overall orderflow structure indicates strong buying pressure likely to continue"
-        elif score < 35 and components.get('persistence', 50) > 65:
-            message += ". Overall orderflow structure indicates strong selling pressure likely to continue"
-        elif abs(score - 50) < 10:
-            message += ". Overall orderflow structure indicates balanced conditions with no clear directional edge"
-        
-        return message
+                    message += ", with sell-side sweeps dominating"
+                message += " - often signals strong conviction and potential for price acceleration"
+            
+            # Add iceberg order detection
+            icebergs = components.get('iceberg_orders', None)
+            if icebergs is not None and icebergs > 65:
+                message += ". Iceberg order activity detected"
+                if components.get('iceberg_side', 'neutral') == 'buy':
+                    message += " on the buy side, suggesting hidden support"
+                elif components.get('iceberg_side', 'neutral') == 'sell':
+                    message += " on the sell side, suggesting hidden resistance"
+            
+            # Add divergence insights with enhanced implications
+            divergences = signals.get('divergences', {})
+            if divergences:
+                price_cvd = divergences.get('price_cvd', {})
+                if price_cvd.get('type') == 'bullish' and price_cvd.get('strength', 0) > 30:
+                    message += ". Bullish divergence between price and orderflow detected"
+                    message += ", suggesting potential upside reversal as price declines despite improving flows"
+                elif price_cvd.get('type') == 'bearish' and price_cvd.get('strength', 0) > 30:
+                    message += ". Bearish divergence between price and orderflow detected"
+                    message += ", suggesting potential downside reversal as price rises despite deteriorating flows"
+            
+            # Add tape reading signals
+            tape_signals = signals.get('tape_signals', [])
+            if tape_signals and len(tape_signals) > 0:
+                top_signal = tape_signals[0]
+                if isinstance(top_signal, dict) and 'type' in top_signal and 'strength' in top_signal:
+                    if top_signal['type'] == 'absorption' and top_signal['strength'] > 0.6:
+                        message += ". Strong absorption of selling pressure detected on the tape"
+                    elif top_signal['type'] == 'distribution' and top_signal['strength'] > 0.6:
+                        message += ". Strong distribution pattern detected on the tape"
+                    elif top_signal['type'] == 'climax' and top_signal['strength'] > 0.7:
+                        message += ". Volume climax detected, suggesting potential exhaustion and reversal"
+            
+            # Add trading imbalance assessment
+            if 'imbalance' in components:
+                imbalance = components['imbalance']
+                if imbalance > 70:
+                    message += ". Significant order imbalance favoring buyers"
+                    if 'absorption' in components and components['absorption'] > 65:
+                        message += ", with strong absorption of incoming supply"
+                elif imbalance < 30:
+                    message += ". Significant order imbalance favoring sellers"
+                    if 'absorption' in components and components['absorption'] > 65:
+                        message += ", with strong absorption of incoming demand"
+            
+            # Add overall market structure context
+            if score > 65 and components.get('persistence', 50) > 65:
+                message += ". Overall orderflow structure indicates strong buying pressure likely to continue"
+            elif score < 35 and components.get('persistence', 50) > 65:
+                message += ". Overall orderflow structure indicates strong selling pressure likely to continue"
+            elif abs(score - 50) < 10:
+                message += ". Overall orderflow structure indicates balanced conditions with no clear directional edge"
+            
+            # Add probabilistic context to make interpretation more actionable
+            component_confidence = {name: score for name, score in components.items() if isinstance(score, (int, float))}
+            enhanced_message = self._add_probabilistic_context(message, score, component_confidence)
+            return enhanced_message
+            
+        except Exception as e:
+            self.logger.error(f"Error generating orderflow interpretation: {str(e)}")
+            return "Unable to analyze orderflow: an error occurred"
     
     def _interpret_sentiment(self, data: Dict[str, Any]) -> str:
         """Generate rich interpretation for sentiment analysis component."""
-        # Extract key values
-        score = data.get('score', 50)
-        components = data.get('components', {})
-        interpretation = data.get('interpretation', {})
-        raw_values = data.get('metadata', {}).get('raw_values', {})
-        
-        # Use provided interpretation summary if available
-        if isinstance(interpretation, dict) and 'summary' in interpretation:
-            return interpretation['summary']
-        
-        # Otherwise, generate a new interpretation
-        if score > 65:
-            sentiment_msg = "Strongly bullish market sentiment"
-        elif score > 55:
-            sentiment_msg = "Moderately bullish market sentiment"
-        elif score < 35:
-            sentiment_msg = "Strongly bearish market sentiment"
-        elif score < 45:
-            sentiment_msg = "Moderately bearish market sentiment"
-        else:
-            sentiment_msg = "Neutral market sentiment"
-        
-        # Add risk assessment with more detailed context
-        risk = components.get('risk', 50)
-        if risk > 65:
-            risk_msg = "high risk conditions"
-            risk_detail = "suggesting potential for sharp reversals"
-        elif risk < 35:
-            risk_msg = "favorable risk conditions"
-            risk_detail = "supporting sustainable price action"
-        else:
-            risk_msg = "moderate risk conditions"
-            risk_detail = "with balanced risk/reward profile"
-        
-        # Add funding rate insight with more details
-        funding_rate = components.get('funding_rate', 50)
-        if funding_rate > 65:
-            funding_msg = "positive funding rates indicating long bias"
-            funding_detail = "showing market willingness to pay premiums for long positions"
-        elif funding_rate < 35:
-            funding_msg = "negative funding rates indicating short bias"
-            funding_detail = "signaling bearish positioning in the futures market"
-        else:
-            funding_msg = "neutral funding rates"
-            funding_detail = "indicating balanced long/short positioning"
-        
-        # Compose the initial message
-        message = f"{sentiment_msg} with {risk_msg} and {funding_msg}"
-        
-        # Add detailed risk and funding context
-        message += f". {risk_detail}, {funding_detail}"
-        
-        # Add long/short ratio insight with more context
-        lsr = components.get('long_short_ratio', 50)
-        if lsr > 60:
-            message += ". Traders positioned primarily long"
-            if lsr > 75:
-                message += ", showing potential crowding on the bullish side which may indicate a contrarian signal"
+        try:
+            # Validate input data
+            if not isinstance(data, dict):
+                self.logger.warning(f"Invalid data type for sentiment interpretation: {type(data)}")
+                return "Unable to analyze sentiment: invalid data format"
+            
+            # Extract key values with safe defaults
+            score = float(data.get('score', 50))
+            components = data.get('components', {})
+            interpretation = data.get('interpretation', {})
+            raw_values = data.get('metadata', {}).get('raw_values', {})
+            
+            # Use provided interpretation summary if available
+            if isinstance(interpretation, dict) and 'summary' in interpretation:
+                return interpretation['summary']
+            
+            # Otherwise, generate a new interpretation
+            if score > 65:
+                sentiment_msg = "Strongly bullish market sentiment"
+            elif score > 55:
+                sentiment_msg = "Moderately bullish market sentiment"
+            elif score < 35:
+                sentiment_msg = "Strongly bearish market sentiment"
+            elif score < 45:
+                sentiment_msg = "Moderately bearish market sentiment"
             else:
-                message += ", confirming directional bias with moderate conviction"
-        elif lsr < 40:
-            message += ". Traders positioned primarily short"
-            if lsr < 25: 
-                message += ", showing extreme bearish positioning which may act as a contrarian signal"
+                sentiment_msg = "Neutral market sentiment"
+            
+            # Add risk assessment with more detailed context
+            risk = components.get('risk', 50)
+            if risk > 65:
+                risk_msg = "high risk conditions"
+                risk_detail = "suggesting potential for sharp reversals"
+            elif risk < 35:
+                risk_msg = "favorable risk conditions"
+                risk_detail = "supporting sustainable price action"
             else:
-                message += ", indicating moderate bearish conviction"
-        
-        # Add market activity insight
-        market_activity = components.get('market_activity', 50)
-        if market_activity > 65:
-            message += ". Very high market activity with strong participation (bullish)"
-            if funding_rate > 60:
-                message += ", reinforcing bullish conviction across market segments"
-        elif market_activity < 35:
-            message += ". Low market activity showing limited participation (cautious)"
-            if funding_rate < 40:
-                message += ", suggesting a hesitant market backdrop for new positions"
-        
-        # Add volatility context
-        volatility = components.get('volatility', 50)
-        if volatility > 65:
-            message += ". Market showing above-average volatility"
-            if risk > 60:
-                message += ", increasing both opportunity and risk factors"
-        elif volatility < 35:
-            message += ". Market showing below-average volatility"
-            if score > 55 or score < 45:
-                message += ", which may precede a volatility expansion"
-        
-        # Add market mood insight with more detail
-        mood = components.get('market_mood', 50)
-        if mood > 60 and score < 50:
-            message += ". Sentiment diverging from market mood, suggesting potential reversal to the upside"
-            if lsr < 40:
-                message += " with shorts potentially vulnerable to a squeeze"
-        elif mood < 40 and score > 50:
-            message += ". Sentiment diverging from market mood, suggesting potential reversal to the downside"
+                risk_msg = "moderate risk conditions"
+                risk_detail = "with balanced risk/reward profile"
+            
+            # Add funding rate insight with more details
+            funding_rate = components.get('funding_rate', 50)
+            if funding_rate > 65:
+                funding_msg = "positive funding rates indicating long bias"
+                funding_detail = "showing market willingness to pay premiums for long positions"
+            elif funding_rate < 35:
+                funding_msg = "negative funding rates indicating short bias"
+                funding_detail = "signaling bearish positioning in the futures market"
+            else:
+                funding_msg = "neutral funding rates"
+                funding_detail = "indicating balanced long/short positioning"
+            
+            # Compose the initial message
+            message = f"{sentiment_msg} with {risk_msg} and {funding_msg}"
+            
+            # Add detailed risk and funding context
+            message += f". {risk_detail}, {funding_detail}"
+            
+            # Add long/short ratio insight with more context
+            lsr = components.get('long_short_ratio', 50)
             if lsr > 60:
-                message += " with longs potentially vulnerable to profit-taking"
-        
-        # Add social sentiment if available
-        social = components.get('social_sentiment', 50)
-        if social > 65:
-            message += ". Social media sentiment notably bullish, typically a forward-looking indicator"
-        elif social < 35:
-            message += ". Social media sentiment notably bearish, may indicate negative retail sentiment"
-        
-        return message
+                message += ". Traders positioned primarily long"
+                if lsr > 75:
+                    message += ", showing potential crowding on the bullish side which may indicate a contrarian signal"
+                else:
+                    message += ", confirming directional bias with moderate conviction"
+            elif lsr < 40:
+                message += ". Traders positioned primarily short"
+                if lsr < 25: 
+                    message += ", showing extreme bearish positioning which may act as a contrarian signal"
+                else:
+                    message += ", indicating moderate bearish conviction"
+            
+            # Add market activity insight
+            market_activity = components.get('market_activity', 50)
+            if market_activity > 65:
+                message += ". Very high market activity with strong participation (bullish)"
+                if funding_rate > 60:
+                    message += ", reinforcing bullish conviction across market segments"
+            elif market_activity < 35:
+                message += ". Low market activity showing limited participation (cautious)"
+                if funding_rate < 40:
+                    message += ", suggesting a hesitant market backdrop for new positions"
+            
+            # Add volatility context
+            volatility = components.get('volatility', 50)
+            if volatility > 65:
+                message += ". Market showing above-average volatility"
+                if risk > 60:
+                    message += ", increasing both opportunity and risk factors"
+            elif volatility < 35:
+                message += ". Market showing below-average volatility"
+                if score > 55 or score < 45:
+                    message += ", which may precede a volatility expansion"
+            
+            # Add market mood insight with more detail
+            mood = components.get('market_mood', 50)
+            if mood > 60 and score < 50:
+                message += ". Sentiment diverging from market mood, suggesting potential reversal to the upside"
+                if lsr < 40:
+                    message += " with shorts potentially vulnerable to a squeeze"
+            elif mood < 40 and score > 50:
+                message += ". Sentiment diverging from market mood, suggesting potential reversal to the downside"
+                if lsr > 60:
+                    message += " with longs potentially vulnerable to profit-taking"
+            
+            # Add social sentiment if available
+            social = components.get('social_sentiment', 50)
+            if social > 65:
+                message += ". Social media sentiment notably bullish, typically a forward-looking indicator"
+            elif social < 35:
+                message += ". Social media sentiment notably bearish, may indicate negative retail sentiment"
+            
+            # Add probabilistic context to make interpretation more actionable
+            component_confidence = {name: score for name, score in components.items()} if components else None
+            enhanced_message = self._add_probabilistic_context(message, score, component_confidence)
+            
+            return enhanced_message
+            
+        except Exception as e:
+            self.logger.error(f"Error generating sentiment interpretation: {str(e)}")
+            return "Unable to analyze sentiment: an error occurred"
     
     def _interpret_price_structure(self, data: Dict[str, Any]) -> str:
         """Generate rich interpretation for price structure analysis component."""
@@ -802,23 +903,42 @@ class InterpretationGenerator:
                     return strength_map.get(value.lower(), default)
             return default
         
-        trend_value = safe_float_convert(trend_signal.get('value', 50))
-        trend_type = trend_signal.get('signal', 'neutral')
-        trend_strength = safe_float_convert(trend_signal.get('strength', 0.5))
+        # Safely extract trend data
+        if isinstance(trend_signal, dict):
+            trend_value = safe_float_convert(trend_signal.get('value', 50))
+            trend_type = trend_signal.get('signal', 'neutral')
+            trend_strength = safe_float_convert(trend_signal.get('strength', 0.5))
+        else:
+            # If trend_signal is a string, use it as trend_type
+            trend_value = 50
+            trend_type = str(trend_signal) if trend_signal else 'neutral'
+            trend_strength = 0.5
         
         # Get support/resistance signals with enhanced context
         sr_signal = signals.get('support_resistance', {})
-        sr_value = safe_float_convert(sr_signal.get('value', 50))
-        sr_type = sr_signal.get('signal', 'neutral')
-        sr_bias = sr_signal.get('bias', 'neutral')
-        sr_distance = safe_float_convert(sr_signal.get('distance', 0))
+        if isinstance(sr_signal, dict):
+            sr_value = safe_float_convert(sr_signal.get('value', 50))
+            sr_type = sr_signal.get('signal', 'neutral')
+            sr_bias = sr_signal.get('bias', 'neutral')
+            sr_distance = safe_float_convert(sr_signal.get('distance', 0))
+        else:
+            sr_value = 50
+            sr_type = str(sr_signal) if sr_signal else 'neutral'
+            sr_bias = 'neutral'
+            sr_distance = 0
         
         # Get order block signals with enhanced detail
         ob_signal = signals.get('orderblock', {})
-        ob_value = safe_float_convert(ob_signal.get('value', 50))
-        ob_type = ob_signal.get('signal', 'neutral')
-        ob_bias = ob_signal.get('bias', 'neutral')
-        ob_strength = safe_float_convert(ob_signal.get('strength', 0.5))
+        if isinstance(ob_signal, dict):
+            ob_value = safe_float_convert(ob_signal.get('value', 50))
+            ob_type = ob_signal.get('signal', 'neutral')
+            ob_bias = ob_signal.get('bias', 'neutral')
+            ob_strength = safe_float_convert(ob_signal.get('strength', 0.5))
+        else:
+            ob_value = 50
+            ob_type = str(ob_signal) if ob_signal else 'neutral'
+            ob_bias = 'neutral'
+            ob_strength = 0.5
         
         # Start with detailed trend description
         if trend_type == 'uptrend':
@@ -911,6 +1031,38 @@ class InterpretationGenerator:
         elif 45 <= ms <= 55:
             message += ". Mixed swing structure without clear directional bias"
         
+        # Add range analysis insight with RektProof PA and Hsaka strategy context
+        range_analysis = safe_float_convert(components.get('range_analysis', 50))
+        range_signal = signals.get('range_analysis', {})
+        
+        if isinstance(range_signal, dict):
+            range_bias = range_signal.get('bias', 'neutral')
+            range_strength = range_signal.get('strength', 'moderate')
+            range_signal_type = range_signal.get('signal', 'neutral_range')
+            
+            if range_analysis > 65:
+                if range_bias == 'bullish':
+                    message += f". Range analysis shows strong bullish bias - price positioned in lower quarters"
+                    if range_signal_type == 'bullish_range':
+                        message += " with sweep/MSB confirmation, suggesting upward movement from range"
+                elif range_bias == 'bearish':
+                    message += f". Range analysis shows strong bearish bias - price positioned in upper quarters"
+                    if range_signal_type == 'bearish_range':
+                        message += " with sweep/MSB confirmation, suggesting downward movement from range"
+            elif range_analysis < 35:
+                if range_bias == 'bearish':
+                    message += f". Range analysis shows strong bearish structure - price vulnerable in upper range"
+                elif range_bias == 'bullish':
+                    message += f". Range analysis shows strong bullish structure - price supported in lower range"
+            elif 45 <= range_analysis <= 55:
+                message += f". Range analysis neutral - price in mid-range with no clear directional bias"
+                if range_signal_type == 'neutral_range':
+                    message += ", suggesting consolidation or accumulation/distribution phase"
+        elif range_analysis > 60:
+            message += f". Range analysis favors bullish bias with price positioned favorably for upward movement"
+        elif range_analysis < 40:
+            message += f". Range analysis favors bearish bias with price positioned for potential downward movement"
+        
         # Add pattern recognition if available
         patterns = signals.get('patterns', [])
         if patterns and len(patterns) > 0:
@@ -989,7 +1141,10 @@ class InterpretationGenerator:
                 if volatility_float > 65:
                     message += ". Significant volatility contraction observed, often preceding explosive moves"
         
-        return message
+        # Add probabilistic context to make interpretation more actionable
+        component_confidence = {name: score for name, score in components.items() if isinstance(score, (int, float))}
+        enhanced_message = self._add_probabilistic_context(message, score, component_confidence)
+        return enhanced_message
     
     def _get_default_interpretation(self, component_name: str, data: Dict[str, Any]) -> str:
         """Provide a fallback interpretation for unknown components."""
@@ -1355,4 +1510,98 @@ class InterpretationGenerator:
         elif atr > 65:
             return "High volatility environment; consider wider stops and reduced position sizing"
         
-        return "Monitor for further confirmation before implementing directional strategies" 
+        return "Monitor for further confirmation before implementing directional strategies"
+    
+    def _add_probabilistic_context(self, base_message: str, score: float, component_confidence: Dict[str, float] = None) -> str:
+        """
+        Enhance interpretation with probabilistic language and confidence levels.
+        
+        Args:
+            base_message: The basic interpretation message
+            score: The component score (0-100)
+            component_confidence: Optional confidence metrics for components
+            
+        Returns:
+            Enhanced message with probability and confidence information
+        """
+        try:
+            # Calculate probability based on score distance from neutral (50)
+            score_deviation = abs(score - 50)
+            
+            # Convert score to probability (more extreme scores = higher probability)
+            if score > 50:
+                # Bullish probability
+                probability = 50 + (score_deviation * 0.8)  # Max ~90% probability
+                direction = "upward movement"
+                bias = "bullish"
+            else:
+                # Bearish probability  
+                probability = 50 + (score_deviation * 0.8)  # Max ~90% probability
+                direction = "downward movement"
+                bias = "bearish"
+            
+            # Calculate confidence based on component alignment
+            confidence = self._calculate_interpretation_confidence(score, component_confidence)
+            
+            # Generate probability language
+            prob_language = self._get_probability_language(probability)
+            conf_language = self._get_confidence_language(confidence)
+            
+            # Enhance the base message
+            enhanced_message = f"{base_message}. "
+            
+            # Add probabilistic context
+            if score_deviation > 15:  # Only add for significant deviations
+                enhanced_message += f"Analysis suggests {prob_language} of {direction} "
+                enhanced_message += f"with {conf_language} confidence ({confidence:.0f}%)"
+            
+            return enhanced_message
+            
+        except Exception as e:
+            self.logger.error(f"Error adding probabilistic context: {str(e)}")
+            return base_message  # Return original message if enhancement fails
+    
+    def _calculate_interpretation_confidence(self, score: float, component_confidence: Dict[str, float] = None) -> float:
+        """Calculate confidence level for interpretation."""
+        try:
+            # Base confidence from score certainty
+            score_deviation = abs(score - 50)
+            base_confidence = min(90, 60 + score_deviation)  # 60-90% range
+            
+            # Adjust based on component alignment if available
+            if component_confidence:
+                # Higher confidence when components agree
+                component_std = np.std(list(component_confidence.values())) if len(component_confidence) > 1 else 0
+                alignment_bonus = max(-10, 10 - component_std)  # Penalty for divergent components
+                base_confidence += alignment_bonus
+            
+            return max(55, min(95, base_confidence))  # Clamp to reasonable range
+            
+        except Exception:
+            return 75.0  # Default moderate confidence
+    
+    def _get_probability_language(self, probability: float) -> str:
+        """Convert probability to natural language."""
+        if probability >= 80:
+            return "high probability (>80%)"
+        elif probability >= 70:
+            return "strong likelihood (~75%)"  
+        elif probability >= 60:
+            return "moderate probability (~65%)"
+        elif probability >= 55:
+            return "slight probability (~60%)"
+        else:
+            return "uncertain probability"
+    
+    def _get_confidence_language(self, confidence: float) -> str:
+        """Convert confidence to natural language."""
+        if confidence >= 90:
+            return "very high"
+        elif confidence >= 80:
+            return "high"
+        elif confidence >= 70:
+            return "moderate"
+        elif confidence >= 60:
+            return "fair"
+        else:
+            return "low" 

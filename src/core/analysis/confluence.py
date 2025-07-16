@@ -136,6 +136,8 @@ class ConfluenceAnalyzer:
                     for tf, data in market_data['ohlcv'].items():
                         if isinstance(data, pd.DataFrame):
                             self.logger.info(f"OHLCV {tf} shape: {data.shape}, empty: {data.empty}")
+                else:
+                    self.logger.warning("No OHLCV data found in market_data")
                 
                 return self._get_default_response()
                 
@@ -194,12 +196,34 @@ class ConfluenceAnalyzer:
                     self.logger.error(traceback.format_exc())
                     self.data_flow_tracker.log_analysis(indicator_type, 'error')
                     
-            # Calculate confluence score
+            # CRITICAL: Require ALL 6 indicators to be successful for valid confluence analysis
+            required_indicators = set(self.indicators.keys())
+            successful_indicators = set(scores.keys())
+            missing_indicators = required_indicators - successful_indicators
+            
+            if missing_indicators:
+                self.logger.error(f"CONFLUENCE ANALYSIS FAILED: Missing required indicators: {sorted(missing_indicators)}")
+                self.logger.error(f"Required indicators: {sorted(required_indicators)}")
+                self.logger.error(f"Successful indicators: {sorted(successful_indicators)}")
+                self.logger.error("Confluence analysis requires ALL indicators to be successful to ensure system integrity")
+                
+                # Log detailed failure reasons for each missing indicator
+                for indicator_type in missing_indicators:
+                    flow_status = self.data_flow_tracker.flow.get(indicator_type, {})
+                    if flow_status.get('status') == 'error':
+                        self.logger.error(f"  - {indicator_type}: Analysis failed with error")
+                    else:
+                        self.logger.error(f"  - {indicator_type}: Data transformation or validation failed")
+                
+                return self._get_default_response()
+            
+            # Calculate confluence score only if all indicators succeeded
             if not scores:
                 self.logger.error("No valid indicator scores calculated")
                 return self._get_default_response()
                 
-            self.logger.info(f"Successfully calculated scores for {len(scores)} indicators: {list(scores.keys())}")
+            self.logger.info(f"✅ ALL INDICATORS SUCCESSFUL: {len(scores)}/{len(required_indicators)} indicators calculated")
+            self.logger.info(f"Successful indicators: {sorted(scores.keys())}")
             
             confluence_score = self._calculate_confluence_score(scores)
             reliability = self._calculate_reliability(scores)
@@ -1454,23 +1478,42 @@ class ConfluenceAnalyzer:
 
     def _get_default_response(self) -> Dict[str, Any]:
         """Return a default analysis response when analysis fails"""
+        # Get failure details from data flow tracker
+        failed_indicators = []
+        successful_indicators = []
+        
+        for indicator_type in self.indicators.keys():
+            flow_status = self.data_flow_tracker.flow.get(indicator_type, {})
+            if flow_status.get('status') == 'success':
+                successful_indicators.append(indicator_type)
+            else:
+                failed_indicators.append(indicator_type)
+        
         return {
-            'timestamp': int(time.time() * 1000),
-            'confluence_score': 50.0,  # Neutral score (changed from 'score' to 'confluence_score')
-            'signal': 'neutral',
-            'confidence': 0.0,
-            'components': {
-                'technical': {'score': 50.0, 'signals': {}},
-                'orderflow': {'score': 50.0, 'signals': {}},
-                'sentiment': {'score': 50.0, 'signals': {}},
-                'orderbook': {'score': 50.0, 'signals': {}},
-                'price_structure': {'score': 50.0, 'signals': {}}
+            'timestamp': pd.Timestamp.now().isoformat(),
+            'confluence_score': 50.0,  # Neutral score - analysis failed
+            'reliability': 0.0,  # Zero reliability when analysis fails
+            'components': {indicator: 50.0 for indicator in self.indicators.keys()},
+            'results': {
+                indicator: {
+                    'score': 50.0,
+                    'components': {}
+                } for indicator in self.indicators.keys()
             },
-            'weights': self.weights,
+            'top_weighted_subcomponents': [],
             'metadata': {
-                'error': 'Analysis failed',
-                'calculation_time': time.time()
-            }
+                'error': 'CONFLUENCE_ANALYSIS_FAILED',
+                'error_reason': 'Not all required indicators could be calculated',
+                'required_indicators': sorted(self.indicators.keys()),
+                'successful_indicators': sorted(successful_indicators),
+                'failed_indicators': sorted(failed_indicators),
+                'calculation_time': 0.0,
+                'timings': {},
+                'errors': [f"Missing indicators: {', '.join(sorted(failed_indicators))}"],
+                'weights': self.weights,
+                'status': 'FAILED'
+            },
+            'debug': self._get_debug_info('confluence_failed')
         }
 
     def _standardize_timeframes(self, ohlcv_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -3689,9 +3732,30 @@ class ConfluenceAnalyzer:
                 self.logger.error(f"Sentiment data must be a dictionary, got {type(sentiment_data)}")
                 return False
                 
-            # Check required fields (looser validation)
+            # Check required fields with proper structure validation
             required_fields = ['funding_rate', 'long_short_ratio']
-            missing_fields = [f for f in required_fields if f not in sentiment_data]
+            missing_fields = []
+            
+            # Check funding_rate with proper nested structure validation
+            # Also check if funding rate is available in ticker data as fallback
+            ticker_data = market_data.get('ticker', {})
+            funding_rate_available = (
+                'funding_rate' in sentiment_data or 
+                (ticker_data and 'fundingRate' in ticker_data)
+            )
+            
+            if not funding_rate_available:
+                missing_fields.append('funding_rate')
+            elif 'funding_rate' in sentiment_data and isinstance(sentiment_data['funding_rate'], dict) and 'rate' not in sentiment_data['funding_rate']:
+                missing_fields.append('funding_rate (missing rate field)')
+            elif 'funding_rate' not in sentiment_data and ticker_data and 'fundingRate' in ticker_data:
+                self.logger.debug(f"Funding rate will be extracted from ticker: {ticker_data['fundingRate']}")
+            
+            # Check long_short_ratio with proper nested structure validation
+            if 'long_short_ratio' not in sentiment_data:
+                missing_fields.append('long_short_ratio')
+            elif isinstance(sentiment_data['long_short_ratio'], dict) and ('long' not in sentiment_data['long_short_ratio'] or 'short' not in sentiment_data['long_short_ratio']):
+                missing_fields.append('long_short_ratio (missing long/short fields)')
             
             if missing_fields:
                 self.logger.warning(f"Missing recommended sentiment fields: {missing_fields}")
@@ -3807,7 +3871,7 @@ class ConfluenceAnalyzer:
                 if isinstance(liquidations, list):
                     # Check if the list is empty
                     if not liquidations:
-                        self.logger.debug("Empty liquidations list, setting default structure")
+                        self.logger.debug("Empty liquidations list provided, converting to structured format")
                         sentiment_data['liquidations'] = {
                             'long': 0.0,
                             'short': 0.0,
@@ -3865,7 +3929,7 @@ class ConfluenceAnalyzer:
                         'timestamp': int(time.time() * 1000)
                     }
             else:
-                self.logger.warning("Missing liquidations data, setting defaults")
+                self.logger.debug("No liquidations data provided, setting default structure")
                 sentiment_data['liquidations'] = {
                     'long': 0.0,
                     'short': 0.0,
@@ -3897,14 +3961,29 @@ class ConfluenceAnalyzer:
             open_interest = sentiment_data.get('open_interest')
             if open_interest is not None:
                 if isinstance(open_interest, dict):
-                    # Check if it has the required fields
+                    # Check if it has the required fields, or try to extract from ticker data
                     if 'value' not in open_interest:
-                        self.logger.warning("Open interest dict missing 'value' field, setting default")
+                        # Try to get open interest from ticker data if available
+                        ticker_data = market_data.get('ticker', {})
+                        oi_value = 0.0
+                        
+                        if 'openInterest' in ticker_data:
+                            try:
+                                oi_value = float(ticker_data['openInterest'])
+                                self.logger.debug(f"Extracted open interest from ticker: {oi_value}")
+                            except (ValueError, TypeError):
+                                self.logger.debug("Could not convert ticker openInterest to float")
+                        
                         sentiment_data['open_interest'] = {
-                            'value': 0.0,
+                            'value': oi_value,
                             'change_24h': 0.0,
                             'timestamp': int(time.time() * 1000)
                         }
+                        
+                        if oi_value == 0.0:
+                            self.logger.debug("Open interest not available, using default value")
+                        else:
+                            self.logger.debug("Open interest extracted from ticker data")
                 elif isinstance(open_interest, (int, float)):
                     self.logger.debug(f"Converting simple open interest value {open_interest} to structured format")
                     sentiment_data['open_interest'] = {

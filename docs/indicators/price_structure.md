@@ -341,346 +341,290 @@ weights = optimizer.optimize_weights(
 
 ## Overview
 
-The `PriceStructureIndicators` class provides sophisticated tools for analyzing market structure and price action to identify key levels, trends, and potential reversal points. The analysis is based on the Market Prism Concept, focusing on market structure and price action rather than actual trading positions.
+The Price Structure Indicators provide comprehensive analysis of market structure, support/resistance levels, order blocks, and institutional trading patterns. This system combines traditional technical analysis with Smart Money Concepts (SMC) to identify high-probability trading opportunities.
 
-## Component Weights
+## Components and Weights
 
-The price structure analysis uses the following weighted components:
+### Traditional Components (75%)
 
-| Component | Weight | Description |
-|-----------|--------|-------------|
-| Order Block | 15% | Significant supply/demand zones and institutional blocks |
-| Volume Profile | 25% | Volume distribution and price acceptance/rejection |
-| VWAP | 20% | Volume-Weighted Average Price analysis |
-| Composite Value | 15% | Price relative to key value indicators |
-| Support/Resistance | 10% | Key price reaction levels |
-| Market Structure | 15% | Swing points and structural patterns |
+1. **Support/Resistance Levels (15%)**
+   - Identifies key price levels where market has shown significant reaction
+   - Uses historical price action to map support and resistance zones
+   - Incorporates volume profile for level validation
 
-## Available Indicators
+2. **Order Blocks and Supply/Demand Zones (15%)**
+   - Maps significant supply and demand areas using ICT methodology
+   - Identifies institutional order blocks with enhanced mitigation tracking
+   - Tracks zone reaction strength and validity
 
-### 1. Support/Resistance Levels
+3. **Trend Position Relative to Key Moving Averages (15%)**
+   - Analyzes price position relative to major MAs
+   - Tracks MA crossovers and alignments
+   - Measures trend strength and momentum
+
+4. **Volume Analysis Including Profile and VWAP (15%)**
+   - Volume Profile analysis for price acceptance/rejection
+   - VWAP deviation analysis
+   - Volume node identification
+
+5. **Swing Structure Including Swing Points (20%)**
+   - Tracks higher highs/lows or lower highs/lows
+   - Identifies swing points and pivots
+   - Analyzes structural breaks and continuations
+
+### Smart Money Concepts (SMC) Components (25%)
+
+6. **Fair Value Gaps (FVG) - 10%**
+   - Detects price gaps that represent inefficient price delivery
+   - Tracks mitigation when price returns to fill gaps
+   - Acts as magnets for future price action
+
+7. **Liquidity Zones - 10%**
+   - Identifies areas where multiple swing highs/lows cluster
+   - Tracks liquidity sweeps and stop hunt patterns
+   - Maps institutional liquidity targeting zones
+
+8. **Break of Structure (BOS) & Change of Character (CHoCH) - 5%**
+   - BOS: Trend continuation when price breaks previous structure
+   - CHoCH: Potential reversal when market structure changes
+   - Enhanced market structure analysis using ICT concepts
+
+## Smart Money Concepts (SMC) Implementation
+
+### Fair Value Gaps (FVG)
+
+Fair Value Gaps represent areas of inefficient price delivery where institutional orders create imbalances.
+
+**Detection Criteria:**
+- **Bullish FVG**: Previous high < Next low (gap up)
+- **Bearish FVG**: Previous low > Next high (gap down)
+
+**Key Features:**
+- Mitigation tracking when price returns to fill the gap
+- Strength calculation based on volume and gap size
+- Consecutive FVG merging for cleaner analysis
+- Time-based relevance scoring
+
+**Scoring Logic:**
 ```python
-def analyze_sr_levels(
-    ohlcv_data: Dict[str, pd.DataFrame]
-) -> float:
-    """Analyze support/resistance levels.
-    
-    Args:
-        ohlcv_data: Dictionary of OHLCV DataFrames by timeframe
-        
-    Returns:
-        Score 0-100 based on:
-        - Proximity to key levels
-        - Level strength
-        - Level alignment
-        
-    Calculation Methods:
-    1. Find swing points using zigzag algorithm
-    2. Group levels within 0.5% range
-    3. Filter levels within 20% of current price
-    4. Score based on:
-       - Distance to nearest level
-       - Level strength (volume/time)
-       - Level alignment across timeframes
-    """
+# Proximity-based scoring
+distance = abs(current_price - fvg_level) / current_price
+proximity_score = max(0, 100 - (distance * 500))
+strength_weighted = proximity_score * (fvg_strength / 100)
+
+# Directional bias
+if current_price > bullish_fvg_top:
+    bullish_signal += strength_weighted
+if current_price < bearish_fvg_bottom:
+    bearish_signal += strength_weighted
 ```
 
-### 2. Order Block Analysis
+### Liquidity Zones
+
+Liquidity zones identify areas where institutional players target retail stop losses and liquidity pools.
+
+**Detection Method:**
+1. Identify swing highs and lows using configurable swing length
+2. Cluster nearby swing points within percentage range (default 1%)
+3. Create zones from clusters with minimum 2 swing points
+4. Track liquidity sweeps (price breaks through and reverses)
+
+**Zone Properties:**
+- **Type**: Bullish (support) or Bearish (resistance)
+- **Level**: Average price of clustered swing points
+- **Strength**: Number of swing points in cluster
+- **Swept Status**: Whether liquidity has been taken
+
+**Scoring Factors:**
+- Proximity to current price
+- Zone strength (number of swing points)
+- Sweep status (1.5x multiplier for swept zones)
+- Directional bias based on price position
+
+### Break of Structure (BOS) & Change of Character (CHoCH)
+
+Advanced market structure analysis based on ICT methodology for identifying trend continuation and reversal signals.
+
+**Definitions:**
+- **BOS (Break of Structure)**: Price breaks previous structure in trend direction (continuation)
+- **CHoCH (Change of Character)**: Price breaks previous structure against trend (potential reversal)
+
+**Detection Process:**
+1. Identify swing highs and lows
+2. Determine current trend based on recent swing points
+3. Monitor for structure breaks (close or high/low based)
+4. Classify breaks as BOS or CHoCH based on trend direction
+
+**Trend Determination:**
+- **Bullish**: Higher highs and higher lows
+- **Bearish**: Lower highs and lower lows
+- **Neutral**: Mixed or insufficient data
+
+**Strength Calculation:**
 ```python
-def analyze_orderblock_zones(
-    ohlcv_data: Dict[str, pd.DataFrame]
-) -> float:
-    """Analyze order block zones.
-    
-    Args:
-        ohlcv_data: Dictionary of OHLCV DataFrames by timeframe
-        
-    Returns:
-        Score 0-100 based on:
-        - Proximity to order blocks
-        - Block strength
-        - Block type (bullish/bearish)
-        
-    Calculation Methods:
-    1. Identify strong moves with preceding consolidation
-    2. Calculate block strength based on:
-       - Volume expansion
-       - Price range expansion
-       - Time in consolidation
-    3. Score based on:
-       - Distance to nearest blocks
-       - Block strength
-       - Block type alignment
-    """
+# Volume factor
+volume_factor = break_volume / avg_volume
+
+# Time factor
+time_factor = min(break_index - swing_index, 50) / 50
+
+# Combined strength
+strength = (volume_factor * 50) + (time_factor * 50)
 ```
 
-### 3. Volume Profile Analysis
-```python
-def calculate_volume_profile_score(
-    df: pd.DataFrame
-) -> float:
-    """Calculate volume profile score.
-    
-    Args:
-        df: OHLCV DataFrame
-        
-    Returns:
-        Score 0-100 based on:
-        - Position relative to POC
-        - Value area location
-        - Volume node strength
-        
-    Calculation Methods:
-    1. Calculate adaptive bin size based on volatility
-    2. Create volume profile using TPO-style analysis
-    3. Identify POC and value area (70% of volume)
-    4. Score based on:
-       - Price position in value area
-       - Distance from POC
-       - Volume node strength
-    """
+## Configuration
+
+### Component Weights
+
+```yaml
+confluence:
+  weights:
+    sub_components:
+      price_structure:
+        support_resistance: 0.18
+        order_block: 0.18
+        trend_position: 0.18
+        swing_structure: 0.18
+        composite_value: 0.05
+        fair_value_gaps: 0.10      # SMC
+        bos_choch: 0.05           # SMC
+        range_score: 0.08         # Range Analysis
 ```
 
-### 4. Market Structure Analysis
-```python
-def analyze_market_structure(
-    ohlcv_data: Dict[str, pd.DataFrame]
-) -> float:
-    """Analyze market structure patterns.
-    
-    Args:
-        ohlcv_data: Dictionary of OHLCV DataFrames by timeframe
-        
-    Returns:
-        Score 0-100 based on:
-        - Higher highs/lower lows
-        - Swing point patterns
-        - Structure breaks
-        
-    Calculation Methods:
-    1. Identify swing points using adaptive window
-    2. Analyze recent swing patterns (last 3)
-    3. Calculate trend strength using EMAs
-    4. Score based on:
-       - Structure type (bullish/bearish)
-       - Structure strength
-       - EMA alignment
-    """
+### SMC Parameters
+
+```yaml
+analysis:
+  indicators:
+    price_structure:
+      parameters:
+        # Fair Value Gaps
+        fvg:
+          join_consecutive: false
+          min_gap_percentage: 0.001
+          
+        # Liquidity Zones
+        liquidity:
+          swing_length: 50
+          cluster_range_percent: 0.01
+          min_cluster_size: 2
+          
+        # BOS/CHoCH
+        structure:
+          swing_length: 20
+          close_break: true
+          min_strength: 10
 ```
 
-### 5. Composite Value Analysis
+## Score Interpretation
+
+### Overall Score Ranges
+
+- **0-20**: Strong Bearish - Multiple bearish confluences
+- **20-40**: Bearish Bias - Bearish structure dominance
+- **40-60**: Neutral/Consolidation - Mixed signals
+- **60-80**: Bullish Bias - Bullish structure dominance  
+- **80-100**: Strong Bullish - Multiple bullish confluences
+
+### SMC-Specific Signals
+
+**Fair Value Gap Signals:**
+- **Score > 70**: Price near unmitigated bullish FVG (demand zone)
+- **Score < 30**: Price near unmitigated bearish FVG (supply zone)
+- **Score ≈ 50**: No significant FVG influence or mitigated gaps
+
+**Liquidity Zone Signals:**
+- **High scores**: Price above support liquidity or swept resistance
+- **Low scores**: Price below resistance liquidity or swept support
+- **Neutral**: Price away from significant liquidity zones
+
+**BOS/CHoCH Signals:**
+- **Recent BOS**: Trend continuation likely (adds to trend direction)
+- **Recent CHoCH**: Potential reversal (counters trend direction)
+- **No recent breaks**: Structure-neutral environment
+
+## Usage Examples
+
+### Basic Implementation
+
 ```python
-def calculate_composite_value(
-    df: pd.DataFrame
-) -> Dict[str, Any]:
-    """Calculate composite value score.
-    
-    Args:
-        df: OHLCV DataFrame
-        
-    Returns:
-        Dictionary containing:
-        - Score (0-100)
-        - Component scores
-        - Raw metrics
-        
-    Calculation Methods:
-    1. Calculate VWAP
-    2. Calculate moving averages (20, 50)
-    3. Score based on:
-       - Price vs VWAP (40% weight)
-       - Price vs MAs (30% each)
-       - Recent price action
-    """
+from src.indicators.price_structure_indicators import PriceStructureIndicators
+
+# Initialize with SMC components enabled
+psi = PriceStructureIndicators(config, logger)
+
+# Analyze market data
+result = await psi.calculate(market_data)
+
+print(f"Price Structure Score: {result['score']:.2f}")
+print(f"Fair Value Gaps: {result['components']['fair_value_gaps']:.2f}")
+print(f"Liquidity Zones: {result['components']['liquidity_zones']:.2f}")
+print(f"BOS/CHoCH: {result['components']['bos_choch']:.2f}")
 ```
 
-## Configuration Parameters
+### Advanced SMC Analysis
 
 ```python
-params = {
-    # Order block parameters
-    'order_block_lookback': 20,
-    
-    # Volume profile parameters
-    'volume_profile_bins': 100,
-    'value_area_volume': 0.7,
-    
-    # Market structure parameters
-    'swing_point_threshold': 0.003,
-    'structure_lookback': 20,
-    
-    # Timeframe weights
-    'timeframe_weights': {
-        'base': 0.4,  # 1-minute
-        'ltf': 0.3,   # 5-minute
-        'mtf': 0.2,   # 30-minute
-        'htf': 0.1    # 4-hour
-    },
-    
-    # Validation requirements
-    'min_base_candles': 100,
-    'min_ltf_candles': 50,
-    'min_mtf_candles': 50,
-    'min_htf_candles': 50
-}
+# Access detailed SMC data
+fvgs = psi._detect_fair_value_gaps(df)
+print(f"Bullish FVGs: {len(fvgs['bullish'])}")
+print(f"Bearish FVGs: {len(fvgs['bearish'])}")
+
+liquidity_zones = psi._detect_liquidity_zones(df)
+print(f"Support zones: {len(liquidity_zones['bullish'])}")
+print(f"Resistance zones: {len(liquidity_zones['bearish'])}")
+
+swing_data = psi._detect_swing_highs_lows(df, swing_length=20)
+bos_choch = psi._detect_bos_choch(df, swing_data)
+print(f"BOS events: {len(bos_choch['bos'])}")
+print(f"CHoCH events: {len(bos_choch['choch'])}")
 ```
 
-## Market Structure Analysis
+## Integration with Trading Strategy
 
-### 1. Swing Point Detection
+The SMC components enhance traditional technical analysis by providing:
+
+1. **Entry Timing**: FVG mitigation and liquidity sweeps for precise entries
+2. **Trend Analysis**: BOS/CHoCH for trend continuation vs reversal signals
+3. **Risk Management**: Liquidity zones for stop loss placement
+4. **Target Setting**: FVG levels as profit targets
+
+### Confluence Trading
+
+Combine SMC with traditional components for high-probability setups:
+
 ```python
-def _identify_swing_points(
-    df: pd.DataFrame
-) -> Dict[str, float]:
-    """Identify swing points with divergence confirmation.
-    
-    Process:
-    1. Calculate base swing levels
-    2. Calculate divergence confirmation
-    3. Apply divergence bonus
-    4. Return swing points and scores
-    """
+# Example confluence check
+if (result['components']['fair_value_gaps'] > 70 and 
+    result['components']['order_blocks'] > 70 and
+    result['components']['bos_choch'] > 60):
+    print("Strong bullish confluence detected!")
 ```
 
-### 2. Structure Type Analysis
-```python
-def _calculate_structural_score(
-    df: pd.DataFrame
-) -> float:
-    """Calculate structural score based on price action.
-    
-    Process:
-    1. Analyze local structure (highs/lows)
-    2. Detect structure breaks
-    3. Calculate break strength
-    4. Score based on pattern type and strength
-    """
+## Performance Considerations
+
+- SMC calculations are computationally intensive due to swing point detection
+- Recommended minimum 200 candles for reliable SMC analysis
+- Consider caching swing point calculations for multiple timeframes
+- FVG detection scales linearly with data size
+
+## Troubleshooting
+
+### Common Issues
+
+1. **No FVGs detected**: Increase data size or reduce gap criteria
+2. **Too many liquidity zones**: Increase cluster range percentage
+3. **No BOS/CHoCH events**: Reduce swing length or increase data size
+
+### Debug Options
+
+```yaml
+analysis:
+  indicators:
+    price_structure:
+      parameters:
+        debug_logging: true
+        smc_debug: true
 ```
 
-## Volume Analysis
-
-### 1. Volume Node Analysis
-```python
-def _calculate_volume_node_score(
-    df: pd.DataFrame
-) -> float:
-    """Calculate score based on volume nodes.
-    
-    Process:
-    1. Calculate volume profile with granular bins
-    2. Identify high/low volume nodes
-    3. Calculate node strength and proximity
-    4. Score based on:
-       - Node type (HVN/LVN)
-       - Node strength
-       - Price position
-    """
-```
-
-### 2. Value Area Analysis
-```python
-def _calculate_value_area_score(
-    df: pd.DataFrame
-) -> float:
-    """Calculate value area score.
-    
-    Process:
-    1. Calculate value area levels
-    2. Analyze price alignment
-    3. Score based on:
-       - Position in value area
-       - Level alignment
-       - Volume concentration
-    """
-```
-
-## Integration Examples
-
-### 1. With Order Flow Analysis
-```python
-# Combine structure and flow analysis
-structure = price_structure.calculate_score(market_data)
-flow = orderflow.calculate_score(market_data)
-
-# Generate combined signal
-signal = {
-    'score': 0.7 * structure + 0.3 * flow,
-    'structure_confidence': structure.get_confidence(),
-    'flow_confidence': flow.get_confidence()
-}
-```
-
-### 2. With Position Sizing
-```python
-# Use structure analysis for position sizing
-structure_metrics = price_structure.calculate_batch(
-    market_data,
-    indicators=['order_blocks', 'market_structure']
-)
-
-# Calculate position size
-position_size = position.calculate_size(
-    base_size=1.0,
-    structure_metrics=structure_metrics,
-    risk_factor=0.1
-)
-```
-
-### 3. With Risk Management
-```python
-# Monitor market structure
-structure_state = price_structure.get_market_state()
-
-# Update risk limits
-risk_limits = risk.update_limits(
-    base_limits=default_limits,
-    structure_state=structure_state,
-    market_data=market_data
-)
-```
-
-## Best Practices
-
-1. **Data Quality**
-   ```python
-   # Validate input data
-   if not price_structure.validate_input(market_data):
-       logger.warning("Insufficient data quality")
-       return default_values
-   ```
-
-2. **Timeframe Analysis**
-   ```python
-   # Analyze across timeframes
-   scores = {}
-   for tf in ['base', 'ltf', 'mtf', 'htf']:
-       scores[tf] = price_structure.calculate_score(data[tf])
-       
-   # Apply timeframe weights
-   final_score = sum(
-       score * price_structure.timeframe_weights[tf]
-       for tf, score in scores.items()
-   )
-   ```
-
-3. **Performance Monitoring**
-   ```python
-   # Track calculation time
-   with price_structure.timer('structure_analysis'):
-       score = price_structure.calculate_score(market_data)
-   
-   # Log performance metrics
-   stats = price_structure.get_performance_stats()
-   logger.info(f"Average calculation time: {stats['avg_time']}")
-   ```
-
-4. **Component Analysis**
-   ```python
-   # Get detailed component breakdown
-   components = price_structure.get_component_scores(market_data)
-   
-   # Log significant components
-   for component, score in components.items():
-       if abs(score - 50) > 20:  # Significant deviation
-           logger.info(f"{component} showing strong signal: {score}")
-   ``` 
+This enables detailed logging of SMC detection processes and scoring calculations. 

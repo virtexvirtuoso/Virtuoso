@@ -33,7 +33,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 try:
-    from src.monitoring.market_reporter import MarketReporter
+    from monitoring.market_reporter import MarketReporter
 except ImportError as e:
     logger.error(f"Error importing MarketReporter: {str(e)}")
     logger.error(f"Current directory: {current_dir}")

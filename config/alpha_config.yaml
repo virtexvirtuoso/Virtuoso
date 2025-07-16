@@ -1,0 +1,70 @@
+# Alpha Opportunity Detection Configuration
+alpha_detection:
+  enabled: false
+  
+  # Alert thresholds
+  alert_threshold: 0.70  # Send alerts for opportunities with 70%+ confidence
+  
+  # Detection intervals
+  check_interval: 300    # Check every 5 minutes (300 seconds)
+  
+  # Symbols to monitor for alpha opportunities
+  # NOTE: The system now uses DYNAMIC symbols from TopSymbolsManager
+  # These symbols are automatically updated based on the top 15 by volume from Binance
+  # The list below serves as fallback symbols if TopSymbolsManager is unavailable
+  monitored_symbols:
+    - "BTCUSDT"   # Bitcoin (always included as reference)
+    - "ETHUSDT"   # Ethereum
+    - "SOLUSDT"   # Solana
+    - "ADAUSDT"   # Cardano
+    - "DOGEUSDT"  # Dogecoin
+    - "XRPUSDT"   # Ripple
+    - "AVAXUSDT"  # Avalanche
+    - "LINKUSDT"  # Chainlink
+    - "DOTUSDT"   # Polkadot
+    - "MATICUSDT" # Polygon
+    - "UNIUSDT"   # Uniswap
+    
+  # Dynamic Symbol Settings
+  dynamic_symbols:
+    enabled: true                    # Use dynamic symbols from TopSymbolsManager
+    fallback_to_static: true        # Fall back to static list if dynamic fails
+    update_interval: 300             # Update symbols every 5 minutes
+    max_symbols: 15                  # Monitor top 15 symbols by volume
+    
+  # Thresholds for different patterns
+  thresholds:
+    beta_divergence_threshold: 0.3      # 30% difference between timeframes
+    correlation_breakdown_threshold: 0.4 # 40% correlation drop
+    alpha_significance_threshold: 0.02   # 2% minimum alpha potential
+    volume_confirmation_threshold: 1.5   # 50% above average volume
+    
+  # Risk management
+  risk_levels:
+    high_beta_threshold: 1.5     # Beta > 1.5 = High risk
+    low_beta_threshold: 0.6      # Beta < 0.6 = Low risk
+    high_volatility_threshold: 0.05  # 5% daily volatility = High risk
+    
+  # Alert formatting
+  discord_alerts:
+    enabled: true
+    include_charts: false  # Set to true to include mini-charts in alerts
+    mention_roles: []      # Discord roles to mention on high-confidence alerts
+    
+  # Advanced detection settings
+  advanced:
+    min_data_points: 20          # Minimum candles required for analysis
+    max_correlation_age: 86400   # 24 hours (correlation data freshness)
+    confirmation_periods: 3      # Consecutive periods for pattern confirmation
+    
+    # Sector rotation detection
+    sector_rotation:
+      enabled: true
+      min_sector_size: 3         # Minimum symbols per sector
+      sector_definitions:
+        defi: ["UNIUSDT", "SUSHIUSDT", "AAVEUSDT", "COMPUSDT", "YFIUSDT", "MKRUSDT", "SNXUSDT", "CRVUSDT"]
+        layer1: ["ETHUSDT", "ADAUSDT", "SOLUSDT", "AVAXUSDT", "NEARUSDT", "FTMUSDT", "ATOMUSDT"]
+        layer2: ["MATICUSDT", "ARBUSDT", "OPUSDT"]
+        payments: ["XRPUSDT", "XLMUSDT", "ADAUSDT"]
+        smart_contracts: ["ETHUSDT", "ADAUSDT", "DOTUSDT", "ALGOUSDT"]
+        privacy: ["XMRUSDT", "ZECUSDT", "DASHUSDT"] 

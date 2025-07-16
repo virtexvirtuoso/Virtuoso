@@ -339,98 +339,6 @@
         .reliability-low {
             color: #F44336;
         }
-        
-        /* Executive Summary Dashboard */
-        .executive-summary {
-            background: linear-gradient(135deg, #1E1E1E 0%, #2A2A2A 100%);
-            border: 2px solid #4CAF50;
-            border-radius: 8px;
-            padding: 20px;
-            margin-bottom: 25px;
-            display: grid;
-            grid-template-columns: 1fr 2fr 1fr;
-            grid-gap: 20px;
-            align-items: center;
-        }
-        .exec-signal-strength {
-            text-align: center;
-        }
-        .exec-signal-strength .strength-circle {
-            width: 80px;
-            height: 80px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin: 0 auto 10px;
-            font-size: 24px;
-            font-weight: bold;
-            border: 3px solid;
-        }
-        .exec-key-metrics {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            grid-gap: 15px;
-        }
-        .exec-metric {
-            text-align: center;
-            background-color: rgba(255,255,255,0.05);
-            padding: 10px;
-            border-radius: 5px;
-        }
-        .exec-metric .label {
-            font-size: 11px;
-            color: #999;
-            text-transform: uppercase;
-            margin-bottom: 5px;
-        }
-        .exec-metric .value {
-            font-size: 18px;
-            font-weight: bold;
-        }
-        .exec-recommendation {
-            text-align: center;
-            background-color: rgba(66, 165, 245, 0.1);
-            border: 1px solid #42A5F5;
-            border-radius: 5px;
-            padding: 15px;
-        }
-        .exec-recommendation .title {
-            font-size: 14px;
-            color: #42A5F5;
-            font-weight: bold;
-            margin-bottom: 10px;
-            text-transform: uppercase;
-        }
-        .exec-recommendation .action {
-            font-size: 16px;
-            font-weight: bold;
-        }
-
-        /* Enhanced section icons */
-        .section-title::before {
-            content: ">";
-            margin-right: 10px;
-            color: #4CAF50;
-        }
-        .section-title.price-action::before { 
-            content: "📈"; 
-        }
-        .section-title.component-analysis::before { 
-            content: "🔍"; 
-        }
-        .section-title.component-breakdown::before { 
-            content: "📊"; 
-        }
-        .section-title.market-interpretations::before { 
-            content: "🧠"; 
-        }
-        .section-title.actionable-insights::before { 
-            content: "💡"; 
-        }
-        .section-title.risk-management::before { 
-            content: "🛡️"; 
-        }
     </style>
 </head>
 <body class="crt-effect">
@@ -444,35 +352,6 @@
             <div>
                 <div class="signal-badge" style="background-color: {{ signal_color }};">{{ signal_type }}</div>
                 <div class="date">{{ timestamp }}</div>
-            </div>
-        </div>
-        
-        <!-- Executive Summary Dashboard -->
-        <div class="executive-summary">
-            <div class="exec-signal-strength">
-                <div class="strength-circle" style="border-color: {{ signal_color }};">{{ score|format_number }}</div>
-            </div>
-            <div class="exec-key-metrics">
-                <div class="exec-metric">
-                    <div class="label">Reliability</div>
-                    <div class="value">
-                        {% if reliability >= 75 %}
-                            <span class="reliability-high">{{ reliability|format_number }}%</span>
-                        {% elif reliability >= 50 %}
-                            <span class="reliability-medium">{{ reliability|format_number }}%</span>
-                        {% else %}
-                            <span class="reliability-low">{{ reliability|format_number }}%</span>
-                        {% endif %}
-                    </div>
-                </div>
-                <div class="exec-metric">
-                    <div class="label">Score</div>
-                    <div class="value">{{ score|format_number }}</div>
-                </div>
-            </div>
-            <div class="exec-recommendation">
-                <div class="title">Recommendation</div>
-                <div class="action">{{ recommendation }}</div>
             </div>
         </div>
         
@@ -506,7 +385,7 @@
         <!-- Candlestick Chart -->
         {% if candlestick_chart %}
         <div class="section">
-            <div class="section-title price-action">Price Action</div>
+            <div class="section-title">Price Action</div>
             <div class="chart-container">
                 <img src="{{ candlestick_chart }}" alt="Price Chart" class="chart-image">
                 <div class="chart-caption">{{ symbol }} Price Chart with Key Levels</div>
@@ -517,7 +396,7 @@
         <!-- Component Scores Chart -->
         {% if component_chart %}
         <div class="section">
-            <div class="section-title component-analysis">Component Analysis</div>
+            <div class="section-title">Component Analysis</div>
             <div class="chart-container">
                 <img src="{{ component_chart }}" alt="Component Scores" class="chart-image">
                 <div class="chart-caption">Component Score and Impact Analysis</div>
@@ -527,7 +406,7 @@
         
         <!-- Component Table -->
         <div class="section">
-            <div class="section-title component-breakdown">Component Breakdown</div>
+            <div class="section-title">Component Breakdown</div>
             <table class="component-table">
                 <thead>
                     <tr>
@@ -548,9 +427,36 @@
             </table>
         </div>
         
+        <!-- Top Influential Individual Components -->
+        {% if top_weighted_subcomponents and top_weighted_subcomponents|length > 0 %}
+        <div class="section">
+            <div class="section-title">Top Influential Individual Components</div>
+            <table class="component-table">
+                <thead>
+                    <tr>
+                        <th>Component</th>
+                        <th>Parent</th>
+                        <th>Impact %</th>
+                        <th>Signal</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for subcomp in top_weighted_subcomponents %}
+                    <tr>
+                        <td class="component-name">{{ subcomp.display_name }}</td>
+                        <td>{{ subcomp.parent_display_name }}</td>
+                        <td class="{% if subcomp.weighted_impact >= 15 %}high-score{% elif subcomp.weighted_impact >= 8 %}medium-score{% else %}low-score{% endif %}">{{ subcomp.weighted_impact|format_number }}%</td>
+                        <td>{{ subcomp.indicator }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+        
         <!-- Component Interpretations -->
         <div class="section">
-            <div class="section-title market-interpretations">Component Interpretations</div>
+            <div class="section-title">Component Interpretations</div>
             {% for component in component_data %}
                 {% if component.interpretation %}
                 <div class="market-interpretation">
@@ -563,7 +469,7 @@
         <!-- Market Insights -->
         {% if insights and insights|length > 0 %}
         <div class="section">
-            <div class="section-title market-interpretations">Market Interpretations</div>
+            <div class="section-title">Market Interpretations</div>
             <div class="insights">
                 {% for insight in insights %}
                 <div class="insight-item">{{ insight }}</div>
@@ -575,7 +481,7 @@
         <!-- Actionable Insights -->
         {% if actionable_insights and actionable_insights|length > 0 %}
         <div class="section">
-            <div class="section-title actionable-insights">Actionable Trading Insights</div>
+            <div class="section-title">Actionable Trading Insights</div>
             <div class="action-box">
                 {% for insight in actionable_insights %}
                 <div class="action-item">{{ insight }}</div>
@@ -586,7 +492,7 @@
         
         <!-- Risk Management -->
         <div class="section">
-            <div class="section-title risk-management">Risk Management</div>
+            <div class="section-title">Risk Management</div>
             <div class="risk-management">
                 <div class="risk-item">
                     <div class="label">Entry Price</div>

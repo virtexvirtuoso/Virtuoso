@@ -37,7 +37,7 @@ def main():
         'support_resistance': 60.0,
         'trend_position': 40.0,
         'volume_profile': 80.0,
-        'market_structure': 50.0
+        'swing_structure': 50.0
     }
     
     print("\nTest Scores:")
@@ -54,7 +54,7 @@ def main():
         'support_resistance': 60.0,
         'vwap': 40.0,
         'volume_profile': 80.0,
-        'market_structure': 50.0
+        'swing_structure': 50.0
     }
     
     print("\nMapped Test Scores:")

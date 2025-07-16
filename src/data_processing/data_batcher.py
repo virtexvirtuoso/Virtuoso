@@ -8,8 +8,8 @@ import traceback
 
 # Type checking imports
 if TYPE_CHECKING:
-    from src.monitoring.metrics_manager import MetricsManager
-from src.monitoring.alert_manager import AlertManager
+    from monitoring.metrics_manager import MetricsManager
+    from monitoring.alert_manager import AlertManager
 
 logger = logging.getLogger(__name__)
 
@@ -17,24 +17,17 @@ class DataBatcher:
     """Batches market data updates for efficient processing."""
     
     def __init__(self, 
-                 metrics_manager: Optional['MetricsManager'] = None,
-                 alert_manager: Optional['AlertManager'] = None,
+                 metrics_manager: 'MetricsManager',
+                 alert_manager: 'AlertManager',
                  config: Optional[Dict[str, Any]] = None):
         """Initialize DataBatcher.
         
         Args:
-            metrics_manager: Optional metrics manager for tracking performance
-            alert_manager: Optional alert manager for monitoring
+            metrics_manager: Metrics manager for tracking performance (required)
+            alert_manager: Alert manager for monitoring (required)
             config: Configuration dictionary containing settings
         """
-        # Initialize managers
-        if metrics_manager is None:
-            from src.monitoring.metrics_manager import MetricsManager
-            metrics_manager = MetricsManager()
-        if alert_manager is None:
-            from src.monitoring.alert_manager import AlertManager
-            alert_manager = AlertManager(config=config)
-            
+        # Initialize managers (now required dependencies)
         self.metrics_manager = metrics_manager
         self.alert_manager = alert_manager
         self.config = config or {}

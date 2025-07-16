@@ -153,7 +153,7 @@ def create_detailed_test_signal(symbol: str, score: float = 71.0) -> Dict[str, A
             'support_resistance': 63.2,
             'order_block': 68.5,
             'vwap': 71.3,
-            'market_structure': 65.2,
+            'swing_structure': 65.2,
             'composite_value': 60.8 
         },
         'signals': {

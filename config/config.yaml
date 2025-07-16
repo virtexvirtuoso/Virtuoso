@@ -1,684 +1,719 @@
-# =============================================================================
-# Virtuoso Trading System Configuration
-# =============================================================================
-
-# Exchange Configuration
-# --------------------
-# Settings for exchange connections and API credentials
-exchanges:
-  # Bybit exchange configuration
-  bybit:
-    # API credentials
-    api_credentials:
-      api_key: ${BYBIT_API_KEY}     # Bybit API key
-      api_secret: ${BYBIT_API_SECRET} # Bybit API secret
-    enabled: true                   # Enable Bybit exchange
-    primary: true                   # Set as primary exchange
-    # Rate limiting settings
-    rate_limits:
-      requests_per_minute: 1200     # Maximum requests per minute
-      requests_per_second: 20       # Maximum requests per second
-    rest_endpoint: https://api.bybit.com # Bybit REST API endpoint
-    # WebSocket configuration
-    websocket:
-      keep_alive: true              # Keep WebSocket connection alive
-      ping_interval: 30             # Ping interval in seconds
-      private: wss://stream.bybit.com/v5/private # Private WebSocket endpoint
-      public: wss://stream.bybit.com/v5/public   # Public WebSocket endpoint
-      reconnect_attempts: 3         # Maximum reconnection attempts
-    testnet: false
-
-# Market Configuration
-# -----------------
-# Settings for market data and symbol selection
-market:
-  # Symbol configuration
-  symbols:
-    excluded_symbols: []            # Symbols to exclude from monitoring
-    market_types:                   # Market types to monitor
-    - linear                        # Linear perpetual futures
-    max_symbols: 15                 # Maximum number of symbols to monitor
-    min_turnover: 1000000           # Minimum daily turnover to monitor a symbol
-    min_volume: 50000               # Minimum daily volume to monitor a symbol
-    # Static list of symbols to always monitor
-    static_symbols:
-    - BTCUSDT                       # Bitcoin
-    - ETHUSDT                       # Ethereum
-    - SOLUSDT                       # Solana
-    - AVAXUSDT                      # Avalanche
-    - XRPUSDT                       # Ripple
-    top_symbols_update_interval_hours: 8 # Update interval for dynamic top symbols
-    use_static_list: false          # Use only static symbol list
-
-# Reporting Configuration
-# --------------------
-# Settings for report generation and PDF attachments
-reporting:
-  enabled: true                     # Enable report generation
-  attach_pdf: true                  # Attach PDF reports to Discord alerts
-  attach_json: true                 # Attach JSON data to Discord alerts
-  template_dir: templates           # Directory containing report templates
-  base_dir: reports                 # Base directory for storing reports
-  # Report types enabled
-  types:
-    signals: true                   # Enable reports for trading signals
-    market_reports: true            # Enable market overview reports
-  # PDF customization
-  pdf:
-    use_dark_mode: true             # Use dark mode for PDFs
-    include_charts: true            # Include price and indicator charts
-
-# Timeframes Configuration
-# ---------------------
-# Settings for different timeframes used in analysis
-timeframes:
-  # Base timeframe (1 minute)
-  base:
-    interval: 1                     # Interval in minutes
-    required: 1000                  # Required data points
-    validation:
-      max_gap: 60                   # Maximum allowable gap in seconds
-      min_candles: 100              # Minimum required candles
-    weight: 0.4                     # Weight in multi-timeframe analysis
-  # High timeframe (4 hours)
-  htf:
-    interval: 240                   # Interval in minutes
-    required: 200                   # Required data points
-    validation:
-      max_gap: 14400                # Maximum allowable gap in seconds
-      min_candles: 50               # Minimum required candles
-    weight: 0.1                     # Weight in multi-timeframe analysis
-  # Low timeframe (5 minutes)
-  ltf:
-    interval: 5                     # Interval in minutes
-    required: 200                   # Required data points
-    validation:
-      max_gap: 300                  # Maximum allowable gap in seconds
-      min_candles: 50               # Minimum required candles
-    weight: 0.3                     # Weight in multi-timeframe analysis
-  # Medium timeframe (30 minutes)
-  mtf:
-    interval: 30                    # Interval in minutes
-    required: 200                   # Required data points
-    validation:
-      max_gap: 1800                 # Maximum allowable gap in seconds
-      min_candles: 50               # Minimum required candles
-    weight: 0.2                     # Weight in multi-timeframe analysis
-
-# Confluence Configuration
-# ----------------------
-# This section defines how different indicators are weighted and combined
-# to generate trading signals
-confluence:
-  # Thresholds for signal generation
+system:
+  base_dir: .
+  cache_dir: cache
+  data_dir: data
+  enable_reporting: true
+  environment: development
+  log_level: DEBUG
+  reports_dir: ./reports
+  version: 1.0.0
+signal_tracking:
+  enabled: false
+  api_url: http://localhost:8001/api/signal-tracking
+websocket:
+  enabled: true
+  reconnect_attempts: 5
+  ping_interval: 30
+  timeout: 10
+  channels:
+    ticker: true
+    kline: true
+    orderbook: true
+    trade: true
+    liquidation: true
+  log_level: INFO
+alpha_scanning:
+  alerts:
+    cooldown_minutes: 60
+    enabled: false
+    max_alerts_per_scan: 3
+  enabled: false
+  interval_minutes: 15
+  max_symbols_per_scan: 10
+  min_data_points: 50
+  pattern_types:
+  - correlation_breakdown
+  - beta_expansion
+  - alpha_breakout
+  performance_tiers:
+    fast:
+    - mtf
+    stable:
+    - htf
+    ultra_fast:
+    - base
+    - ltf
+  skip_low_volume_symbols: true
   thresholds:
-    buy: 68                         # Score at or above this value generates a bullish signal
-    neutral_buffer: 0               # No buffer zone - eliminating neutral signals
-    sell: 35                        # Score at or below this value generates a bearish signal
-  # Weight configurations for all components and sub-components
-  weights:
-    # Component weights - THE single source of truth for all component weighting
-    components:
-      orderbook: 0.2                # Order book analysis weight
-      orderflow: 0.25               # Order flow dynamics weight
-      price_structure: 0.15         # Price structure weight
-      sentiment: 0.1                # Market sentiment indicators weight
-      technical: 0.17                # Technical analysis indicators weight
-      volume: 0.12                   # Volume analysis weight
-    # Sub-component weights (weights for individual indicators within each category)
-    sub_components:
-      # Orderbook sub-component weights
-      orderbook:
-        absorption_exhaustion: 0.1  # Supply/demand absorption weight
-        depth: 0.2                  # Order book depth analysis weight
-        dom_momentum: 0.05          # Depth of Market momentum weight
-        imbalance: 0.25             # Order book imbalance analysis weight
-        liquidity: 0.1              # Depth and spread-based liquidity weight
-        mpi: 0.2                    # Market Pressure Index weight
-        obps: 0.05                  # Order Book Pressure Score weight
-        spread: 0.05                # Bid-ask spread analysis weight
-      # Orderflow sub-component weights
-      orderflow:
-        cvd: 0.25                   # Cumulative Volume Delta weight
-        imbalance: 0.15             # Order flow imbalance weight
-        open_interest: 0.15         # Open interest weight
-        order_block: 0.1            # Order block weight
-        trade_flow: 0.2             # Trade flow weight
-        liquidity: 0.15             # Liquidity weight
-      # Price structure sub-component weights
-      price_structure:
-        composite_value: 0.15       # Composite value calculation weight
-        market_structure: 0.15      # Market structure weight
-        order_block: 0.15           # Order blocks and supply/demand zones weight
-        support_resistance: 0.1     # Support/resistance levels weight
-        volume_profile: 0.25        # Volume profile analysis weight
-        vwap: 0.2                   # Volume Weighted Average Price weight
-      # Sentiment sub-component weights
-      sentiment:
-        funding_rate: 0.20          # Funding rate weight (increased from 0.17)
-        long_short_ratio: 0.15      # Long/short ratio weight (decreased from 0.17)
-        liquidations: 0.20          # Liquidations weight (increased from 0.17)
-        market_activity: 0.15       # Market activity weight (decreased from 0.17)
-        risk: 0.12                  # Risk score weight (decreased from 0.16)
-        volatility: 0.18            # Volatility weight (increased from 0.16)
-      # Technical sub-component weights
-      technical:
-        ao: 0.2                     # Awesome Oscillator weight
-        atr: 0.15                   # Average True Range weight
-        cci: 0.15                   # Commodity Channel Index weight
-        macd: 0.15                  # MACD weight
-        rsi: 0.2                    # RSI weight
-        williams_r: 0.15            # Williams %R weight
-      # Volume sub-component weights
-      volume:
-        adl: 0.2                    # Accumulation/Distribution Line weight
-        cmf: 0.15                   # Chaikin Money Flow weight
-        obv: 0.2                    # On-Balance Volume weight
-        relative_volume: 0.2        # Relative volume weight
-        volume_delta: 0.25          # Volume delta weight
-
-# Analysis Configuration
-# --------------------
-# Parameters for trading analysis components and indicators
+    alpha_threshold: 0.03
+    beta_divergence: 0.25
+    correlation_breakdown: 0.25
+    min_confidence: 0.75
+  timeframe_thresholds:
+    base:
+      alpha_threshold: 0.02
+      beta_divergence: 0.2
+      correlation_breakdown: 0.15
+      min_confidence: 0.85
+    htf:
+      alpha_threshold: 0.04
+      beta_divergence: 0.3
+      correlation_breakdown: 0.3
+      min_confidence: 0.7
+    ltf:
+      alpha_threshold: 0.025
+      beta_divergence: 0.25
+      correlation_breakdown: 0.2
+      min_confidence: 0.8
+    mtf:
+      alpha_threshold: 0.03
+      beta_divergence: 0.25
+      correlation_breakdown: 0.25
+      min_confidence: 0.75
+  timeframes:
+  - htf
+  - mtf
+  - ltf
+  - base
+  use_cached_data: true
+alpha_scanning_optimized:
+  alpha_tiers:
+    tier_1_critical:
+      cooldown_override: true
+      max_alerts_per_hour: 2
+      min_alpha: 0.5
+      min_confidence: 0.95
+      scan_interval_minutes: 1
+    tier_2_high:
+      cooldown_minutes: 15
+      max_alerts_per_hour: 3
+      min_alpha: 0.15
+      min_confidence: 0.9
+      scan_interval_minutes: 3
+    tier_3_medium:
+      cooldown_minutes: 60
+      max_alerts_per_hour: 2
+      min_alpha: 0.08
+      min_confidence: 0.85
+      scan_interval_minutes: 10
+    tier_4_background:
+      cooldown_minutes: 240
+      max_alerts_per_hour: 1
+      min_alpha: 0.05
+      min_confidence: 0.8
+      scan_interval_minutes: 30
+  enabled: true
+  filtering:
+    min_alert_value_score: 25.0
+    volume_confirmation:
+      min_volume_multiplier: 2.0
+      tier_1_required: true
+      tier_2_required: true
+      tier_3_required: false
+  pattern_weights:
+    alpha_breakout: 0.6
+    beta_compression: 1.0
+    beta_expansion: 1.0
+    correlation_breakdown: 0.4
+    cross_timeframe: 0.2
+  throttling:
+    emergency_override:
+      min_alpha_for_override: 1.0
+      min_confidence_for_override: 0.98
+    max_total_alerts_per_day: 30
+    max_total_alerts_per_hour: 8
+  value_scoring:
+    alpha_weight: 0.4
+    confidence_weight: 0.25
+    pattern_weight: 0.2
+    risk_weight: 0.05
+    volume_weight: 0.1
 analysis:
-  # Source of truth for all weights and thresholds
   confluence_reference: See 'confluence' section at the bottom of this file for all
     weights and thresholds
   indicators:
-    # Orderbook indicator parameters
-    # These control how the system analyzes market depth and liquidity
     orderbook:
       parameters:
-        # General parameters
-        depth_levels: 25            # Number of price levels to include in analysis
-        update_interval: 100        # Milliseconds between orderbook updates
-        min_data_points: 10         # Minimum data points for valid analysis
-        
-        # Sigmoid transformation parameters
-        sigmoid_transformation:
-          default_sensitivity: 0.12  # Default sensitivity for all transformations
-          imbalance_sensitivity: 0.15 # Sensitivity for bid/ask imbalance transformation
-          pressure_sensitivity: 0.18  # Sensitivity for orderbook pressure transformation
-        
-        # Absorption: Measures how well the market absorbs large orders
         absorption:
-          min_size: 50000           # Minimum order size to be considered significant
-          threshold: 2.0            # Threshold for absorption significance
-          exhaustion_factor: 0.8    # Factor to determine market exhaustion
-          size_impact_weight: 0.6   # Weight given to size impact in absorption calculation
-        
-        # Depth: Analyzes market depth to gauge liquidity
+          exhaustion_factor: 0.8
+          min_size: 50000
+          size_impact_weight: 0.6
+          threshold: 2.0
         depth:
-          levels: 25                # Number of price levels to analyze
-          weight_decay: 0.95        # Weight decay factor for depth calculations
-          significance_threshold: 0.1 # Threshold for depth significance
-          normalization_factor: 100  # Factor for normalizing depth values
-        
-        # Imbalance: Measures buy/sell imbalance in the orderbook
-        imbalance:
-          lookback: 20              # Periods to look back for imbalance analysis
-          threshold: 0.2            # Threshold for imbalance significance
-          smoothing: 3              # Smoothing factor for imbalance calculation
-          extreme_threshold: 0.5    # Threshold for extreme imbalance
-        
-        # Liquidity: Evaluates available market liquidity
-        liquidity:
-          relative_scale: true      # Use relative scaling for liquidity measurements
-          threshold: 1.5            # Threshold for liquidity significance
-          depth_weight: 0.7         # Weight of depth in liquidity calculation
-          spread_weight: 0.3        # Weight of spread in liquidity calculation
-        
-        # Market Pressure Index (MPI): Measures buying/selling pressure
-        mpi:
-          lookback: 10              # Periods for MPI calculation
-          threshold: 0.3            # Threshold for significant pressure
-          sensitivity: 0.75         # Sensitivity factor for MPI calculations
-        
-        # Pressure: Measures buying/selling pressure
-        pressure:
-          sensitivity: 0.75         # Sensitivity factor for pressure calculations
-          smoothing: 5              # Smoothing factor to reduce noise
-          threshold: 0.25           # Threshold for pressure significance
-          impact_multiplier: 1.2    # Multiplier for pressure impact on score
-        
-        # Spread: Bid-ask spread analysis
-        spread:
-          normalize: true           # Normalize spread values
-          relative_threshold: 0.001 # Relative threshold for spread significance
-          historical_lookback: 50   # Lookback for historical spread comparison
-          volatility_adjustment: true # Adjust spread significance based on volatility
-        
-        # Order Book Pressure Score (OBPS)
-        obps:
-          lookback: 10              # Periods for OBPS calculation
-          threshold: 0.15           # Threshold for significant OBPS
-          price_levels: 10          # Price levels to include in OBPS calculation
-          smoothing: 2              # Smoothing factor for OBPS
-        
-        # Depth of Market (DOM) Momentum
+          levels: 25
+          normalization_factor: 100
+          significance_threshold: 0.1
+          weight_decay: 0.95
+        depth_levels: 25
         dom_momentum:
-          lookback: 5               # Periods for momentum calculation
-          threshold: 0.1            # Threshold for significant momentum
-          lag: 2                    # Lag for momentum calculation
-          smoothing: 2              # Smoothing factor for momentum
-        
-        # Support/Resistance from Orderbook
-        support_resistance:
-          cluster_threshold: 0.005  # Threshold for identifying order clusters
-          min_size: 100000          # Minimum size for significant S/R level
-          max_levels: 5             # Maximum number of S/R levels to track
-          strength_decay: 0.9       # Decay factor for S/R strength over time
-        
-        # Large Order Detection
+          lag: 2
+          lookback: 5
+          smoothing: 2
+          threshold: 0.1
+        imbalance:
+          extreme_threshold: 0.5
+          lookback: 20
+          smoothing: 3
+          threshold: 0.2
         large_orders:
-          min_size: 100000          # Minimum size to be considered a large order
-          alert_threshold: 0.01     # Price impact threshold for alerts
-          significance_factor: 2.0  # Factor to determine order significance
-          relative_size: true       # Use relative size based on market conditions
-        
-        # Price Impact Analysis
+          alert_threshold: 0.01
+          min_size: 100000
+          relative_size: true
+          significance_factor: 2.0
+        liquidity:
+          depth_weight: 0.7
+          relative_scale: true
+          spread_weight: 0.3
+          threshold: 1.5
+        min_data_points: 10
+        mpi:
+          lookback: 10
+          sensitivity: 0.75
+          threshold: 0.3
+        obps:
+          lookback: 10
+          price_levels: 10
+          smoothing: 2
+          threshold: 0.15
+        pressure:
+          impact_multiplier: 1.2
+          sensitivity: 0.75
+          smoothing: 5
+          threshold: 0.25
         price_impact:
-          calculation_size: 100000  # Size to use for price impact calculation
-          threshold: 0.005          # Threshold for significant price impact
-          normalize: true           # Normalize price impact values
-          max_levels: 20            # Maximum order book levels for impact calculation
-    
-    # Orderflow indicator parameters
-    # These analyze the flow of trades and their impact on price
+          calculation_size: 100000
+          max_levels: 20
+          normalize: true
+          threshold: 0.005
+        sigmoid_transformation:
+          default_sensitivity: 0.12
+          imbalance_sensitivity: 0.15
+          pressure_sensitivity: 0.18
+        spread:
+          historical_lookback: 50
+          normalize: true
+          relative_threshold: 0.001
+          volatility_adjustment: true
+        support_resistance:
+          cluster_threshold: 0.005
+          max_levels: 5
+          min_size: 100000
+          strength_decay: 0.9
+        update_interval: 100
     orderflow:
-      # General parameters for orderflow analysis
-      min_trades: 1000              # Minimum number of trades for valid analysis
-      volume_threshold: 1.5         # Volume threshold for significance
-      
-      # Cumulative Volume Delta (CVD) parameters
       cvd:
-        lookback: 50                # Lookback period for CVD calculations
-        smoothing: 3                # Smoothing factor for CVD curve
-        threshold: 0.25             # Threshold for significant CVD changes
-        normalize: true             # Normalize CVD values
-      
-      # Divergence analysis between price and indicators
+        price_direction_threshold: 0.01
+        cvd_significance_threshold: 0.01
       divergence:
-        impact_multiplier: 0.1      # How much impact divergence has on component scores
-        lookback: 20                # Lookback period for divergence calculations
-        recency_factor: 1.5         # Weight factor for more recent data points
-        strength_threshold: 20      # Minimum strength to consider a divergence significant
-        time_weighting: true        # Enable time-weighted calculations
-        min_points: 5               # Minimum data points for valid divergence
-      
-      # Trade flow analysis
-      trade_flow:
-        window: 20                  # Window size for flow calculations
-        momentum_lookback: 10       # Lookback period for momentum calculations
-        pressure_sensitivity: 0.8   # Sensitivity for trade pressure calculation
-        smoothing: 3                # Smoothing factor for flow calculations
-        significance_threshold: 0.3 # Threshold for significant trade flow
-      
-      # Order imbalance parameters
+        impact_multiplier: 0.1
+        lookback: 20
+        min_points: 5
+        recency_factor: 1.5
+        strength_threshold: 20
+        time_weighting: true
       imbalance:
-        window: 20                  # Window size for imbalance calculations
-        threshold: 0.2              # Threshold for significant imbalance
-        smoothing: 2                # Smoothing factor for imbalance
-        normalize: true             # Normalize imbalance scores
-      
-      # Open Interest analysis
-      open_interest:
-        lookback: 24                # Lookback period for OI analysis (hours)
-        change_threshold: 0.05      # Threshold for significant OI change
-        trend_period: 12            # Period for OI trend calculation
-        correlation_window: 48      # Window for price-OI correlation
-      
-      # Order block identification
-      order_block:
-        min_size: 100000            # Minimum size for valid order block
-        lookback: 20                # Lookback period for order blocks
-        strength_threshold: 2.0     # Threshold for order block significance
-        proximity_weight: 0.7       # Weight based on proximity to current price
-      
-      # Trade pressure calculation
-      trade_pressure:
-        window: 50                  # Window size for pressure calculation
-        threshold: 0.3              # Threshold for significant pressure
-        decay_factor: 0.95          # Decay factor for older trades
-        size_impact: 0.6            # Impact of trade size on pressure
-
-      # Liquidity analysis
+        normalize: true
+        smoothing: 2
+        threshold: 0.2
+        window: 20
       liquidity:
-        window_minutes: 5           # Time window for liquidity measurement in minutes
-        max_trades_per_sec: 5       # Maximum expected trades per second
-        max_volume: 1000            # Maximum expected trade volume per window
-        frequency_weight: 0.5       # Weight for trade frequency component
-        volume_weight: 0.5          # Weight for volume component
-    # Price structure indicator parameters
-    # These analyze market structure and key price levels
+        frequency_weight: 0.5
+        max_trades_per_sec: 5
+        max_volume: 1000
+        volume_weight: 0.5
+        window_minutes: 5
+      min_trades: 1000
+      open_interest:
+        normalization_threshold: 5.0
+        minimal_change_threshold: 0.02
+        price_direction_threshold: 0.01
+      trade_flow:
+        momentum_lookback: 10
+        pressure_sensitivity: 0.8
+        significance_threshold: 0.3
+        smoothing: 3
+        window: 20
+      trades_pressure:
+        volume_weight: 0.4
+        value_weight: 0.3
+        count_weight: 0.2
+        large_trade_weight: 0.1
+        large_trade_threshold: 100000
+        window: 50
+        decay_factor: 0.95
+      trades_imbalance:
+        short_window: 10
+        medium_window: 30
+        long_window: 100
+        short_weight: 0.5
+        medium_weight: 0.3
+        long_weight: 0.2
+      liquidity_zones:
+        swing_length: 50
+        range_percent: 0.01
+        interpolate_missing_cvd: true
+      volume_threshold: 1.5
     price_structure:
       parameters:
-        # Order block: Identifies significant supply/demand zones
         order_block:
-          lookback: 20              # Periods to look back for order blocks
-          proximity_weight: 0.6     # Weight for proximity to current price
-          strength_threshold: 2.0   # Threshold for order block significance
-        # Support/resistance: Identifies key price levels
+          lookback: 20
+          proximity_weight: 0.6
+          strength_threshold: 2.0
+        range:
+          lookback: 50
+          sfp_threshold: 0.005
+          msb_window: 5
         support_resistance:
-          level_threshold: 0.005    # Threshold for level identification
-          lookback: 100             # Periods to look back for support/resistance
-          strength_threshold: 1.5   # Threshold for support/resistance significance
-        # Swing points: Identifies swing highs and lows
+          level_threshold: 0.005
+          lookback: 100
+          strength_threshold: 1.5
         swing_points:
-          threshold: 0.01           # Threshold for swing point identification
-          window: 5                 # Window size for swing point analysis
-        # Trend: Analyzes market trends using moving averages
+          threshold: 0.01
+          window: 5
         trend:
-          ma_periods:               # Moving average periods to use
-          - 20                      # Short-term MA
-          - 50                      # Medium-term MA
-          - 200                     # Long-term MA
-          momentum_period: 14       # Period for momentum calculations
-        # Volume profile: Analyzes volume distribution across price levels
+          ma_periods:
+          - 20
+          - 50
+          - 200
+          momentum_period: 14
         volume_profile:
-          bins: 100                 # Number of price bins for volume distribution
-          threshold: 1.5            # Threshold for volume significance
-          value_area: 0.7           # Value area percentage (where most volume occurs)
-    # Sentiment indicator parameters
-    # These analyze market sentiment and positioning
+          bins: 100
+          threshold: 1.5
+          value_area: 0.7
+        vwap:
+          debug_logging: false
+          scoring:
+            extreme_overbought: 95
+            extreme_oversold: 5
+            moderate_overbought: 65
+            moderate_oversold: 35
+            neutral: 50
+            strong_overbought: 80
+            strong_oversold: 20
+          session_weights:
+            daily: 0.6
+            weekly: 0.4
+          use_std_bands: true
+      vwap_debug_logging: false
+      vwap_use_std_bands: true
     sentiment:
-      funding_threshold: 0.01       # Threshold for funding rate significance
-      liquidation_threshold: 1000000 # Threshold for liquidation significance (in USD)
+      funding_threshold: 0.01
+      liquidation_threshold: 1000000
       parameters:
-        # Sigmoid transformation parameters
-        sigmoid_transformation:
-          default_sensitivity: 0.12  # Default sensitivity for all transformations
-          long_short_sensitivity: 0.12 # Sensitivity for long/short ratio transformation
-          funding_sensitivity: 0.15   # Sensitivity for funding rate transformation
-          liquidation_sensitivity: 0.10 # Sensitivity for liquidation events transformation
-          
-        # Funding rate: Analyzes perpetual futures funding rates
         funding_rate:
-          period: 8                 # Period for funding rate calculations
-          threshold: 0.01           # Threshold for funding rate significance
-      sentiment_window: 20          # Window size for sentiment calculations
-    # Technical indicator parameters
-    # These are traditional technical analysis indicators
+          period: 8
+          threshold: 0.01
+        sigmoid_transformation:
+          default_sensitivity: 0.12
+          funding_sensitivity: 0.15
+          liquidation_sensitivity: 0.1
+          long_short_sensitivity: 0.12
+      sentiment_window: 20
     technical:
-      # Awesome Oscillator
       ao:
-        period: 14                  # Period for AO calculations
-      # Average True Range
+        period: 14
       atr:
-        period: 14                  # Period for ATR calculations
-      # Commodity Channel Index
+        period: 14
       cci:
-        period: 20                  # Period for CCI calculations
-      # Impact of divergence on technical analysis
-      divergence_impact: 0.2        # Weight of divergence in technical score
-      # MACD (Moving Average Convergence Divergence)
+        period: 20
+      divergence_impact: 0.2
       macd:
-        fast_period: 12             # Fast EMA period
-        signal_period: 9            # Signal line period
-        slow_period: 26             # Slow EMA period
-      # Minimum data points required
-      min_points: 100               # Minimum points needed for valid technical analysis
-      # Momentum parameters
+        fast_period: 12
+        signal_period: 9
+        slow_period: 26
+      min_points: 100
       momentum:
-        volatility_threshold: 0.05  # Threshold for volatility significance
-        window_size: 20             # Window size for momentum calculations
-      # Relative Strength Index
+        volatility_threshold: 0.05
+        window_size: 20
       rsi:
-        overbought: 70              # Overbought threshold
-        oversold: 30                # Oversold threshold
-        period: 14                  # Period for RSI calculations
-      # Ultimate Oscillator
+        overbought: 70
+        oversold: 30
+        period: 14
       uo:
-        period: 14                  # Period for UO calculations
-      # Williams %R
+        period: 14
       williams_r:
-        period: 14                  # Period for Williams %R calculations
-    # Volume indicator parameters
-    # These analyze trading volume patterns and significance
+        period: 14
     volume:
       parameters:
-        # General parameters
-        lookback: 20                # General period for lookback across indicators
-        smoothing: 5                # General smoothing factor 
-        threshold: 1.5              # General threshold for significance
-        
-        # Specific indicator parameters
-        volume_delta:
-          window: 20                # Window size for volume delta calculations
-          min_trades: 100           # Minimum number of trades for valid calculation
-          
         adl:
-          period: 20                # Period for ADL (Accumulation/Distribution Line)
-          trend_lookback: 10        # Lookback period for ADL trend analysis
-          
+          period: 20
+          trend_lookback: 10
         cmf:
-          period: 20                # Period for Chaikin Money Flow
-          smoothing: 0.5            # Specific smoothing factor for CMF
-          threshold: 0.0            # Zero-line threshold for CMF interpretation
-          
-        obv:
-          trend_lookback: 14        # Lookback period for OBV trend analysis
-          smoothing: 3              # Smoothing factor for OBV
-          
-        relative_volume:
-          period: 20                # Period for relative volume calculation
-          significant_threshold: 1.5 # Threshold for significant volume (ratio)
-          
-        vwap:
-          lookback: 20              # Period for VWAP analysis
-          bands: 2.0                # Standard deviation multiplier for VWAP bands
-          
+          period: 20
+          smoothing: 0.5
+          threshold: 0.0
         divergence:
-          impact_multiplier: 0.2    # Impact of volume divergence on score
-          significance_threshold: 0.3 # Threshold to consider divergence significant
-
-# Data Processing Configuration
-# -------------------------
-# Settings for data processing pipelines and feature engineering
+          impact_multiplier: 0.2
+          significance_threshold: 0.3
+        lookback: 20
+        obv:
+          smoothing: 3
+          trend_lookback: 14
+        relative_volume:
+          period: 30
+          significant_threshold: 2.0
+          strong_threshold: 3.0
+          extreme_threshold: 4.0
+          weak_threshold: 1.0
+          price_aware_mode: true
+          price_weight: 0.6
+          candle_analysis: true
+          momentum_periods: 3
+          directional_volume: true
+        smoothing: 5
+        threshold: 1.5
+        volume_delta:
+          min_trades: 100
+          window: 20
+        volume_profile:
+          bins: 100
+          value_area_percentage: 70.0
+        vwap:
+          bands: 2.0
+          lookback: 20
+          debug_logging: false
+          use_std_bands: true
+          session_weights:
+            daily: 0.6
+            weekly: 0.4
+          scoring:
+            extreme_overbought: 95
+            strong_overbought: 80
+            moderate_overbought: 65
+            neutral: 50
+            moderate_oversold: 35
+            strong_oversold: 20
+            extreme_oversold: 5
+bitcoin_beta_analysis:
+  alpha_detection:
+    alerts:
+      cooldown_minutes: 15
+      enabled: true
+      min_confidence: 0.7
+    enabled: true
+    thresholds:
+      alpha_threshold: 0.05
+      beta_divergence: 0.3
+      confidence_threshold: 0.7
+      correlation_breakdown: 0.3
+      reversion_beta: 1.5
+      rolling_beta_change: 0.5
+      sector_correlation: 0.8
+      timeframe_consensus: 0.6
+  reports:
+    enabled: true
+    output_dir: exports/bitcoin_beta_reports
+    schedule_enabled: true
+    schedule_times:
+    - 00:00
+    - 06:00
+    - '12:00'
+    - '18:00'
+  timeframes:
+    base:
+      analysis_period_hours: 4
+      description: Real-time analysis
+      interval: 1m
+      periods: 240
+    htf:
+      analysis_period_days: 30
+      description: Long-term correlation trends
+      interval: 4h
+      periods: 180
+    ltf:
+      analysis_period_days: 1
+      description: Short-term movements
+      interval: 5m
+      periods: 288
+    mtf:
+      analysis_period_days: 7
+      description: Medium-term patterns
+      interval: 30m
+      periods: 336
+confluence:
+  thresholds:
+    buy: 69
+    neutral_buffer: 0
+    sell: 35
+  weights:
+    components:
+      orderflow: 0.25
+      orderbook: 0.25
+      volume: 0.16
+      price_structure: 0.16
+      technical: 0.11
+      sentiment: 0.07
+    sub_components:
+      orderbook:
+        absorption_exhaustion: 0.1
+        depth: 0.2
+        dom_momentum: 0.05
+        imbalance: 0.25
+        liquidity: 0.1
+        mpi: 0.2
+        obps: 0.05
+        spread: 0.05
+      orderflow:
+        cvd: 0.25
+        imbalance: 0.15
+        trade_flow: 0.2
+        open_interest: 0.15
+        pressure: 0.1
+        liquidity: 0.1
+        liquidity_zones: 0.05
+      price_structure:
+        support_resistance: 0.1667
+        order_blocks: 0.1667
+        trend_position: 0.1667
+        volume_profile: 0.1667
+        market_structure: 0.1667
+        range_analysis: 0.1667
+      sentiment:
+        funding_rate: 0.2
+        liquidations: 0.2
+        long_short_ratio: 0.15
+        market_activity: 0.15
+        risk: 0.12
+        volatility: 0.18
+      technical:
+        ao: 0.2
+        atr: 0.15
+        cci: 0.15
+        macd: 0.15
+        rsi: 0.2
+        williams_r: 0.15
+      volume:
+        adl: 0.15
+        cmf: 0.15
+        obv: 0.15
+        relative_volume: 0.15
+        volume_delta: 0.2
+        volume_profile: 0.1
+        vwap: 0.1
 data_processing:
-  batch_size: 100                   # Number of data points to process at once
-  enabled: true                     # Enable data processing
-  # Error handling settings
+  batch_size: 100
+  enabled: true
   error_handling:
-    log_errors: true                # Log all errors that occur
-    max_retries: 3                  # Maximum number of retries for failed operations
-    retry_delay: 1.0                # Delay between retries in seconds
-  # Feature engineering settings
+    log_errors: true
+    max_retries: 3
+    retry_delay: 1.0
   feature_engineering:
-    market_impact: true             # Enable market impact calculations
-    orderbook_features: true        # Enable orderbook feature engineering
-    technical_indicators: true      # Enable technical indicator calculations
-  max_history: 1000                 # Maximum historical data points to retain
-  max_workers: 4                    # Maximum number of worker threads for parallel processing
-  mode: real-time                   # Processing mode: real-time or batch
-  # Performance optimization settings
+    market_impact: true
+    orderbook_features: true
+    technical_indicators: true
+  max_history: 1000
+  max_workers: 4
+  mode: real-time
   performance:
-    cache_enabled: true             # Enable caching of calculated results
-    cache_size: 1000                # Maximum cache size in data points
-    parallel_processing: true       # Enable parallel processing
-  # Processing pipeline configuration
+    cache_enabled: true
+    cache_size: 1000
+    parallel_processing: true
   pipeline:
-  - enabled: true                   # Enable validation step
-    name: validation                # Validation step name
-    timeout: 5                      # Timeout in seconds
-  - enabled: true                   # Enable normalization step
-    name: normalization             # Normalization step name
-    timeout: 5                      # Timeout in seconds
-  - enabled: true                   # Enable feature engineering step
-    name: feature_engineering       # Feature engineering step name
-    timeout: 10                     # Timeout in seconds
-  - enabled: true                   # Enable aggregation step
-    name: aggregation               # Aggregation step name
-    timeout: 10                     # Timeout in seconds
-  # Storage configuration
+  - enabled: true
+    name: validation
+    timeout: 5
+  - enabled: true
+    name: normalization
+    timeout: 5
+  - enabled: true
+    name: feature_engineering
+    timeout: 10
+  - enabled: true
+    name: aggregation
+    timeout: 10
   storage:
-    compression: snappy             # Compression algorithm for stored data
-    format: parquet                 # File format for stored data
-    partition_by:                   # Partitioning scheme for stored data
-    - date                          # Partition by date
-    - symbol                        # Partition by symbol
-  # Time weighting factors for different timeframes
+    compression: snappy
+    format: parquet
+    partition_by:
+    - date
+    - symbol
   time_weights:
-    base: 1.0                       # Base timeframe weight
-    htf: 1.5                        # High timeframe weight
-    ltf: 0.8                        # Low timeframe weight
-    mtf: 1.2                        # Medium timeframe weight
-  update_interval: 1.0              # Update interval in seconds
-  # Data validation settings
+    base: 1.0
+    htf: 1.5
+    ltf: 0.8
+    mtf: 1.2
+  update_interval: 1.0
   validation:
-    check_duplicates: true          # Check for and handle duplicate data points
-    check_missing: true             # Check for and handle missing data points
-    check_outliers: true            # Check for and handle outlier data points
-  volatility_threshold: 0.05        # Threshold for volatility significance
-  window_size: 20                   # Window size for calculations
-
-# Database Configuration
-# -------------------
-# Settings for database connections
+    check_duplicates: true
+    check_missing: true
+    check_outliers: true
+  volatility_threshold: 0.05
+  window_size: 20
 database:
-  # InfluxDB configuration
+  url: ${DATABASE_URL:sqlite:///./data/virtuoso.db}
   influxdb:
-    bucket: ${INFLUXDB_BUCKET}      # InfluxDB bucket name
-    org: ${INFLUXDB_ORG}            # InfluxDB organization name
-    timeout: 30000                  # Connection timeout in milliseconds
-    token: ${INFLUXDB_TOKEN}        # InfluxDB API token
-    url: ${INFLUXDB_URL}            # InfluxDB server URL
-
-# Logging Configuration
-# ------------------
-# Settings for application logging
+    bucket: ${INFLUXDB_BUCKET}
+    org: ${INFLUXDB_ORG}
+    timeout: 30000
+    token: ${INFLUXDB_TOKEN}
+    url: ${INFLUXDB_URL}
+exchanges:
+  binance:
+    api_credentials:
+      api_key: ${BINANCE_API_KEY:}
+      api_secret: ${BINANCE_API_SECRET:}
+    data_only: false
+    data_preferences:
+      exclude_symbols: []
+      min_24h_volume: 1000000
+      preferred_quote_currencies:
+      - USDT
+      - BTC
+      - ETH
+    enabled: ${ENABLE_BINANCE_DATA:false}
+    market_types:
+    - spot
+    - futures
+    primary: false
+    rate_limits:
+      requests_per_minute: 1200
+      requests_per_second: 10
+      weight_per_minute: 6000
+    rest_endpoint: https://api.binance.com
+    testnet: false
+    testnet_endpoint: https://testnet.binance.vision
+    websocket:
+      keep_alive: true
+      ping_interval: 30
+      public: wss://stream.binance.com:9443/ws
+      reconnect_attempts: 3
+      testnet_public: wss://testnet.binance.vision/ws
+  bybit:
+    api_credentials:
+      api_key: ${BYBIT_API_KEY}
+      api_secret: ${BYBIT_API_SECRET}
+    enabled: true
+    primary: true
+    rate_limits:
+      requests_per_minute: 1200
+      requests_per_second: 20
+    rest_endpoint: https://api.bybit.com
+    testnet: false
+    websocket:
+      enabled: true
+      keep_alive: true
+      ping_interval: 30
+      private: wss://stream.bybit.com/v5/private
+      public: wss://stream.bybit.com/v5/public
+      mainnet_endpoint: wss://stream.bybit.com/v5/public/linear
+      testnet_endpoint: wss://stream-testnet.bybit.com/v5/public/linear
+      reconnect_attempts: 3
+      channels:
+      - ticker
+      - kline
+      - orderbook
+      - trade
+      - liquidation
 logging:
-  disable_existing_loggers: false   # Don't disable existing loggers
-  # Log formatter configurations
+  disable_existing_loggers: false
   formatters:
-    # Detailed formatter with line numbers
     detailed:
-      datefmt: '%Y-%m-%d %H:%M:%S'  # Date format
+      datefmt: '%Y-%m-%d %H:%M:%S'
       format: '%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d]
-        - %(message)s'              # Log message format
-    # Standard formatter without line numbers
+        - %(message)s'
     standard:
-      datefmt: '%Y-%m-%d %H:%M:%S'  # Date format
-      format: '%(asctime)s - %(name)s - %(levelname)s - %(message)s' # Log message format
-  # Log handler configurations
+      datefmt: '%Y-%m-%d %H:%M:%S'
+      format: '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
   handlers:
-    # Console output handler
     console:
-      class: logging.StreamHandler   # Handler class
-      formatter: detailed            # Formatter to use
-      level: DEBUG                   # Logging level
-      stream: ext://sys.stdout       # Output stream
-    # Main log file handler
+      class: logging.StreamHandler
+      formatter: detailed
+      level: DEBUG
+      stream: ext://sys.stdout
     file:
-      backupCount: 5                 # Number of backup files to keep
-      class: logging.handlers.RotatingFileHandler # Handler class
-      filename: logs/app.log         # Log file path
-      formatter: detailed            # Formatter to use
-      level: DEBUG                   # Logging level
-      maxBytes: 10485760             # Maximum file size (10MB)
-    # Indicators log file handler
+      backupCount: 5
+      class: logging.handlers.RotatingFileHandler
+      filename: logs/app.log
+      formatter: detailed
+      level: DEBUG
+      maxBytes: 10485760
     indicators_file:
-      backupCount: 5                 # Number of backup files to keep
-      class: logging.handlers.RotatingFileHandler # Handler class
-      filename: logs/indicators.log  # Log file path
-      formatter: detailed            # Formatter to use
-      level: DEBUG                   # Logging level
-      maxBytes: 10485760             # Maximum file size (10MB)
-    # WebSocket log file handler
+      backupCount: 5
+      class: logging.handlers.RotatingFileHandler
+      filename: logs/indicators.log
+      formatter: detailed
+      level: DEBUG
+      maxBytes: 10485760
     websocket_file:
-      backupCount: 3                 # Number of backup files to keep
-      class: logging.handlers.RotatingFileHandler # Handler class
-      filename: logs/websocket.log   # Log file path
-      formatter: detailed            # Formatter to use
-      level: DEBUG                   # Logging level
-      maxBytes: 10485760             # Maximum file size (10MB)
-  # Logger configurations
+      backupCount: 3
+      class: logging.handlers.RotatingFileHandler
+      filename: logs/websocket.log
+      formatter: detailed
+      level: DEBUG
+      maxBytes: 10485760
   loggers:
-    # Root logger
     ? ''
     : handlers:
       - console
       - file
       level: DEBUG
       propagate: true
-    # Main application logger
     src:
       handlers:
       - console
       - file
       level: DEBUG
       propagate: false
-    # Core components logger
     src.core:
       handlers:
       - console
       - file
       level: DEBUG
       propagate: false
-    # Analysis components logger
     src.core.analysis:
       handlers:
       - console
       - indicators_file
       level: DEBUG
       propagate: false
-    # Exchange components logger
     src.core.exchanges:
       handlers:
       - file
       - console
       level: INFO
       propagate: false
-    # WebSocket manager logger
     src.core.exchanges.websocket_manager:
       handlers:
       - websocket_file
       - console
       level: INFO
       propagate: false
-    # Indicators logger
     src.indicators:
       handlers:
       - console
       - indicators_file
       level: DEBUG
       propagate: false
-    # Orderbook indicators logger
     src.indicators.orderbook:
       handlers:
       - console
       - indicators_file
       level: DEBUG
       propagate: false
-    # Orderflow indicators logger
     src.indicators.orderflow:
       handlers:
       - console
       - indicators_file
       level: DEBUG
       propagate: false
-    # Position indicators logger
     src.indicators.position:
       handlers:
       - console
       - indicators_file
       level: DEBUG
       propagate: false
-    # Sentiment indicators logger
     src.indicators.sentiment:
       handlers:
       - console
       - indicators_file
       level: DEBUG
       propagate: false
-    # Technical indicators logger
     src.indicators.technical:
       handlers:
       - console
       - indicators_file
       level: DEBUG
       propagate: false
-    # Volume indicators logger
     src.indicators.volume:
       handlers:
       - console
@@ -686,248 +721,251 @@ logging:
       level: DEBUG
       propagate: false
   version: 1
-
-# Market Data Configuration
-# -----------------------
-# Settings for market data collection and processing
+market:
+  symbols:
+    excluded_symbols: []
+    market_types:
+    - linear
+    max_symbols: 15
+    min_turnover: 1000000
+    min_volume: 50000
+    static_symbols:
+    - BTCUSDT
+    - ETHUSDT
+    - SOLUSDT
+    - AVAXUSDT
+    - XRPUSDT
+    top_symbols_update_interval_hours: 8
+    use_static_list: false
 market_data:
-  batch_size: 100                   # Number of data points to fetch at once
-  # Caching configuration
+  batch_size: 100
   cache:
-    cleanup_interval: 300           # Cache cleanup interval in seconds
-    data_ttl: 60                    # Data time-to-live in seconds
-    enabled: true                   # Enable caching
-    # Symbol data caching
+    cleanup_interval: 300
+    data_ttl: 30
+    enabled: true
     symbol_data:
-      enabled: true                 # Enable symbol data caching
-      max_size: 1000                # Maximum cache size
-      ttl: 60                       # Time-to-live in seconds
-    symbols_ttl: 300                # Symbols list time-to-live in seconds
-    # Timeframe-specific cache settings
+      enabled: true
+      max_size: 1000
+      ttl: 30
+    symbols_ttl: 300
     timeframes:
       base:
-        ttl: 60                     # Base timeframe cache TTL
+        ttl: 30
       htf:
-        ttl: 3600                   # High timeframe cache TTL
+        ttl: 3600
       ltf:
-        ttl: 300                    # Low timeframe cache TTL
+        ttl: 300
       mtf:
-        ttl: 900                    # Medium timeframe cache TTL
-  delay_websocket: true             # Delay WebSocket initialization until after first REST fetch
-  # Data fetching configuration
+        ttl: 900
+  delay_websocket: false
+  smart_intervals:
+    enabled: true
+    min_interval: 30
+    max_interval: 60
+    default_interval: 45
+    history_limit: 100
+    thresholds:
+      high_volume_ratio: 1.5
+      high_volatility: 0.02
+      low_volume_ratio: 0.7
+      low_volatility: 0.005
   fetch:
-    batch_size: 1000                # Number of data points to fetch at once
-    # Required fields in data responses
+    batch_size: 1000
     required_fields:
-    - timestamp                     # Timestamp field
-    - open                          # Open price field
-    - high                          # High price field
-    - low                           # Low price field
-    - close                         # Close price field
-    - volume                        # Volume field
-    retry_attempts: 3               # Maximum retry attempts
-    retry_delay: 1.0                # Delay between retries in seconds
-    timeout: 30                     # Fetch timeout in seconds
-    validate_response: true         # Validate response data
-  included_symbols: []              # Additional symbols to include
-  market_type: linear               # Market type to monitor
-  max_history: 1000                 # Maximum historical data points to fetch
-  symbols_cache_update_interval: 300 # Symbols cache update interval in seconds
-  update_interval: 1.0              # Data update interval in seconds
-  use_dynamic_symbol_list: true     # Use dynamic symbol list based on volume/turnover
-  # Data validation settings
+    - timestamp
+    - open
+    - high
+    - low
+    - close
+    - volume
+    retry_attempts: 3
+    retry_delay: 1.0
+    timeout: 30
+    validate_response: true
+  included_symbols: []
+  market_type: linear
+  max_history: 1000
+  symbols_cache_update_interval: 300
+  update_interval: 1.0
+  use_dynamic_symbol_list: true
   validation:
-    # Candle data validation
     candles:
-      check_relationships: true     # Check OHLC relationships
-      handle_missing: true          # Handle missing data
-      min_required: 30              # Minimum required candles
-    # Data quality validation
+      check_relationships: true
+      handle_missing: true
+      min_required: 30
     data_quality:
-      check_gaps: true              # Check for gaps in data
-      max_gap_size: 5               # Maximum allowable gap size
-      min_tick_size: 1.0e-05        # Minimum tick size
-    # Orderbook validation
+      check_gaps: true
+      max_gap_size: 5
+      min_tick_size: 1.0e-05
     orderbook:
-      depth_levels: 25              # Number of depth levels to validate
-      max_spread: 0.01              # Maximum allowable spread
-      min_levels: 10                # Minimum required levels
-      update_interval: 100          # Update interval in milliseconds
-    # Price validation
+      depth_levels: 25
+      max_spread: 0.01
+      min_levels: 10
+      update_interval: 100
     price:
-      max_value: 1000000            # Maximum valid price
-      min_value: 0                  # Minimum valid price
-    # Timeframe-specific validation
+      max_value: 1000000
+      min_value: 0
     timeframes:
       base:
-        max_gap: 60                 # Maximum gap in base timeframe
-        min_candles: 100            # Minimum required candles
+        max_gap: 60
+        min_candles: 100
       htf:
-        max_gap: 14400              # Maximum gap in high timeframe
-        min_candles: 50             # Minimum required candles
+        max_gap: 14400
+        min_candles: 50
       ltf:
-        max_gap: 300                # Maximum gap in low timeframe
-        min_candles: 50             # Minimum required candles
+        max_gap: 300
+        min_candles: 50
       mtf:
-        max_gap: 1800               # Maximum gap in medium timeframe
-        min_candles: 50             # Minimum required candles
-    # Trade data validation
+        max_gap: 1800
+        min_candles: 50
     trades:
-      max_age: 3600                 # Maximum age of trades in seconds
-      min_trades: 50                # Minimum required trades
-    # Volume validation
+      max_age: 3600
+      min_trades: 50
     volume:
-      max_value: 1000000000         # Maximum valid volume
-      min_value: 0                  # Minimum valid volume
-  websocket_log_level: INFO         # WebSocket logging level
-  # WebSocket logging configuration
+      max_value: 1000000000
+      min_value: 0
+  websocket_log_level: INFO
   websocket_logging:
-    include_message_content: false  # Don't include full message content
-    message_threshold: 1            # Log threshold for messages
-    summary_interval: 60            # Summary interval in seconds
-    verbose: false                  # Disable verbose logging
-  websocket_update_throttle: 5      # WebSocket update throttle in seconds
-
-# Monitoring Configuration
-# ----------------------
-# Settings for system monitoring and alerting
+    include_message_content: false
+    message_threshold: 1
+    summary_interval: 60
+    verbose: false
+  websocket_update_throttle: 5
 monitoring:
-  # Alert configuration
   alerts:
-    # Alert channels
     channels:
-      - console                       # Console alerts
-      - database                      # Database alerts
-      - webhook                       # Webhook alerts
-    cooldown_period: 300            # Alert cooldown period in seconds
-    enabled: true                   # Enable alerts
-    # Discord webhook retry configuration
+    - console
+    - database
+    cooldown_period: 300
+    cpu_alerts:
+      cooldown: 600
+      enabled: true
+      threshold: 90
+      use_system_webhook: true
     discord_webhook:
-      max_retries: 3                # Maximum number of retry attempts
-      initial_retry_delay: 2        # Initial retry delay in seconds
-      timeout_seconds: 30           # Request timeout in seconds
-      exponential_backoff: true     # Use exponential backoff for retries
-      fallback_enabled: true        # Enable fallback to direct HTTP requests
-      recoverable_status_codes:     # HTTP status codes that should trigger retries
-        - 429                       # Rate limited
-        - 500                       # Internal server error
-        - 502                       # Bad gateway
-        - 503                       # Service unavailable
-        - 504                       # Gateway timeout
-    # Liquidation alert settings
-    liquidation:
-      cooldown: 300                 # Liquidation alert cooldown in seconds
-      threshold: 250000             # Liquidation threshold in USD
-    # Large order alert settings
+      exponential_backoff: true
+      fallback_enabled: true
+      initial_retry_delay: 2
+      max_retries: 3
+      recoverable_status_codes:
+      - 429
+      - 500
+      - 502
+      - 503
+      - 504
+      timeout_seconds: 30
+    enabled: true
     large_orders:
-      cooldown: 300                 # Large order alert cooldown in seconds
-      threshold_usd: 2000000        # $1M default threshold for large order alerts
-      min_price: 0                  # No minimum price filter
-      excluded_symbols: []          # No excluded symbols
-      included_symbols: []          # Monitor all symbols
-    # Whale activity alert settings
+      cooldown: 300
+      excluded_symbols: []
+      included_symbols: []
+      min_price: 0
+      threshold_usd: 2000000
+    liquidation:
+      cooldown: 300
+      threshold: 250000
+    system_alerts:
+      cooldown:
+        api: 300
+        cpu: 600
+        database: 300
+        disk: 1800
+        error: 180
+        market_report: 60
+        memory: 600
+        network: 300
+        performance: 300
+        warning: 300
+      enabled: true
+      mirror_alerts:
+        enabled: false
+        types:
+          alpha: false
+          market_report: false
+          signal: false
+      types:
+        api: true
+        configuration: true
+        cpu: true
+        database: true
+        disk: true
+        error: true
+        lifecycle: true
+        market_report: true
+        memory: true
+        network: true
+        performance: true
+        tasks: true
+        validation: true
+        warning: true
+      use_system_webhook: true
+    system_alerts_webhook_url: ${SYSTEM_ALERTS_WEBHOOK_URL}
     whale_activity:
-      enabled: true                 # Enable whale activity monitoring
-      accumulation_threshold: 5000000  # $5M default threshold for significant accumulation
-      distribution_threshold: 5000000  # $5M default threshold for significant distribution
-      cooldown: 1800                # 30 minutes between alerts for same symbol
-      imbalance_threshold: 0.3      # 30% order book imbalance threshold
-      min_order_count: 8            # Minimum number of whale orders to consider
-      market_percentage: 0.05       # 5% of market volume to be considered significant
-      excluded_symbols: []          # No excluded symbols
-      included_symbols: []          # Monitor all symbols
-      # New trade-based whale alert parameters
-      trade_alerts_enabled: true    # Enable trade-based whale alerts
-      trade_cooldown: 900           # 15 minutes between trade alerts
-      min_whale_trades: 5           # Minimum number of whale trades to trigger alert
-      min_trade_volume_usd: 500000  # Minimum USD value for significant trade volume
-      min_trade_imbalance: 0.75     # Minimum 75% imbalance for significant trade activity
-    # Market manipulation detection settings
-    manipulation_detection:
-      enabled: true                 # Enable manipulation detection
-      cooldown: 900                 # 15 minutes between alerts for same symbol
-      
-      # Open Interest change thresholds (OPTIMIZED)
-      oi_change_15m_threshold: 0.015 # 1.5% OI change in 15 minutes (optimized from 2%)
-      oi_change_1h_threshold: 0.02  # 2.0% OI change in 1 hour (optimized from 5%)
-      oi_absolute_threshold: 1000000 # $1M absolute OI change
-      
-      # Volume spike thresholds (OPTIMIZED)
-      volume_spike_threshold: 2.5   # 2.5x above 15-min average (optimized from 2x)
-      volume_spike_duration: 15     # Minutes to consider for spike
-      
-      # Price movement thresholds (OPTIMIZED)
-      price_change_15m_threshold: 0.0075 # 0.75% price change in 15 minutes (optimized from 1%)
-      price_change_5m_threshold: 0.005 # 0.5% price change in 5 minutes
-      
-      # OI vs price divergence thresholds (OPTIMIZED)
-      divergence_oi_threshold: 0.015 # 1.5% OI increase (optimized from 1%)
-      divergence_price_threshold: 0.005 # 0.5% price decrease (opposite direction)
-      
-      # Confidence scoring weights
-      weights:
-        oi_change: 0.3              # Weight for OI change analysis
-        volume_spike: 0.25          # Weight for volume spike analysis
-        price_movement: 0.25        # Weight for price movement analysis
-        divergence: 0.2             # Weight for divergence analysis
-      
-      # Alert thresholds
-      alert_confidence_threshold: 0.7 # Minimum confidence for alert
-      high_confidence_threshold: 0.85 # High confidence threshold
-      critical_confidence_threshold: 0.95 # Critical confidence threshold
-      
-      # Data requirements
-      min_data_points: 15           # Minimum data points for analysis
-      lookback_periods:
-        5m: 5                       # 5-minute lookback period
-        15m: 15                     # 15-minute lookback period
-        1h: 60                      # 1-hour lookback period
-      
-      # Symbol filtering
-      excluded_symbols: []          # No excluded symbols
-      included_symbols: []          # Monitor all symbols
-  # Component monitoring
+      accumulation_threshold: 2500000
+      cooldown: 1800
+      distribution_threshold: 2500000
+      enabled: true
+      excluded_symbols: []
+      imbalance_threshold: 0.3
+      included_symbols: []
+      market_percentage: 0.025
+      min_order_count: 4
+      min_trade_imbalance: 0.75
+      min_trade_volume_usd: 500000
+      min_whale_trades: 5
+      trade_alerts_enabled: false
+      trade_cooldown: 900
+    smart_money_detection:
+      enabled: true
+      min_sophistication_score: 6.0
+      min_confidence: 0.7
+      cooldown_minutes: 15
+      max_alerts_per_hour: 10
+      orderflow_imbalance_threshold: 0.65
+      volume_spike_multiplier: 3.0
+      depth_change_threshold: 0.2
+      position_change_threshold: 0.15
+      sophistication_weights:
+        execution_quality: 0.25
+        timing_precision: 0.2
+        market_impact: 0.2
+        pattern_complexity: 0.15
+        coordination: 0.1
+        stealth: 0.1
   components:
-    # Analysis component monitoring
     analysis:
-      enabled: true                 # Enable analysis monitoring
-      timeout: 10                   # Timeout in seconds
-    # Database component monitoring
+      enabled: true
+      timeout: 10
     database:
-      enabled: true                 # Enable database monitoring
-      timeout: 5                    # Timeout in seconds
-    # Exchange component monitoring
+      enabled: true
+      timeout: 5
     exchange:
-      enabled: true                 # Enable exchange monitoring
-      timeout: 5                    # Timeout in seconds
-  # Data collection settings
+      enabled: true
+      timeout: 5
   data_collection:
-    klines_limit: 1000              # Maximum klines to collect
-    orderbook_depth: 50             # Orderbook depth to collect
-    trades_limit: 1000              # Maximum trades to collect
-  enabled: true                     # Enable monitoring
-  error_delay: 5                    # Delay after errors in seconds
-  health_check_interval: 30         # Health check interval in seconds
-  interval: 30                     # Monitoring interval in seconds
-  max_errors: 10                    # Maximum consecutive errors
-  # Memory tracking configuration
+    klines_limit: 1000
+    orderbook_depth: 50
+    trades_limit: 1000
+  enabled: true
+  error_delay: 5
+  health_check_interval: 30
+  interval: 30
+  max_errors: 10
   memory_tracking:
-    check_interval_seconds: 300     # Check interval in seconds
-    critical_threshold_percent: 98  # Critical memory threshold
-    disable_memory_warnings: true   # Disable non-critical memory warnings
-    enabled: true                   # Enable memory tracking
-    include_process_details: true   # Include process details in logs
-    log_level: ERROR                # Memory tracking log level
-    min_warning_size_mb: 2048       # Minimum warning size in MB
-    suppress_repeated_warnings: true # Suppress repeated warnings
-    warning_threshold_mb_per_hour: 50 # Warning threshold for memory growth
-    warning_threshold_percent: 95   # Warning memory threshold
-  # Performance metrics
+    check_interval_seconds: 300
+    critical_threshold_percent: 98
+    disable_memory_warnings: true
+    enabled: true
+    include_process_details: true
+    log_level: ERROR
+    min_warning_size_mb: 2048
+    suppress_repeated_warnings: true
+    warning_threshold_mb_per_hour: 50
+    warning_threshold_percent: 95
   metrics:
-    collection_interval: 60         # Collection interval in seconds
-    enabled: true                   # Enable metrics
-    max_history: 1000               # Maximum history to retain
-    # Metrics to collect
+    collection_interval: 60
+    enabled: true
+    max_history: 1000
     metrics:
     - description: API response time in milliseconds
       name: response_time
@@ -941,78 +979,105 @@ monitoring:
     - description: Number of actively monitored symbols
       name: active_symbols
       type: gauge
-  # Performance monitoring
   performance:
-    enabled: true                   # Enable performance monitoring
-    # Metrics to monitor
+    enabled: true
     metrics:
-    - calculation_time              # Calculation time
-    - data_quality                  # Data quality
-    - error_rate                    # Error rate
-    # Performance thresholds
+    - calculation_time
+    - data_quality
+    - error_rate
     thresholds:
-      cpu_usage: 80                 # Maximum CPU usage percentage
-      max_calculation_time: 5000    # Maximum calculation time in milliseconds
-      max_error_rate: 0.01          # Maximum error rate
-      memory_usage: 90              # Maximum memory usage percentage
-      min_data_quality: 0.95        # Minimum data quality
-      response_time: 5000           # Maximum response time in milliseconds
-  # Storage settings for monitoring data
+      cpu_usage: 90
+      max_calculation_time: 5000
+      max_error_rate: 0.01
+      memory_usage: 90
+      min_data_quality: 0.95
+      response_time: 5000
   storage:
-    compression: true               # Enable compression
-    enabled: true                   # Enable storage
-    retention_days: 7               # Data retention period in days
-
-# Portfolio Configuration
-# --------------------
-# Settings for portfolio management
+    compression: true
+    enabled: true
+    retention_days: 7
 portfolio:
-  # Performance metrics
   performance:
-    max_turnover: 2.0               # Maximum daily turnover
-  # Rebalancing settings
+    max_turnover: 2.0
   rebalancing:
-    enabled: true                   # Enable portfolio rebalancing
-    frequency: 1d                   # Rebalancing frequency
-    threshold: 0.05                 # Threshold for rebalancing
-  # Target allocation for assets
+    enabled: true
+    frequency: 1d
+    threshold: 0.05
   target_allocation:
-    BTC: 0.4                        # Bitcoin allocation
-    DOGE: 0.1                       # Dogecoin allocation
-    ETH: 0.3                        # Ethereum allocation
-    SOL: 0.2                        # Solana allocation
-
-# Risk Management Configuration
-# --------------------------
-# Settings for risk management
+    BTC: 0.4
+    DOGE: 0.1
+    ETH: 0.3
+    SOL: 0.2
+reporting:
+  attach_json: true
+  attach_pdf: true
+  base_dir: reports
+  enabled: true
+  pdf:
+    include_charts: true
+    use_dark_mode: true
+  template_dir: templates
+  types:
+    market_reports: true
+    signals: true
 risk:
-  risk_free_rate: 0.02              # Risk-free rate for calculations
-  # Risk limits
+  risk_free_rate: 0.02
   risk_limits:
-    max_drawdown: 0.25              # Maximum allowable drawdown
-    max_leverage: 3.0               # Maximum allowable leverage
-    max_position_size: 0.1          # Maximum position size as portion of portfolio
-  # Stop loss settings
+    max_drawdown: 0.25
+    max_leverage: 3.0
+    max_position_size: 0.1
   stop_loss:
-    activation_percentage: 0.01     # Activation threshold for stop loss
-    default: 0.02                   # Default stop loss percentage
-    trailing: true                  # Enable trailing stop loss
-  # Take profit settings
+    activation_percentage: 0.01
+    default: 0.02
+    trailing: true
   take_profit:
-    activation_percentage: 0.02     # Activation threshold for take profit
-    default: 0.04                   # Default take profit percentage
-    trailing: true                  # Enable trailing take profit
-
-# System Configuration
-# -----------------
-# Core system settings
-system:
-  cache_dir: cache                  # Cache directory
-  data_dir: data                    # Data directory
-  environment: development          # Environment: development, production, or testing
-  log_level: DEBUG                  # Global log level
-  version: 1.0.0                    # System version
-  base_dir: "."
-  reports_dir: "./reports"
-  enable_reporting: true
-
+    activation_percentage: 0.02
+    default: 0.04
+    trailing: true
+rollout:
+  enabled: true
+  mode: complete
+  percentage: 100
+timeframes:
+  base:
+    interval: 1
+    required: 1000
+    validation:
+      max_gap: 60
+      min_candles: 100
+    weight: 0.4
+  htf:
+    interval: 240
+    required: 200
+    validation:
+      max_gap: 14400
+      min_candles: 50
+    weight: 0.1
+  ltf:
+    interval: 5
+    required: 200
+    validation:
+      max_gap: 300
+      min_candles: 50
+    weight: 0.3
+  mtf:
+    interval: 30
+    required: 200
+    validation:
+      max_gap: 1800
+      min_candles: 50
+    weight: 0.2
+web_server:
+  access_log: true
+  auto_fallback: true
+  fallback_ports:
+  - 8001
+  - 8002
+  - 8080
+  - 3000
+  - 5000
+  host: 0.0.0.0
+  log_level: info
+  port: 8003
+  reload: false
+  timeout_keep_alive: 5
