@@ -56,7 +56,7 @@ After successful authentication, you can subscribe to various data channels:
   "channels": ["market_data", "orders", "positions"],
   "params": {
     "exchange": "binance",
-    "symbols": ["BTC/USDT", "ETH/USDT"]
+    "symbols": ["BTCUSDT", "ETHUSDT"]
   }
 }
 ```
@@ -69,7 +69,7 @@ The server will respond with:
   "channels": ["market_data", "orders", "positions"],
   "params": {
     "exchange": "binance",
-    "symbols": ["BTC/USDT", "ETH/USDT"]
+    "symbols": ["BTCUSDT", "ETHUSDT"]
   },
   "timestamp": 1647356789125
 }
@@ -85,7 +85,7 @@ To unsubscribe from channels:
   "channels": ["positions"],
   "params": {
     "exchange": "binance",
-    "symbols": ["BTC/USDT"]
+    "symbols": ["BTCUSDT"]
   }
 }
 ```
@@ -98,7 +98,7 @@ The server will respond with:
   "channels": ["positions"],
   "params": {
     "exchange": "binance",
-    "symbols": ["BTC/USDT"]
+    "symbols": ["BTCUSDT"]
   },
   "timestamp": 1647356789126
 }
@@ -117,7 +117,7 @@ Provides real-time market data updates.
   "channels": ["market_data"],
   "params": {
     "exchange": "binance",
-    "symbols": ["BTC/USDT"],
+    "symbols": ["BTCUSDT"],
     "type": "ticker"
   }
 }
@@ -129,7 +129,7 @@ Provides real-time market data updates.
   "channel": "market_data",
   "type": "ticker",
   "exchange": "binance",
-  "symbol": "BTC/USDT",
+  "symbol": "BTCUSDT",
   "data": {
     "price": 42650.5,
     "volume": 2541.34,
@@ -154,7 +154,7 @@ Provides real-time order book updates.
   "channels": ["orderbook"],
   "params": {
     "exchange": "binance",
-    "symbols": ["BTC/USDT"],
+    "symbols": ["BTCUSDT"],
     "depth": 10
   }
 }
@@ -165,7 +165,7 @@ Provides real-time order book updates.
 {
   "channel": "orderbook",
   "exchange": "binance",
-  "symbol": "BTC/USDT",
+  "symbol": "BTCUSDT",
   "data": {
     "bids": [
       [42650.0, 1.5],
@@ -192,7 +192,7 @@ Provides real-time trade updates.
   "channels": ["trades"],
   "params": {
     "exchange": "binance",
-    "symbols": ["BTC/USDT"]
+    "symbols": ["BTCUSDT"]
   }
 }
 ```
@@ -202,7 +202,7 @@ Provides real-time trade updates.
 {
   "channel": "trades",
   "exchange": "binance",
-  "symbol": "BTC/USDT",
+  "symbol": "BTCUSDT",
   "data": {
     "id": "123456789",
     "price": 42650.5,
@@ -225,7 +225,7 @@ Provides real-time updates for your orders.
   "channels": ["orders"],
   "params": {
     "exchange": "binance",
-    "symbols": ["BTC/USDT"]
+    "symbols": ["BTCUSDT"]
   }
 }
 ```
@@ -235,11 +235,11 @@ Provides real-time updates for your orders.
 {
   "channel": "orders",
   "exchange": "binance",
-  "symbol": "BTC/USDT",
+  "symbol": "BTCUSDT",
   "event": "update",
   "data": {
     "id": "123456789",
-    "symbol": "BTC/USDT",
+    "symbol": "BTCUSDT",
     "exchange": "binance",
     "timestamp": 1647356789123,
     "type": "limit",
@@ -271,7 +271,7 @@ Provides real-time updates for your positions.
   "channels": ["positions"],
   "params": {
     "exchange": "binance",
-    "symbols": ["BTC/USDT"]
+    "symbols": ["BTCUSDT"]
   }
 }
 ```
@@ -281,10 +281,10 @@ Provides real-time updates for your positions.
 {
   "channel": "positions",
   "exchange": "binance",
-  "symbol": "BTC/USDT",
+  "symbol": "BTCUSDT",
   "event": "update",
   "data": {
-    "symbol": "BTC/USDT",
+    "symbol": "BTCUSDT",
     "exchange": "binance",
     "timestamp": 1647356789123,
     "type": "spot",

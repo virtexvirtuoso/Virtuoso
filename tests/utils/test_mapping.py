@@ -24,7 +24,7 @@ print("\nComponent Mapping:")
 for config_name, internal_name in indicator.component_mapping.items():
     print(f"  {config_name} -> {internal_name}")
 
-# Test with market_structure component
-print("\nMarket Structure Mapping:")
-print(f"  market_structure maps to: {indicator.component_mapping.get('market_structure')}")
-print(f"  Weight for {indicator.component_mapping.get('market_structure')}: {indicator.component_weights.get(indicator.component_mapping.get('market_structure'), 0.0):.2f}") 
+# Test with swing_structure component
+print("\nSwing Structure Mapping:")
+print(f"  swing_structure maps to: {indicator.component_mapping.get('swing_structure')}")
+print(f"  Weight for {indicator.component_mapping.get('swing_structure')}: {indicator.component_weights.get(indicator.component_mapping.get('swing_structure'), 0.0):.2f}") 

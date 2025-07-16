@@ -16,10 +16,96 @@ import json
 from collections import defaultdict
 from cachetools import TTLCache
 import shutil
+import functools
 
 # Import for PDF report generation
-from src.core.reporting.report_manager import ReportManager
-from src.core.reporting.pdf_generator import ReportGenerator
+ReportManager = None
+ReportGenerator = None
+
+# Import Bitcoin Beta Analysis
+try:
+    from src.reports.bitcoin_beta_report import BitcoinBetaReport
+    from src.reports.bitcoin_beta_alpha_detector import BitcoinBetaAlphaDetector, AlphaOpportunity
+    BITCOIN_BETA_AVAILABLE = True
+except ImportError:
+    BitcoinBetaReport = None
+    BitcoinBetaAlphaDetector = None
+    AlphaOpportunity = None
+    BITCOIN_BETA_AVAILABLE = False
+    logging.getLogger(__name__).warning("Bitcoin Beta Analysis modules not available")
+
+# Enhanced PDF imports with fallbacks
+PDF_CLASSES_AVAILABLE = False
+try:
+    from src.core.reporting.report_manager import ReportManager
+    from src.core.reporting.pdf_generator import ReportGenerator
+    PDF_CLASSES_AVAILABLE = True
+except ImportError:
+    try:
+        # Try relative imports
+        from ..core.reporting.report_manager import ReportManager
+        from ..core.reporting.pdf_generator import ReportGenerator
+        PDF_CLASSES_AVAILABLE = True
+    except (ImportError, ValueError):
+        try:
+            # Try absolute imports without src prefix
+            from core.reporting.report_manager import ReportManager
+            from core.reporting.pdf_generator import ReportGenerator
+            PDF_CLASSES_AVAILABLE = True
+        except ImportError:
+            # Create basic PDF functionality stubs for minimal functionality
+            class BasicReportManager:
+                def __init__(self):
+                    self.pdf_generator = None
+                    
+            class BasicPDFGenerator:
+                def __init__(self, template_dir=None):
+                    self.template_dir = template_dir
+                    
+                async def generate_pdf_report(self, data, template_name="market_report_dark.html"):
+                    # Basic PDF generation using available libraries
+                    try:
+                        import matplotlib.pyplot as plt
+                        from matplotlib.backends.backend_pdf import PdfPages
+                        import io
+                        
+                        # Create a simple PDF with key metrics
+                        filename = f"market_report_{int(time.time())}.pdf"
+                        filepath = os.path.join("exports", filename)
+                        
+                        with PdfPages(filepath) as pdf:
+                            fig, ax = plt.subplots(figsize=(8, 10))
+                            ax.text(0.1, 0.9, "Virtuoso Market Report", fontsize=16, weight='bold')
+                            ax.text(0.1, 0.8, f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", fontsize=12)
+                            
+                            # Add market overview if available
+                            y_pos = 0.7
+                            if 'market_overview' in data:
+                                overview = data['market_overview']
+                                ax.text(0.1, y_pos, "Market Overview:", fontsize=14, weight='bold')
+                                y_pos -= 0.05
+                                for key, value in overview.items():
+                                    if isinstance(value, (int, float, str)) and len(str(value)) < 50:
+                                        ax.text(0.1, y_pos, f"{key}: {value}", fontsize=10)
+                                        y_pos -= 0.03
+                                        if y_pos < 0.1:
+                                            break
+                            
+                            ax.set_xlim(0, 1)
+                            ax.set_ylim(0, 1)
+                            ax.axis('off')
+                            pdf.savefig(fig, bbox_inches='tight')
+                            plt.close(fig)
+                        
+                        return filepath
+                    except Exception as e:
+                        logging.getLogger(__name__).error(f"Basic PDF generation failed: {e}")
+                        return None
+            
+            ReportManager = BasicReportManager
+            ReportGenerator = BasicPDFGenerator
+            PDF_CLASSES_AVAILABLE = True
+            logging.getLogger(__name__).info("Using basic PDF generation fallback")
 
 # Configure logging
 logging.basicConfig(
@@ -52,59 +138,7 @@ class MarketReporter:
             'volume': ['volume', 'volume24h']
         }
         
-        # Initialize PDF generator and report manager
-        try:
-            # Check for centralized template configuration first
-            template_dir = None
-            config_file = os.path.join(os.getcwd(), "config", "templates_config.json")
-            if os.path.exists(config_file):
-                try:
-                    with open(config_file, 'r') as f:
-                        config_data = json.load(f)
-                        if 'template_directory' in config_data:
-                            template_dir = config_data['template_directory']
-                            self.logger.info(f"Using template directory from config file: {template_dir}")
-                except Exception as e:
-                    self.logger.warning(f"Error loading template config: {str(e)}")
-            
-            # Fall back to default locations if needed
-            if not template_dir or not os.path.exists(template_dir):
-                template_dir = os.path.join(os.getcwd(), "src/core/reporting/templates")
-                if not os.path.exists(template_dir):
-                    template_dir = os.path.join(os.getcwd(), "templates")
-            
-            if os.path.exists(template_dir):
-                self.logger.info(f"Initializing PDF generator with template directory: {template_dir}")
-                self.pdf_generator = ReportGenerator(template_dir=template_dir)
-                self.report_manager = ReportManager()
-                self.report_manager.pdf_generator = self.pdf_generator
-                
-                # Explicitly set the template_dir on both objects to ensure it's available
-                self.pdf_generator.template_dir = template_dir
-                if hasattr(self.report_manager.pdf_generator, 'template_dir'):
-                    self.report_manager.pdf_generator.template_dir = template_dir
-                
-                # Enable PDF generation
-                self.pdf_enabled = True
-            else:
-                self.logger.warning(f"Template directory not found: {template_dir}")
-                self.pdf_enabled = False
-                
-        except Exception as e:
-            self.logger.error(f"Failed to initialize PDF generator: {str(e)}")
-            self.pdf_enabled = False
-            self.pdf_generator = None
-            self.report_manager = None
-        
-        # Initialize symbols (either from manager or default list)
-        self.symbols = ['BTC/USDT:USDT', 'ETH/USDT:USDT', 'SOL/USDT:USDT', 'XRP/USDT:USDT']
-        self.timeframes = {
-            '1h': 24,    # Last 24 hours
-            '4h': 42,    # Last 7 days (42 4-hour periods)
-            '1d': 30     # Last 30 days
-        }
-        
-        # Initialize monitoring metrics
+        # Initialize all required monitoring attributes to prevent AttributeError
         self.api_latencies = []
         self.error_counts = defaultdict(int)
         self.last_error_time = time.time()
@@ -124,9 +158,166 @@ class MarketReporter:
         self.premium_alert_threshold = 0.5  # 0.5% for significant futures premium
         self.volatility_alert_threshold = 5.0  # 5% for high volatility
         
-        # Add caching mechanism
-        self.cache = TTLCache(maxsize=1000, ttl=300)  # 5-minute TTL cache
-        self.ticker_cache = TTLCache(maxsize=100, ttl=60)  # 1-minute cache for tickers
+        # Add caching mechanism with memory management
+        self.cache = TTLCache(maxsize=500, ttl=300)  # Reduced from 1000 to 500 for memory optimization
+        self.ticker_cache = TTLCache(maxsize=50, ttl=30)  # Reduced TTL from 60 to 30 seconds for more frequent updates
+        
+        # Memory optimization settings
+        self.memory_optimization_enabled = True
+        self.gc_collection_interval = 10  # Collect garbage every 10 operations
+        self.operation_count = 0
+        self.max_data_retention = 100  # Limit data retention for memory
+        
+        # Optimize data structures for memory efficiency
+        self.api_latencies = []  # Will be truncated to last 50 entries
+        self.data_quality_scores = []  # Will be truncated to last 20 entries
+        self.processing_times = []  # Will be truncated to last 20 entries
+        
+        # Initialize PDF generator and report manager
+        try:
+            # Check if PDF classes are available
+            if not PDF_CLASSES_AVAILABLE or ReportManager is None or ReportGenerator is None:
+                self.logger.warning("PDF reporting classes not available - PDF generation disabled")
+                self.pdf_enabled = False
+                self.pdf_generator = None
+                self.report_manager = None
+            else:
+                # Enhanced PDF initialization with better error handling
+                template_dir = None
+                config_file = os.path.join(os.getcwd(), "config", "templates_config.json")
+                
+                if os.path.exists(config_file):
+                    try:
+                        with open(config_file, 'r') as f:
+                            config_data = json.load(f)
+                            if 'template_directory' in config_data:
+                                template_dir = config_data['template_directory']
+                                self.logger.info(f"Using template directory from config: {template_dir}")
+                    except Exception as e:
+                        self.logger.warning(f"Error loading template config: {str(e)}")
+                
+                # Enhanced template directory search
+                if not template_dir or not os.path.exists(template_dir):
+                    search_paths = [
+                        os.path.join(os.getcwd(), "src/core/reporting/templates"),
+                        os.path.join(os.getcwd(), "templates"),
+                        os.path.join(os.getcwd(), "src/templates"),
+                        os.path.join(os.path.dirname(__file__), "templates"),
+                        "templates"
+                    ]
+                    
+                    for path in search_paths:
+                        if os.path.exists(path):
+                            template_dir = path
+                            break
+                
+                # Initialize with or without template directory
+                if template_dir and os.path.exists(template_dir):
+                    self.logger.info(f"Initializing PDF generator with template directory: {template_dir}")
+                    self.pdf_generator = ReportGenerator(template_dir=template_dir)
+                else:
+                    self.logger.info("Initializing PDF generator without specific template directory")
+                    self.pdf_generator = ReportGenerator()
+                
+                self.report_manager = ReportManager()
+                self.report_manager.pdf_generator = self.pdf_generator
+                
+                # Set default template
+                self.default_template = "market_report_dark.html"
+                self.logger.info(f"Using template: {self.default_template}")
+                
+                # Enable PDF generation
+                self.pdf_enabled = True
+                self.logger.info("PDF generation enabled successfully")
+                
+        except Exception as e:
+            self.logger.error(f"Failed to initialize PDF generator: {str(e)}")
+            self.pdf_enabled = False
+            self.pdf_generator = None
+            self.report_manager = None
+        
+        # Initialize Bitcoin Beta Analysis
+        try:
+            # Enhanced debugging for Bitcoin Beta Analysis initialization
+            self.logger.debug(f"Bitcoin Beta Analysis initialization check:")
+            self.logger.debug(f"  BITCOIN_BETA_AVAILABLE: {BITCOIN_BETA_AVAILABLE}")
+            self.logger.debug(f"  exchange provided: {exchange is not None}")
+            self.logger.debug(f"  exchange type: {type(exchange).__name__ if exchange else 'None'}")
+            self.logger.debug(f"  exchange id: {getattr(exchange, 'exchange_id', 'N/A') if exchange else 'N/A'}")
+            self.logger.debug(f"  top_symbols_manager provided: {top_symbols_manager is not None}")
+            self.logger.debug(f"  top_symbols_manager type: {type(top_symbols_manager).__name__ if top_symbols_manager else 'None'}")
+            
+            if BITCOIN_BETA_AVAILABLE and exchange and top_symbols_manager:
+                # Create a mock config for Bitcoin Beta if needed
+                beta_config = getattr(self, 'config', {})
+                self.beta_report = BitcoinBetaReport(
+                    exchange_manager=exchange,
+                    top_symbols_manager=top_symbols_manager,
+                    config=beta_config
+                )
+                self.beta_enabled = True
+                self.logger.info("Bitcoin Beta Analysis initialized successfully")
+            else:
+                self.beta_report = None
+                self.beta_enabled = False
+                if not BITCOIN_BETA_AVAILABLE:
+                    self.logger.warning("Bitcoin Beta Analysis modules not available")
+                elif not exchange:
+                    self.logger.warning("Bitcoin Beta Analysis disabled - missing exchange")
+                elif not top_symbols_manager:
+                    self.logger.warning("Bitcoin Beta Analysis disabled - missing top_symbols_manager")
+                else:
+                    self.logger.warning("Bitcoin Beta Analysis disabled - unknown reason")
+        except Exception as e:
+            self.logger.error(f"Failed to initialize Bitcoin Beta Analysis: {str(e)}")
+            import traceback
+            self.logger.debug(traceback.format_exc())
+            self.beta_report = None
+            self.beta_enabled = False
+        
+        # Initialize symbols with correct Bybit format (not CCXT format)
+        # Bybit expects symbols like 'BTCUSDT', not 'BTC/USDT:USDT'
+        self.symbols = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT']
+        
+        # Store both formats for conversion if needed
+        self.symbol_mapping = {
+            'BTCUSDT': 'BTC/USDT:USDT',
+            'ETHUSDT': 'ETH/USDT:USDT', 
+            'SOLUSDT': 'SOL/USDT:USDT',
+            'XRPUSDT': 'XRP/USDT:USDT',
+            'ADAUSDT': 'ADA/USDT:USDT',
+            'DOGEUSDT': 'DOGE/USDT:USDT'
+        }
+        
+        # Whitelist of symbols that have INVERSE contracts (coin-margined perpetuals/futures)
+        # Based on API discovery from https://bybit-exchange.github.io/docs/v5/market/instrument
+        # Last updated: 2025-06-14 via Bybit API discovery
+        self.derivatives_enabled_symbols = {
+            # Base coins that have inverse contracts
+            'AAVE', 'ADA', 'APT', 'AVAX', 'BCH', 'BTC', 'DOGE', 'DOT', 'ETC', 'ETH', 
+            'FIL', 'LINK', 'LTC', 'MANA', 'MNT', 'NEAR', 'OP', 'SOL', 'SUI', 'TON', 
+            'UNI', 'WIF', 'XLM', 'XRP',
+            # USDT format variations
+            'AAVEUSDT', 'ADAUSDT', 'APTUSDT', 'AVAXUSDT', 'BCHUSDT', 'BTCUSDT', 'DOGEUSDT', 
+            'DOTUSDT', 'ETCUSDT', 'ETHUSDT', 'FILUSDT', 'LINKUSDT', 'LTCUSDT', 'MANAUSDT', 
+            'MNTUSDT', 'NEARUSDT', 'OPUSDT', 'SOLUSDT', 'SUIUSDT', 'TONUSDT', 'UNIUSDT', 
+            'WIFUSDT', 'XLMUSDT', 'XRPUSDT',
+            # CCXT format variations
+            'AAVE/USDT:USDT', 'ADA/USDT:USDT', 'APT/USDT:USDT', 'AVAX/USDT:USDT', 'BCH/USDT:USDT', 
+            'BTC/USDT:USDT', 'DOGE/USDT:USDT', 'DOT/USDT:USDT', 'ETC/USDT:USDT', 'ETH/USDT:USDT', 
+            'FIL/USDT:USDT', 'LINK/USDT:USDT', 'LTC/USDT:USDT', 'MANA/USDT:USDT', 'MNT/USDT:USDT', 
+            'NEAR/USDT:USDT', 'OP/USDT:USDT', 'SOL/USDT:USDT', 'SUI/USDT:USDT', 'TON/USDT:USDT', 
+            'UNI/USDT:USDT', 'WIF/USDT:USDT', 'XLM/USDT:USDT', 'XRP/USDT:USDT'
+        }
+        
+        # Note: Bybit has 30 inverse contracts vs 515+ linear contracts
+        # This prevents unnecessary API calls for 485+ symbols that don't have inverse derivatives
+        
+        self.timeframes = {
+            '1h': 24,    # Last 24 hours
+            '4h': 42,    # Last 7 days (42 4-hour periods)
+            '1d': 30     # Last 30 days
+        }
         
         self.logger.info("MarketReporter initialized with monitoring metrics and caching")
         
@@ -139,6 +330,16 @@ class MarketReporter:
         ]
         self.logger.info(f"Market reports scheduled for: {', '.join(self.report_times)} UTC")
     
+    def _has_derivatives_market(self, symbol: str) -> bool:
+        """Check if a symbol has INVERSE contracts available (coin-margined perpetuals/futures)."""
+        # Clean up the symbol format for checking
+        clean_symbol = symbol.replace('/', '')
+        base_asset = clean_symbol.replace('USDT', '').replace(':USDT', '')
+        
+        # Check various symbol formats
+        symbol_variants = [symbol, clean_symbol, base_asset]
+        return any(variant in self.derivatives_enabled_symbols for variant in symbol_variants)
+
     def _extract_market_data(self, market_data: Dict[str, Any]) -> Dict[str, Any]:
         """Extract and normalize market data from various sources in the data structure.
         
@@ -174,8 +375,9 @@ class MarketReporter:
         if not result['price'] and ticker:
             result['price'] = float(ticker.get('last', 0.0))
             result['change_24h'] = float(ticker.get('change24h', ticker.get('change', 0.0)))
-            result['volume'] = float(ticker.get('volume', 0.0))
-            result['turnover'] = float(ticker.get('turnover24h', ticker.get('turnover', 0.0)))
+            # Use CCXT standardized field names for volume and turnover  
+            result['volume'] = float(ticker.get('baseVolume', 0.0))  # Changed from 'volume' to 'baseVolume'
+            result['turnover'] = float(ticker.get('quoteVolume', 0.0))  # Changed from turnover24h to quoteVolume
             result['high'] = float(ticker.get('high', 0.0))
             result['low'] = float(ticker.get('low', 0.0))
             
@@ -188,6 +390,25 @@ class MarketReporter:
         
         # Extract timestamp
         result['timestamp'] = market_data.get('timestamp', int(time.time() * 1000))
+        
+        # Extract price data with proper fallbacks
+        if 'ticker' in market_data and market_data['ticker']:
+            ticker = market_data['ticker']
+            result['last_price'] = float(ticker.get('last', 0.0))
+            result['high_24h'] = float(ticker.get('high', 0.0))
+            result['low_24h'] = float(ticker.get('low', 0.0))
+            result['price_change_24h'] = float(ticker.get('percentage', 0.0))
+            # Use CCXT standardized field names for volume and turnover
+            result['volume'] = float(ticker.get('baseVolume', 0.0))  # Changed from 'volume' to 'baseVolume'
+            result['turnover'] = float(ticker.get('quoteVolume', 0.0))  # Changed from turnover24h to quoteVolume
+        elif 'price_data' in market_data and market_data['price_data']:
+            price_data = market_data['price_data']
+            result['last_price'] = float(price_data.get('last', 0.0))
+            result['high_24h'] = float(price_data.get('high', 0.0))
+            result['low_24h'] = float(price_data.get('low', 0.0))
+            result['price_change_24h'] = float(price_data.get('change', 0.0))
+            result['volume'] = float(price_data.get('volume', 0.0))
+            result['turnover'] = float(price_data.get('turnover', 0.0))
         
         return result
 
@@ -202,7 +423,8 @@ class MarketReporter:
                 data = await self.top_symbols_manager.get_market_data(symbol)
             elif self.exchange:
                 try:
-                    ticker = await self.exchange.fetch_ticker(symbol)
+                    # Use the retry mechanism that handles both sync and async methods
+                    ticker = await self._fetch_with_retry('fetch_ticker', symbol, timeout=5)
                     data = {'ticker': ticker}
                 except Exception as e:
                     self.logger.warning(f"Error fetching ticker for {symbol}: {str(e)}")
@@ -241,14 +463,27 @@ class MarketReporter:
         try:
             if self.top_symbols_manager:
                 top_pairs = await self.top_symbols_manager.get_top_traded_symbols()
-                if top_pairs:
+                if top_pairs and len(top_pairs) > 0:
                     self.symbols = top_pairs
                     self.logger.info(f"Updated symbols list from manager: {len(self.symbols)} pairs")
+                else:
+                    self.logger.warning("Top symbols manager returned empty symbols list, using default symbols")
+                    # Keep existing default symbols if manager returns empty
+                    if not hasattr(self, 'symbols') or not self.symbols:
+                        self.symbols = ['BTC/USDT:USDT', 'ETH/USDT:USDT', 'SOL/USDT:USDT', 'XRP/USDT:USDT']
             else:
                 self.logger.warning("No symbols received from top symbols manager")
+                # Ensure we have default symbols if no manager
+                if not hasattr(self, 'symbols') or not self.symbols:
+                    self.symbols = ['BTC/USDT:USDT', 'ETH/USDT:USDT', 'SOL/USDT:USDT', 'XRP/USDT:USDT']
+                    self.logger.info(f"Using default symbols: {self.symbols}")
         except Exception as e:
             self.logger.error(f"Error updating symbols: {str(e)}")
             self._log_error('symbol_update', str(e))
+            # Ensure we have fallback symbols in case of error
+            if not hasattr(self, 'symbols') or not self.symbols:
+                self.symbols = ['BTC/USDT:USDT', 'ETH/USDT:USDT', 'SOL/USDT:USDT', 'XRP/USDT:USDT']
+                self.logger.info(f"Using fallback symbols due to error: {self.symbols}")
             
     async def _fetch_with_cache(self, method_name: str, *args, **kwargs):
         """Generic caching wrapper for API calls"""
@@ -261,36 +496,149 @@ class MarketReporter:
         # Get the method from the exchange object
         method = getattr(self.exchange, method_name)
         
-        # Call the method with provided arguments
-        result = await method(*args, **kwargs)
+        # Check if method is async and handle accordingly
+        if asyncio.iscoroutinefunction(method):
+            # Call async method
+            result = await method(*args, **kwargs)
+        else:
+            # Call sync method
+            result = method(*args, **kwargs)
         
         # Cache the result
         self.cache[cache_key] = result
         return result
     
-    async def _fetch_with_retry(self, method_name: str, *args, max_retries=3, timeout=10, **kwargs):
-        """Fetch with retry for reliability"""
+    async def _fetch_with_retry(self, method_name: str, *args, max_retries=3, timeout=30, **kwargs):
+        """Fetch with retry for reliability - handles both sync and async methods with circuit breaker"""
         retries = 0
         last_error = None
         
+        # Circuit breaker: Check if this endpoint has too many recent failures
+        circuit_key = f"{method_name}:{args[0] if args else 'global'}"
+        current_time = time.time()
+        
+        # Initialize circuit breaker state if not exists
+        if not hasattr(self, '_circuit_breaker'):
+            self._circuit_breaker = {}
+            
+        if circuit_key not in self._circuit_breaker:
+            self._circuit_breaker[circuit_key] = {'failures': 0, 'last_failure': 0, 'blocked_until': 0}
+        
+        circuit_state = self._circuit_breaker[circuit_key]
+        
+        # Check if circuit is open (too many failures recently)
+        if current_time < circuit_state['blocked_until']:
+            self.logger.warning(f"Circuit breaker OPEN for {circuit_key}, skipping request")
+            raise RuntimeError(f"Circuit breaker open for {method_name}")
+            
+        # Auto-correct symbol format if this is a symbol-based method
+        corrected_args = list(args)
+        if args and method_name in ['fetch_ticker', 'fetch_order_book', 'fetch_trades', 'fetch_ohlcv']:
+            symbol = args[0]
+            corrected_symbol = self._convert_symbol_format(symbol)
+            if corrected_symbol != symbol:
+                self.logger.info(f"Auto-corrected symbol format: {symbol} → {corrected_symbol}")
+                corrected_args[0] = corrected_symbol
+        
         while retries < max_retries:
             try:
-                # Set timeout for the operation
-                async with asyncio.timeout(timeout):
-                    # Use the cache method to avoid duplicate requests
-                    return await self._fetch_with_cache(method_name, *args, **kwargs)
+                # Get the method from the exchange object
+                if not hasattr(self.exchange, method_name):
+                    raise AttributeError(f"Exchange does not have method '{method_name}'")
+                    
+                method = getattr(self.exchange, method_name)
+                
+                # Determine if method is async
+                if asyncio.iscoroutinefunction(method):
+                    # Async method - use timeout and cache
+                    result = await asyncio.wait_for(
+                        self._fetch_with_cache(method_name, *corrected_args, **kwargs),
+                        timeout=timeout
+                    )
+                    
+                    # Reset circuit breaker on success
+                    circuit_state['failures'] = 0
+                    return result
+                else:
+                    # Sync method - run in executor to avoid blocking
+                    loop = asyncio.get_event_loop()
+                    
+                    # Create a partial function with the arguments
+                    import functools
+                    func_with_args = functools.partial(method, *corrected_args, **kwargs)
+                    
+                    # Run sync method in thread pool with timeout
+                    result = await asyncio.wait_for(
+                        loop.run_in_executor(None, func_with_args),
+                        timeout=timeout
+                    )
+                    
+                    # Cache the result
+                    cache_key = f"{method_name}:{str(corrected_args)}:{str(kwargs)}"
+                    self.cache[cache_key] = result
+                    
+                    # Reset circuit breaker on success
+                    circuit_state['failures'] = 0
+                    return result
+                    
+            except asyncio.TimeoutError:
+                retries += 1
+                last_error = asyncio.TimeoutError(f"Timeout for {method_name}")
+                self.logger.warning(f"Timeout attempt {retries}/{max_retries} for {method_name}")
+                
+                # Update circuit breaker
+                circuit_state['failures'] += 1
+                circuit_state['last_failure'] = current_time
+                
+                if retries == max_retries:
+                    self.logger.error(f"All {max_retries} attempts timed out for {method_name}")
+                    self._log_error(f"api_timeout:{method_name}", "All retries timed out")
+                    
+                    # Open circuit breaker if too many failures
+                    if circuit_state['failures'] >= 5:
+                        circuit_state['blocked_until'] = current_time + 300  # Block for 5 minutes
+                        self.logger.error(f"Circuit breaker OPENED for {circuit_key} due to repeated failures")
+                    
+                    raise last_error
+                
+                # Exponential backoff (shorter delays)
+                await asyncio.sleep(0.3 * (2 ** retries))
+                
             except Exception as e:
                 retries += 1
                 last_error = e
-                self.logger.warning(f"API attempt {retries}/{max_retries} failed: {str(e)}")
+                error_msg = str(e)
+                self.logger.warning(f"API attempt {retries}/{max_retries} failed for {method_name}: {error_msg}")
+                
+                # Update circuit breaker
+                circuit_state['failures'] += 1
+                circuit_state['last_failure'] = current_time
+                
+                # Check for symbol format issues and try alternative format
+                if "does not have market symbol" in error_msg and retries == 1:
+                    # Try CCXT format if Bybit format failed
+                    if corrected_args and method_name in ['fetch_ticker', 'fetch_order_book', 'fetch_trades', 'fetch_ohlcv']:
+                        original_symbol = corrected_args[0]
+                        bybit_format, ccxt_format = self._detect_symbol_format(original_symbol)
+                        
+                        if ccxt_format != original_symbol:
+                            self.logger.info(f"Trying CCXT format: {original_symbol} → {ccxt_format}")
+                            corrected_args[0] = ccxt_format
+                            continue  # Retry with CCXT format
                 
                 if retries == max_retries:
-                    self.logger.error(f"All {max_retries} attempts failed for {method_name}: {str(e)}")
-                    self._log_error(f"api_retry_failure:{method_name}", str(e))
+                    self.logger.error(f"All {max_retries} attempts failed for {method_name}: {error_msg}")
+                    self._log_error(f"api_retry_failure:{method_name}", error_msg)
+                    
+                    # Open circuit breaker if too many failures
+                    if circuit_state['failures'] >= 5:
+                        circuit_state['blocked_until'] = current_time + 300  # Block for 5 minutes
+                        self.logger.error(f"Circuit breaker OPENED for {circuit_key} due to repeated failures")
+                    
                     raise
                 
-                # Exponential backoff
-                await asyncio.sleep(0.5 * (2 ** retries))
+                # Exponential backoff (shorter delays)
+                await asyncio.sleep(0.3 * (2 ** retries))
                 
         # If we somehow got here, raise the last error
         raise last_error or RuntimeError(f"All retries failed for {method_name}")
@@ -442,6 +790,9 @@ class MarketReporter:
         Returns:
             Symbol formatted for Bybit API (e.g., 'BTCUSDT:USDT' or 'BTCUSDT')
         """
+        # Ensure uppercase
+        symbol = symbol.upper()
+        
         # First check if this is already in Bybit format
         if '/' not in symbol and ':' in symbol:
             return symbol  # Already in Bybit format with ':' separator
@@ -454,8 +805,9 @@ class MarketReporter:
             base, quote_settlement = symbol.split('/')
             return f"{base}{quote_settlement}"
         else:
-            # For simple pairs
-            return symbol.replace('/', '')
+            # For spot or simple futures format
+            base, quote = symbol.split('/')
+            return f"{base}{quote}"
             
     def _extract_bybit_field(self, data: Dict, field_type: str, default=0) -> float:
         """Extract a field from Bybit data using mappings.
@@ -510,33 +862,80 @@ class MarketReporter:
             # Check if exchange is initialized
             if not self.exchange:
                 return {'average': 0, 'trend': 'neutral', 'latest': 0}
-                
-            # Use direct API call or method from exchange
+            
+            # Ensure proper symbol formatting (uppercase)
+            formatted_symbol = self._format_bybit_symbol(symbol)
+            
+            rates = []
+            
+            # Try method 1: Use CCXT's fetch_funding_rate_history if available
             if hasattr(self.exchange, 'fetch_funding_rate_history'):
-                funding_data = await self._fetch_with_retry(
-                    'fetch_funding_rate_history', 
-                    symbol, 
-                    limit=10,
-                    timeout=5
-                )
-                
-                # Extract rates from response
-                rates = []
-                if isinstance(funding_data, list):
-                    for entry in funding_data:
-                        if 'fundingRate' in entry:
-                            rates.append(float(entry['fundingRate']))
-                        elif 'rate' in entry:
-                            rates.append(float(entry['rate']))
-            else:
-                # Fallback to direct Bybit API if exchange doesn't have the method
-                endpoint = f"market/funding/history?category={category}&symbol={symbol}&limit=10"
-                response = await self._fetch_with_retry('publicGetV5' + endpoint.replace('/', '').title(), timeout=5)
-                
-                if isinstance(response, dict) and 'result' in response and 'list' in response['result']:
-                    for entry in response['result']['list']:
-                        if 'fundingRate' in entry:
-                            rates.append(float(entry['fundingRate']))
+                try:
+                    funding_data = await self._fetch_with_retry(
+                        'fetch_funding_rate_history', 
+                        formatted_symbol, 
+                        limit=10,
+                        timeout=5
+                    )
+                    
+                    # Extract rates from response
+                    if isinstance(funding_data, list):
+                        for entry in funding_data:
+                            if 'fundingRate' in entry:
+                                rates.append(float(entry['fundingRate']))
+                            elif 'rate' in entry:
+                                rates.append(float(entry['rate']))
+                except Exception as e:
+                    self.logger.debug(f"fetch_funding_rate_history failed for {formatted_symbol}: {e}")
+            
+            # Method 2: Try current funding rate if history not available
+            if not rates and hasattr(self.exchange, 'fetch_funding_rate'):
+                try:
+                    funding_data = await self._fetch_with_retry(
+                        'fetch_funding_rate',
+                        formatted_symbol,
+                        timeout=5
+                    )
+                    
+                    if isinstance(funding_data, dict) and 'fundingRate' in funding_data:
+                        rates.append(float(funding_data['fundingRate']))
+                    elif isinstance(funding_data, dict) and 'rate' in funding_data:
+                        rates.append(float(funding_data['rate']))
+                except Exception as e:
+                    self.logger.debug(f"fetch_funding_rate failed for {formatted_symbol}: {e}")
+            
+            # Method 3: Try direct API call for Bybit if available
+            if not rates and hasattr(self.exchange, 'publicGetV5MarketFundingHistory'):
+                try:
+                    params = {
+                        'category': category,
+                        'symbol': formatted_symbol,
+                        'limit': 10
+                    }
+                    response = await self._fetch_with_retry('publicGetV5MarketFundingHistory', params, timeout=5)
+                    
+                    if isinstance(response, dict) and 'result' in response and 'list' in response['result']:
+                        for entry in response['result']['list']:
+                            if 'fundingRate' in entry:
+                                rates.append(float(entry['fundingRate']))
+                except Exception as e:
+                    self.logger.debug(f"Direct API call failed for {formatted_symbol}: {e}")
+            
+            # Method 4: Try ticker data as last resort (contains current funding rate)
+            if not rates and hasattr(self.exchange, 'fetch_ticker'):
+                try:
+                    ticker_data = await self._fetch_with_retry('fetch_ticker', formatted_symbol, timeout=5)
+                    
+                    if isinstance(ticker_data, dict):
+                        # Try to extract funding rate from ticker info
+                        if 'info' in ticker_data and isinstance(ticker_data['info'], dict):
+                            info = ticker_data['info']
+                            if 'fundingRate' in info:
+                                rates.append(float(info['fundingRate']))
+                        elif 'fundingRate' in ticker_data:
+                            rates.append(float(ticker_data['fundingRate']))
+                except Exception as e:
+                    self.logger.debug(f"Ticker funding rate extraction failed for {formatted_symbol}: {e}")
                             
             # Calculate statistics
             if not rates:
@@ -594,56 +993,48 @@ class MarketReporter:
             if not report:
                 return
                 
-            # Check for whale activity alerts
-            if 'whale_activity' in report and 'whale_activity' in report['whale_activity']:
-                for symbol, data in report['whale_activity']['whale_activity'].items():
-                    # Validate data structure before processing
-                    if not isinstance(data, dict) or 'net_whale_volume' not in data:
-                        self.logger.warning(f"Missing net_whale_volume data for {symbol}")
-                        continue
+            # Check for whale activity alerts - Updated to match actual data structure
+            if 'whale_activity' in report:
+                whale_data = report['whale_activity']
+                
+                # Check if we have transactions to analyze
+                transactions = whale_data.get('transactions', [])
+                if transactions:
+                    # Analyze large transactions for alerts
+                    for tx in transactions[:5]:  # Check top 5 transactions
+                        if isinstance(tx, dict) and 'usd_value' in tx:
+                            usd_value = abs(tx.get('usd_value', 0))
+                            if usd_value > self.whale_alert_threshold:
+                                symbol = tx.get('symbol', 'UNKNOWN')
+                                side = tx.get('side', 'unknown')
+                                await self._send_alert(
+                                    "whale_activity",
+                                    f"Large {side} transaction detected in {symbol}: ${usd_value:,.2f}",
+                                    "warning"
+                                )
+                else:
+                    self.logger.debug("No whale transactions found for alert checking")
                         
-                    # Ensure futures premium data exists for this symbol
-                    if ('futures_premium' not in report or 
-                        'premiums' not in report['futures_premium'] or
-                        symbol not in report['futures_premium']['premiums'] or
-                        'mark_price' not in report['futures_premium']['premiums'][symbol]):
-                        self.logger.warning(f"Missing futures premium data for {symbol}")
-                        continue
-                    
-                    # Now safely calculate alert conditions
-                    net_volume = abs(data['net_whale_volume'])
-                    mark_price = report['futures_premium']['premiums'][symbol]['mark_price']
-                    if net_volume * mark_price > self.whale_alert_threshold:
-                        direction = "accumulation" if data['net_whale_volume'] > 0 else "distribution"
-                        await self._send_alert(
-                            "whale_activity",
-                            f"Large {direction} detected in {symbol}: {net_volume:.2f} units (${net_volume * mark_price:,.2f})",
-                            "warning"
-                        )
-                        
-            # Check for significant futures premium
+            # Check for significant futures premium - Updated to match actual data structure
             if 'futures_premium' in report and 'premiums' in report['futures_premium']:
-                for symbol, data in report['futures_premium']['premiums'].items():
-                    # Validate premium data exists
-                    if not isinstance(data, dict) or 'premium' not in data:
-                        self.logger.warning(f"Missing premium data for {symbol}")
-                        continue
-                        
-                    try:
-                        # Handle different premium formats (string with % or float)
-                        if isinstance(data['premium'], str):
-                            premium = float(data['premium'].strip('%'))
-                        else:
-                            premium = float(data['premium'])
-                            
-                        if abs(premium) > self.premium_alert_threshold:
-                            await self._send_alert(
-                                "futures_premium",
-                                f"High futures premium in {symbol}: {premium}%",
-                                "warning"
-                            )
-                    except (ValueError, TypeError) as e:
-                        self.logger.warning(f"Error processing premium data for {symbol}: {str(e)}")
+                premiums_data = report['futures_premium']['premiums']
+                if premiums_data:
+                    for symbol, data in premiums_data.items():
+                        if isinstance(data, dict):
+                            # Check for perpetual basis (premium)
+                            if 'perpetual_basis' in data:
+                                try:
+                                    premium = float(data['perpetual_basis'])
+                                    if abs(premium) > self.premium_alert_threshold:
+                                        await self._send_alert(
+                                            "futures_premium",
+                                            f"High futures premium in {symbol}: {premium:.2f}%",
+                                            "warning"
+                                        )
+                                except (ValueError, TypeError) as e:
+                                    self.logger.debug(f"Error processing premium data for {symbol}: {str(e)}")
+                else:
+                    self.logger.debug("No futures premium data available for alert checking")
                         
             # Check for high volatility
             if 'market_overview' in report and 'regime' in report['market_overview']:
@@ -685,22 +1076,39 @@ class MarketReporter:
             if 'timestamp' not in report_data:
                 report_data['timestamp'] = timestamp
             
-            report_id = f"NEU_{readable_time}"  # Using a neutral identifier
+            report_id = readable_time  # Clean timestamp-based identifier
             
-            # Create directories if they don't exist
-            html_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "reports", "html")
-            pdf_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "reports", "pdf")
+            # Create directories if they don't exist - UPDATED to match PDF generator path
+            reports_base_dir = os.path.join(os.getcwd(), 'reports')
+            html_dir = os.path.join(reports_base_dir, 'html')
+            pdf_dir = os.path.join(reports_base_dir, 'pdf')
             os.makedirs(html_dir, exist_ok=True)
             os.makedirs(pdf_dir, exist_ok=True)
             
             # Define output paths
             html_path = os.path.join(html_dir, f"market_report_{report_id}.html")
-            pdf_path = os.path.join(pdf_dir, f"market_report_{report_id}.pdf")  # Correct path in PDF directory
+            pdf_path = os.path.join(pdf_dir, f"market_report_{report_id}.pdf")
             
             # Generate HTML report
             self.logger.info(f"Generating HTML report: {html_path}")
-            template_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "templates", "market_report_dark.html")
-            self.logger.debug(f"Template path: {template_path}")
+            
+            # Use the configured default template (dark theme)
+            template_name = getattr(self, 'default_template', 'market_report_dark.html')
+            template_path = os.path.join(os.getcwd(), "src", "core", "reporting", "templates", template_name)
+            
+            # Fallback to template directory from PDF generator if configured path doesn't exist
+            if not os.path.exists(template_path) and hasattr(self, 'pdf_generator') and self.pdf_generator:
+                template_dir = getattr(self.pdf_generator, 'template_dir', '')
+                if template_dir:
+                    template_path = os.path.join(template_dir, template_name)
+            
+            self.logger.info(f"Using template: {template_path}")
+            
+            # Transform futures premium data to match template expectations
+            if 'futures_premium' in report_data:
+                report_data['futures_premium'] = self._transform_futures_premium_for_template(
+                    report_data['futures_premium']
+                )
             
             # Debug the market_data structure
             self.logger.debug(f"Market data keys: {list(report_data.keys())}")
@@ -722,22 +1130,28 @@ class MarketReporter:
                 return None
             
             # Check if PDF was generated correctly
-            if not os.path.exists(pdf_path):
-                self.logger.error(f"PDF file not found at expected path: {pdf_path}")
+            expected_pdf_path = pdf_path
+            # Also check the path where PDF generator actually creates the file
+            alternate_pdf_path = html_path.replace('.html', '.pdf')
+            
+            if not os.path.exists(expected_pdf_path) and not os.path.exists(alternate_pdf_path):
+                self.logger.error(f"PDF file not found at expected path: {expected_pdf_path}")
                 
                 # Try fallback direct generation
                 self.logger.info(f"Attempting direct PDF generation as fallback")
-                pdf_success = await report_generator.generate_pdf(html_path, pdf_path)
+                pdf_success = await report_generator.generate_pdf(html_path, expected_pdf_path)
                 
-                if pdf_success and os.path.exists(pdf_path):
-                    self.logger.info(f"Fallback PDF generation successful: {pdf_path}")
-                    return pdf_path
+                if pdf_success and os.path.exists(expected_pdf_path):
+                    self.logger.info(f"Fallback PDF generation successful: {expected_pdf_path}")
+                    return expected_pdf_path
                 else:
                     self.logger.error(f"Fallback PDF generation failed")
                     return None
             
-            self.logger.info(f"Market report PDF generated at {pdf_path}")
-            return pdf_path
+            # Use whichever PDF path actually exists
+            actual_pdf_path = expected_pdf_path if os.path.exists(expected_pdf_path) else alternate_pdf_path
+            self.logger.info(f"Market report PDF generated at {actual_pdf_path}")
+            return actual_pdf_path
         except Exception as e:
             self.logger.error(f"Error generating PDF report: {str(e)}")
             self.logger.debug(traceback.format_exc())
@@ -772,7 +1186,7 @@ class MarketReporter:
             elif abs_number >= 1_000:
                 return f"{number/1_000:.2f}K"
             elif abs_number >= 100:
-                return f"{number:.0f}"
+                return f"{number:,.0f}"  # Add comma separators for large numbers
             elif abs_number >= 10:
                 return f"{number:.1f}"
             elif abs_number >= 1:
@@ -790,6 +1204,28 @@ class MarketReporter:
         except (ValueError, TypeError):
             return "0"
     
+    def _format_large_number(self, number):
+        """Format large numbers with comma separators for better readability."""
+        try:
+            if number is None:
+                return "0"
+                
+            number = float(number)
+            
+            # For very large numbers, use scientific notation or abbreviations
+            if abs(number) >= 1_000_000_000_000:  # Trillions
+                return f"{number/1_000_000_000_000:.2f}T"
+            elif abs(number) >= 1_000_000_000:  # Billions
+                return f"{number/1_000_000_000:.2f}B"
+            elif abs(number) >= 1_000_000:  # Millions
+                return f"{number/1_000_000:.2f}M"
+            elif abs(number) >= 1_000:  # Thousands
+                return f"{number:,.0f}"  # Use comma separators
+            else:
+                return f"{number:.2f}"
+        except (ValueError, TypeError):
+            return "0"
+    
     async def _calculate_with_monitoring(self, metric_name: str, calc_func: callable, *args, **kwargs) -> Dict[str, Any]:
         """Execute calculation with monitoring and error handling."""
         start_time = time.time()
@@ -802,8 +1238,8 @@ class MarketReporter:
             
             # Set timeout for calculation
             try:
-                # Execute the actual calculation
-                result = await asyncio.wait_for(calc_func(*args, **kwargs), timeout=60)
+                # Execute the actual calculation with increased timeout
+                result = await asyncio.wait_for(calc_func(*args, **kwargs), timeout=120)
                 
                 # Convert any NumPy types to native Python types
                 result = self._numpy_to_native(result)
@@ -812,7 +1248,9 @@ class MarketReporter:
                 failed = True
                 self._log_error(f"{metric_name}_timeout", "Calculation timed out")
                 self.logger.error(f"Calculation timed out for {metric_name}")
-                result = {}
+                
+                # Return proper fallback structure instead of empty dict
+                result = self._get_fallback_structure(metric_name)
                 
             # Record end time and log
             end_time = time.time()
@@ -831,17 +1269,74 @@ class MarketReporter:
             valid_result = self._validate_result_structure(result, metric_name)
             if not valid_result['valid']:
                 self.logger.warning(f"Invalid result structure for {metric_name}: {valid_result['reason']}")
+                # Return fallback structure if validation fails
+                result = self._get_fallback_structure(metric_name)
                 
             return result
             
         except asyncio.TimeoutError:
             self._log_error(f"{metric_name}_timeout", "Calculation timed out")
             self.logger.error(f"Calculation timed out for {metric_name} after {time.time() - start_time:.2f}s")
-            return {}
+            return self._get_fallback_structure(metric_name)
         except Exception as e:
             self._log_error(metric_name, str(e))
             self.logger.error(f"Error calculating {metric_name}: {str(e)}")
-            return {}
+            return self._get_fallback_structure(metric_name)
+    
+    def _get_fallback_structure(self, metric_name: str) -> Dict[str, Any]:
+        """Get proper fallback structure for failed calculations."""
+        timestamp = int(datetime.now().timestamp() * 1000)
+        
+        fallback_structures = {
+            'market_overview': {
+                'regime': 'unknown',
+                'trend_strength': 0.0,
+                'timestamp': timestamp,
+                'error': 'Calculation failed or timed out'
+            },
+            'futures_premium': {
+                'premiums': {},
+                'timestamp': timestamp,
+                'error': 'Calculation failed or timed out'
+            },
+            'smart_money_index': {
+                'index': 50.0,
+                'timestamp': timestamp,
+                'error': 'Calculation failed or timed out'
+            },
+            'whale_activity': {
+                'whale_activity': {
+                    'transactions': [],
+                    'significant_activity': False,
+                    'total_volume': 0,
+                    'count': 0
+                },
+                'transactions': [],
+                'timestamp': timestamp,
+                'error': 'Calculation failed or timed out'
+            },
+            'performance_metrics': {
+                'metrics': {
+                    'api_latency': {'avg': 0, 'max': 0, 'p95': 0},
+                    'error_rate': {'total': 0, 'by_type': {}, 'errors_per_minute': 0.0},
+                    'data_quality': {'avg_score': 100, 'min_score': 100},
+                    'processing_time': {'avg': 0, 'max': 0}
+                },
+                'timestamp': timestamp,
+                'error': 'Calculation failed or timed out'
+            },
+            'bitcoin_beta_analysis': {
+                'beta_analysis': {},
+                'alpha_opportunities': [],
+                'timestamp': timestamp,
+                'error': 'Calculation failed or timed out'
+            }
+        }
+        
+        return fallback_structures.get(metric_name, {
+            'timestamp': timestamp,
+            'error': 'Calculation failed or timed out'
+        })
     
     def _get_memory_usage(self):
         """Get current memory usage in MB"""
@@ -899,1166 +1394,157 @@ class MarketReporter:
             volume_by_pair = {}
             oi_by_pair = {}
             
-            # Get historical data for week-over-week comparison
-            one_week_ago = datetime.now() - timedelta(days=7)
-            timestamp_1w = int(one_week_ago.timestamp() * 1000)
+            # Limit symbols to prevent timeout and use concurrent processing
+            limited_symbols = symbols[:10]  # Process only first 10 symbols to prevent timeout
             
-            for symbol in symbols:
-                try:
-                    # Clean up the symbol format for Bybit API
-                    clean_symbol = symbol.replace('/', '')
-                    if clean_symbol.endswith(':USDT'):
-                        # Already in Bybit format
-                        api_symbol = clean_symbol
-                    else:
-                        # Convert to Bybit format
-                        api_symbol = clean_symbol
-                    
-                    # Try getting data from top_symbols_manager first
-                    if self.top_symbols_manager:
-                        market_data = await self.top_symbols_manager.get_market_data(symbol)
-                        if market_data:
-                            metrics = self._extract_market_data(market_data)
-                            total_volume += metrics['volume']
-                            total_turnover += metrics['turnover']
-                            total_open_interest += metrics['open_interest']
-                            price_changes.append(metrics['change_24h'])
-                            volume_by_pair[symbol] = metrics['volume']
-                            oi_by_pair[symbol] = metrics['open_interest']
-                            continue
-                    
-                    # Fallback to using cached and retry-enabled ticker fetching
-                    ticker = await self._fetch_with_retry('fetch_ticker', api_symbol, timeout=5)
-                    
-                    if ticker:
-                        # Extract volume from ticker
-                        volume = float(ticker.get('volume', 0))
-                        total_volume += volume
-                        volume_by_pair[symbol] = volume
-                        
-                        # Extract turnover and open interest from info if available
-                        if 'info' in ticker:
-                            turnover = float(ticker['info'].get('turnover24h', ticker['info'].get('turnover', 0)))
-                            total_turnover += turnover
-                            
-                            # Get open interest - try multiple possible fields
-                            oi = float(ticker['info'].get('openInterest', 
-                                      ticker['info'].get('open_interest', 
-                                      ticker['info'].get('oi', 0))))
-                                      
-                            if oi == 0:
-                                # Try to get open interest through specific endpoint if needed
-                                try:
-                                    if hasattr(self.exchange, 'fetch_open_interest'):
-                                        oi_data = await self.exchange.fetch_open_interest(api_symbol)
-                                        if oi_data and 'openInterest' in oi_data:
-                                            oi = float(oi_data['openInterest'])
-                                except Exception as oi_err:
-                                    self.logger.debug(f"Could not fetch open interest: {oi_err}")
-                            
-                            total_open_interest += oi
-                            oi_by_pair[symbol] = oi
-                            
-                            price_change = float(ticker['info'].get('price24hPcnt', ticker['info'].get('changePercentage', 0))) * 100
-                        else:
-                            # Fallback to calculating turnover from volume and last price
-                            last_price = float(ticker.get('last', 0))
-                            turnover = volume * last_price
-                            total_turnover += turnover
-                            # Use percentage change from ticker if available
-                            price_change = float(ticker.get('percentage', 0))
-                        
-                        price_changes.append(price_change)
-                        
-                        # Try to get historical data for WoW calculation
-                        try:
-                            # Skip historical data if we don't have a timestamp for 1 week ago
-                            if hasattr(self.exchange, 'fetch_ohlcv'):
-                                # Get data from 1 week ago
-                                ohlcv = await self.exchange.fetch_ohlcv(api_symbol, timeframe='1d', since=timestamp_1w, limit=1)
-                                if ohlcv and len(ohlcv) > 0:
-                                    # OHLCV format: [timestamp, open, high, low, close, volume]
-                                    hist_volume += ohlcv[0][5]  # Volume is at index 5
-                                    hist_turnover += ohlcv[0][5] * ohlcv[0][4]  # Volume * Close price
-                        except Exception as hist_err:
-                            self.logger.debug(f"Could not fetch historical data for {symbol}: {hist_err}")
-                        
-                except Exception as e:
-                    self.logger.warning(f"Failed to get ticker for {symbol}: {str(e)}")
-                    failed_symbols.append(symbol)
-                    continue
+            # Create concurrent tasks for better performance
+            tasks = []
+            for symbol in limited_symbols:
+                task = self._process_market_overview_for_symbol(symbol)
+                tasks.append(task)
             
-            # Calculate market regime
-            if len(price_changes) > 0:
-                avg_change = float(np.mean(price_changes))
-                volatility = float(np.std(price_changes)) if len(price_changes) > 1 else 0
+            # Execute tasks concurrently with timeout
+            try:
+                results = await asyncio.wait_for(
+                    asyncio.gather(*tasks, return_exceptions=True), 
+                    timeout=90  # 90 second timeout for all symbols
+                )
                 
-                regime = self._determine_market_regime(avg_change, volatility)
-                trend_strength = abs(avg_change) / (volatility if volatility > 0 else 1)
+                # Process results
+                for result in results:
+                    if isinstance(result, dict) and 'volume' in result:
+                        total_volume += result['volume']
+                        total_turnover += result['turnover']
+                        total_open_interest += result['open_interest']
+                        if result['price_change'] is not None:
+                            price_changes.append(result['price_change'])
+                        volume_by_pair[result['symbol']] = result['volume']
+                        oi_by_pair[result['symbol']] = result['open_interest']
+                    elif isinstance(result, Exception):
+                        self.logger.debug(f"Market overview task failed: {result}")
+                        failed_symbols.append(str(result))
+                        
+            except asyncio.TimeoutError:
+                self.logger.warning("Market overview calculation timed out, using partial results")
+            except Exception as e:
+                self.logger.error(f"Error in concurrent market overview processing: {e}")
+            
+            # Get historical data for week-over-week comparison (simplified)
+            # Skip historical comparison for performance - can be added back later if needed
+            
+            # Calculate market metrics
+            avg_change = sum(price_changes) / len(price_changes) if price_changes else 0
+            bullish_count = sum(1 for change in price_changes if change > 0)
+            bearish_count = len(price_changes) - bullish_count
+            
+            # Determine market regime
+            if avg_change > 1.0:
+                regime = '📈 Bullish'
+            elif avg_change < -1.0:
+                regime = '📉 Bearish'
             else:
-                regime = "UNKNOWN"
-                trend_strength = 0.0
-                volatility = 0.0
-                self.logger.warning("No valid price changes found for market overview")
-            
-            # Calculate week-over-week changes
-            volume_wow = 0.0
-            turnover_wow = 0.0
-            oi_wow = 0.0
-            
-            if hist_volume > 0:
-                volume_wow = ((total_volume - hist_volume) / hist_volume) * 100
-            if hist_turnover > 0:
-                turnover_wow = ((total_turnover - hist_turnover) / hist_turnover) * 100
-            if hist_open_interest > 0:
-                oi_wow = ((total_open_interest - hist_open_interest) / hist_open_interest) * 100
+                regime = '➡️ Neutral'
             
             result = {
                 'regime': regime,
-                'trend_strength': f"{trend_strength:.1%}",
-                'volatility': volatility,
+                'average_change': avg_change,
+                'bullish_symbols': bullish_count,
+                'bearish_symbols': bearish_count,
                 'total_volume': total_volume,
                 'total_turnover': total_turnover,
                 'total_open_interest': total_open_interest,
-                'volume_wow': volume_wow,
-                'turnover_wow': turnover_wow,
-                'oi_wow': oi_wow,
-                'pair_volumes': volume_by_pair,
-                'pair_oi': oi_by_pair,
-                'timestamp': int(datetime.now().timestamp() * 1000),
-                'symbols_processed': len(symbols) - len(failed_symbols),
-                'symbols_failed': failed_symbols
+                'volume_by_pair': volume_by_pair,
+                'oi_by_pair': oi_by_pair,
+                'failed_symbols': failed_symbols,
+                'trend_strength': min(abs(avg_change) / 5.0, 1.0),  # Normalize to 0-1
+                'timestamp': int(time.time() * 1000)
             }
-            
-            # Add data quality metrics
-            if len(failed_symbols) > 0:
-                result['data_quality_notes'] = f"Failed to process {len(failed_symbols)}/{len(symbols)} symbols"
                 
             return result
         
         except Exception as e:
-            self.logger.error(f"Error calculating market overview: {str(e)}")
-            return {
-                'regime': 'UNKNOWN',
-                'trend_strength': '0.0%',
-                'volatility': 0.0,
-                'total_volume': 0,
-                'total_turnover': 0,
-                'total_open_interest': 0,
-                'volume_wow': 0,
-                'turnover_wow': 0,
-                'oi_wow': 0,
-                'timestamp': int(datetime.now().timestamp() * 1000),
-                'error': str(e)
-            }
-    
-    def _determine_market_regime(self, avg_change: float, volatility: float) -> str:
-        """
-        Determine market regime based on price change and volatility.
-        
-        This method ensures consistent market regime classifications that match
-        the template expectations for styling and conditional rendering.
-        
-        Args:
-            avg_change: Average price change percentage
-            volatility: Market volatility measure
-            
-        Returns:
-            Standardized market regime classification
-        """
-        # Enhanced regime determination with more categories and standardized values
-        # Output will be limited to: BULLISH, BEARISH, NEUTRAL, RANGING
-        
-        # Log inputs for debugging
-        self.logger.debug(f"Determining market regime - avg_change: {avg_change:.2f}%, volatility: {volatility:.2f}")
-        
-        # Adjust thresholds based on current volatility level
-        # In high volatility markets, require larger moves to confirm a trend
-        volatility_factor = min(1.0, max(0.5, volatility / 2.0))
-        
-        if volatility > 3.0:
-            # High volatility market - higher thresholds
-            if avg_change > 1.5 * volatility_factor:
-                regime = "BULLISH"  # Strong bullish in high volatility
-            elif avg_change < -1.5 * volatility_factor:
-                regime = "BEARISH"  # Strong bearish in high volatility
-            elif abs(avg_change) < 0.5 * volatility_factor:
-                regime = "RANGING"  # Ranging with high volatility
-            else:
-                regime = "NEUTRAL"  # Neutral with high volatility
-                
-        elif volatility < 1.0:
-            # Low volatility market - lower thresholds
-            if avg_change > 0.5:
-                regime = "BULLISH"  # Bullish in low volatility
-            elif avg_change < -0.5:
-                regime = "BEARISH"  # Bearish in low volatility
-            elif abs(avg_change) < 0.2:
-                regime = "RANGING"  # Ranging with low volatility
-            else:
-                regime = "NEUTRAL"  # Neutral with low volatility
-                
-        else:
-            # Normal volatility market
-            if avg_change > 1.0:
-                regime = "BULLISH"  # Standard bullish threshold
-            elif avg_change < -1.0:
-                regime = "BEARISH"  # Standard bearish threshold
-            elif abs(avg_change) < 0.3:
-                regime = "RANGING"  # Standard ranging threshold
-            else:
-                regime = "NEUTRAL"  # Standard neutral case
-        
-        # Log the determined regime
-        self.logger.debug(f"Market regime determined as: {regime}")
-        return regime
-    
-    async def _calculate_futures_premium(self, symbols: List[str]) -> Dict[str, Any]:
-        """Calculate futures premium metrics with improved reliability and fallbacks."""
-        try:
-            # Prefetch all markets data once and cache it with longer expiration
-            cache_key = "all_markets"
-            if cache_key not in self.cache or time.time() > self.cache.get(f"{cache_key}_expiry", 0):
-                self.logger.info("Fetching and caching all markets data for futures premium calculation")
-                try:
-                    all_markets = await self.exchange.get_markets()
-                    self.cache[cache_key] = all_markets
-                    # Cache for 15 minutes (900 seconds)
-                    self.cache[f"{cache_key}_expiry"] = time.time() + 900
-                    self.logger.debug(f"Successfully cached {len(all_markets)} markets")
-                except Exception as e:
-                    self.logger.warning(f"Failed to prefetch all markets: {e}")
-                    # Try to use existing cache even if expired
-                    all_markets = self.cache.get(cache_key, {})
-            else:
-                all_markets = self.cache[cache_key]
-                self.logger.debug(f"Using cached markets data ({len(all_markets)} markets)")
-            
-            # Process symbols concurrently
-            self.logger.info(f"Processing {len(symbols)} symbols for futures premium with parallel execution")
-            tasks = [self._calculate_single_premium(symbol, all_markets) for symbol in symbols]
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-            
-            # Process results
-            premiums = {}
-            failed_symbols = []
-            
-            # For term structure analysis
-            quarterly_futures = {}
-            funding_rates = {}
-            average_premium = 0.0
-            valid_premiums = 0
-            
-            for symbol, result in zip(symbols, results):
-                if isinstance(result, Exception):
-                    self.logger.warning(f"Error calculating futures premium for {symbol}: {str(result)}")
-                    failed_symbols.append(symbol)
-                elif result is None:
-                    self.logger.warning(f"No valid premium data for {symbol}")
-                    failed_symbols.append(symbol)
-                else:
-                    premiums[symbol] = result
-                    
-                    # Track average premium and count valid results
-                    if 'premium_value' in result:
-                        average_premium += result['premium_value']
-                        valid_premiums += 1
-                        
-                    # Store quarterly futures data if available
-                    if 'futures_contracts' in result and result['futures_contracts']:
-                        quarterly_futures[symbol] = result['futures_contracts']
-                        
-                    # Get funding rate data
-                    try:
-                        bybit_symbol = self._format_bybit_symbol(symbol)
-                        funding_data = await self._analyze_funding_rates(bybit_symbol)
-                        funding_rates[symbol] = funding_data
-                    except Exception as e:
-                        self.logger.debug(f"Error getting funding data for {symbol}: {e}")
-            
-            # Calculate average and determine market status
-            if valid_premiums > 0:
-                average_premium = average_premium / valid_premiums
-                
-                # Determine overall contango status
-                if average_premium > 0.1:
-                    contango_status = "CONTANGO"
-                elif average_premium < -0.1:
-                    contango_status = "BACKWARDATION"
-                else:
-                    contango_status = "NEUTRAL"
-            else:
-                average_premium = 0.0
-                contango_status = "NEUTRAL"
-            
-            result = {
-                'premiums': premiums,
-                'quarterly_futures': quarterly_futures,
-                'funding_rates': funding_rates,
-                'average_premium': f"{average_premium:.4f}%",
-                'average_premium_value': average_premium,
-                'contango_status': contango_status,
-                'timestamp': int(datetime.now().timestamp() * 1000)
-            }
-            
-            # Add data quality metrics
-            if failed_symbols:
-                result['failed_symbols'] = failed_symbols
-                result['data_quality_note'] = f"Failed for {len(failed_symbols)}/{len(symbols)} symbols"
-                
-            return result
-        except Exception as e:
-            self.logger.error(f"Error calculating futures premium: {str(e)}")
-            return {
-                'premiums': {},
-                'timestamp': int(datetime.now().timestamp() * 1000),
-                'error': str(e)
-            }
-            
-
-    async def _calculate_single_premium(self, symbol: str, all_markets: Dict) -> Optional[Dict[str, Any]]:
-        """Calculate futures premium for a single symbol with proper timeouts."""
-        try:
-            # Clean up the symbol format for Bybit API
-            clean_symbol = self._format_bybit_symbol(symbol)
-            
-            # For Bybit, we need to use the perp and spot symbols correctly
-            if clean_symbol.endswith(':USDT'):
-                # Already in Bybit format (e.g., 'BTCUSDT:USDT')
-                perp_symbol = clean_symbol
-                spot_symbol = clean_symbol.replace(':USDT', '')
-            elif '/' in symbol:
-                # Convert from ccxt format to Bybit format
-                perp_symbol = self._format_bybit_symbol(symbol)
-                spot_symbol = perp_symbol
-            else:
-                # Already in simple format (e.g., 'BTCUSDT')
-                perp_symbol = clean_symbol
-                spot_symbol = clean_symbol
-            
-            # Get base asset (BTC, ETH, etc.) from the symbol
-            base_asset = spot_symbol.replace('USDT', '')
-            
-            self.logger.debug(f"Calculating futures premium for {symbol} (perp: {perp_symbol}, spot: {spot_symbol})")
-            
-            # Fetch perpetual and spot tickers concurrently with timeout
-            try:
-                async with asyncio.timeout(5):  # 5 second timeout for ticker fetch
-                    perp_ticker_task = self.exchange.fetch_ticker(perp_symbol)
-                    spot_ticker_task = self.exchange.fetch_ticker(spot_symbol)
-                    perp_ticker, spot_ticker = await asyncio.gather(
-                        perp_ticker_task, 
-                        spot_ticker_task, 
-                        return_exceptions=True
-                    )
-                    
-                    # Handle exceptions in ticker fetching
-                    if isinstance(perp_ticker, Exception):
-                        self.logger.warning(f"Error fetching perpetual ticker for {perp_symbol}: {str(perp_ticker)}")
-                        try:
-                            alt_symbol = perp_symbol.replace('USDT:USDT', 'USDT')
-                            perp_ticker = await self.exchange.fetch_ticker(alt_symbol)
-                        except Exception as e:
-                            self.logger.warning(f"Alternative format also failed: {str(e)}")
-                            perp_ticker = None
-                    
-                    if isinstance(spot_ticker, Exception):
-                        self.logger.warning(f"Error fetching spot ticker for {spot_symbol}: {str(spot_ticker)}")
-                        try:
-                            alt_symbol = spot_symbol.replace('USDT', '/USDT')
-                            spot_ticker = await self.exchange.fetch_ticker(alt_symbol)
-                        except Exception as e:
-                            self.logger.warning(f"Alternative spot format also failed: {str(e)}")
-                            spot_ticker = None
-            except asyncio.TimeoutError:
-                self.logger.warning(f"Timeout fetching tickers for {symbol}")
-                perp_ticker = None
-                spot_ticker = None
-            
-            # Extract prices from different possible structures using the enhanced extraction method
-            mark_price = self._extract_bybit_field(perp_ticker, 'mark_price')
-            index_price = self._extract_bybit_field(perp_ticker, 'index_price')
-            last_price = self._extract_bybit_field(perp_ticker, 'last')
-            
-            # If index price not found, try to use spot price
-            if not index_price and spot_ticker:
-                index_price = self._extract_bybit_field(spot_ticker, 'last')
-            
-            # Get futures data efficiently
-            futures_price = 0
-            futures_basis = 0
-            weekly_futures_found = 0
-            quarterly_futures_found = 0
-            futures_contracts = []
-            
-            # Find quarterly futures efficiently for Bybit
-            try:
-                # Get current year and month
-                current_year = datetime.now().year 
-                current_month = datetime.now().month
-                current_year_short = current_year % 100  # Last two digits (e.g., 25 for 2025)
-                
-                # Get base asset and check if it needs special formatting
-                base_asset_clean = base_asset.strip()
-                
-                # Function to calculate last Friday of a month
-                def get_last_friday(year, month):
-                    if month == 12:
-                        last_day = datetime(year, 12, 31)
-                    else:
-                        last_day = datetime(year, month + 1, 1) - timedelta(days=1)
-                    
-                    # Find the last Friday (weekday 4)
-                    offset = (4 - last_day.weekday()) % 7
-                    last_friday = last_day - timedelta(days=offset) if offset != 0 else last_day
-                    return last_friday
-                
-                # Try multiple formats for quarterly futures
-                quarterly_symbols = []
-                
-                # Format 1: Standard format with month abbreviation (Bybit's historical format for linear futures)
-                # Example: BTCUSDT-27JUN25
-                def format_quarterly_symbol_standard(base, year, month):
-                    last_friday = get_last_friday(year, month)
-                    day = last_friday.day
-                    month_abbr = last_friday.strftime("%b").upper()
-                    return f"{base}USDT-{day}{month_abbr}{year % 100}"
-                
-                # Format 2: MMDD format without hyphen (some exchanges use this)
-                # Example: BTCUSDT0627
-                def format_quarterly_symbol_mmdd(base, year, month):
-                    last_friday = get_last_friday(year, month)
-                    return f"{base}USDT{last_friday.month:02d}{last_friday.day:02d}"
-                
-                # Format 3: Month code format (e.g., M for June, U for Sept, Z for Dec)
-                # Example: BTCUSDTM25 for linear or BTCUSDM25 for inverse
-                def format_quarterly_symbol_code(base, year, month, inverse=False):
-                    month_codes = {3: 'H', 6: 'M', 9: 'U', 12: 'Z'}
-                    if inverse:
-                        return f"{base}USD{month_codes[month]}{year % 100}"
-                    else:
-                        return f"{base}USDT{month_codes[month]}{year % 100}"
-                
-                # Format 4: Base-only format (BTC-27JUN25)
-                def format_base_only(base, year, month):
-                    last_friday = get_last_friday(year, month)
-                    day = last_friday.day
-                    month_abbr = last_friday.strftime("%b").upper()
-                    return f"{base}-{day}{month_abbr}{year % 100}"
-                
-                # Add quarterly futures for current year
-                for month in [6, 9, 12]:
-                    if month >= current_month or month == 12:  # Always include December
-                        # Based on testing results, prioritize formats in this order:
-                        
-                        # For BTC and ETH, we found these formats work best:
-                        if base_asset_clean in ["BTC", "ETH"]:
-                            # 1. First try exact hyphenated format from instrument list
-                            quarterly_symbols.append(format_quarterly_symbol_standard(base_asset_clean, current_year, month))
-                            
-                            # 2. Try base-only format (e.g., BTC-27JUN25)
-                            quarterly_symbols.append((format_base_only(base_asset_clean, current_year, month), "linear"))
-                            
-                            # 3. Try inverse month code format (e.g., BTCUSDM25)
-                            quarterly_symbols.append((format_quarterly_symbol_code(base_asset_clean, current_year, month, inverse=True), "inverse"))
-                                
-                            # 4. Try MMDD format without hyphen as fallback
-                            quarterly_symbols.append(format_quarterly_symbol_mmdd(base_asset_clean, current_year, month))
-                        else:
-                            # For other assets like SOL/XRP/AVAX, prioritize standard format
-                            # 1. Try standard format with hyphen (e.g., SOLUSDT-27JUN25)
-                            quarterly_symbols.append(format_quarterly_symbol_standard(base_asset_clean, current_year, month))
-                            
-                            # 2. Try MMDD format as fallback
-                            quarterly_symbols.append(format_quarterly_symbol_mmdd(base_asset_clean, current_year, month))
-                            
-                            # 3. Try linear month code format
-                            quarterly_symbols.append(format_quarterly_symbol_code(base_asset_clean, current_year, month))
-                
-                # Add March for next year if we're in Q4
-                if current_month >= 10:
-                    next_year = current_year + 1
-                    
-                    # Use the same prioritization for next year's March contracts
-                    if base_asset_clean in ["BTC", "ETH"]:
-                        quarterly_symbols.append(format_quarterly_symbol_standard(base_asset_clean, next_year, 3))
-                        quarterly_symbols.append((format_base_only(base_asset_clean, next_year, 3), "linear"))
-                        quarterly_symbols.append((format_quarterly_symbol_code(base_asset_clean, next_year, 3, inverse=True), "inverse"))
-                        quarterly_symbols.append(format_quarterly_symbol_mmdd(base_asset_clean, next_year, 3))
-                    else:
-                        quarterly_symbols.append(format_quarterly_symbol_standard(base_asset_clean, next_year, 3))
-                        quarterly_symbols.append(format_quarterly_symbol_mmdd(base_asset_clean, next_year, 3))
-                        quarterly_symbols.append(format_quarterly_symbol_code(base_asset_clean, next_year, 3))
-                
-                self.logger.debug(f"Trying quarterly futures symbols for {base_asset}: {quarterly_symbols}")
-                
-                # Check for existence and fetch quarterly futures data
-                for symbol_item in quarterly_symbols:
-                    try:
-                        # Handle symbol items that specify category
-                        category = "linear"  # Default category
-                        if isinstance(symbol_item, tuple):
-                            symbol = symbol_item[0]
-                            category = symbol_item[1]
-                        else:
-                            symbol = symbol_item
-                        
-                        # Construct proper request parameters based on category
-                        params = {'category': category, 'symbol': symbol}
-                        self.logger.debug(f"Fetching ticker for {symbol} with params: {params}")
-                        
-                        # Use direct API call for more flexibility with categories
-                        endpoint = f"market/tickers"
-                        url = f"{self.exchange.rest_endpoint}/v5/{endpoint}"
-                        
-                        quarterly_ticker = None
-                        
-                        # Try to use fetch_ticker with specified category first
-                        if hasattr(self.exchange, 'fetch_ticker_with_params'):
-                            quarterly_ticker = await self._fetch_with_retry('fetch_ticker_with_params', symbol, params, timeout=3)
-                        else:
-                            # Fall back to direct API call with correct category
-                            import aiohttp
-                            async with aiohttp.ClientSession() as session:
-                                async with session.get(url, params=params) as response:
-                                    if response.status == 200:
-                                        result = await response.json()
-                                        if result.get('retCode') == 0 and result.get('result') and result['result'].get('list'):
-                                            quarterly_ticker = result['result']['list'][0]
-                        
-                        # Process the ticker data if found
-                        if quarterly_ticker:
-                            if isinstance(quarterly_ticker, dict):
-                                quarterly_price = float(quarterly_ticker.get('lastPrice', 0))
-                            else:
-                                quarterly_price = self._extract_bybit_field(quarterly_ticker, 'last')
-                                
-                            if quarterly_price > 0:
-                                # Determine which month this contract is for
-                                month_info = None
-                                month_name = ""
-                                months_to_expiry = 0
-                                
-                                # For standard format (with hyphen)
-                                if "-" in symbol:
-                                    # Format like BTCUSDT-27JUN25
-                                    parts = symbol.split("-")[1]
-                                    if len(parts) >= 5:
-                                        month_code = parts[2:5]  # Extract month code (JUN, SEP, DEC, MAR)
-                                        month_mapping = {
-                                            'MAR': {'num': 3, 'name': 'March'},
-                                            'JUN': {'num': 6, 'name': 'June'},
-                                            'SEP': {'num': 9, 'name': 'September'},
-                                            'DEC': {'num': 12, 'name': 'December'}
-                                        }
-                                        
-                                        if month_code in month_mapping:
-                                            month_info = month_mapping[month_code]
-                                            expiry_month = month_info['num']
-                                            month_name = month_info['name']
-                                            months_to_expiry = self._calculate_months_to_expiry(expiry_month, symbol)
-                                
-                                # For month code format (like BTCUSDTM25 or BTCUSDM25)
-                                elif len(symbol) >= 3 and symbol[-3] in ['M', 'U', 'Z', 'H']:
-                                    month_code = symbol[-3]
-                                    month_mapping = {
-                                        'H': {'num': 3, 'name': 'March'},
-                                        'M': {'num': 6, 'name': 'June'},
-                                        'U': {'num': 9, 'name': 'September'},
-                                        'Z': {'num': 12, 'name': 'December'}
-                                    }
-                                    
-                                    if month_code in month_mapping:
-                                        month_info = month_mapping[month_code]
-                                        expiry_month = month_info['num']
-                                        month_name = month_info['name']
-                                        months_to_expiry = self._calculate_months_to_expiry(expiry_month, symbol)
-                                
-                                # For MMDD format
-                                elif len(symbol) >= 10 and all(c.isdigit() for c in symbol[-4:]):
-                                    month_num = int(symbol[-4:-2])
-                                    if month_num == 3:
-                                        month_name = "March"
-                                        expiry_month = 3
-                                    elif month_num == 6:
-                                        month_name = "June"
-                                        expiry_month = 6
-                                    elif month_num == 9:
-                                        month_name = "September"
-                                        expiry_month = 9
-                                    elif month_num == 12:
-                                        month_name = "December"
-                                        expiry_month = 12
-                                    
-                                    if month_name:
-                                        months_to_expiry = self._calculate_months_to_expiry(expiry_month, symbol)
-                                
-                                # If we've figured out the month info, calculate the basis
-                                if month_name and months_to_expiry > 0:
-                                    # Calculate annualized basis
-                                    if index_price and index_price > 0:
-                                        # For inverse contracts, calculation is different
-                                        if category == "inverse":
-                                            # For inverse contracts, the price is inverted (1/price)
-                                            # So the basis formula needs to be adjusted
-                                            inverse_index = 1/index_price if index_price != 0 else 0
-                                            inverse_quarterly = 1/quarterly_price if quarterly_price != 0 else 0
-                                            basis = ((inverse_quarterly - inverse_index) / inverse_index) * 100
-                                        else:
-                                            # Regular linear contracts
-                                            basis = ((quarterly_price - index_price) / index_price) * 100
-                                
-                                        # Annualize the basis
-                                        annualized_basis = basis * (12 / months_to_expiry)
-                                        
-                                        # Format for output
-                                        futures_contracts.append({
-                                            'symbol': symbol,
-                                            'category': category,
-                                            'month': month_name,
-                                            'price': quarterly_price,
-                                            'basis': f"{basis:.4f}%",
-                                            'annualized_basis': f"{annualized_basis:.4f}%",
-                                            'annualized_value': annualized_basis,
-                                            'months_to_expiry': months_to_expiry
-                                        })
-                                        
-                                        quarterly_futures_found += 1
-                                        self.logger.info(f"Found quarterly future: {symbol} (category: {category}) with price {quarterly_price}")
-                                        
-                                        # Once we find a valid contract format, prioritize this format for future calls
-                                        if category == "inverse" and symbol[-3] in ['M', 'U', 'Z', 'H']:
-                                            format_preference = "inverse_code"
-                                        elif "-" in symbol:
-                                            format_preference = "standard"
-                                        elif len(symbol) >= 10 and all(c.isdigit() for c in symbol[-4:]):
-                                            format_preference = "mmdd"
-                                        elif symbol[-3] in ['M', 'U', 'Z', 'H']:
-                                            format_preference = "code"
-                                            
-                                        self.logger.debug(f"Found working format: {format_preference} for {base_asset}")
-                                        break  # Found a working format, no need to try others
-                    except Exception as e:
-                        self.logger.debug(f"Error fetching quarterly future {symbol}: {e}")
-                
-                # Sort futures contracts by expiry
-                futures_contracts.sort(key=lambda x: x.get('months_to_expiry', 12))
-                
-                # Set data for nearest future if available
-                if futures_contracts:
-                    nearest = futures_contracts[0]
-                    futures_price = nearest.get('price', 0)
-                    futures_basis = nearest.get('basis', '0.00%')
-                    
-            except Exception as e:
-                self.logger.debug(f"Error finding futures contracts for {base_asset}: {str(e)}")
-            
-            # Calculate premium if we have valid prices
-            if mark_price and mark_price > 0 and (index_price and index_price > 0):
-                premium = ((mark_price - index_price) / index_price) * 100
-                
-                # Determine premium type
-                premium_type = "📉 Backwardation" if premium < 0 else "📈 Contango"
-                
-                # Get funding rate data if available
-                funding_rate = self._extract_bybit_field(perp_ticker, 'funding_rate')
-                
-                return {
-                    'premium': f"{premium:.4f}%",
-                    'premium_value': premium,
-                    'premium_type': premium_type,
-                    'mark_price': mark_price,
-                    'index_price': index_price,
-                    'last_price': last_price,
-                    'weekly_futures_count': weekly_futures_found,
-                    'quarterly_futures_count': quarterly_futures_found,
-                    'futures_price': futures_price,
-                    'futures_basis': futures_basis,
-                    'funding_rate': funding_rate,
-                    'timestamp': int(datetime.now().timestamp() * 1000),
-                    'futures_contracts': futures_contracts  # Include all quarterly contracts
-                }
-            else:
-                self.logger.debug(f"Missing price data for futures premium: {symbol} (mark: {mark_price}, index: {index_price})")
-                return None
-        except Exception as e:
-            self.logger.error(f"Error in _calculate_single_premium for {symbol}: {str(e)}")
-            return None
-    
-    async def _calculate_smart_money_index(self, symbols: List[str]) -> Dict[str, Any]:
-        """Calculate smart money index based on institutional activity.
-        
-        This function analyzes long-short ratios, exchange flows, and OI changes
-        to gauge institutional activity.
-        
-        Args:
-            symbols: List of symbols to analyze
-            
-        Returns:
-            Smart money index data
-        """
-        try:
-            self.logger.info("Calculating smart money index...")
-            start_time = time.time()
-            
-            # Initialize result structure
-            result = {
-                'index': 50,  # Default neutral value (changed from smi_value)
-                'trend': 'neutral',
-                'long_ratio': 0.5,  # Default balanced
-                'short_ratio': 0.5,
-                'changes': [],
-                'timestamp': int(time.time())
-            }
-            
-            # Get primary symbol (usually BTC)
-            if not symbols:
-                self.logger.warning("No symbols provided for smart money index")
-                return result
-                
-            symbol = symbols[0]
-            clean_symbol = self._format_bybit_symbol(symbol)
-            
-            # Format the symbol correctly for Bybit API
-            if ':' in clean_symbol:
-                # Remove settlement currency suffix if present
-                clean_symbol = clean_symbol.split(':')[0]
-                
-            # Try to get long-short ratio data from Bybit API
-            try:
-                # Use direct API call for long-short ratio via our exchange
-                if hasattr(self.exchange, 'fetch_long_short_ratio'):
-                    self.logger.debug(f"Fetching long-short ratio for {clean_symbol}")
-                    long_short_data = await self._fetch_with_retry(
-                        'fetch_long_short_ratio',
-                        clean_symbol,
-                        timeout=5
-                    )
-                    
-                    # Process the long-short data
-                    if long_short_data and isinstance(long_short_data, dict):
-                        if 'data' in long_short_data and long_short_data['data']:
-                            # Get most recent entry
-                            recent = long_short_data['data'][0]
-                            buy_ratio = float(recent.get('buyRatio', 0.5))
-                            sell_ratio = float(recent.get('sellRatio', 0.5))
-                            
-                            result['long_ratio'] = buy_ratio
-                            result['short_ratio'] = sell_ratio
-                            
-                            # Calculate SMI value (0-100 scale)
-                            index_value = buy_ratio * 100
-                            result['index'] = index_value
-                            
-                            # Determine trend
-                            if index_value > 60:
-                                result['trend'] = 'bullish'
-                            elif index_value < 40:
-                                result['trend'] = 'bearish'
-                            else:
-                                result['trend'] = 'neutral'
-                                
-                            # Track change over time
-                            if len(long_short_data['data']) > 1:
-                                # Compare current to previous
-                                previous = long_short_data['data'][1] 
-                                prev_buy_ratio = float(previous.get('buyRatio', 0.5))
-                                change = (buy_ratio - prev_buy_ratio) * 100  # Convert to percentage points
-                                result['change'] = change
-                                
-                                # Add change entry
-                                timestamp = int(recent.get('timestamp', time.time() * 1000))
-                                entry_time = datetime.fromtimestamp(timestamp / 1000).strftime('%H:%M')
-                                
-                                change_entry = {
-                                    'time': entry_time,
-                                    'value': index_value,
-                                    'change': change,
-                                    'type': 'increase' if change > 0 else 'decrease'
-                                }
-                                result['changes'].append(change_entry)
-            except Exception as e:
-                self.logger.warning(f"Error processing long-short ratio data: {e}")
-            except Exception as e:
-                self.logger.warning(f"Error fetching long-short ratio: {e}")
-                
-            # Fall back to direct API call using aiohttp
-            category = "linear"  # Default to USDT-margined contracts
-            # Construct endpoint carefully to avoid double slashes if self.exchange.rest_endpoint already has one
-            endpoint_path = f"/v5/market/account-ratio?category={category}&symbol={clean_symbol}&period=5min&limit=10"
-            base_url = self.exchange.rest_endpoint.strip('/')
-            url = f"{base_url}{endpoint_path}"
-            
-            # Check if we already populated data from the first attempt
-            if result.get('index', 50) == 50: # Check if it's still the default
-                self.logger.info(f"Attempting direct API call for long-short ratio: {url}")
-                import aiohttp
-                try:
-                    async with aiohttp.ClientSession() as session:
-                        async with session.get(url, timeout=10) as response: # Added timeout
-                            if response.status == 200:
-                                api_data = await response.json()
-                                if api_data.get('retCode') == 0 and api_data.get('result') and api_data['result'].get('list'):
-                                    data_list = api_data['result']['list']
-                                    if data_list:
-                                        recent = data_list[0]
-                                        buy_ratio = float(recent.get('buyRatio', 0.5))
-                                        sell_ratio = float(recent.get('sellRatio', 0.5))
-                                        
-                                        result['long_ratio'] = buy_ratio
-                                        result['short_ratio'] = sell_ratio
-                                        
-                                        index_value = buy_ratio * 100
-                                        result['index'] = index_value
-                                        
-                                        if index_value > 60:
-                                            result['trend'] = 'bullish'
-                                        elif index_value < 40:
-                                            result['trend'] = 'bearish'
-                                        else:
-                                            result['trend'] = 'neutral'
-                                        
-                                        if len(data_list) > 1:
-                                            previous = data_list[1]
-                                            prev_buy_ratio = float(previous.get('buyRatio', 0.5))
-                                            change = (buy_ratio - prev_buy_ratio) * 100
-                                            result['change'] = change
-                                            
-                                            timestamp = int(recent.get('timestamp', time.time() * 1000))
-                                            entry_time = datetime.fromtimestamp(timestamp / 1000).strftime('%H:%M')
-                                            
-                                            change_entry = {
-                                                'time': entry_time,
-                                                'value': index_value,
-                                                'change': change,
-                                                'type': 'increase' if change > 0 else 'decrease'
-                                            }
-                                            result['changes'].append(change_entry)
-                                        self.logger.info(f"Successfully processed long-short ratio from direct API call for {clean_symbol}")
-                                    else:
-                                        self.logger.warning(f"Direct API call for long-short ratio for {clean_symbol} returned empty list.")
-                                else:
-                                    self.logger.warning(f"Direct API call for long-short ratio for {clean_symbol} failed or returned unexpected data: {api_data.get('retMsg')}")
-                            else:
-                                self.logger.warning(f"Direct API call for long-short ratio for {clean_symbol} returned status {response.status}")
-                except aiohttp.ClientError as ce:
-                    self.logger.warning(f"AIOHTTP client error during direct API call for {clean_symbol}: {ce}")
-                except asyncio.TimeoutError:
-                    self.logger.warning(f"Timeout during direct API call for long-short ratio for {clean_symbol}")
-                except Exception as e:
-                    self.logger.warning(f"Error with direct API call for long-short ratio for {clean_symbol}: {e}")
-            
-            # Update timestamp at the end
-            result['timestamp'] = int(time.time() * 1000) # Ensure timestamp is in ms
-            return result
-            
-        except Exception as e:
-            self.logger.error(f"Error calculating smart money index: {str(e)}")
-            return {
-                'index': 50,
-                'trend': 'neutral',
-                'long_ratio': 0.5,
-                'short_ratio': 0.5,
-                'changes': [],
-                'timestamp': int(time.time())
-            }
-    
-    async def _calculate_whale_activity(self, symbols: List[str]) -> Dict[str, Any]:
-        """Analyze whale activity through order book and large trades."""
-        try:
-            whale_activity = {}
-            
-            for symbol in symbols:
-                # Format the symbol correctly for Bybit API
-                clean_symbol = symbol.replace('/', '')
-                if clean_symbol.endswith(':USDT'):
-                    api_symbol = clean_symbol
-                else:
-                    api_symbol = clean_symbol
-                
-                try:
-                    self.logger.info(f"Fetching order book for whale activity: {symbol} (API symbol: {api_symbol})")
-                    order_book = await self.exchange.fetch_order_book(api_symbol, limit=100)
-                    
-                    if order_book:
-                        # Calculate whale metrics
-                        whale_threshold = self._calculate_whale_threshold(order_book)
-                        
-                        whale_bids = [order for order in order_book['bids'] if order[1] >= whale_threshold]
-                        whale_asks = [order for order in order_book['asks'] if order[1] >= whale_threshold]
-                        
-                        whale_bid_volume = sum(order[1] for order in whale_bids)
-                        whale_ask_volume = sum(order[1] for order in whale_asks)
-                        
-                        # Get ticker to calculate USD value
-                        ticker = None
-                        usd_value_multiplier = 1.0
-                        try:
-                            ticker = await self.exchange.fetch_ticker(api_symbol)
-                            if ticker and 'last' in ticker:
-                                usd_value_multiplier = float(ticker['last'])
-                        except Exception as ticker_err:
-                            self.logger.warning(f"Could not fetch ticker for USD value: {ticker_err}")
-                        
-                        # Calculate values
-                        net_volume = whale_bid_volume - whale_ask_volume
-                        net_usd_value = net_volume * usd_value_multiplier
-                        
-                        whale_activity[symbol] = {
-                            'whale_bid_volume': whale_bid_volume,
-                            'whale_ask_volume': whale_ask_volume,
-                            'net_whale_volume': net_volume,
-                            'usd_value': net_usd_value,
-                            'threshold': whale_threshold,
-                            'significant': abs(net_usd_value) > 1000000  # $1M threshold
-                        }
-                except Exception as e:
-                    self.logger.warning(f"Error analyzing whale activity for {symbol}: {str(e)}")
-                    
-            # Check if we have any significant whale activity
-            significant_activity = {s: data for s, data in whale_activity.items() 
-                                 if data.get('significant', False)}
-            
-            return {
-                'whale_activity': whale_activity,
-                'significant_activity': significant_activity,
-                'has_significant_activity': len(significant_activity) > 0,
-                'timestamp': int(datetime.now().timestamp() * 1000)
-            }
-            
-        except Exception as e:
-            self.logger.error(f"Error calculating whale activity: {str(e)}")
-            return {
-                'whale_activity': {},
-                'significant_activity': {},
-                'has_significant_activity': False,
-                'timestamp': int(datetime.now().timestamp() * 1000)
-            }
-    
-    def _calculate_whale_threshold(self, order_book: Dict[str, List[List[float]]]) -> float:
-        """Calculate threshold for whale activity based on order book."""
-        all_sizes = [order[1] for order in order_book['bids'] + order_book['asks']]
-        if not all_sizes:
-            return 0
-            
-        mean_size = float(np.mean(all_sizes))
-        std_size = float(np.std(all_sizes))
-        
-        return mean_size + (2 * std_size)  # Orders larger than 2 standard deviations
-    
-    async def _calculate_performance_metrics(self, symbols: List[str]) -> Dict[str, Any]:
-        """Calculate various performance metrics for each symbol."""
-        try:
-            metrics = {}
-            
-            for symbol in symbols:
-                ticker = await self.exchange.fetch_ticker(symbol)
-                if ticker and 'info' in ticker:
-                    metrics[symbol] = {
-                        'price_change_24h': f"{float(ticker['info'].get('price24hPcnt', 0)) * 100:.2f}%",
-                        'volume_24h': float(ticker.get('volume', 0)),
-                        'turnover_24h': float(ticker['info'].get('turnover24h', 0)),
-                        'open_interest': float(ticker['info'].get('openInterest', 0))
-                    }
-            
-            return {
-                'metrics': metrics,
-                'timestamp': int(datetime.now().timestamp() * 1000)
-            }
-            
-        except Exception as e:
-            self.logger.error(f"Error calculating performance metrics: {str(e)}")
+            self.logger.error(f"Error in market overview calculation: {str(e)}")
             return {}
     
-    def _validate_report_data(self, report: Dict[str, Any]) -> Dict[str, Any]:
-        """Validate the report data structure and add fallbacks where needed."""
-        validated = report.copy()
-        
-        # Check required sections
-        required_sections = [
-            'market_overview', 
-            'futures_premium', 
-            'smart_money_index',
-            'whale_activity',
-            'performance_metrics'
-        ]
-        
-        # Create fallback timestamp if missing
-        if 'timestamp' not in validated:
-            validated['timestamp'] = int(time.time())
-        
-        # Add current year for footer
-        validated['current_year'] = datetime.now().year
-        
-        # Process each required section
-        section_statuses = {}
-        
-        for section in required_sections:
-            # If section is completely missing, add fallback
-            if section not in validated:
-                self.logger.warning(f"Missing section '{section}' in report, using fallback")
-                validated[section] = self._get_fallback_content(section)
-                section_statuses[section] = "Added fallback (missing section)"
-            # If section exists but is empty (None or empty dict/list)
-            elif self._is_section_invalid(section, validated[section]):
-                self.logger.warning(f"Invalid or empty section '{section}' in report, using fallback")
-                validated[section] = self._get_fallback_content(section)
-                section_statuses[section] = "Added fallback (empty section)"
-            # Section exists but may need normalization
+    async def _process_market_overview_for_symbol(self, symbol: str) -> Dict[str, Any]:
+        """Process market overview data for a single symbol."""
+        try:
+            # Clean up the symbol format for Bybit API
+            clean_symbol = symbol.replace('/', '')
+            if clean_symbol.endswith(':USDT'):
+                api_symbol = clean_symbol
             else:
-                # Normalize the section structure (add missing fields, transform data)
-                validated[section] = self._normalize_section_structure(section, validated[section])
-                section_statuses[section] = "OK"
-        
-        # Log validation status for all sections
-        section_validation_summary = ", ".join([f"{section}: {status}" for section, status in section_statuses.items()])
-        self.logger.info(f"Component validations: {section_validation_summary}")
-        
-        return validated
-    
-
-    def _is_section_invalid(self, section: str, section_data: Dict[str, Any]) -> bool:
-        """Check if a section is invalid based on its specific requirements."""
-        if section_data is None:
-            return True
-        
-        if not isinstance(section_data, dict):
-            return True
+                api_symbol = clean_symbol
             
-        # Check section-specific requirements
-        if section == 'market_overview':
-            # Market overview should have regime field
-            return not section_data.get('regime') or section_data.get('regime') == 'UNKNOWN'
+            # Get ticker data with shorter timeout
+            ticker = await self._fetch_with_retry('fetch_ticker', api_symbol, timeout=4)
             
-        elif section == 'futures_premium':
-            # Futures premium should have premiums dict with data or timestamp
-            premiums = section_data.get('premiums', {})
-            timestamp = section_data.get('timestamp')
-            return not premiums and not timestamp
+            if not ticker:
+                return {
+                    'symbol': symbol,
+                    'volume': 0,
+                    'turnover': 0,
+                    'open_interest': 0,
+                    'price_change': None,
+                    'error': 'No ticker data'
+                }
             
-        elif section == 'smart_money_index':
-            # Smart money index should have either 'index' or 'smi_value' field
-            has_index = 'index' in section_data
-            has_smi_value = 'smi_value' in section_data  
-            has_timestamp = 'timestamp' in section_data
-            return not (has_index or has_smi_value) and not has_timestamp
+            # Extract volume using CCXT standardized field names
+            volume = float(ticker.get('baseVolume', 0))
             
-        elif section == 'whale_activity':
-            # Whale activity should have whale_activity dict or timestamp
-            whale_data = section_data.get('whale_activity', {})
-            timestamp = section_data.get('timestamp')
-            return not whale_data and not timestamp
+            # Extract turnover using CCXT standardized field names
+            turnover = float(ticker.get('quoteVolume', 0))
             
-        elif section == 'performance_metrics':
-            # Performance metrics should have metrics dict or timestamp
-            metrics = section_data.get('metrics', {})
-            timestamp = section_data.get('timestamp')
-            return not metrics and not timestamp
-            
-        return False
-
-    def _get_fallback_content(self, section_name: str) -> Dict[str, Any]:
-        """Get fallback content for missing sections."""
-        fallbacks = {
-            'market_overview': {
-                'regime': 'NEUTRAL',
-                'volatility': 0.0,
-                'avg_change': 0.0,
-                'summary': 'Market overview data is currently unavailable.'
-            },
-            'futures_premium': {
-                'summary': 'Futures premium data is currently unavailable.',
-                'data': []
-            },
-            'smart_money_index': {
-                'current_value': 50,
-                'change': 0.0,
-                'signal': 'NEUTRAL',
-                'summary': 'Smart Money Index data is currently unavailable.'
-            },
-            'whale_activity': {
-                'transactions': [],
-                'summary': 'Whale activity data is currently unavailable.'
-            },
-            'performance_metrics': {
-                'api_latency': {'avg': 0, 'max': 0, 'p95': 0},
-                'error_rate': {'total': 0, 'by_type': {}, 'errors_per_minute': 0.0},
-                'data_quality': {'avg_score': 100, 'min_score': 100},
-                'processing_time': {'avg': 0.0, 'max': 0.0},
-                'request_rate': {'total_requests': 0, 'requests_per_minute': 0.0, 'by_endpoint': {}}
-            }
-        }
-        
-        return fallbacks.get(section_name, {})
-    
-    def _normalize_section_structure(self, section: str, section_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Ensure each section has the expected structure with properly formatted summaries.
-        
-        Args:
-            section: Name of the report section
-            section_data: Raw data for the section
-            
-        Returns:
-            Normalized section data with required fields for template
-        """
-        if not section_data:
-            return self._get_fallback_content(section)
-            
-        normalized = section_data.copy()
-        
-        # Add a timestamp if not present
-        if 'timestamp' not in normalized:
-            normalized['timestamp'] = int(time.time())
-        
-        # Generate appropriate summaries based on section type
-        if section == 'market_overview':
-            # Ensure required fields exist with default values
-            if 'regime' not in normalized:
-                normalized['regime'] = 'NEUTRAL'
-                
-            if 'volatility' not in normalized:
-                normalized['volatility'] = 0
-                
-            if 'avg_change' not in normalized:
-                normalized['avg_change'] = 0
-                
-            # Create a summary if not present
-            if 'summary' not in normalized:
-                regime = normalized['regime']
-                volatility = normalized.get('volatility', 0)
-                avg_change = normalized.get('avg_change', 0)
-                
-                direction = 'upward' if avg_change > 0 else 'downward' if avg_change < 0 else 'neutral'
-                vol_level = 'high' if volatility > 2 else 'moderate' if volatility > 1 else 'low'
-                
-                normalized['summary'] = (
-                    f"The market is currently in a {regime.lower()} regime with "
-                    f"{vol_level} volatility ({volatility:.2f}%) and showing "
-                    f"{direction} price movement ({avg_change:.2f}%)."
+            # Get open interest with shorter timeout
+            try:
+                oi = await asyncio.wait_for(
+                    self._fetch_bybit_open_interest_direct(symbol), 
+                    timeout=3
                 )
-                
-        elif section == 'futures_premium':
-            # Convert string values to float if needed
-            for key in ['average_premium', 'max_premium', 'min_premium']:
-                if key in normalized and isinstance(normalized[key], str):
-                    try:
-                        normalized[key] = float(normalized[key].replace('%', '').strip())
-                    except (ValueError, TypeError):
-                        normalized[key] = 0
+            except asyncio.TimeoutError:
+                oi = 0
+                self.logger.debug(f"Open interest fetch timed out for {symbol}")
+            except Exception as e:
+                oi = 0
+                self.logger.debug(f"Error fetching open interest for {symbol}: {e}")
             
-            # Ensure premium data exists
-            if 'data' not in normalized or not normalized['data']:
-                if 'premiums' in normalized:
-                    # Transform premiums to data format
-                    normalized['data'] = []
-                    for symbol, premium in normalized['premiums'].items():
-                        normalized['data'].append({
-                            'symbol': symbol,
-                            'premium': premium,
-                            'premium_value': float(premium.replace('%', '')) if isinstance(premium, str) else premium
-                        })
-                else:
-                    normalized['data'] = []
+            # Extract price change
+            price_change = 0
+            if 'info' in ticker and ticker['info']:
+                price_change_raw = ticker['info'].get('price24hPcnt', '0')
+                try:
+                    if isinstance(price_change_raw, str):
+                        price_change = float(price_change_raw.replace('%', '')) * 100
+                    else:
+                        price_change = float(price_change_raw) * 100
+                except (ValueError, TypeError, AttributeError):
+                    price_change = 0
+            
+            return {
+                'symbol': symbol,
+                'volume': volume,
+                'turnover': turnover,
+                'open_interest': oi,
+                'price_change': price_change
+            }
+            
+        except Exception as e:
+            self.logger.debug(f"Error processing market overview for {symbol}: {str(e)}")
+            return {
+                'symbol': symbol,
+                'volume': 0,
+                'turnover': 0,
+                'open_interest': 0,
+                'price_change': None,
+                'error': str(e)
+            }
+    
+    def _normalize_section(self, normalized, section):
+        """Normalize a specific section of report data."""
+        if section == 'futures_premium':
+            # Handle field name transitions: premiums -> data
+            if 'premiums' in normalized and 'data' not in normalized:
+                normalized['data'] = normalized['premiums']
                     
             # Create a summary if not present
             if 'summary' not in normalized:
@@ -2188,7 +1674,6 @@ class MarketReporter:
                     normalized[key] = default
                     
         return normalized
-    
     def _get_volume_description(self, volume: float) -> str:
         """Generate a qualitative description of trading volume.
         
@@ -2288,20 +1773,28 @@ class MarketReporter:
                                     report_manager = ReportManager()
                                     self.logger.info("Generating PDF report for market summary")
                                     
-                                    # Create a signal-like structure from the market report for the PDF generator
-                                    market_pdf_data = {
+                                    # Pass the report data directly to the PDF generator (not wrapped in 'results')
+                                    # The template expects market_overview, futures_premium, etc. at the top level
+                                    market_pdf_data = report.copy()  # Use the report data directly
+                                    
+                                    # Transform futures premium data to match template expectations
+                                    if 'futures_premium' in market_pdf_data:
+                                        market_pdf_data['futures_premium'] = self._transform_futures_premium_for_template(
+                                            market_pdf_data['futures_premium']
+                                        )
+                                    
+                                    # Add additional metadata for the PDF generator
+                                    market_pdf_data.update({
                                         'symbol': 'MARKET',
-                                        'timestamp': report['timestamp'],
                                         'signal': report['market_overview'].get('regime', 'NEUTRAL'),
-                                        'score': float(report['market_overview'].get('trend_strength', '0.0%').replace('%', '')),
+                                        'score': self._safe_float_from_percentage(report['market_overview'].get('trend_strength', 0)),
                                         'type': 'market_report',  # Ensure the type is set to market_report
-                                        'results': report,
                                         'components': {
-                                            'market_overview': {'score': float(report['market_overview'].get('trend_strength', '0.0%').replace('%', ''))},
+                                            'market_overview': {'score': self._safe_float_from_percentage(report['market_overview'].get('trend_strength', 0))},
                                             'smart_money': {'score': report['smart_money_index'].get('index', 50.0)},
                                             'futures_premium': {'score': 50.0}  # Default neutral score
                                         }
-                                    }
+                                    })
                                     
                                     # Generate the PDF report directly using the market template
                                     if hasattr(report_manager, 'pdf_generator') and report_manager.pdf_generator:
@@ -2313,22 +1806,45 @@ class MarketReporter:
                                         )
                                         
                                         if pdf_success:
-                                            self.logger.info(f"Market PDF report generated successfully at {pdf_path}")
-                                            report['pdf_path'] = pdf_path.replace('.html', '.pdf')  # Store PDF path for reference
+                                            actual_pdf_path = pdf_path.replace('.html', '.pdf')
+                                            # Verify the PDF file actually exists before setting the path
+                                            if os.path.exists(actual_pdf_path):
+                                                self.logger.info(f"Market PDF report generated successfully at {actual_pdf_path}")
+                                                report['pdf_path'] = actual_pdf_path  # Store PDF path for reference
+                                            else:
+                                                self.logger.warning(f"PDF generation reported success but file not found: {actual_pdf_path}")
                                         else:
                                             self.logger.warning("Failed to generate market PDF report")
                                     else:
                                         # Fallback to using generate_and_attach_report (which uses trading signal template)
                                         self.logger.warning("Using fallback PDF generation method")
+                                        # For the fallback, we need to wrap the data in the signal format
+                                        fallback_signal_data = {
+                                            'symbol': 'MARKET',
+                                            'timestamp': report['timestamp'],
+                                            'signal': report['market_overview'].get('regime', 'NEUTRAL'),
+                                            'score': self._safe_float_from_percentage(report['market_overview'].get('trend_strength', 0)),
+                                            'type': 'market_report',
+                                            'results': report,
+                                            'components': {
+                                                'market_overview': {'score': self._safe_float_from_percentage(report['market_overview'].get('trend_strength', 0))},
+                                                'smart_money': {'score': report['smart_money_index'].get('index', 50.0)},
+                                                'futures_premium': {'score': 50.0}
+                                            }
+                                        }
                                         pdf_success, pdf_path, _ = await report_manager.generate_and_attach_report(
-                                            signal_data=market_pdf_data,
+                                            signal_data=fallback_signal_data,
                                             output_path=pdf_path,
                                             signal_type='market_report'
                                         )
                                         
                                         if pdf_success:
-                                            self.logger.info(f"PDF report generated at {pdf_path}")
-                                            report['pdf_path'] = pdf_path  # Store PDF path for reference
+                                            # Verify the PDF file actually exists before setting the path
+                                            if os.path.exists(pdf_path):
+                                                self.logger.info(f"PDF report generated at {pdf_path}")
+                                                report['pdf_path'] = pdf_path  # Store PDF path for reference
+                                            else:
+                                                self.logger.warning(f"PDF generation reported success but file not found: {pdf_path}")
                                         else:
                                             self.logger.warning("Failed to generate PDF report")
                                 except ImportError:
@@ -2397,12 +1913,17 @@ class MarketReporter:
                                                 formatted_report['content'] += "\n\n📑 PDF report attached"
                                             else:
                                                 formatted_report['content'] = "📑 PDF report attached"
-                                                
-                                            # Send with PDF file attachment only
-                                            await self.alert_manager.send_discord_webhook_message(formatted_report, files=files)
+                                            
+                                            self.logger.info(f"Attaching PDF to Discord message: {report['pdf_path']}")
+                                            # Send with PDF file attachment and alert_type for proper routing
+                                            await self.alert_manager.send_discord_webhook_message(formatted_report, files=files, alert_type='market_report')
                                         else:
-                                            # Send without attachments
-                                            await self.alert_manager.send_discord_webhook_message(formatted_report)
+                                            # Send without attachments but with alert_type for proper routing
+                                            if 'pdf_path' in report:
+                                                self.logger.warning(f"PDF path in report but file doesn't exist: {report['pdf_path']}")
+                                            else:
+                                                self.logger.info("No PDF generated for this market report")
+                                            await self.alert_manager.send_discord_webhook_message(formatted_report, alert_type='market_report')
                                             
                                         self.logger.info("Enhanced market report sent successfully")
                                 else:
@@ -2453,12 +1974,12 @@ class MarketReporter:
             
             # --- 1. Market Overview Embed (Blue) - Key metrics only ---
             if overview:
-                # Extract key metrics
-                daily_change = overview.get('daily_change', 0)
+                # Extract key metrics with safe type conversion
+                daily_change = self._safe_float_from_percentage(overview.get('daily_change', 0))
                 regime = overview.get('regime', 'UNKNOWN')
-                volatility = overview.get('volatility', 0)
-                btc_dominance = overview.get('btc_dominance', '0.0')
-                total_volume = overview.get('total_volume', 0)
+                volatility = self._safe_float_from_percentage(overview.get('volatility', 0))
+                btc_dominance = self._safe_float_from_percentage(overview.get('btc_dominance', '0.0'))
+                total_volume = self._safe_float_from_percentage(overview.get('total_volume', 0))
                 
                 # Market state emoji and description
                 if daily_change >= 0:
@@ -2472,7 +1993,7 @@ class MarketReporter:
                 market_desc = (
                     f"{trend_emoji} **BTC 24h**: {daily_change:+.2f}% | "
                     f"**Vol**: ${self._format_number(total_volume)} | "
-                    f"**Dom**: {btc_dominance}%\n"
+                    f"**Dom**: {btc_dominance:.1f}%\n"
                     f"**Regime**: {regime} | **Volatility**: {volatility:.1f}%"
                 )
                 
@@ -2514,7 +2035,7 @@ class MarketReporter:
             
             # Smart Money data
             if smart_money:
-                smi_value = smart_money.get('index', 50.0)
+                smi_value = self._safe_float_from_percentage(smart_money.get('index', 50.0))
                 smi_sentiment = smart_money.get('sentiment', "NEUTRAL")
                 inst_flow = smart_money.get('institutional_flow', "+0.0%")
                 
@@ -2573,8 +2094,14 @@ class MarketReporter:
             if overview:
                 # Determine overall bias and risk
                 regime = overview.get('regime', 'UNKNOWN')
-                trend_strength = float(overview.get('trend_strength', '0.0%').replace('%', ''))
-                volatility = overview.get('volatility', 0)
+                trend_strength_raw = overview.get('trend_strength', 0.0)
+                # Handle both string and float trend_strength values safely
+                try:
+                    trend_strength = self._safe_float_from_percentage(trend_strength_raw)
+                except Exception as e:
+                    self.logger.error(f"Error converting trend_strength: {trend_strength_raw} (type: {type(trend_strength_raw)}) - {e}")
+                    trend_strength = 0.0
+                volatility = self._safe_float_from_percentage(overview.get('volatility', 0))
                 
                 # Dynamic bias determination
                 overall_bias = "NEUTRAL"
@@ -2695,12 +2222,14 @@ class MarketReporter:
                 self._calculate_with_monitoring('futures_premium', self._calculate_futures_premium, top_pairs),
                 self._calculate_with_monitoring('smart_money_index', self._calculate_smart_money_index, top_pairs),
                 self._calculate_with_monitoring('whale_activity', self._calculate_whale_activity, top_pairs),
-                self._calculate_with_monitoring('performance_metrics', self._calculate_performance_metrics, top_pairs)
+                self._calculate_with_monitoring('performance_metrics', self._calculate_performance_metrics, top_pairs),
+                self._calculate_with_monitoring('bitcoin_beta_analysis', self._calculate_bitcoin_beta_analysis, top_pairs),
+                self._calculate_with_monitoring('top_performers', self._calculate_top_performers, top_pairs)
             ]
             
             self.logger.info("Gathering results from parallel calculations...")
             results = await asyncio.gather(*tasks)
-            market_overview, futures_premium, smi_data, whale_data, performance = results
+            market_overview, futures_premium, smi_data, whale_data, performance, beta_analysis, top_performers = results
             section_end = time.time()
             section_duration = section_end - section_start
             section_times['parallel_calculations'] = section_duration
@@ -2769,6 +2298,28 @@ class MarketReporter:
             else:
                 validations.append("performance_metrics: OK")
                 
+            if not beta_analysis:
+                self.logger.warning("Bitcoin Beta Analysis calculation failed, using fallback")
+                beta_analysis = {
+                    'beta_analysis': {},
+                    'alpha_opportunities': [],
+                    'timestamp': int(datetime.now().timestamp() * 1000)
+                }
+                validations.append("bitcoin_beta_analysis: FAILED")
+            else:
+                validations.append("bitcoin_beta_analysis: OK")
+                
+            if not top_performers:
+                self.logger.warning("Top performers calculation failed, using fallback")
+                top_performers = {
+                    'gainers': [],
+                    'losers': [],
+                    'timestamp': int(datetime.now().timestamp() * 1000)
+                }
+                validations.append("top_performers: FAILED")
+            else:
+                validations.append("top_performers: OK")
+                
             self.logger.info(f"Component validations: {', '.join(validations)}")
             section_end = time.time()
             section_duration = section_end - section_start
@@ -2787,7 +2338,9 @@ class MarketReporter:
                 'futures_premium': futures_premium,
                 'smart_money_index': smi_data,
                 'whale_activity': whale_data,
-                'performance_metrics': performance
+                'performance_metrics': performance,
+                'bitcoin_beta_analysis': beta_analysis,
+                'top_performers': top_performers
             }
             
             # Calculate report size for logging
@@ -2889,7 +2442,8 @@ class MarketReporter:
                 'futures_premium', 
                 'smart_money_index',
                 'whale_activity',
-                'performance_metrics'
+                'performance_metrics',
+                'bitcoin_beta_analysis'
             ]
             all_sections_valid = all(section in report and report[section] for section in required_sections)
             
@@ -3426,3 +2980,1853 @@ class MarketReporter:
                         
         except Exception as e:
             print(f"Error in test: {str(e)}")
+
+    async def _calculate_futures_premium(self, symbols: List[str]) -> Dict[str, Any]:
+        """Calculate futures premium metrics with comprehensive analysis and improved reliability."""
+        try:
+            # Prefetch all markets data once and cache it with longer expiration
+            cache_key = "all_markets"
+            if cache_key not in self.cache or time.time() > self.cache.get(f"{cache_key}_expiry", 0):
+                self.logger.info("Fetching and caching all markets data for futures premium calculation")
+                try:
+                    if hasattr(self.exchange, 'load_markets'):
+                        all_markets = await self._fetch_with_retry('load_markets', timeout=10)
+                    else:
+                        all_markets = {}
+                    self.cache[cache_key] = all_markets
+                    # Cache for 15 minutes (900 seconds)
+                    self.cache[f"{cache_key}_expiry"] = time.time() + 900
+                    self.logger.debug(f"Successfully cached {len(all_markets)} markets")
+                except Exception as e:
+                    self.logger.warning(f"Failed to prefetch all markets: {e}")
+                    # Try to use existing cache even if expired
+                    all_markets = self.cache.get(cache_key, {})
+            else:
+                all_markets = self.cache[cache_key]
+                self.logger.debug(f"Using cached markets data ({len(all_markets)} markets)")
+            
+            # Process symbols concurrently for better performance
+            self.logger.info(f"Processing {len(symbols)} symbols for futures premium with parallel execution")
+            tasks = [self._calculate_single_premium(symbol, all_markets) for symbol in symbols]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            # Process results
+            premiums = {}
+            failed_symbols = []
+            
+            # For term structure analysis
+            quarterly_futures = {}
+            funding_rates = {}
+            average_premium = 0.0
+            valid_premiums = 0
+            
+            for symbol, result in zip(symbols, results):
+                if isinstance(result, Exception):
+                    self.logger.warning(f"Error calculating futures premium for {symbol}: {str(result)}")
+                    failed_symbols.append(symbol)
+                elif result is None:
+                    self.logger.warning(f"No valid premium data for {symbol}")
+                    failed_symbols.append(symbol)
+                else:
+                    premiums[symbol] = result
+                    
+                    # Track average premium and count valid results
+                    if 'premium_value' in result:
+                        average_premium += result['premium_value']
+                        valid_premiums += 1
+                        
+                    # Store quarterly futures data if available
+                    if 'futures_contracts' in result and result['futures_contracts']:
+                        quarterly_futures[symbol] = result['futures_contracts']
+                        
+                    # Get funding rate data
+                    try:
+                        clean_symbol = symbol.replace('/', '')
+                        if clean_symbol.endswith(':USDT'):
+                            bybit_symbol = clean_symbol
+                        else:
+                            bybit_symbol = clean_symbol
+                        funding_data = await self._analyze_funding_rates(bybit_symbol)
+                        funding_rates[symbol] = funding_data
+                    except Exception as e:
+                        self.logger.debug(f"Error getting funding data for {symbol}: {e}")
+            
+            # Calculate average and determine market status
+            if valid_premiums > 0:
+                average_premium = average_premium / valid_premiums
+                
+                # Determine overall contango status
+                if average_premium > 0.1:
+                    contango_status = "CONTANGO"
+                elif average_premium < -0.1:
+                    contango_status = "BACKWARDATION"
+                else:
+                    contango_status = "NEUTRAL"
+            else:
+                average_premium = 0.0
+                contango_status = "NEUTRAL"
+            
+            result = {
+                'premiums': premiums,
+                'quarterly_futures': quarterly_futures,
+                'funding_rates': funding_rates,
+                'average_premium': f"{average_premium:.4f}%",
+                'average_premium_value': average_premium,
+                'contango_status': contango_status,
+                'timestamp': int(datetime.now().timestamp() * 1000)
+            }
+            
+            # Add data quality metrics
+            if failed_symbols:
+                result['failed_symbols'] = failed_symbols
+                result['data_quality_note'] = f"Failed for {len(failed_symbols)}/{len(symbols)} symbols"
+                
+            return result
+            
+        except Exception as e:
+            self.logger.error(f"Error calculating futures premium: {str(e)}")
+            return {
+                'premiums': {},
+                'timestamp': int(datetime.now().timestamp() * 1000),
+                'error': str(e)
+            }
+    async def _calculate_single_premium(self, symbol: str, all_markets: Dict) -> Optional[Dict[str, Any]]:
+        """Calculate futures premium for a single symbol with comprehensive analysis."""
+        try:
+            # Clean up the symbol format for Bybit API
+            clean_symbol = symbol.replace('/', '')
+            
+            # For Bybit, we need to use the perp and spot symbols correctly
+            if clean_symbol.endswith(':USDT'):
+                # Already in Bybit format (e.g., 'BTCUSDT:USDT')
+                perp_symbol = clean_symbol
+                spot_symbol = clean_symbol.replace(':USDT', '')
+            elif '/' in symbol:
+                # Convert from ccxt format to Bybit format
+                perp_symbol = symbol.replace('/', '') 
+                spot_symbol = perp_symbol
+            else:
+                # Already in simple format (e.g., 'BTCUSDT')
+                perp_symbol = clean_symbol
+                spot_symbol = clean_symbol
+            
+            # Get base asset (BTC, ETH, etc.) from the symbol
+            base_asset = spot_symbol.replace('USDT', '')
+            
+            # Note: We proceed with basic perpetual vs spot analysis for all symbols
+            # Inverse/quarterly futures analysis will be filtered separately below
+            
+            self.logger.debug(f"Calculating futures premium for {symbol} (perp: {perp_symbol}, spot: {spot_symbol})")
+            
+            # Fetch perpetual and spot tickers concurrently with timeout
+            try:
+                perp_ticker_task = self._fetch_with_retry('fetch_ticker', perp_symbol, timeout=5)
+                spot_ticker_task = self._fetch_with_retry('fetch_ticker', spot_symbol, timeout=5)
+                perp_ticker, spot_ticker = await asyncio.gather(
+                    perp_ticker_task, 
+                    spot_ticker_task, 
+                    return_exceptions=True
+                )
+                
+                # Handle exceptions in ticker fetching
+                if isinstance(perp_ticker, Exception):
+                    self.logger.warning(f"Error fetching perpetual ticker for {perp_symbol}: {str(perp_ticker)}")
+                    try:
+                        alt_symbol = perp_symbol.replace('USDT:USDT', 'USDT')
+                        perp_ticker = await self._fetch_with_retry('fetch_ticker', alt_symbol, timeout=5)
+                        self.logger.info(f"Successfully fetched perpetual ticker using alternative format: {alt_symbol}")
+                    except Exception as e:
+                        self.logger.warning(f"Alternative format also failed: {str(e)}")
+                        perp_ticker = None
+                
+                if isinstance(spot_ticker, Exception):
+                    self.logger.warning(f"Error fetching spot ticker for {spot_symbol}: {str(spot_ticker)}")
+                    try:
+                        alt_symbol = spot_symbol.replace('USDT', '/USDT')
+                        spot_ticker = await self._fetch_with_retry('fetch_ticker', alt_symbol, timeout=5)
+                        self.logger.info(f"Successfully fetched spot ticker using alternative format: {alt_symbol}")
+                    except Exception as e:
+                        self.logger.warning(f"Alternative spot format also failed: {str(e)}")
+                        spot_ticker = None
+                        
+            except Exception as e:
+                self.logger.warning(f"Error in concurrent ticker fetching for {symbol}: {e}")
+                perp_ticker = None
+                spot_ticker = None
+            
+            # Extract prices from different possible structures using the enhanced extraction method
+            mark_price = self._extract_bybit_field(perp_ticker, 'mark_price') if perp_ticker else 0
+            index_price = self._extract_bybit_field(perp_ticker, 'index_price') if perp_ticker else 0
+            last_price = self._extract_bybit_field(perp_ticker, 'last') if perp_ticker else 0
+            
+            # If mark price not found, use last price
+            if not mark_price and perp_ticker:
+                mark_price = float(perp_ticker.get('last', 0))
+            
+            # If index price not found, try to use spot price
+            if not index_price and spot_ticker:
+                index_price = float(spot_ticker.get('last', 0))
+            
+            # Get comprehensive quarterly futures data
+            futures_price = 0
+            futures_basis = 0
+            weekly_futures_found = 0
+            quarterly_futures_found = 0
+            futures_contracts = []
+            
+            # Enhanced quarterly futures lookup with multiple exchange formats
+            # Only check for quarterly/inverse futures if this symbol has inverse contracts
+            try:
+                if self._has_derivatives_market(symbol):
+                    self.logger.debug(f"Checking quarterly futures for {symbol} - has inverse derivatives market")
+                    
+                    # Get current year and month
+                    current_year = datetime.now().year 
+                    current_month = datetime.now().month
+                    current_year_short = current_year % 100  # Last two digits (e.g., 25 for 2025)
+                    
+                    # Get base asset and check if it needs special formatting
+                    base_asset_clean = base_asset.strip()
+                
+                    # Function to calculate last Friday of a month
+                    def get_last_friday(year, month):
+                        if month == 12:
+                            last_day = datetime(year, 12, 31)
+                        else:
+                            last_day = datetime(year, month + 1, 1) - timedelta(days=1)
+                        
+                        # Find the last Friday (weekday 4)
+                        offset = (4 - last_day.weekday()) % 7
+                        last_friday = last_day - timedelta(days=offset) if offset != 0 else last_day
+                        return last_friday
+                    
+                    # Try multiple quarterly futures formats
+                    quarterly_patterns = []
+                    
+                    # 1. Binance CCXT format (BASE/USDT:USDT-YYYYMMDD)
+                    for month in [3, 6, 9, 12]:  # Quarterly months
+                        if month >= current_month or month == 3:  # Include next year's March if current month > 9
+                            year = current_year if month >= current_month else current_year + 1
+                            last_friday = get_last_friday(year, month)
+                            expiry_date = last_friday.strftime('%Y%m%d')
+                            quarterly_patterns.append(f"{base_asset_clean}/USDT:USDT-{expiry_date}")
+                    
+                    # 2. Bybit unified format (BASEUSDT-MMDD)
+                    for month in [3, 6, 9, 12]:
+                        if month >= current_month or month == 3:
+                            year = current_year if month >= current_month else current_year + 1
+                            last_friday = get_last_friday(year, month)
+                            quarterly_patterns.append(f"{base_asset_clean}USDT{last_friday.month:02d}{last_friday.day:02d}")
+                    
+                    # 3. Traditional inverse patterns (BASEUSDM25, BASEUSDU25, BASEUSDZ25)
+                    if current_month <= 6:
+                        quarterly_patterns.append(f"{base_asset_clean}USDM{current_year_short}")
+                    if current_month <= 9:
+                        quarterly_patterns.append(f"{base_asset_clean}USDU{current_year_short}")
+                    quarterly_patterns.append(f"{base_asset_clean}USDZ{current_year_short}")
+                    
+                    # 4. Bybit USDT quarterly with hyphens (BTCUSDT-29MAR25)
+                    month_codes = {3: 'MAR', 6: 'JUN', 9: 'SEP', 12: 'DEC'}
+                    for month in [3, 6, 9, 12]:
+                        if month >= current_month or month == 3:
+                            year = current_year if month >= current_month else current_year + 1
+                            last_friday = get_last_friday(year, month)
+                            year_short = year % 100
+                            quarterly_patterns.append(f"{base_asset_clean}USDT-{last_friday.day}{month_codes[month]}{year_short}")
+                    
+                    # Try each pattern with circuit breaker
+                    max_errors_before_skip = 3
+                    current_errors = self.error_counts.get('quarterly_futures_errors', 0)
+                    
+                    if current_errors < max_errors_before_skip:
+                        for pattern in quarterly_patterns[:6]:  # Limit to first 6 patterns for performance
+                            try:
+                                quarterly_ticker = await self._fetch_with_retry('fetch_ticker', pattern, timeout=3)
+                                if quarterly_ticker and quarterly_ticker.get('last'):
+                                    quarterly_price = float(quarterly_ticker['last'])
+                                    self.logger.info(f"Found quarterly futures: {pattern} = {quarterly_price}")
+                                    
+                                    if index_price and index_price > 0:
+                                        quarterly_basis = ((quarterly_price - index_price) / index_price) * 100
+                                        
+                                        # Calculate months to expiry for annualized basis
+                                        if 'MAR' in pattern or 'JUN' in pattern or 'SEP' in pattern or 'DEC' in pattern:
+                                            # Extract month from pattern
+                                            if 'MAR' in pattern:
+                                                expiry_month = 3
+                                            elif 'JUN' in pattern:
+                                                expiry_month = 6
+                                            elif 'SEP' in pattern:
+                                                expiry_month = 9
+                                            else:
+                                                expiry_month = 12
+                                        elif 'M' in pattern:
+                                            expiry_month = 6
+                                        elif 'U' in pattern:
+                                            expiry_month = 9
+                                        elif 'Z' in pattern:
+                                            expiry_month = 12
+                                        else:
+                                            expiry_month = 12  # Default
+                                        
+                                        months_to_expiry = self._calculate_months_to_expiry(expiry_month, pattern)
+                                        annualized_basis = quarterly_basis * (12 / max(1, months_to_expiry))
+                                        
+                                        futures_contracts.append({
+                                            'symbol': pattern,
+                                            'price': quarterly_price,
+                                            'basis': f"{quarterly_basis:.4f}%",
+                                            'annualized_basis': f"{annualized_basis:.4f}%",
+                                            'months_to_expiry': months_to_expiry,
+                                            'volume': quarterly_ticker.get('baseVolume', 0)
+                                        })
+                                        
+                                        quarterly_futures_found += 1
+                                        
+                                        # Use first found quarterly as the primary futures price
+                                        if not futures_price:
+                                            futures_price = quarterly_price
+                                            futures_basis = f"{quarterly_basis:.4f}%"
+                                            
+                                    break  # Found a working format, no need to try others
+                            except Exception as e:
+                                self.error_counts['quarterly_futures_errors'] = self.error_counts.get('quarterly_futures_errors', 0) + 1
+                                self.logger.debug(f"Error fetching quarterly future {pattern}: {e}")
+                    else:
+                        self.logger.info(f"Skipping quarterly futures lookup for {symbol} - circuit breaker active ({current_errors} errors)")
+                else:
+                    self.logger.debug(f"Skipping quarterly futures lookup for {symbol} - no inverse derivatives market")
+                    
+                # Sort futures contracts by expiry
+                futures_contracts.sort(key=lambda x: x.get('months_to_expiry', 12))
+                
+            except Exception as e:
+                self.logger.debug(f"Error finding futures contracts for {base_asset}: {str(e)}")
+            
+            # Calculate premium if we have valid prices
+            if mark_price and mark_price > 0 and (index_price and index_price > 0):
+                premium = ((mark_price - index_price) / index_price) * 100
+                
+                # Determine premium type
+                premium_type = "📉 Backwardation" if premium < 0 else "📈 Contango"
+                
+                # Get funding rate data if available
+                funding_rate = self._extract_bybit_field(perp_ticker, 'funding_rate') if perp_ticker else 0
+                
+                return {
+                    'premium': f"{premium:.4f}%",
+                    'premium_value': premium,
+                    'premium_type': premium_type,
+                    'mark_price': mark_price,
+                    'index_price': index_price,
+                    'last_price': last_price,
+                    'weekly_futures_count': weekly_futures_found,
+                    'quarterly_futures_count': quarterly_futures_found,
+                    'futures_price': futures_price,
+                    'futures_basis': futures_basis,
+                    'funding_rate': funding_rate,
+                    'timestamp': int(datetime.now().timestamp() * 1000),
+                    'futures_contracts': futures_contracts  # Include all quarterly contracts
+                }
+            else:
+                self.logger.debug(f"Missing price data for futures premium: {symbol} (mark: {mark_price}, index: {index_price})")
+                return None
+        except Exception as e:
+            self.logger.error(f"Error in _calculate_single_premium for {symbol}: {str(e)}")
+            return None
+
+    async def _calculate_smart_money_index(self, symbols: List[str]) -> Dict[str, Any]:
+        """Calculate smart money index with advanced institutional flow analysis."""
+        try:
+            signals = []
+            total_score = 0
+            valid_symbols = 0
+            key_zones = []
+            institutional_flows = []
+            
+            # Limit symbols to prevent timeout and use concurrent processing
+            limited_symbols = symbols[:8]  # Increased from 6 to 8 for better analysis
+            
+            # Create concurrent tasks for better performance
+            tasks = []
+            for symbol in limited_symbols:
+                task = self._process_smart_money_for_symbol(symbol)
+                tasks.append(task)
+            
+            # Execute tasks concurrently with timeout
+            try:
+                results = await asyncio.wait_for(
+                    asyncio.gather(*tasks, return_exceptions=True), 
+                    timeout=100  # Increased timeout for more comprehensive analysis
+                )
+                
+                # Process results
+                for result in results:
+                    if isinstance(result, dict) and 'score' in result:
+                        signals.append(result)
+                        total_score += result['score']
+                        valid_symbols += 1
+                        
+                        # Add key zones if present
+                        if 'key_zones' in result:
+                            key_zones.extend(result['key_zones'])
+                            
+                        # Add institutional flow data
+                        if 'institutional_flow' in result:
+                            institutional_flows.append(result['institutional_flow'])
+                            
+                    elif isinstance(result, Exception):
+                        self.logger.debug(f"Smart money task failed: {result}")
+                        
+            except asyncio.TimeoutError:
+                self.logger.warning("Smart money index calculation timed out, using partial results")
+            except Exception as e:
+                self.logger.error(f"Error in concurrent smart money processing: {e}")
+            
+            # Calculate overall index with enhanced weighting
+            avg_score = total_score / valid_symbols if valid_symbols > 0 else 50
+            
+            # Calculate institutional flow metrics
+            institutional_flow_score = 0
+            if institutional_flows:
+                # Weight by volume and order size
+                weighted_flows = []
+                for flow in institutional_flows:
+                    if 'net_flow' in flow and 'confidence' in flow:
+                        weighted_flows.append(flow['net_flow'] * flow['confidence'])
+                
+                if weighted_flows:
+                    institutional_flow_score = sum(weighted_flows) / len(weighted_flows)
+            
+            # Combine technical and flow analysis
+            combined_score = (avg_score * 0.6) + (institutional_flow_score * 0.4)
+            
+            # Determine signal based on combined score
+            if combined_score > 70:
+                signal = 'BULLISH'
+                sentiment = 'Strong institutional buying detected'
+            elif combined_score > 60:
+                signal = 'BULLISH'
+                sentiment = 'Moderate institutional buying'
+            elif combined_score < 30:
+                signal = 'BEARISH'
+                sentiment = 'Strong institutional selling detected'
+            elif combined_score < 40:
+                signal = 'BEARISH'
+                sentiment = 'Moderate institutional selling'
+            else:
+                signal = 'NEUTRAL'
+                sentiment = 'Balanced institutional activity'
+            
+            # Calculate change (would need historical data for accurate calculation)
+            # For now, use a simple heuristic based on score deviation from neutral
+            change = (combined_score - 50) * 0.1  # Approximate change percentage
+            
+            # Determine funding rates classification
+            funding_classification = 'NEUTRAL'
+            if institutional_flow_score > 10:
+                funding_classification = 'BULLISH'
+            elif institutional_flow_score < -10:
+                funding_classification = 'BEARISH'
+            
+            result = {
+                'current_value': combined_score,
+                'index': combined_score,  # For template compatibility
+                'signal': signal,
+                'sentiment': sentiment,
+                'change': change,
+                'institutional_flow': f"{institutional_flow_score:+.2f}%",
+                'funding_rates_classification': funding_classification,
+                'signals': signals,
+                'key_zones': sorted(key_zones, key=lambda x: abs(x['distance_pct']))[:15],  # Top 15 zones
+                'institutional_flows': institutional_flows,
+                'technical_score': avg_score,
+                'flow_score': institutional_flow_score,
+                'timestamp': int(datetime.now().timestamp() * 1000)
+            }
+            
+            return result
+            
+        except Exception as e:
+            self.logger.error(f"Error calculating smart money index: {str(e)}")
+            return {
+                'current_value': 50,
+                'index': 50,
+                'signal': 'NEUTRAL',
+                'sentiment': 'Analysis unavailable',
+                'change': 0,
+                'institutional_flow': '+0.00%',
+                'funding_rates_classification': 'NEUTRAL',
+                'signals': [],
+                'key_zones': [],
+                'institutional_flows': [],
+                'technical_score': 50,
+                'flow_score': 0,
+                'timestamp': int(datetime.now().timestamp() * 1000),
+                'error': str(e)
+            }
+    
+    async def _process_smart_money_for_symbol(self, symbol: str) -> Dict[str, Any]:
+        """Process smart money data for a single symbol with advanced analysis."""
+        try:
+            # Fix symbol format for Bybit API
+            clean_symbol = symbol.replace('/', '')
+            if clean_symbol.endswith(':USDT'):
+                api_symbol = clean_symbol
+            else:
+                api_symbol = clean_symbol
+            
+            # Get ticker data for current price with shorter timeout
+            ticker = await self._fetch_with_retry('fetch_ticker', api_symbol, timeout=5)
+            if not ticker:
+                return {'score': 50, 'symbol': symbol, 'error': 'No ticker data'}
+                
+            current_price = float(ticker['last'])
+            volume_24h = float(ticker.get('baseVolume', 0))
+            
+            # Get order book for depth analysis with enhanced depth
+            order_book = await self._fetch_with_retry('fetch_order_book', api_symbol, limit=100, timeout=8)
+            if not order_book or not order_book.get('bids') or not order_book.get('asks'):
+                return {'score': 50, 'symbol': symbol, 'error': 'No order book data'}
+            
+            # Enhanced spread analysis
+            best_bid = float(order_book['bids'][0][0]) if order_book['bids'] else 0
+            best_ask = float(order_book['asks'][0][0]) if order_book['asks'] else 0
+            spread = ((best_ask - best_bid) / current_price) * 100 if current_price > 0 else 0
+            
+            # Advanced order book analysis
+            bid_volume = sum(float(bid[1]) for bid in order_book['bids'][:20])  # Top 20 levels
+            ask_volume = sum(float(ask[1]) for ask in order_book['asks'][:20])
+            total_volume = bid_volume + ask_volume
+            
+            # Calculate order book imbalance
+            if total_volume > 0:
+                imbalance = (bid_volume - ask_volume) / total_volume
+            else:
+                imbalance = 0
+            
+            # Analyze large orders (potential institutional activity)
+            large_bid_orders = [bid for bid in order_book['bids'][:50] if float(bid[1]) * float(bid[0]) > 10000]  # $10k+ orders
+            large_ask_orders = [ask for ask in order_book['asks'][:50] if float(ask[1]) * float(ask[0]) > 10000]
+            
+            # Calculate institutional flow score
+            large_bid_value = sum(float(bid[1]) * float(bid[0]) for bid in large_bid_orders)
+            large_ask_value = sum(float(ask[1]) * float(ask[0]) for ask in large_ask_orders)
+            total_large_value = large_bid_value + large_ask_value
+            
+            institutional_flow = 0
+            confidence = 0
+            if total_large_value > 0:
+                institutional_flow = ((large_bid_value - large_ask_value) / total_large_value) * 100
+                confidence = min(total_large_value / 100000, 1.0)  # Confidence based on total value
+            
+            # Enhanced scoring system
+            score = 50  # Neutral starting point
+            
+            # Spread analysis (tighter spreads = more institutional activity)
+            if spread < 0.02:  # Very tight spread
+                score += 20
+            elif spread < 0.05:  # Tight spread
+                score += 15
+            elif spread < 0.1:  # Moderate spread
+                score += 10
+            elif spread > 0.3:  # Wide spread
+                score -= 15
+            
+            # Order book imbalance analysis
+            score += imbalance * 25  # Scale imbalance to points
+            
+            # Large order analysis
+            if len(large_bid_orders) > len(large_ask_orders):
+                score += min(len(large_bid_orders) - len(large_ask_orders), 15)
+            else:
+                score -= min(len(large_ask_orders) - len(large_bid_orders), 15)
+            
+            # Volume analysis
+            if volume_24h > 1000000:  # High volume
+                score += 10
+            elif volume_24h < 100000:  # Low volume
+                score -= 5
+            
+            # Clamp score between 0 and 100
+            score = max(0, min(100, score))
+            
+            result = {
+                'symbol': symbol,
+                'score': score,
+                'spread': spread,
+                'imbalance': imbalance,
+                'current_price': current_price,
+                'volume_24h': volume_24h,
+                'large_bid_orders': len(large_bid_orders),
+                'large_ask_orders': len(large_ask_orders),
+                'institutional_flow': {
+                    'net_flow': institutional_flow,
+                    'confidence': confidence,
+                    'large_bid_value': large_bid_value,
+                    'large_ask_value': large_ask_value
+                },
+                'key_zones': []
+            }
+            
+            # Enhanced key support/resistance zone identification
+            if len(order_book['bids']) >= 10 and len(order_book['asks']) >= 10:
+                # Find clusters of large orders (potential institutional levels)
+                bid_clusters = self._find_order_clusters(order_book['bids'][:50], current_price, 'support')
+                ask_clusters = self._find_order_clusters(order_book['asks'][:50], current_price, 'resistance')
+                
+                # Add significant zones
+                for cluster in bid_clusters[:3]:  # Top 3 support zones
+                    result['key_zones'].append({
+                        'symbol': symbol,
+                        'price': cluster['price'],
+                        'volume': cluster['volume'],
+                        'type': 'support',
+                        'strength': cluster['strength'],
+                        'distance_pct': ((cluster['price'] - current_price) / current_price) * 100
+                    })
+                
+                for cluster in ask_clusters[:3]:  # Top 3 resistance zones
+                    result['key_zones'].append({
+                        'symbol': symbol,
+                        'price': cluster['price'],
+                        'volume': cluster['volume'],
+                        'type': 'resistance',
+                        'strength': cluster['strength'],
+                        'distance_pct': ((cluster['price'] - current_price) / current_price) * 100
+                    })
+            
+            return result
+            
+        except Exception as e:
+            self.logger.warning(f"Error processing smart money data for {symbol}: {str(e)}")
+            return {'score': 50, 'symbol': symbol, 'error': str(e)}
+    
+    def _find_order_clusters(self, orders: List[List[float]], current_price: float, order_type: str) -> List[Dict[str, Any]]:
+        """Find clusters of large orders that indicate institutional levels."""
+        try:
+            clusters = []
+            price_tolerance = current_price * 0.001  # 0.1% price tolerance for clustering
+            
+            # Group orders by similar price levels
+            price_groups = {}
+            for order in orders:
+                price = float(order[0])
+                volume = float(order[1])
+                value = price * volume
+                
+                # Only consider significant orders
+                if value > 5000:  # $5k minimum
+                    # Find existing group or create new one
+                    group_key = None
+                    for existing_price in price_groups.keys():
+                        if abs(price - existing_price) <= price_tolerance:
+                            group_key = existing_price
+                            break
+                    
+                    if group_key is None:
+                        group_key = price
+                        price_groups[group_key] = []
+                    
+                    price_groups[group_key].append({'price': price, 'volume': volume, 'value': value})
+            
+            # Analyze clusters
+            for group_price, group_orders in price_groups.items():
+                if len(group_orders) >= 2:  # At least 2 orders to form a cluster
+                    total_volume = sum(order['volume'] for order in group_orders)
+                    total_value = sum(order['value'] for order in group_orders)
+                    avg_price = sum(order['price'] for order in group_orders) / len(group_orders)
+                    
+                    # Calculate strength based on volume and number of orders
+                    strength = min(total_value / 50000, 10.0)  # Max strength of 10
+                    
+                    clusters.append({
+                        'price': avg_price,
+                        'volume': total_volume,
+                        'value': total_value,
+                        'order_count': len(group_orders),
+                        'strength': strength
+                    })
+            
+            # Sort by strength (value and volume)
+            clusters.sort(key=lambda x: x['strength'], reverse=True)
+            return clusters
+            
+        except Exception as e:
+            self.logger.warning(f"Error finding order clusters: {str(e)}")
+            return []
+
+    async def _calculate_whale_activity(self, symbols: List[str]) -> Dict[str, Any]:
+        """Calculate whale activity metrics with comprehensive tracking and analysis."""
+        try:
+            whale_transactions = []
+            significant_activity = {}
+            
+            # Limit symbols to prevent timeout and use concurrent processing
+            limited_symbols = symbols[:8]  # Increased for better coverage
+            
+            # Create concurrent tasks for better performance
+            tasks = []
+            for symbol in limited_symbols:
+                task = self._process_whale_activity_for_symbol(symbol)
+                tasks.append(task)
+            
+            # Execute tasks concurrently with timeout
+            try:
+                results = await asyncio.wait_for(
+                    asyncio.gather(*tasks, return_exceptions=True), 
+                    timeout=120  # Increased timeout for comprehensive analysis
+                )
+                
+                # Process results
+                for result in results:
+                    if isinstance(result, list):
+                        whale_transactions.extend(result)
+                    elif isinstance(result, Exception):
+                        self.logger.debug(f"Whale activity task failed: {result}")
+                        
+            except asyncio.TimeoutError:
+                self.logger.warning("Whale activity calculation timed out, using partial results")
+            except Exception as e:
+                self.logger.error(f"Error in concurrent whale activity processing: {e}")
+            
+            # Sort by USD value descending
+            whale_transactions.sort(key=lambda x: x.get('usd_value', 0), reverse=True)
+            
+            # Analyze significant activity by symbol
+            for tx in whale_transactions:
+                symbol = tx.get('symbol', 'UNKNOWN')
+                if symbol not in significant_activity:
+                    significant_activity[symbol] = {
+                        'buy_volume': 0,
+                        'sell_volume': 0,
+                        'net_whale_volume': 0,
+                        'transaction_count': 0,
+                        'largest_transaction': 0,
+                        'avg_transaction_size': 0,
+                        'whale_dominance': 0,
+                        'usd_value': 0
+                    }
+                
+                usd_value = abs(tx.get('usd_value', 0))
+                side = tx.get('side', 'unknown').lower()
+                
+                significant_activity[symbol]['transaction_count'] += 1
+                significant_activity[symbol]['largest_transaction'] = max(
+                    significant_activity[symbol]['largest_transaction'], 
+                    usd_value
+                )
+                
+                if side == 'buy':
+                    significant_activity[symbol]['buy_volume'] += usd_value
+                    significant_activity[symbol]['net_whale_volume'] += usd_value
+                    significant_activity[symbol]['usd_value'] += usd_value
+                elif side == 'sell':
+                    significant_activity[symbol]['sell_volume'] += usd_value
+                    significant_activity[symbol]['net_whale_volume'] -= usd_value
+                    significant_activity[symbol]['usd_value'] += usd_value
+                else:
+                    significant_activity[symbol]['usd_value'] += usd_value
+            
+            # Calculate additional metrics for each symbol
+            for symbol, activity in significant_activity.items():
+                if activity['transaction_count'] > 0:
+                    activity['avg_transaction_size'] = activity['usd_value'] / activity['transaction_count']
+                    
+                    # Calculate whale dominance (percentage of total volume that's whale activity)
+                    total_volume = activity['buy_volume'] + activity['sell_volume']
+                    if total_volume > 0:
+                        activity['whale_dominance'] = (total_volume / (total_volume + 1000000)) * 100  # Rough estimate
+            
+            # Calculate overall market sentiment from whale activity
+            total_whale_buy = sum(activity['buy_volume'] for activity in significant_activity.values())
+            total_whale_sell = sum(activity['sell_volume'] for activity in significant_activity.values())
+            total_whale_volume = total_whale_buy + total_whale_sell
+            
+            whale_sentiment = 'NEUTRAL'
+            whale_bias = 0
+            if total_whale_volume > 0:
+                whale_bias = ((total_whale_buy - total_whale_sell) / total_whale_volume) * 100
+                if whale_bias > 20:
+                    whale_sentiment = 'BULLISH'
+                elif whale_bias < -20:
+                    whale_sentiment = 'BEARISH'
+            
+            # Determine if there's significant whale activity
+            has_significant_activity = (
+                len(whale_transactions) > 0 and 
+                total_whale_volume > 500000  # At least $500k in whale activity
+            )
+            
+            result = {
+                'whale_activity': {
+                    'transactions': whale_transactions[:25],  # Top 25 transactions
+                    'significant_activity': has_significant_activity,
+                    'total_volume': total_whale_volume,
+                    'buy_volume': total_whale_buy,
+                    'sell_volume': total_whale_sell,
+                    'net_volume': total_whale_buy - total_whale_sell,
+                    'whale_bias': whale_bias,
+                    'whale_sentiment': whale_sentiment,
+                    'count': len(whale_transactions),
+                    'symbols_affected': len(significant_activity)
+                },
+                'significant_activity': significant_activity,
+                'transactions': whale_transactions[:25],  # Keep for backward compatibility
+                'has_significant_activity': has_significant_activity,
+                'whale_summary': self._generate_whale_summary(significant_activity, whale_sentiment, whale_bias),
+                'timestamp': int(datetime.now().timestamp() * 1000)
+            }
+            
+            return result
+            
+        except Exception as e:
+            self.logger.error(f"Error calculating whale activity: {str(e)}")
+            return {
+                'whale_activity': {
+                    'transactions': [],
+                    'significant_activity': False,
+                    'total_volume': 0,
+                    'buy_volume': 0,
+                    'sell_volume': 0,
+                    'net_volume': 0,
+                    'whale_bias': 0,
+                    'whale_sentiment': 'NEUTRAL',
+                    'count': 0,
+                    'symbols_affected': 0
+                },
+                'significant_activity': {},
+                'transactions': [],
+                'has_significant_activity': False,
+                'whale_summary': 'Whale activity analysis unavailable',
+                'timestamp': int(datetime.now().timestamp() * 1000),
+                'error': str(e)
+            }
+    
+    async def _process_whale_activity_for_symbol(self, symbol: str) -> List[Dict[str, Any]]:
+        """Process whale activity for a single symbol with enhanced analysis."""
+        try:
+            # Fix symbol format for Bybit API
+            clean_symbol = symbol.replace('/', '')
+            if clean_symbol.endswith(':USDT'):
+                api_symbol = clean_symbol
+            else:
+                api_symbol = clean_symbol
+            
+            whale_transactions = []
+            
+            # Get current ticker for price context
+            ticker = await self._fetch_with_retry('fetch_ticker', api_symbol, timeout=5)
+            current_price = float(ticker['last']) if ticker else 0
+            volume_24h = float(ticker.get('baseVolume', 0)) if ticker else 0
+            
+            # Calculate dynamic whale threshold based on market conditions
+            whale_threshold = self._calculate_dynamic_whale_threshold(symbol, current_price, volume_24h)
+            
+            # Get recent trades with enhanced timeout
+            try:
+                trades = await self._fetch_with_retry('fetch_trades', api_symbol, limit=100, timeout=10)
+                
+                if not trades:
+                    return []
+                
+                # Get order book for additional context
+                order_book = await self._fetch_with_retry('fetch_order_book', api_symbol, limit=50, timeout=8)
+                
+                # Analyze trades for whale activity
+                for trade in trades:
+                    try:
+                        amount = float(trade.get('amount', trade.get('size', trade.get('qty', 0))))
+                        price = float(trade['price'])
+                        usd_value = amount * price
+                        side = trade.get('side', 'unknown')
+                        timestamp = trade.get('timestamp', 0)
+                        
+                        # Enhanced whale detection criteria
+                        is_whale = False
+                        whale_confidence = 0
+                        
+                        # Primary criteria: USD value threshold
+                        if usd_value > whale_threshold:
+                            is_whale = True
+                            whale_confidence = min(usd_value / whale_threshold, 5.0)  # Max confidence of 5x
+                        
+                        # Secondary criteria: Large relative to order book
+                        if order_book and not is_whale:
+                            # Check if trade is large relative to order book depth
+                            if side == 'buy' and order_book.get('asks'):
+                                ask_depth = sum(float(ask[1]) for ask in order_book['asks'][:10])
+                                if amount > ask_depth * 0.1:  # More than 10% of top 10 ask levels
+                                    is_whale = True
+                                    whale_confidence = 2.0
+                            elif side == 'sell' and order_book.get('bids'):
+                                bid_depth = sum(float(bid[1]) for bid in order_book['bids'][:10])
+                                if amount > bid_depth * 0.1:  # More than 10% of top 10 bid levels
+                                    is_whale = True
+                                    whale_confidence = 2.0
+                        
+                        # Tertiary criteria: Large relative to average volume
+                        if not is_whale and volume_24h > 0:
+                            avg_trade_size = volume_24h / 1000  # Assume ~1000 trades per day
+                            if amount > avg_trade_size * 10:  # 10x average trade size
+                                is_whale = True
+                                whale_confidence = 1.5
+                        
+                        if is_whale:
+                            # Calculate market impact score
+                            market_impact = self._calculate_market_impact(trade, order_book, current_price)
+                            
+                            whale_transactions.append({
+                                'symbol': symbol,
+                                'side': side,
+                                'amount': amount,
+                                'price': price,
+                                'usd_value': usd_value,
+                                'whale_confidence': whale_confidence,
+                                'market_impact': market_impact,
+                                'timestamp': timestamp,
+                                'datetime': trade.get('datetime', ''),
+                                'relative_size': usd_value / whale_threshold if whale_threshold > 0 else 1,
+                                'price_level': 'above_market' if price > current_price else 'below_market' if price < current_price else 'at_market'
+                            })
+                    except (ValueError, TypeError, KeyError) as e:
+                        self.logger.debug(f"Error processing trade data for {symbol}: {e}")
+                        continue
+                        
+            except Exception as te:
+                self.logger.debug(f"Could not fetch trades for {symbol}: {te}")
+                
+            return whale_transactions
+            
+        except Exception as e:
+            self.logger.warning(f"Error processing whale activity for {symbol}: {str(e)}")
+            return []
+            
+    def _calculate_dynamic_whale_threshold(self, symbol: str, current_price: float, volume_24h: float) -> float:
+        """Calculate dynamic whale threshold based on market conditions."""
+        try:
+            # Base threshold
+            base_threshold = 50000  # $50k base
+            
+            # Adjust based on price level (higher price = higher threshold)
+            if current_price > 100:
+                price_multiplier = 2.0
+            elif current_price > 10:
+                price_multiplier = 1.5
+            elif current_price > 1:
+                price_multiplier = 1.0
+            else:
+                price_multiplier = 0.5
+            
+            # Adjust based on volume (higher volume = higher threshold)
+            if volume_24h > 10000000:  # $10M+ daily volume
+                volume_multiplier = 3.0
+            elif volume_24h > 1000000:  # $1M+ daily volume
+                volume_multiplier = 2.0
+            elif volume_24h > 100000:  # $100k+ daily volume
+                volume_multiplier = 1.0
+            else:
+                volume_multiplier = 0.5
+            
+            # Calculate final threshold
+            threshold = base_threshold * price_multiplier * volume_multiplier
+            
+            # Ensure reasonable bounds
+            return max(10000, min(threshold, 1000000))  # Between $10k and $1M
+            
+        except Exception as e:
+            self.logger.warning(f"Error calculating whale threshold for {symbol}: {e}")
+            return 50000  # Default fallback
+    
+    def _calculate_market_impact(self, trade: Dict[str, Any], order_book: Dict[str, Any], current_price: float) -> float:
+        """Calculate the potential market impact of a whale trade."""
+        try:
+            if not order_book or not trade:
+                return 0.0
+            
+            amount = float(trade.get('amount', 0))
+            price = float(trade.get('price', 0))
+            side = trade.get('side', 'unknown')
+            
+            if amount == 0 or price == 0:
+                return 0.0
+            
+            # Calculate how much of the order book this trade would consume
+            impact = 0.0
+            
+            if side == 'buy' and order_book.get('asks'):
+                # For buy orders, check how much of the ask side would be consumed
+                remaining_amount = amount
+                for ask in order_book['asks']:
+                    ask_price = float(ask[0])
+                    ask_volume = float(ask[1])
+                    
+                    if remaining_amount <= 0:
+                        break
+                    
+                    consumed = min(remaining_amount, ask_volume)
+                    price_impact = abs(ask_price - current_price) / current_price
+                    impact += consumed * price_impact
+                    remaining_amount -= consumed
+                    
+            elif side == 'sell' and order_book.get('bids'):
+                # For sell orders, check how much of the bid side would be consumed
+                remaining_amount = amount
+                for bid in order_book['bids']:
+                    bid_price = float(bid[0])
+                    bid_volume = float(bid[1])
+                    
+                    if remaining_amount <= 0:
+                        break
+                    
+                    consumed = min(remaining_amount, bid_volume)
+                    price_impact = abs(bid_price - current_price) / current_price
+                    impact += consumed * price_impact
+                    remaining_amount -= consumed
+            
+            # Normalize impact score (0-100)
+            return min(impact * 100, 100.0)
+            
+        except Exception as e:
+            self.logger.warning(f"Error calculating market impact: {e}")
+            return 0.0
+    
+    def _generate_whale_summary(self, significant_activity: Dict[str, Any], whale_sentiment: str, whale_bias: float) -> str:
+        """Generate a human-readable summary of whale activity."""
+        try:
+            if not significant_activity:
+                return "No significant whale activity detected in the last 24 hours."
+            
+            # Count symbols with significant activity
+            active_symbols = len(significant_activity)
+            
+            # Find most active symbol
+            most_active_symbol = max(
+                significant_activity.items(), 
+                key=lambda x: x[1]['usd_value']
+            )[0] if significant_activity else 'N/A'
+            
+            # Calculate total volume
+            total_volume = sum(activity['usd_value'] for activity in significant_activity.values())
+            
+            # Generate summary based on sentiment
+            if whale_sentiment == 'BULLISH':
+                sentiment_text = f"strong buying pressure with {whale_bias:.1f}% net buying bias"
+            elif whale_sentiment == 'BEARISH':
+                sentiment_text = f"strong selling pressure with {abs(whale_bias):.1f}% net selling bias"
+            else:
+                sentiment_text = "balanced buying and selling activity"
+            
+            summary = (
+                f"Whale activity detected across {active_symbols} symbols with "
+                f"${self._format_number(total_volume)} total volume. "
+                f"Market shows {sentiment_text}. "
+                f"Most active symbol: {most_active_symbol}."
+            )
+            
+            return summary
+            
+        except Exception as e:
+            self.logger.warning(f"Error generating whale summary: {e}")
+            return "Whale activity summary unavailable."
+
+    def _calculate_whale_threshold(self, order_book: Dict[str, List[List[float]]]) -> float:
+        """Calculate dynamic whale threshold based on order book."""
+        try:
+            # Get top 10 bid and ask orders
+            top_bids = order_book.get('bids', [])[:10]
+            top_asks = order_book.get('asks', [])[:10]
+            
+            # Calculate average order size
+            bid_volumes = [float(bid[1]) * float(bid[0]) for bid in top_bids]
+            ask_volumes = [float(ask[1]) * float(ask[0]) for ask in top_asks]
+            
+            all_volumes = bid_volumes + ask_volumes
+            
+            if not all_volumes:
+                return 50000  # Default threshold
+            
+            # Use 90th percentile as whale threshold
+            all_volumes.sort()
+            percentile_90 = all_volumes[int(len(all_volumes) * 0.9)]
+            
+            # Ensure minimum threshold
+            return max(percentile_90, 10000)
+            
+        except Exception as e:
+            self.logger.warning(f"Error calculating whale threshold: {str(e)}")
+            return 50000  # Default fallback
+
+    async def _calculate_performance_metrics(self, symbols: List[str]) -> Dict[str, Any]:
+        """Calculate system performance metrics."""
+        try:
+            # Calculate API latency metrics
+            if self.api_latencies:
+                avg_latency = sum(self.api_latencies) / len(self.api_latencies)
+                max_latency = max(self.api_latencies)
+                p95_latency = sorted(self.api_latencies)[int(len(self.api_latencies) * 0.95)] if len(self.api_latencies) > 1 else avg_latency
+            else:
+                avg_latency = max_latency = p95_latency = 0
+            
+            # Calculate error rate
+            total_errors = sum(self.error_counts.values())
+            total_requests = sum(self.request_counts.values())
+            error_rate = (total_errors / total_requests * 100) if total_requests > 0 else 0
+            
+            # Calculate errors per minute
+            current_time = time.time()
+            recent_errors = sum(1 for error_time in [self.last_error_time] if current_time - error_time < 60)
+            errors_per_minute = recent_errors
+            
+            # Calculate data quality score
+            data_quality_scores = []
+            for symbol in symbols[:5]:  # Sample first 5 symbols
+                try:
+                    ticker = await self._fetch_with_retry('fetch_ticker', symbol.replace('/', ''), timeout=5)
+                    quality_score = self._calculate_data_quality(ticker)
+                    data_quality_scores.append(quality_score)
+                except:
+                    data_quality_scores.append(0)
+            
+            avg_quality_score = sum(data_quality_scores) / len(data_quality_scores) if data_quality_scores else 100
+            min_quality_score = min(data_quality_scores) if data_quality_scores else 100
+            
+            # Calculate processing times
+            if hasattr(self, 'processing_times') and self.processing_times:
+                avg_processing_time = sum(self.processing_times) / len(self.processing_times)
+                max_processing_time = max(self.processing_times)
+            else:
+                avg_processing_time = max_processing_time = 0
+            
+            result = {
+                'metrics': {
+                    'api_latency': {
+                    'avg': avg_latency,
+                    'max': max_latency,
+                    'p95': p95_latency
+                },
+                'error_rate': {
+                    'total': total_errors,
+                    'by_type': dict(self.error_counts),
+                    'errors_per_minute': errors_per_minute
+                },
+                'data_quality': {
+                    'avg_score': avg_quality_score,
+                    'min_score': min_quality_score
+                },
+                'processing_time': {
+                    'avg': avg_processing_time,
+                    'max': max_processing_time
+                },
+                'timestamp': int(datetime.now().timestamp() * 1000)
+                },
+                'timestamp': int(datetime.now().timestamp() * 1000)
+            }
+            
+            return result
+            
+        except Exception as e:
+            self.logger.error(f"Error calculating performance metrics: {str(e)}")
+            return {
+                'api_latency': {'avg': 0, 'max': 0, 'p95': 0},
+                'error_rate': {'total': 0, 'by_type': {}, 'errors_per_minute': 0.0},
+                'data_quality': {'avg_score': 100, 'min_score': 100},
+                'processing_time': {'avg': 0, 'max': 0},
+                'timestamp': int(datetime.now().timestamp() * 1000),
+                'error': str(e)
+            }
+
+    async def _calculate_bitcoin_beta_analysis(self, symbols: List[str]) -> Dict[str, Any]:
+        """Calculate Bitcoin Beta Analysis for correlation and alpha opportunities."""
+        try:
+            if not self.beta_enabled or not self.beta_report:
+                self.logger.warning("Bitcoin Beta Analysis not available")
+                return {
+                    'beta_analysis': {},
+                    'alpha_opportunities': [],
+                    'timestamp': int(datetime.now().timestamp() * 1000),
+                    'error': 'Bitcoin Beta Analysis not enabled'
+                }
+            
+            self.logger.info("Starting Bitcoin Beta Analysis calculation")
+            
+            # Fetch market data for beta analysis
+            market_data = await self.beta_report._fetch_all_market_data(symbols)
+            if not market_data:
+                self.logger.warning("No market data available for beta analysis")
+                return {
+                    'beta_analysis': {},
+                    'alpha_opportunities': [],
+                    'timestamp': int(datetime.now().timestamp() * 1000)
+                }
+            
+            # Calculate multi-timeframe beta analysis
+            beta_analysis_data = self.beta_report._calculate_multi_timeframe_beta(market_data)
+            
+            if not beta_analysis_data:
+                self.logger.warning("No beta analysis data generated")
+                return {
+                    'beta_analysis': {},
+                    'alpha_opportunities': [],
+                    'timestamp': int(datetime.now().timestamp() * 1000)
+                }
+            
+            # Extract key metrics for market report integration
+            result = {
+                'beta_analysis': beta_analysis_data,
+                'timestamp': int(datetime.now().timestamp() * 1000)
+            }
+            
+            # Add alpha opportunities if available
+            if hasattr(self.beta_report, 'alpha_detector') and self.beta_report.alpha_detector:
+                try:
+                    alpha_opportunities = self.beta_report.alpha_detector.detect_alpha_opportunities(beta_analysis_data)
+                    # Convert AlphaOpportunity objects to dictionaries for JSON serialization
+                    result['alpha_opportunities'] = [opp.to_dict() for opp in alpha_opportunities]
+                    self.logger.info(f"Detected {len(alpha_opportunities)} alpha opportunities")
+                except Exception as alpha_err:
+                    self.logger.warning(f"Error detecting alpha opportunities: {str(alpha_err)}")
+                    result['alpha_opportunities'] = []
+            
+            # Add summary metrics for easy consumption
+            if beta_analysis_data:
+                summary = {}
+                for tf, data in beta_analysis_data.items():
+                    if isinstance(data, dict):
+                        # Calculate average beta for this timeframe
+                        betas = []
+                        for symbol, metrics in data.items():
+                            if isinstance(metrics, dict) and 'beta' in metrics:
+                                try:
+                                    beta_val = float(metrics['beta'])
+                                    if not math.isnan(beta_val) and beta_val > 0:
+                                        betas.append(beta_val)
+                                except (ValueError, TypeError):
+                                    continue
+                        
+                        if betas:
+                            summary[tf] = {
+                                'avg_beta': sum(betas) / len(betas),
+                                'max_beta': max(betas),
+                                'min_beta': min(betas),
+                                'symbol_count': len(betas)
+                            }
+                
+                result['summary'] = summary
+            
+            self.logger.info("Bitcoin Beta Analysis calculation completed successfully")
+            return result
+            
+        except Exception as e:
+            self.logger.error(f"Error calculating Bitcoin Beta Analysis: {str(e)}")
+            return {
+                'beta_analysis': {},
+                'alpha_opportunities': [],
+                'timestamp': int(datetime.now().timestamp() * 1000),
+                'error': str(e)
+            }
+
+    async def _calculate_top_performers(self, symbols: List[str]) -> Dict[str, Any]:
+        """Calculate top performing symbols (gainers and losers)."""
+        try:
+            self.logger.debug(f"Calculating top performers for {len(symbols)} symbols")
+            
+            performers = []
+            failed_symbols = []
+            
+            for symbol in symbols[:20]:  # Limit to top 20 symbols for performance
+                try:
+                    # Get 24h ticker data
+                    ticker_data = await self._fetch_with_retry('fetch_ticker', symbol)
+                    
+                    if ticker_data and 'percentage' in ticker_data:
+                        change_percent = float(ticker_data.get('percentage', 0))
+                        
+                        performer = {
+                            'symbol': symbol,
+                            'price': float(ticker_data.get('last', 0)),
+                            'change_percent': change_percent,
+                            'volume': float(ticker_data.get('baseVolume', 0)),
+                            'change': f"{change_percent:+.2f}%"
+                        }
+                        performers.append(performer)
+                        
+                except Exception as e:
+                    failed_symbols.append(symbol)
+                    self.logger.debug(f"Failed to get ticker for {symbol}: {str(e)}")
+                    continue
+            
+            # Sort by change percentage
+            performers.sort(key=lambda x: x['change_percent'], reverse=True)
+            
+            # Get top gainers and losers
+            gainers = [p for p in performers if p['change_percent'] > 0][:5]
+            losers = [p for p in performers if p['change_percent'] < 0][-5:]
+            losers.reverse()  # Show worst performers first
+            
+            result = {
+                'gainers': gainers,
+                'losers': losers,
+                'total_analyzed': len(performers),
+                'failed_symbols': len(failed_symbols),
+                'timestamp': int(datetime.now().timestamp() * 1000)
+            }
+            
+            self.logger.debug(f"Top performers calculated: {len(gainers)} gainers, {len(losers)} losers")
+            return result
+            
+        except Exception as e:
+            self.logger.error(f"Error calculating top performers: {str(e)}")
+            return {
+                'gainers': [],
+                'losers': [],
+                'total_analyzed': 0,
+                'failed_symbols': len(symbols),
+                'timestamp': int(datetime.now().timestamp() * 1000),
+                'error': str(e)
+            }
+
+    def _validate_report_data(self, report: Dict[str, Any]) -> Dict[str, Any]:
+        """Validate report data and return validation results."""
+        try:
+            validation_results = {
+                'valid': True,
+                'issues': [],
+                'warnings': [],
+                'quality_score': 100.0
+            }
+            
+            # Check for required sections
+            required_sections = ['market_overview', 'futures_premium', 'smart_money_index', 'whale_activity']
+            missing_sections = []
+            
+            for section in required_sections:
+                if section not in report or not report[section]:
+                    missing_sections.append(section)
+                    validation_results['warnings'].append(f"Missing or empty section: {section}")
+            
+            # Reduce quality score for missing sections
+            if missing_sections:
+                validation_results['quality_score'] -= len(missing_sections) * 15
+            
+            # Check data freshness
+            current_time = int(time.time() * 1000)
+            for section_name, section_data in report.items():
+                if isinstance(section_data, dict) and 'timestamp' in section_data:
+                    timestamp = section_data['timestamp']
+                    age_minutes = (current_time - timestamp) / (1000 * 60)
+                    
+                    if age_minutes > 30:  # Data older than 30 minutes
+                        validation_results['warnings'].append(f"Stale data in {section_name}: {age_minutes:.1f} min old")
+                        validation_results['quality_score'] -= 5
+            
+            # Check for error indicators
+            if 'failed_symbols' in report.get('market_overview', {}):
+                failed_count = len(report['market_overview']['failed_symbols'])
+                if failed_count > 0:
+                    validation_results['warnings'].append(f"{failed_count} symbols failed to load")
+                    validation_results['quality_score'] -= failed_count * 2
+            
+            # Ensure minimum quality score
+            validation_results['quality_score'] = max(60.0, validation_results['quality_score'])
+            
+            # Set overall validity
+            validation_results['valid'] = validation_results['quality_score'] >= 60.0
+            
+            return validation_results
+            
+        except Exception as e:
+            self.logger.error(f"Error validating report data: {str(e)}")
+            return {
+                'valid': False,
+                'issues': [f"Validation error: {str(e)}"],
+                'warnings': [],
+                'quality_score': 0.0
+            }
+
+    def _convert_symbol_format(self, symbol):
+        """
+        Convert symbol to the correct format for Bybit API with improved futures contract handling.
+        
+        Args:
+            symbol: Symbol in any format (CCXT, Bybit, etc.)
+            
+        Returns:
+            str: Symbol in appropriate format for the API call
+        """
+        try:
+            # If already in simple Bybit format (no slashes/colons), return as-is
+            if '/' not in symbol and ':' not in symbol:
+                return symbol
+            
+            # Check if this is a futures contract with expiry date
+            if self._is_futures_contract(symbol):
+                return self._convert_futures_symbol(symbol)
+            
+            # Handle standard spot/perpetual conversions
+            # Convert from CCXT format (BTC/USDT:USDT) to Bybit format (BTCUSDT)
+            if '/' in symbol:
+                # Remove everything after colon if present (for perpetual contracts)
+                base_symbol = symbol.split(':')[0] if ':' in symbol else symbol
+                # Remove the slash to get Bybit format
+                return base_symbol.replace('/', '')
+                
+            return symbol
+            
+        except Exception as e:
+            self.logger.warning(f"Symbol format conversion failed for {symbol}: {e}")
+            return symbol
+
+    def _is_futures_contract(self, symbol):
+        """
+        Detect if a symbol represents a futures contract with expiry.
+        
+        Args:
+            symbol: Symbol to check
+            
+        Returns:
+            bool: True if it's a futures contract with expiry
+        """
+        try:
+            # Look for date patterns in the symbol (YYYYMMDD or similar)
+            import re
+            
+            # Pattern 1: YYYY-MM-DD or YYYYMMDD format
+            date_pattern = r'(\d{4}[-]?\d{2}[-]?\d{2}|\d{8})'
+            if re.search(date_pattern, symbol):
+                return True
+                
+            # Pattern 2: Month codes (H, M, U, Z) followed by year
+            month_code_pattern = r'[HMUZ]\d{2}$'
+            if re.search(month_code_pattern, symbol):
+                return True
+                
+            # Pattern 3: Standard quarterly format (e.g., -27JUN25)
+            quarterly_pattern = r'-\d{1,2}[A-Z]{3}\d{2}$'
+            if re.search(quarterly_pattern, symbol):
+                return True
+                
+            # Pattern 4: MMDD format (e.g., SOLUSDT0627)
+            mmdd_pattern = r'[A-Z]+USDT\d{4}$'
+            if re.search(mmdd_pattern, symbol):
+                return True
+                
+            return False
+            
+        except Exception as e:
+            self.logger.debug(f"Error checking futures contract pattern for {symbol}: {e}")
+            return False
+
+    def _convert_futures_symbol(self, symbol):
+        """
+        Convert futures symbol while preserving contract information.
+        
+        Args:
+            symbol: Futures symbol to convert
+            
+        Returns:
+            str: Converted symbol preserving futures contract information
+        """
+        try:
+            # For complex futures symbols like ETH/USDT:USDT-20260328
+            if '/' in symbol and ':' in symbol:
+                # Split into parts
+                parts = symbol.split(':')
+                base_part = parts[0].replace('/', '')  # ETH/USDT -> ETHUSDT
+                
+                if len(parts) > 1:
+                    # Handle the contract part
+                    contract_part = parts[1]  # USDT-20260328
+                    
+                    if '-' in contract_part:
+                        quote, expiry = contract_part.split('-', 1)
+                        # Convert date format if needed (20260328 -> proper format)
+                        if expiry.isdigit() and len(expiry) == 8:
+                            # Convert YYYYMMDD to -DDMMMYY format for Bybit
+                            year = expiry[:4]
+                            month = expiry[4:6]
+                            day = expiry[6:8]
+                            
+                            month_names = {
+                                '01': 'JAN', '02': 'FEB', '03': 'MAR', '04': 'APR',
+                                '05': 'MAY', '06': 'JUN', '07': 'JUL', '08': 'AUG',
+                                '09': 'SEP', '10': 'OCT', '11': 'NOV', '12': 'DEC'
+                            }
+                            
+                            if month in month_names:
+                                formatted_expiry = f"-{day}{month_names[month]}{year[2:]}"
+                                return f"{base_part}{formatted_expiry}"
+                        else:
+                            # Keep original expiry format
+                            return f"{base_part}-{expiry}"
+                    else:
+                        # No expiry separator, keep as-is
+                        return f"{base_part}{contract_part}"
+                
+                return base_part
+            
+            # For simpler futures symbols, preserve the format
+            elif '/' in symbol:
+                return symbol.replace('/', '')
+            
+            # Return as-is if no conversion needed
+            return symbol
+            
+        except Exception as e:
+            self.logger.warning(f"Futures symbol conversion failed for {symbol}: {e}")
+            return symbol
+
+    def _detect_symbol_format(self, symbol):
+        """
+        Detect and auto-correct symbol format for API calls with improved futures handling.
+        
+        Args:
+            symbol: Symbol to detect format for
+            
+        Returns:
+            tuple: (bybit_format, ccxt_format)
+        """
+        try:
+            # Check if it's a futures contract
+            if self._is_futures_contract(symbol):
+                bybit_format = self._convert_futures_symbol(symbol)
+                # For futures, keep the CCXT format mostly intact
+                ccxt_format = symbol
+            else:
+                bybit_format = self._convert_symbol_format(symbol)
+                
+                # Get CCXT format from mapping or construct it
+                if bybit_format in self.symbol_mapping:
+                    ccxt_format = self.symbol_mapping[bybit_format]
+                else:
+                    # Construct CCXT format for unmapped symbols
+                    if bybit_format.endswith('USDT'):
+                        base = bybit_format[:-4]  # Remove 'USDT'
+                        ccxt_format = f"{base}/USDT:USDT"
+                    else:
+                        ccxt_format = bybit_format
+                    
+            return bybit_format, ccxt_format
+            
+        except Exception as e:
+            self.logger.error(f"Symbol format detection failed for {symbol}: {e}")
+            return symbol, symbol
+
+    async def generate_bitcoin_beta_report(self) -> Optional[str]:
+        """Generate a standalone Bitcoin Beta Analysis report.
+        
+        Returns:
+            str: Path to generated PDF report, or None if failed
+        """
+        try:
+            if not self.beta_enabled or not self.beta_report:
+                self.logger.error("Bitcoin Beta Analysis not available for standalone report")
+                return None
+            
+            self.logger.info("Generating standalone Bitcoin Beta Analysis report")
+            
+            # Generate the full beta report
+            pdf_path = await self.beta_report.generate_report()
+            
+            if pdf_path:
+                self.logger.info(f"Bitcoin Beta Analysis report generated: {pdf_path}")
+                
+                # Send alert if alert manager is available
+                if self.alert_manager:
+                    await self.alert_manager.send_alert(
+                        level="info",
+                        message="Bitcoin Beta Analysis report generated",
+                        details={"type": "bitcoin_beta_report", "pdf_path": pdf_path}
+                    )
+                
+                return pdf_path
+            else:
+                self.logger.error("Failed to generate Bitcoin Beta Analysis report")
+                return None
+                
+        except Exception as e:
+            self.logger.error(f"Error generating Bitcoin Beta Analysis report: {str(e)}")
+            return None
+
+    async def schedule_beta_reports(self):
+        """Schedule Bitcoin Beta Analysis reports every 6 hours."""
+        beta_report_times = [
+            "00:00",  # Daily reset
+            "06:00",  # 6 hours later
+            "12:00",  # 12 hours later  
+            "18:00"   # 18 hours later
+        ]
+        
+        try:
+            while True:
+                try:
+                    current_time = datetime.utcnow()
+                    current_hhmm = current_time.strftime("%H:%M")
+                    
+                    if current_hhmm in beta_report_times:
+                        self.logger.info(f"Generating scheduled Bitcoin Beta Analysis report at {current_hhmm} UTC")
+                        
+                        pdf_path = await self.generate_bitcoin_beta_report()
+                        
+                        if pdf_path and self.alert_manager:
+                            # Send enhanced Discord notification for beta report
+                            if hasattr(self.alert_manager, 'send_discord_webhook_message'):
+                                beta_notification = {
+                                    "content": f"📊 **Bitcoin Beta Analysis Report**\n*{current_time.strftime('%B %d, %Y - %H:%M UTC')}*",
+                                    "embeds": [{
+                                        "title": "📈 Bitcoin Beta Analysis Complete",
+                                        "color": 3447003,  # Blue
+                                        "description": (
+                                            "Multi-timeframe correlation analysis with Bitcoin across 4H, 30M, 5M, and 1M timeframes.\n\n"
+                                            "**Key Metrics:**\n"
+                                            "• Beta coefficients for all major pairs\n"
+                                            "• Alpha generation opportunities\n"
+                                            "• Cross-timeframe divergence signals\n"
+                                            "• Statistical significance testing"
+                                        ),
+                                        "fields": [
+                                            {
+                                                "name": "📋 Report Contents",
+                                                "value": "• Normalized price performance charts\n• Beta comparison across timeframes\n• Correlation heatmap\n• Trading insights & recommendations",
+                                                "inline": False
+                                            }
+                                        ],
+                                        "footer": {
+                                            "text": f"Virtuoso Beta Engine | {current_time.strftime('%H:%M:%S UTC')}",
+                                            "icon_url": "https://i.imgur.com/4M34hi2.png"
+                                        },
+                                        "timestamp": current_time.isoformat() + 'Z'
+                                    }],
+                                    "username": "Virtuoso Beta Monitor",
+                                    "avatar_url": "https://i.imgur.com/4M34hi2.png"
+                                }
+                                
+                                # Add PDF attachment
+                                if os.path.exists(pdf_path):
+                                    files = [{
+                                        'path': pdf_path,
+                                        'filename': os.path.basename(pdf_path),
+                                        'description': 'Bitcoin Beta Analysis Report'
+                                    }]
+                                    
+                                    await self.alert_manager.send_discord_webhook_message(beta_notification, files=files)
+                                    self.logger.info("Bitcoin Beta Analysis report sent to Discord with PDF attachment")
+                                else:
+                                    await self.alert_manager.send_discord_webhook_message(beta_notification)
+                                    self.logger.info("Bitcoin Beta Analysis notification sent to Discord")
+                    
+                    await asyncio.sleep(60)  # Check every minute
+                    
+                except asyncio.CancelledError:
+                    self.logger.info("Bitcoin Beta Analysis scheduler stopped")
+                    raise
+                except Exception as e:
+                    self.logger.error(f"Error in Beta Analysis scheduler: {str(e)}")
+                    await asyncio.sleep(60)
+                    
+        except asyncio.CancelledError:
+            self.logger.info("Bitcoin Beta Analysis scheduler stopped")
+            raise
+        except Exception as e:
+            self.logger.error(f"Fatal error in Beta Analysis scheduler: {str(e)}")
+            raise
+
+    def _optimize_memory(self):
+        """Optimize memory usage by cleaning up data structures and forcing garbage collection."""
+        try:
+            if not self.memory_optimization_enabled:
+                return
+                
+            # Truncate large data structures
+            if len(self.api_latencies) > 50:
+                self.api_latencies = self.api_latencies[-50:]
+                
+            if len(self.data_quality_scores) > 20:
+                self.data_quality_scores = self.data_quality_scores[-20:]
+                
+            if len(self.processing_times) > 20:
+                self.processing_times = self.processing_times[-20:]
+            
+            # Clear old cache entries if memory is tight
+            if hasattr(self, 'cache') and len(self.cache) > 250:
+                # Keep only most recent half of cache entries
+                cache_items = list(self.cache.items())
+                self.cache.clear()
+                for key, value in cache_items[-125:]:  # Keep last 125 entries
+                    self.cache[key] = value
+            
+            # Force garbage collection periodically
+            self.operation_count += 1
+            if self.operation_count % self.gc_collection_interval == 0:
+                collected = gc.collect()
+                if collected > 0:
+                    self.logger.debug(f"Garbage collection freed {collected} objects")
+                    
+            # Log memory usage occasionally
+            if self.operation_count % 50 == 0:
+                memory_info = self._get_memory_usage()
+                self.logger.info(f"Memory optimization active - Current usage: {memory_info}")
+                
+        except Exception as e:
+            self.logger.warning(f"Memory optimization error: {e}")
+
+    def _check_memory_pressure(self) -> bool:
+        """Check if system is under memory pressure."""
+        try:
+            # Simple check based on available memory
+            memory_info = self._get_memory_usage()
+            if isinstance(memory_info, dict) and 'available_mb' in memory_info:
+                available_mb = memory_info['available_mb']
+                return available_mb < 500  # Less than 500MB available
+            return False
+        except Exception:
+            return False
+
+    def _safe_float_from_percentage(self, value):
+        """Safely convert a percentage value to float, handling both string and numeric inputs.
+        
+        Args:
+            value: Can be a string like '5.2%', a float like 0.052, or a numeric value
+            
+        Returns:
+            float: The percentage value as a float (e.g., 5.2 for '5.2%')
+        """
+        try:
+            if value is None:
+                return 0.0
+            
+            # If it's already a number, check if it's in decimal form (< 1) or percentage form (> 1)
+            if isinstance(value, (int, float)):
+                # If value is between 0 and 1, assume it's in decimal form (e.g., 0.052 = 5.2%)
+                if 0 <= value <= 1:
+                    return value * 100
+                else:
+                    # If value is > 1, assume it's already in percentage form
+                    return float(value)
+            
+            # If it's a string, handle percentage signs
+            if isinstance(value, str):
+                # Remove % sign and whitespace
+                cleaned = value.strip().replace('%', '')
+                return float(cleaned)
+            
+            # Fallback for other types - try to convert to string first, then process
+            try:
+                str_value = str(value)
+                if '%' in str_value:
+                    cleaned = str_value.strip().replace('%', '')
+                    return float(cleaned)
+                else:
+                    return float(value)
+            except (ValueError, TypeError):
+                return float(value)
+            
+        except (ValueError, TypeError, AttributeError) as e:
+            self.logger.debug(f"Could not convert percentage value: {value} (type: {type(value)}) - Error: {e}")
+            return 0.0
+    async def _fetch_bybit_open_interest_direct(self, symbol: str) -> float:
+        """
+        Fetch Open Interest directly from Bybit API bypassing CCXT
+        
+        Args:
+            symbol: CCXT format symbol (e.g., 'BTC/USDT:USDT')
+            
+        Returns:
+            float: Open Interest value
+        """
+        try:
+            import aiohttp
+            
+            # Convert CCXT symbol to Bybit format
+            if ':USDT' in symbol:  # Perpetual futures
+                bybit_symbol = symbol.replace('/USDT:USDT', 'USDT')  # BTC/USDT:USDT -> BTCUSDT
+                category = 'linear'
+            elif '/USDT' in symbol:  # Spot
+                bybit_symbol = symbol.replace('/', '')  # BTC/USDT -> BTCUSDT  
+                category = 'spot'
+            elif '/USD' in symbol:  # Inverse contracts
+                bybit_symbol = symbol.replace('/', '')  # BTC/USD -> BTCUSD
+                category = 'inverse'
+            else:
+                # Assume it's already in Bybit format
+                bybit_symbol = symbol
+                category = 'linear'  # Default to linear
+            
+            # Bybit API endpoint
+            url = "https://api.bybit.com/v5/market/tickers"
+            params = {
+                'category': category,
+                'symbol': bybit_symbol
+            }
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, params=params) as response:
+                    if response.status != 200:
+                        self.logger.warning(f"Bybit API error for {symbol}: HTTP {response.status}")
+                        return 0
+                    
+                    data = await response.json()
+                    
+                    if data.get('retCode') != 0:
+                        self.logger.warning(f"Bybit API returned error for {symbol}: {data}")
+                        return 0
+                    
+                    result = data.get('result', {})
+                    ticker_list = result.get('list', [])
+                    
+                    if not ticker_list:
+                        self.logger.warning(f"No Bybit ticker data for {symbol} ({bybit_symbol})")
+                        return 0
+                    
+                    ticker = ticker_list[0]
+                    
+                    # Extract Open Interest
+                    oi_raw = ticker.get('openInterest') or ticker.get('openInterestValue')
+                    if oi_raw:
+                        try:
+                            oi = float(oi_raw)
+                            self.logger.info(f"🎯 Bybit OI for {symbol}: {oi:,.2f} ({category}/{bybit_symbol})")
+                            return oi
+                        except (ValueError, TypeError) as e:
+                            self.logger.warning(f"Error parsing Bybit OI for {symbol}: {oi_raw} - {e}")
+                            return 0
+                    else:
+                        self.logger.debug(f"No OI fields in Bybit response for {symbol}")
+                        return 0
+                        
+        except Exception as e:
+            self.logger.warning(f"Error fetching Bybit OI for {symbol}: {e}")
+            return 0
+
+    def _transform_futures_premium_for_template(self, futures_premium_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Transform futures premium data to match template expectations."""
+        try:
+            if not futures_premium_data or 'premiums' not in futures_premium_data:
+                return futures_premium_data
+            
+            # Transform each symbol's premium data
+            transformed_premiums = {}
+            for symbol, data in futures_premium_data['premiums'].items():
+                transformed_data = {
+                    'mark_price': data.get('perpetual_price', data.get('index_price', 0)),
+                    'index_price': data.get('index_price', 0),
+                    'premium': f"{data.get('perpetual_basis', 0):.3f}%",
+                    'premium_value': data.get('perpetual_basis', 0),  # Numeric value for template logic
+                    'premium_type': 'Contango' if data.get('perpetual_basis', 0) >= 0 else 'Backwardation',
+                    'quarterly_price': data.get('quarterly_price', 0),
+                    'quarterly_basis': f"{data.get('quarterly_basis', 0):.3f}%"
+                }
+                transformed_premiums[symbol] = transformed_data
+            
+            # Update the futures premium data with transformed structure
+            transformed_data = futures_premium_data.copy()
+            transformed_data['premiums'] = transformed_premiums
+            
+            # Add premium_data at the top level for template compatibility
+            transformed_data['premium_data'] = transformed_premiums
+            
+            return transformed_data
+            
+        except Exception as e:
+            self.logger.error(f"Error transforming futures premium data for template: {str(e)}")
+            return futures_premium_data

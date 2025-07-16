@@ -107,14 +107,43 @@ class ConfigManager:
         elif isinstance(config, list):
             return [ConfigManager._process_env_variables(item) for item in config]
         elif isinstance(config, str):
-            # Handle ${VAR} format
+            # Handle ${VAR:default} format
             if config.startswith('${') and config.endswith('}'):
-                env_var = config[2:-1]
+                env_spec = config[2:-1]  # Remove ${ and }
+                
+                # Check if there's a default value specified
+                if ':' in env_spec:
+                    env_var, default_value = env_spec.split(':', 1)
+                    env_value = os.getenv(env_var)
+                    if env_value is None:
+                        logger.debug(f"Environment variable {env_var} not found, using default: {default_value}")
+                        # Convert string representations to proper types
+                        if default_value.lower() == 'true':
+                            return True
+                        elif default_value.lower() == 'false':
+                            return False
+                        elif default_value.isdigit():
+                            return int(default_value)
+                        else:
+                            return default_value
+                    else:
+                        # Convert string representations to proper types
+                        if env_value.lower() == 'true':
+                            return True
+                        elif env_value.lower() == 'false':
+                            return False
+                        elif env_value.isdigit():
+                            return int(env_value)
+                        else:
+                            return env_value
+                else:
+                    # No default value specified
+                    env_var = env_spec
                 env_value = os.getenv(env_var)
                 if env_value is None:
                     logger.warning(f"Environment variable {env_var} not found")
                     # Try to get from .env file
-                    env_path = Path(__file__).parent.parent.parent / "config" / ".env"
+                    env_path = Path(__file__).parent.parent.parent / ".env"
                     if env_path.exists():
                         with open(env_path, 'r') as f:
                             for line in f:

@@ -75,4 +75,26 @@ class ValidationResult:
     @property
     def is_valid(self) -> bool:
         """Check if validation passed."""
-        return self.success and not self.errors 
+        return self.success and not self.errors
+
+
+@dataclasses.dataclass
+class ValidationMetrics:
+    """Metrics for validation operations."""
+    
+    total_validations: int = 0
+    failed_validations: int = 0
+    avg_validation_time: float = 0.0
+    last_validation: Optional[datetime] = None
+    
+    def record_validation(self, duration: float, success: bool) -> None:
+        """Record validation operation."""
+        self.total_validations += 1
+        if not success:
+            self.failed_validations += 1
+        
+        self.avg_validation_time = (
+            (self.avg_validation_time * (self.total_validations - 1) + duration)
+            / self.total_validations
+        )
+        self.last_validation = datetime.utcnow() 

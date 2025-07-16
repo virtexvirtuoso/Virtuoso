@@ -1,0 +1,1023 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Virtuoso Trading Dashboard V6 - Vintage Terminal</title>
+    <style>
+        /* Vintage Terminal Theme */
+        :root {
+            --bg-dark: #000000;
+            --bg-card: #001a00;
+            --bg-panel: #002200;
+            --text-primary: #00ff41;
+            --text-secondary: #00aa22;
+            --amber-primary: #ffb000;
+            --amber-secondary: #cc8800;
+            --phosphor-green: #00ff41;
+            --phosphor-amber: #ffb000;
+            --crt-glow: #00ff41;
+            --border-color: #00ff41;
+            --bullish: #00ff41;
+            --bearish: #ff4444;
+            --neutral: #ffff88;
+            --scanline: rgba(0, 255, 65, 0.02);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Courier New', 'VT323', 'Perfect DOS VGA 437', 'IBM Plex Mono', monospace;
+        }
+
+        body {
+            background: var(--bg-dark);
+            color: var(--text-primary);
+            line-height: 1.4;
+            min-height: 100vh;
+            overflow-x: hidden;
+            position: relative;
+            font-size: 14px;
+            /* CRT screen curvature */
+            border-radius: 20px;
+            margin: 10px;
+            box-shadow: 
+                0 0 0 2px #333,
+                0 0 0 4px #222,
+                0 0 50px rgba(0, 255, 65, 0.3);
+        }
+
+        /* CRT Screen effect */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: repeating-linear-gradient(
+                0deg,
+                transparent,
+                transparent 2px,
+                var(--scanline) 2px,
+                var(--scanline) 4px
+            );
+            pointer-events: none;
+            z-index: 1000;
+            animation: scanlines 0.1s linear infinite;
+        }
+
+        /* Phosphor screen glow */
+        body::after {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(ellipse at center, transparent 40%, rgba(0, 0, 0, 0.3) 100%);
+            pointer-events: none;
+            z-index: 999;
+        }
+
+        @keyframes scanlines {
+            0% { transform: translateY(0); }
+            100% { transform: translateY(4px); }
+        }
+
+        /* Phosphor glow effect */
+        .phosphor-glow {
+            text-shadow: 
+                0 0 5px var(--crt-glow),
+                0 0 10px var(--crt-glow),
+                0 0 15px var(--crt-glow);
+        }
+
+        /* CRT flicker effect */
+        @keyframes crtFlicker {
+            0%, 100% { opacity: 1; }
+            99% { opacity: 1; }
+            99.5% { opacity: 0.98; }
+        }
+
+        .crt-flicker {
+            animation: crtFlicker 0.15s infinite;
+        }
+
+        /* Header */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1.5rem 2rem;
+            border-bottom: 1px solid var(--text-primary);
+            background: linear-gradient(180deg, var(--bg-card), var(--bg-dark));
+            position: relative;
+            z-index: 10;
+        }
+
+        .header::before {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 1px;
+            background: var(--text-primary);
+            animation: terminalBlink 1s infinite;
+        }
+
+        @keyframes terminalBlink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0.3; }
+        }
+
+        .terminal-title {
+            font-size: 2rem;
+            color: var(--text-primary);
+            margin: 0;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            font-weight: normal;
+            text-shadow: 
+                0 0 5px var(--crt-glow),
+                0 0 10px var(--crt-glow);
+        }
+
+        .subtitle {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            margin-top: 5px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .header-controls {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .config-toggle {
+            background: var(--bg-dark);
+            border: 1px solid var(--text-primary);
+            color: var(--text-primary);
+            padding: 0.5rem 1rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-transform: uppercase;
+            font-weight: normal;
+            letter-spacing: 1px;
+            font-family: inherit;
+            font-size: 12px;
+        }
+
+        .config-toggle:hover {
+            background: var(--text-primary);
+            color: var(--bg-dark);
+            text-shadow: none;
+        }
+
+        .real-time-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: var(--bg-panel);
+            padding: 8px 12px;
+            border: 1px solid var(--text-primary);
+        }
+
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            background: var(--text-primary);
+            display: inline-block;
+            animation: terminalBlink 1s infinite;
+        }
+
+        /* Dashboard Grid */
+        .dashboard-container {
+            padding: 20px;
+            max-width: 1600px;
+            margin: 0 auto;
+            position: relative;
+            z-index: 10;
+        }
+
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            grid-template-rows: auto auto auto;
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .panel {
+            background: var(--bg-card);
+            border: 1px solid var(--text-primary);
+            padding: 15px;
+            position: relative;
+            overflow: hidden;
+            font-size: 12px;
+        }
+
+        .panel::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: var(--text-primary);
+            opacity: 0.8;
+        }
+
+        .panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid var(--text-secondary);
+        }
+
+        .panel-title {
+            color: var(--text-primary);
+            font-weight: normal;
+            text-transform: uppercase;
+            font-size: 13px;
+            letter-spacing: 2px;
+            text-shadow: 0 0 5px var(--crt-glow);
+        }
+
+        .panel-count {
+            background: var(--text-primary);
+            color: var(--bg-dark);
+            padding: 2px 6px;
+            font-size: 10px;
+            text-transform: uppercase;
+        }
+
+        /* Signals Panel */
+        .signals-panel {
+            grid-column: 1 / 3;
+            grid-row: 1;
+        }
+
+        .signal-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px dotted var(--text-secondary);
+            transition: all 0.2s ease;
+            position: relative;
+        }
+
+        .signal-item::before {
+            content: '>';
+            position: absolute;
+            left: -15px;
+            color: var(--text-primary);
+            opacity: 0;
+            transition: all 0.2s ease;
+        }
+
+        .signal-item:hover {
+            background: rgba(0, 255, 65, 0.05);
+            padding-left: 10px;
+        }
+
+        .signal-item:hover::before {
+            opacity: 1;
+            left: -10px;
+        }
+
+        .signal-symbol {
+            font-weight: normal;
+            color: var(--text-primary);
+            font-size: 13px;
+            text-shadow: 0 0 3px var(--crt-glow);
+        }
+
+        .signal-type {
+            margin-left: 12px;
+            font-size: 10px;
+            text-transform: uppercase;
+            padding: 2px 6px;
+            font-weight: normal;
+            border: 1px solid;
+        }
+
+        .signal-score {
+            font-weight: normal;
+            font-size: 14px;
+            text-shadow: 0 0 5px currentColor;
+        }
+
+        .score-bullish { 
+            color: var(--bullish);
+        }
+        .score-bearish { 
+            color: var(--bearish);
+        }
+        .score-neutral { 
+            color: var(--neutral);
+        }
+
+        .signal-type.score-bullish {
+            background: transparent;
+            border-color: var(--bullish);
+            color: var(--bullish);
+        }
+        .signal-type.score-bearish {
+            background: transparent;
+            border-color: var(--bearish);
+            color: var(--bearish);
+        }
+        .signal-type.score-neutral {
+            background: transparent;
+            border-color: var(--neutral);
+            color: var(--neutral);
+        }
+
+        .signal-time {
+            font-size: 10px;
+            color: var(--text-secondary);
+            margin-left: 12px;
+        }
+
+        /* Alpha Panel */
+        .alpha-panel {
+            grid-column: 3;
+            grid-row: 1 / 3;
+        }
+
+        .alpha-item {
+            background: var(--bg-panel);
+            border-left: 2px solid var(--text-primary);
+            padding: 12px;
+            margin: 10px 0;
+            position: relative;
+            transition: all 0.2s ease;
+        }
+
+        .alpha-item:hover {
+            transform: translateX(3px);
+            background: rgba(0, 255, 65, 0.05);
+        }
+
+        .alpha-symbol {
+            font-weight: normal;
+            color: var(--text-primary);
+            font-size: 13px;
+            text-shadow: 0 0 5px var(--crt-glow);
+        }
+
+        .alpha-pattern {
+            color: var(--text-secondary);
+            font-size: 11px;
+            margin: 4px 0;
+            text-transform: uppercase;
+        }
+
+        .alpha-confidence, .alpha-potential {
+            font-size: 10px;
+            color: var(--text-secondary);
+            margin: 2px 0;
+        }
+
+        /* Market Panel */
+        .market-panel {
+            grid-column: 1 / 3;
+            grid-row: 2;
+        }
+
+        .market-metrics {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 15px;
+        }
+
+        .metric-card {
+            background: var(--bg-panel);
+            padding: 15px;
+            text-align: center;
+            border: 1px solid var(--text-secondary);
+            transition: all 0.2s ease;
+            position: relative;
+        }
+
+        .metric-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 0;
+            height: 1px;
+            background: var(--text-primary);
+            transition: width 0.3s ease;
+        }
+
+        .metric-card:hover::before {
+            width: 100%;
+        }
+
+        .metric-card:hover {
+            border-color: var(--text-primary);
+            background: rgba(0, 255, 65, 0.05);
+        }
+
+        .metric-value {
+            font-size: 18px;
+            font-weight: normal;
+            color: var(--text-primary);
+            text-shadow: 0 0 5px var(--crt-glow);
+        }
+
+        .metric-label {
+            font-size: 10px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            margin-top: 5px;
+        }
+
+        /* Alerts Panel */
+        .alerts-panel {
+            grid-column: 1 / 4;
+            grid-row: 3;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .alerts-panel::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .alerts-panel::-webkit-scrollbar-track {
+            background: var(--bg-panel);
+        }
+
+        .alerts-panel::-webkit-scrollbar-thumb {
+            background: var(--text-primary);
+        }
+
+        .alert-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 10px;
+            margin: 5px 0;
+            transition: all 0.2s ease;
+            position: relative;
+            border-left: 2px solid transparent;
+        }
+
+        .alert-priority-high { 
+            background: rgba(255, 68, 68, 0.1);
+            border-left-color: var(--bearish);
+        }
+        .alert-priority-medium { 
+            background: rgba(255, 255, 136, 0.1);
+            border-left-color: var(--neutral);
+        }
+        .alert-priority-low { 
+            background: rgba(0, 255, 65, 0.1);
+            border-left-color: var(--bullish);
+        }
+
+        .alert-item:hover {
+            transform: translateX(5px);
+            background: rgba(0, 255, 65, 0.05);
+        }
+
+        .alert-time {
+            font-size: 10px;
+            color: var(--text-secondary);
+        }
+
+        /* Config Panel */
+        .config-panel {
+            position: fixed;
+            top: 0;
+            right: -400px;
+            width: 400px;
+            height: 100vh;
+            background: var(--bg-card);
+            border-left: 1px solid var(--text-primary);
+            transition: right 0.3s ease;
+            z-index: 1000;
+            overflow-y: auto;
+            padding: 20px;
+        }
+
+        .config-panel.open {
+            right: 0;
+        }
+
+        .config-section {
+            margin: 20px 0;
+            padding: 15px;
+            background: var(--bg-panel);
+            border: 1px solid var(--text-secondary);
+            position: relative;
+        }
+
+        .config-section::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: var(--text-primary);
+            opacity: 0.6;
+        }
+
+        .config-section h3 {
+            color: var(--text-primary);
+            margin-bottom: 12px;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            text-shadow: 0 0 5px var(--crt-glow);
+            font-weight: normal;
+        }
+
+        .config-input {
+            width: 100%;
+            padding: 8px;
+            background: var(--bg-dark);
+            border: 1px solid var(--text-secondary);
+            color: var(--text-primary);
+            margin: 5px 0;
+            transition: all 0.2s ease;
+            font-family: inherit;
+            font-size: 12px;
+        }
+
+        .config-input:focus {
+            outline: none;
+            border-color: var(--text-primary);
+            background: rgba(0, 255, 65, 0.05);
+        }
+
+        .config-input label {
+            display: block;
+            margin: 12px 0 5px 0;
+            color: var(--text-secondary);
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .save-btn {
+            background: var(--text-primary);
+            color: var(--bg-dark);
+            font-weight: normal;
+        }
+
+        .reset-btn {
+            background: transparent;
+            color: var(--text-primary);
+            font-weight: normal;
+        }
+
+        .save-btn:hover, .reset-btn:hover {
+            background: var(--text-primary);
+            color: var(--bg-dark);
+        }
+
+        /* Responsive Design */
+        @media (max-width: 1200px) {
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+                grid-template-rows: auto auto auto auto;
+            }
+            
+            .signals-panel {
+                grid-column: 1;
+                grid-row: 1;
+            }
+            
+            .alpha-panel {
+                grid-column: 1;
+                grid-row: 2;
+            }
+            
+            .market-panel {
+                grid-column: 1;
+                grid-row: 3;
+            }
+            
+            .alerts-panel {
+                grid-column: 1;
+                grid-row: 4;
+            }
+        }
+
+        /* Demo Badge */
+        .demo-badge {
+            background: var(--text-primary);
+            color: var(--bg-dark);
+            padding: 2px 5px;
+            font-size: 9px;
+            text-transform: uppercase;
+            margin-left: 8px;
+        }
+
+        /* Terminal cursor effect */
+        .cursor::after {
+            content: '_';
+            animation: terminalBlink 1s infinite;
+        }
+
+        /* Boot sequence text */
+        .boot-text {
+            font-size: 11px;
+            color: var(--text-secondary);
+            margin: 2px 0;
+            opacity: 0.8;
+        }
+
+        /* CRT noise overlay */
+        .crt-noise {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: 
+                repeating-linear-gradient(
+                    0deg,
+                    transparent,
+                    transparent 1px,
+                    rgba(0, 255, 65, 0.03) 1px,
+                    rgba(0, 255, 65, 0.03) 2px
+                ),
+                repeating-linear-gradient(
+                    90deg,
+                    transparent,
+                    transparent 1px,
+                    rgba(0, 255, 65, 0.02) 1px,
+                    rgba(0, 255, 65, 0.02) 2px
+                );
+            pointer-events: none;
+            z-index: 998;
+            animation: crtNoise 0.2s infinite;
+        }
+
+        @keyframes crtNoise {
+            0% { transform: translate(0, 0); }
+            10% { transform: translate(-1px, 1px); }
+            20% { transform: translate(1px, 0); }
+            30% { transform: translate(0, -1px); }
+            40% { transform: translate(-1px, -1px); }
+            50% { transform: translate(1px, 1px); }
+            60% { transform: translate(0, 1px); }
+            70% { transform: translate(-1px, 0); }
+            80% { transform: translate(1px, -1px); }
+            90% { transform: translate(0, 0); }
+            100% { transform: translate(-1px, 1px); }
+        }
+    </style>
+</head>
+<body class="crt-flicker">
+    <!-- CRT Noise overlay -->
+    <div class="crt-noise"></div>
+    
+    <div class="dashboard-container">
+        <!-- Header -->
+        <header class="header">
+            <div>
+                <h1 class="terminal-title phosphor-glow">VIRTUOSO TERMINAL v1.2</h1>
+                <div class="subtitle">Financial Data Processing System • © 1985</div>
+                <div class="boot-text">SYSTEM INITIALIZED • MEMORY CHECK OK • READY</div>
+            </div>
+            <div class="header-controls">
+                <button class="config-toggle" onclick="toggleConfig()">CONFIG</button>
+                <div class="real-time-indicator">
+                    <span class="status-indicator"></span>
+                    <span style="font-weight: normal; text-transform: uppercase; font-size: 11px;">READY</span>
+                </div>
+            </div>
+        </header>
+        
+        <!-- Main Dashboard Grid -->
+        <div class="dashboard-grid">
+            <!-- Signals Panel -->
+            <div class="panel signals-panel">
+                <div class="panel-header">
+                    <span class="panel-title">SIGNAL MONITOR</span>
+                    <span class="panel-count">8 ACTIVE <span class="demo-badge">RETRO</span></span>
+                </div>
+                <div>
+                    <div class="signal-item">
+                        <div>
+                            <span class="signal-symbol">BTC/USDT</span>
+                            <span class="signal-type score-bullish">LONG</span>
+                        </div>
+                        <div>
+                            <span class="signal-score score-bullish">89.7</span>
+                            <span class="signal-time">01:23</span>
+                        </div>
+                    </div>
+                    <div class="signal-item">
+                        <div>
+                            <span class="signal-symbol">ETH/USDT</span>
+                            <span class="signal-type score-neutral">HOLD</span>
+                        </div>
+                        <div>
+                            <span class="signal-score score-neutral">67.4</span>
+                            <span class="signal-time">03:45</span>
+                        </div>
+                    </div>
+                    <div class="signal-item">
+                        <div>
+                            <span class="signal-symbol">SOL/USDT</span>
+                            <span class="signal-type score-bullish">LONG</span>
+                        </div>
+                        <div>
+                            <span class="signal-score score-bullish">82.1</span>
+                            <span class="signal-time">05:12</span>
+                        </div>
+                    </div>
+                    <div class="signal-item">
+                        <div>
+                            <span class="signal-symbol">XRP/USDT</span>
+                            <span class="signal-type score-bearish">SHORT</span>
+                        </div>
+                        <div>
+                            <span class="signal-score score-bearish">28.9</span>
+                            <span class="signal-time">08:07</span>
+                        </div>
+                    </div>
+                    <div class="signal-item">
+                        <div>
+                            <span class="signal-symbol">ADA/USDT</span>
+                            <span class="signal-type score-neutral">HOLD</span>
+                        </div>
+                        <div>
+                            <span class="signal-score score-neutral">61.3</span>
+                            <span class="signal-time">12:34</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Alpha Opportunities Panel -->
+            <div class="panel alpha-panel">
+                <div class="panel-header">
+                    <span class="panel-title">OPPORTUNITY SCAN</span>
+                    <span class="panel-count">4 FOUND</span>
+                </div>
+                <div>
+                    <div class="alpha-item">
+                        <div class="alpha-symbol">AVAX/USDT</div>
+                        <div class="alpha-pattern">MOMENTUM BREAKOUT</div>
+                        <div class="alpha-confidence">CONFIDENCE: 91.5%</div>
+                        <div class="alpha-potential">EXPECTED: +14.7%</div>
+                    </div>
+                    <div class="alpha-item">
+                        <div class="alpha-symbol">MATIC/USDT</div>
+                        <div class="alpha-pattern">VOLUME ANOMALY</div>
+                        <div class="alpha-confidence">CONFIDENCE: 83.2%</div>
+                        <div class="alpha-potential">EXPECTED: +9.3%</div>
+                    </div>
+                    <div class="alpha-item">
+                        <div class="alpha-symbol">LINK/USDT</div>
+                        <div class="alpha-pattern">SUPPORT BOUNCE</div>
+                        <div class="alpha-confidence">CONFIDENCE: 76.8%</div>
+                        <div class="alpha-potential">EXPECTED: +11.9%</div>
+                    </div>
+                    <div class="alpha-item">
+                        <div class="alpha-symbol">DOT/USDT</div>
+                        <div class="alpha-pattern">WHALE ACTIVITY</div>
+                        <div class="alpha-confidence">CONFIDENCE: 88.4%</div>
+                        <div class="alpha-potential">EXPECTED: +16.2%</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Market Overview Panel -->
+            <div class="panel market-panel">
+                <div class="panel-header">
+                    <span class="panel-title">MARKET STATUS</span>
+                    <span style="color: var(--bullish); font-weight: normal;">BULLISH</span>
+                </div>
+                <div class="market-metrics">
+                    <div class="metric-card">
+                        <div class="metric-value">52</div>
+                        <div class="metric-label">ACTIVE PAIRS</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value">3.2B</div>
+                        <div class="metric-label">24H VOLUME</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value">1.4T</div>
+                        <div class="metric-label">MARKET CAP</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value">2.8%</div>
+                        <div class="metric-label">VOLATILITY</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Alerts Panel -->
+            <div class="panel alerts-panel">
+                <div class="panel-header">
+                    <span class="panel-title">SYSTEM MESSAGES</span>
+                    <span class="panel-count">15 TODAY</span>
+                </div>
+                <div>
+                    <div class="alert-item alert-priority-high">
+                        <div>
+                            <strong>SIGNAL</strong>: High-probability long signal detected for BTC/USDT
+                        </div>
+                        <div class="alert-time">01:23</div>
+                    </div>
+                    <div class="alert-item alert-priority-medium">
+                        <div>
+                            <strong>PATTERN</strong>: Momentum breakout pattern identified in AVAX/USDT
+                        </div>
+                        <div class="alert-time">04:12</div>
+                    </div>
+                    <div class="alert-item alert-priority-low">
+                        <div>
+                            <strong>STATUS</strong>: Terminal system diagnostics completed successfully
+                        </div>
+                        <div class="alert-time">08:07</div>
+                    </div>
+                    <div class="alert-item alert-priority-medium">
+                        <div>
+                            <strong>WHALE</strong>: Large transaction detected in DOT/USDT market
+                        </div>
+                        <div class="alert-time">12:34</div>
+                    </div>
+                    <div class="alert-item alert-priority-high">
+                        <div>
+                            <strong>SIGNAL</strong>: Short signal triggered for XRP/USDT position
+                        </div>
+                        <div class="alert-time">18:55</div>
+                    </div>
+                    <div class="alert-item alert-priority-low">
+                        <div>
+                            <strong>SCAN</strong>: Analysis cycle completed for 47 trading pairs
+                        </div>
+                        <div class="alert-time">25:12</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Configuration Panel -->
+        <div class="config-panel" id="config-panel">
+            <div class="panel-header">
+                <span class="panel-title">SYSTEM CONFIGURATION</span>
+                <button onclick="toggleConfig()" style="background: none; border: none; color: var(--text-primary); cursor: pointer; font-size: 16px; font-family: inherit;">X</button>
+            </div>
+            
+            <div class="config-section">
+                <h3>MONITOR PARAMETERS</h3>
+                <label>Scan Frequency (seconds):</label>
+                <input type="number" class="config-input" value="30">
+                
+                <label>Alert Threshold:</label>
+                <input type="number" class="config-input" value="5">
+                
+                <label>Cooldown Period (minutes):</label>
+                <input type="number" class="config-input" value="45">
+            </div>
+            
+            <div class="config-section">
+                <h3>SIGNAL FILTERS</h3>
+                <label>Minimum Score:</label>
+                <input type="number" class="config-input" value="70">
+                
+                <label>Confidence Level:</label>
+                <input type="number" class="config-input" value="80">
+            </div>
+            
+            <div class="config-section">
+                <h3>PATTERN DETECTION</h3>
+                <label>Confidence Threshold:</label>
+                <input type="number" class="config-input" value="75">
+                
+                <label>Risk Profile:</label>
+                <select class="config-input">
+                    <option value="Conservative">Conservative</option>
+                    <option value="Moderate" selected>Moderate</option>
+                    <option value="Aggressive">Aggressive</option>
+                </select>
+            </div>
+            
+            <div class="config-section">
+                <button class="config-input save-btn">SAVE SETTINGS</button>
+                <button class="config-input reset-btn">RESTORE DEFAULTS</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function toggleConfig() {
+            const panel = document.getElementById('config-panel');
+            panel.classList.toggle('open');
+        }
+
+        // Update timestamps in terminal format
+        function updateTimestamps() {
+            const timeElements = document.querySelectorAll('.signal-time, .alert-time');
+            timeElements.forEach(el => {
+                const currentText = el.textContent;
+                if (currentText.includes(':') && !currentText.includes('ago')) {
+                    const match = currentText.match(/(\d+):(\d+)/);
+                    if (match) {
+                        let minutes = parseInt(match[1]);
+                        let seconds = parseInt(match[2]) + 1;
+                        if (seconds >= 60) {
+                            minutes += 1;
+                            seconds = 0;
+                        }
+                        el.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+                    }
+                }
+            });
+        }
+
+        // Terminal signal simulation
+        function simulateSignalUpdate() {
+            if (Math.random() > 0.85) {
+                const symbols = ['BNB/USDT', 'UNI/USDT', 'DOGE/USDT'];
+                const actions = ['LONG', 'SHORT', 'HOLD'];
+                const symbol = symbols[Math.floor(Math.random() * symbols.length)];
+                const action = actions[Math.floor(Math.random() * actions.length)];
+                console.log(`> TERMINAL: ${symbol} - ${action}`);
+                
+                // Add terminal flash effect
+                document.body.style.background = '#001100';
+                setTimeout(() => {
+                    document.body.style.background = '#000000';
+                }, 100);
+            }
+        }
+
+        // Enhanced hover effects for terminal elements
+        document.querySelectorAll('.signal-item, .alpha-item, .alert-item, .metric-card').forEach(item => {
+            item.addEventListener('mouseenter', function() {
+                this.style.textShadow = '0 0 5px var(--crt-glow)';
+            });
+            
+            item.addEventListener('mouseleave', function() {
+                this.style.textShadow = '';
+            });
+        });
+
+        // Terminal typing effect
+        function addTypingEffect() {
+            const title = document.querySelector('.terminal-title');
+            if (Math.random() > 0.95) {
+                title.style.textShadow = '0 0 15px var(--crt-glow), 0 0 25px var(--crt-glow)';
+                setTimeout(() => {
+                    title.style.textShadow = '0 0 5px var(--crt-glow), 0 0 10px var(--crt-glow)';
+                }, 200);
+            }
+        }
+
+        // Update intervals
+        setInterval(updateTimestamps, 1000);
+        setInterval(simulateSignalUpdate, 20000);
+        setInterval(addTypingEffect, 3000);
+
+        // Terminal click effects
+        document.addEventListener('click', function(e) {
+            if (e.target.tagName === 'BUTTON' || e.target.closest('.panel')) {
+                // Visual terminal feedback
+                const flash = document.createElement('div');
+                flash.style.position = 'fixed';
+                flash.style.top = '0';
+                flash.style.left = '0';
+                flash.style.width = '100%';
+                flash.style.height = '100%';
+                flash.style.background = 'rgba(0, 255, 65, 0.05)';
+                flash.style.pointerEvents = 'none';
+                flash.style.zIndex = '9999';
+                document.body.appendChild(flash);
+                setTimeout(() => flash.remove(), 100);
+            }
+        });
+
+        // Boot sequence simulation
+        window.addEventListener('load', function() {
+            const bootText = document.querySelector('.boot-text');
+            bootText.style.opacity = '0';
+            setTimeout(() => {
+                bootText.style.transition = 'opacity 2s ease';
+                bootText.style.opacity = '0.8';
+            }, 500);
+        });
+    </script>
+</body>
+</html> 

@@ -24,14 +24,84 @@ import aiofiles
 import numpy as np
 import pandas as pd
 
-from discord import SyncWebhook, File
-from src.utils.serializers import serialize_for_json, prepare_data_for_transmission
-from src.utils.data_utils import resolve_price, format_price_string
-from src.models.schema import AlertPayload, ConfluenceAlert, SignalDirection
-from src.core.reporting.report_manager import ReportManager
+try:
+    from discord import SyncWebhook
+except ImportError:
+    # Fallback for older discord.py versions
+    try:
+        from discord import Webhook as SyncWebhook
+    except ImportError:
+        # If discord.py is not available at all, create dummy class
+        class SyncWebhook:
+            def __init__(self, *args, **kwargs):
+                pass
+            def send(self, *args, **kwargs):
+                pass
+try:
+    from src.utils.serializers import serialize_for_json, prepare_data_for_transmission
+except ImportError:
+    try:
+        from utils.serializers import serialize_for_json, prepare_data_for_transmission
+    except ImportError:
+        # Fallback implementations
+        def serialize_for_json(obj):
+            return obj
+        def prepare_data_for_transmission(obj):
+            return obj
+
+try:
+    from src.utils.data_utils import resolve_price, format_price_string
+except ImportError:
+    try:
+        from utils.data_utils import resolve_price, format_price_string
+    except ImportError:
+        # Fallback implementations
+        def resolve_price(price):
+            return float(price) if price is not None else 0.0
+        def format_price_string(price):
+            return f"${price:.2f}" if price is not None else "$0.00"
+
+try:
+    from src.models.schema import AlertPayload, ConfluenceAlert, SignalDirection
+except ImportError:
+    try:
+        from models.schema import AlertPayload, ConfluenceAlert, SignalDirection
+    except ImportError:
+        # Create dummy classes if not available
+        class AlertPayload:
+            pass
+        class ConfluenceAlert:
+            pass
+        class SignalDirection:
+            BUY = "BUY"
+            SELL = "SELL"
+
+try:
+    from src.core.reporting.report_manager import ReportManager
+except ImportError:
+    try:
+        from core.reporting.report_manager import ReportManager
+    except ImportError:
+        # Create dummy class if not available
+        class ReportManager:
+            pass
+
+# Import our centralized interpretation system
+try:
+    from src.core.interpretation.interpretation_manager import InterpretationManager
+except ImportError:
+    try:
+        from core.interpretation.interpretation_manager import InterpretationManager
+    except ImportError:
+        # Create dummy class if not available
+        class InterpretationManager:
+            def process_interpretations(self, *args, **kwargs):
+                return None
+            def get_formatted_interpretation(self, *args, **kwargs):
+                return ""
 
 if TYPE_CHECKING:
-    from monitoring.metrics_manager import MetricsManager
+    pass  # No type checking imports needed currently
 
 logger = getLogger(__name__)
 
@@ -111,7 +181,7 @@ class AlertManager:
         # Alert configuration
         self.alert_levels = ['INFO', 'WARNING', 'ERROR', 'CRITICAL']
         self.alert_throttle = 60  # Default throttle of 60 seconds
-        self.liquidation_threshold = 100000  # Default $100k threshold for liquidation alerts
+        self.liquidation_threshold = 250000  # Default $250k threshold for liquidation alerts (matches config.yaml)
         self.liquidation_cooldown = 300  # Default 5 minutes cooldown between liquidation alerts for the same symbol
         self.large_order_cooldown = 300  # Default 5 minutes cooldown between large order alerts for the same symbol
         self.whale_activity_cooldown = 900  # Default 15 minutes cooldown between whale activity alerts for the same symbol
@@ -119,9 +189,33 @@ class AlertManager:
         # Discord configuration
         self.discord_client = None
         
+        # Enhanced webhook configuration with retry logic
+        self.webhook_max_retries = config.get('monitoring', {}).get('alerts', {}).get('webhook_max_retries', 3)
+        self.webhook_initial_retry_delay = config.get('monitoring', {}).get('alerts', {}).get('webhook_retry_delay', 1.0)
+        self.webhook_exponential_backoff = config.get('monitoring', {}).get('alerts', {}).get('webhook_exponential_backoff', True)
+        self.webhook_timeout = config.get('monitoring', {}).get('alerts', {}).get('webhook_timeout', 30.0)
+        
+        # File attachment limits
+        self.max_file_size = config.get('monitoring', {}).get('alerts', {}).get('max_file_size', 25 * 1024 * 1024)  # 25MB default
+        self.allowed_file_types = config.get('monitoring', {}).get('alerts', {}).get('allowed_file_types', ['.pdf', '.png', '.jpg', '.jpeg'])
+        
+        # Delivery tracking
+        self._delivery_stats = {
+            'total_attempts': 0,
+            'successful_deliveries': 0,
+            'failed_deliveries': 0,
+            'retries': 0,
+            'file_attachments': 0,
+            'file_attachment_failures': 0
+        }
+        
         # Metrics tracking
         self._ohlcv_cache = {}  # Cache for OHLCV data
         self._market_data_cache = {}  # Cache for market data
+        
+        # Initialize the centralized interpretation manager
+        self.interpretation_manager = InterpretationManager()
+        self.logger.info("Initialized centralized InterpretationManager for alerts")
         self._last_ohlcv_update = {}  # Last update time for OHLCV data
         
         # CRITICAL DEBUG: Print initialization
@@ -139,20 +233,20 @@ class AlertManager:
             alert_config = self.config['monitoring']['alerts']
             
             # Discord webhook - first check from direct path in config
-            if 'discord_webhook_url' in alert_config:
-                self.discord_webhook_url = alert_config['discord_webhook_url']
+            if 'discord_webhook_url' in alert_config and alert_config['discord_webhook_url']:
+                self.discord_webhook_url = alert_config['discord_webhook_url'].strip()
                 if self.discord_webhook_url:
                         print(f"CRITICAL DEBUG: Webhook URL from direct config: {self.discord_webhook_url[:20]}...{self.discord_webhook_url[-10:]}")
                 else:
-                    print("CRITICAL DEBUG: Discord webhook URL from direct config is None or empty")
+                    print("CRITICAL DEBUG: Discord webhook URL from direct config is empty after stripping")
             # Then check nested discord > webhook_url path (old format)
-            elif 'discord' in alert_config and 'webhook_url' in alert_config['discord']:
-                self.discord_webhook_url = alert_config['discord']['webhook_url']
+            elif 'discord' in alert_config and 'webhook_url' in alert_config['discord'] and alert_config['discord']['webhook_url']:
+                self.discord_webhook_url = alert_config['discord']['webhook_url'].strip()
                 if self.discord_webhook_url:
                         print(f"CRITICAL DEBUG: Webhook URL from nested config: {self.discord_webhook_url[:20]}...{self.discord_webhook_url[-10:]}")
                 else:
-                    print("CRITICAL DEBUG: Discord webhook URL from nested config is None or empty")
-            # Try to get from environment variable
+                    print("CRITICAL DEBUG: Discord webhook URL from nested config is empty after stripping")
+            # Try to get from environment variable (fallback for empty config values)
             else:
                 self.discord_webhook_url = os.getenv('DISCORD_WEBHOOK_URL', '')  # Use environment variable instead of hardcoded value
                 if self.discord_webhook_url:
@@ -167,27 +261,44 @@ class AlertManager:
             
             # Load system webhook URL
             if 'system_alerts_webhook_url' in alert_config:
-                self.system_webhook_url = alert_config['system_alerts_webhook_url']
-                if self.system_webhook_url:
-                    print(f"CRITICAL DEBUG: System webhook URL from config: {self.system_webhook_url[:20]}...{self.system_webhook_url[-10:]}")
+                system_webhook_raw = alert_config['system_alerts_webhook_url']
+                # Handle environment variable substitution
+                if system_webhook_raw and system_webhook_raw.startswith('${') and system_webhook_raw.endswith('}'):
+                    env_var_name = system_webhook_raw[2:-1]  # Remove ${ and }
+                    self.system_webhook_url = os.getenv(env_var_name, '')
+                    if self.system_webhook_url:
+                        self.system_webhook_url = self.system_webhook_url.strip().replace('\n', '')
+                        if self.system_webhook_url:
+                            print(f"CRITICAL DEBUG: System webhook URL from environment variable {env_var_name}: {self.system_webhook_url[:20]}...{self.system_webhook_url[-10:]}")
+                        else:
+                            print(f"CRITICAL DEBUG: System webhook URL from environment variable {env_var_name} is empty after cleaning")
+                    else:
+                        print(f"CRITICAL DEBUG: Environment variable {env_var_name} not set or empty")
+                        self.system_webhook_url = ''
                 else:
-                    print("CRITICAL DEBUG: System webhook URL from config is None or empty")
+                    # Direct value from config
+                    self.system_webhook_url = system_webhook_raw or ''
+                    if self.system_webhook_url:
+                        print(f"CRITICAL DEBUG: System webhook URL from config: {self.system_webhook_url[:20]}...{self.system_webhook_url[-10:]}")
+                    else:
+                        print("CRITICAL DEBUG: System webhook URL from config is None or empty")
             else:
+                # Fallback to environment variable
                 self.system_webhook_url = os.getenv('SYSTEM_ALERTS_WEBHOOK_URL', '')
                 if self.system_webhook_url:
                     self.system_webhook_url = self.system_webhook_url.strip().replace('\n', '')
                     if self.system_webhook_url:
-                        print(f"CRITICAL DEBUG: System webhook URL from environment: {self.system_webhook_url[:20]}...{self.system_webhook_url[-10:]}")
+                        print(f"CRITICAL DEBUG: System webhook URL from fallback environment: {self.system_webhook_url[:20]}...{self.system_webhook_url[-10:]}")
                     else:
-                        print("CRITICAL DEBUG: System webhook URL from environment is empty after cleaning")
+                        print("CRITICAL DEBUG: System webhook URL from fallback environment is empty after cleaning")
             
-            # Direct discord webhook from config (alternative path)
-            if 'discord_network' in alert_config:
-                self.discord_webhook_url = alert_config['discord_network']
+            # Direct discord webhook from config (alternative path) - only override if not already set
+            if 'discord_network' in alert_config and alert_config['discord_network'] and not self.discord_webhook_url:
+                self.discord_webhook_url = alert_config['discord_network'].strip()
                 if self.discord_webhook_url:
                         print(f"CRITICAL DEBUG: Webhook URL from discord_network: {self.discord_webhook_url[:20]}...{self.discord_webhook_url[-10:]}")
                 else:
-                    print("CRITICAL DEBUG: Discord webhook URL from discord_network is None or empty")
+                    print("CRITICAL DEBUG: Discord webhook URL from discord_network is empty after stripping")
             
             # Thresholds
             if 'thresholds' in alert_config:
@@ -221,6 +332,39 @@ class AlertManager:
         self.webhook_fallback_enabled = discord_config.get('fallback_enabled', True)
         self.webhook_recoverable_status_codes = discord_config.get('recoverable_status_codes', [429, 500, 502, 503, 504])
         
+        # Fix: Ensure minimum retry attempts
+        if self.webhook_max_retries < 1:
+            self.webhook_max_retries = 3
+            self.logger.warning(f"Discord webhook max_retries was {discord_config.get('max_retries', 'not set')}, setting to minimum of 3")
+        
+        # Initialize PDF generation capabilities
+        self.pdf_generator = None
+        self.report_manager = None
+        self.pdf_enabled = False
+        
+        try:
+            # Import PDF components with error handling
+            from src.core.reporting.pdf_generator import ReportGenerator
+            from src.core.reporting.report_manager import ReportManager
+            
+            # Initialize PDF generator
+            self.pdf_generator = ReportGenerator(config)
+            self.logger.info("✅ PDF Generator initialized for AlertManager")
+            
+            # Initialize report manager
+            self.report_manager = ReportManager(config)
+            self.logger.info("✅ Report Manager initialized for AlertManager")
+            
+            self.pdf_enabled = True
+            self.logger.info("🔧 PDF generation enabled in AlertManager")
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ PDF generation not available in AlertManager: {str(e)}")
+            self.logger.warning("Discord alerts will still work without PDF attachments")
+            self.pdf_generator = None
+            self.report_manager = None
+            self.pdf_enabled = False
+
         # Force initialize handlers
         try:
             self._initialize_handlers()
@@ -235,13 +379,11 @@ class AlertManager:
         self.logger.info(f"Buy threshold: {self.buy_threshold}")
         self.logger.info(f"Sell threshold: {self.sell_threshold}")
         self.logger.info(f"Discord webhook URL is set: {bool(self.discord_webhook_url)}")
+        self.logger.info(f"PDF generation enabled: {self.pdf_enabled}")
         
         try:
             # Validate configuration
             self._validate_alert_config()
-            
-            # Force initialization of handlers
-            self._initialize_handlers()
             
             # Print registered handlers
             self.logger.info(f"INIT: Registered handlers: {self.handlers}")
@@ -355,6 +497,9 @@ class AlertManager:
         try:
             if name == 'discord':
                 # Check if the handler is already registered
+                if name in self.handlers:
+                    self.logger.debug(f"Handler {name} already registered, skipping")
+                    return
                 if name not in self.handlers:
                     # Ensure the Discord webhook URL is set
                     if not self.discord_webhook_url:
@@ -404,17 +549,58 @@ class AlertManager:
                 self.logger.error(f"Invalid alert level: {level}")
                 return
             
+            # Load system webhook configuration early for use in all special handling sections
+            system_alerts_config = self.config.get('monitoring', {}).get('alerts', {}).get('system_alerts', {})
+            use_system_webhook = system_alerts_config.get('use_system_webhook', False)
+            types_config = system_alerts_config.get('types', {})
+            
+            # Check if mirroring is enabled globally
+            mirror_config = system_alerts_config.get('mirror_alerts', {})
+            should_mirror = mirror_config.get('enabled', False)
+            
             # Check if this is a market report alert that should be mirrored to system webhook
             is_market_report = False
             if details and details.get('type') == 'market_report':
                 is_market_report = True
                 # Check if mirroring is enabled for market reports
-                mirror_config = self.config.get('monitoring', {}).get('alerts', {}).get('system_alerts', {}).get('mirror_alerts', {})
-                should_mirror = mirror_config.get('enabled', False) and mirror_config.get('types', {}).get('market_report', False)
+                should_mirror_market_report = should_mirror and mirror_config.get('types', {}).get('market_report', False)
                 
-                if should_mirror and self.system_webhook_url:
+                if should_mirror_market_report and self.system_webhook_url:
                     self.logger.info(f"Mirroring market report alert to system webhook")
                     await self._send_system_webhook_alert(message, details)
+                    
+                if use_system_webhook and types_config.get('market_report', False) and not should_mirror_market_report:
+                    # Send only to system webhook and skip main webhook
+                    self.logger.info(f"Routing market report alert to system webhook only")
+                    await self._send_system_webhook_alert(message, details)
+                    self._alert_stats['total'] = int(self._alert_stats.get('total', 0)) + 1
+                    self._alert_stats['sent'] = int(self._alert_stats.get('sent', 0)) + 1
+                    return  # Skip sending to main webhook
+
+            # Check if this is a CPU alert that should be routed to system webhook
+            is_cpu_alert = False
+            if "cpu_usage" in message.lower() or (details and details.get('type') == 'cpu'):
+                is_cpu_alert = True
+                # Check backward compatibility with cpu_alerts.use_system_webhook
+                cpu_alerts_config = self.config.get('monitoring', {}).get('alerts', {}).get('cpu_alerts', {})
+                cpu_system_webhook = use_system_webhook and types_config.get('cpu', False)
+                cpu_system_webhook = cpu_system_webhook or cpu_alerts_config.get('use_system_webhook', False)
+                
+                # Check if mirroring is enabled for CPU alerts
+                should_mirror_cpu = should_mirror and mirror_config.get('types', {}).get('cpu', False)
+                
+                if should_mirror_cpu and self.system_webhook_url:
+                    # Send to system webhook (will also send to main webhook later)
+                    self.logger.info(f"Mirroring CPU alert to system webhook")
+                    await self._send_system_webhook_alert(message, details)
+                
+                elif cpu_system_webhook and self.system_webhook_url:
+                    # Send only to system webhook and skip main webhook
+                    self.logger.info(f"Routing CPU alert to system webhook only")
+                    await self._send_system_webhook_alert(message, details)
+                    self._alert_stats['total'] = int(self._alert_stats.get('total', 0)) + 1
+                    self._alert_stats['sent'] = int(self._alert_stats.get('sent', 0)) + 1
+                    return  # Skip sending to main webhook
 
             # Special handling for large order alerts
             if details and details.get('type') == 'large_aggressive_order':
@@ -427,6 +613,22 @@ class AlertManager:
                     return
                 
                 self._last_large_order_alert[symbol] = current_time
+                
+                # Check if large order alerts should use system webhook
+                large_order_system_webhook = use_system_webhook and types_config.get('large_aggressive_order', False)
+                should_mirror_large_order = should_mirror and mirror_config.get('types', {}).get('large_aggressive_order', False)
+                
+                if large_order_system_webhook and should_mirror_large_order and self.system_webhook_url:
+                    # Send to system webhook (mirroring enabled)
+                    self.logger.info(f"Mirroring large order alert to system webhook")
+                    await self._send_system_webhook_alert(message, details)
+                elif large_order_system_webhook and not should_mirror_large_order and self.system_webhook_url:
+                    # Send to system webhook only
+                    self.logger.info(f"Routing large order alert to system webhook only")
+                    await self._send_system_webhook_alert(message, details)
+                    self._alert_stats['total'] = int(self._alert_stats.get('total', 0)) + 1
+                    self._alert_stats['sent'] = int(self._alert_stats.get('sent', 0)) + 1
+                    return  # Skip sending to main webhook
             
                 # Send large order Discord embed alert
                 if 'discord' in self.handlers:
@@ -525,39 +727,54 @@ class AlertManager:
                 
                 self._last_whale_activity_alert[f"{symbol}:{subtype}"] = current_time
                 
-                # Enhanced formatting for Discord
+                # Check if whale activity alerts should use system webhook
+                whale_system_webhook = use_system_webhook and types_config.get('whale_activity', False)
+                should_mirror_whale = should_mirror and mirror_config.get('types', {}).get('whale_activity', False)
+                
+                if whale_system_webhook and should_mirror_whale and self.system_webhook_url:
+                    # Send to system webhook (mirroring enabled)
+                    self.logger.info(f"Mirroring whale activity alert to system webhook")
+                    await self._send_system_webhook_alert(message, details)
+                elif whale_system_webhook and not should_mirror_whale and self.system_webhook_url:
+                    # Send to system webhook only
+                    self.logger.info(f"Routing whale activity alert to system webhook only")
+                    await self._send_system_webhook_alert(message, details)
+                    self._alert_stats['total'] = int(self._alert_stats.get('total', 0)) + 1
+                    self._alert_stats['sent'] = int(self._alert_stats.get('sent', 0)) + 1
+                    return  # Skip sending to main webhook
+                
+                # Enhanced formatting for Discord with market intelligence
                 if 'discord' in self.handlers:
-                    # Create a more visually appealing alert matching the exact format
+                    # Create enhanced alert with market context
                     emoji = "🐋📈" if subtype == "accumulation" else "🐋📉" if subtype == "distribution" else "🐋"
                     color = 0x00FF00 if subtype == "accumulation" else 0xFF0000 if subtype == "distribution" else 0x888888
                     
-                    # Extract activity data for proper formatting
+                    # Extract activity data for enhanced analysis
                     activity_data = details.get('data', {})
                     self.logger.debug(f"Raw activity_data received: {activity_data}")
                     
-                    # Order book data (existing)
+                    # Core whale data
                     net_volume = activity_data.get('net_whale_volume', 0)
                     net_usd_value = activity_data.get('net_usd_value', 0)
                     whale_bid_orders = activity_data.get('whale_bid_orders', 0)
                     whale_ask_orders = activity_data.get('whale_ask_orders', 0)
                     bid_percentage = activity_data.get('bid_percentage', 0)
+                    ask_percentage = activity_data.get('ask_percentage', 0)
                     imbalance = activity_data.get('imbalance', 0)
                     
-                    # Trade data (previously unused!)
+                    # Trade execution data
                     whale_trades_count = activity_data.get('whale_trades_count', 0)
                     whale_buy_volume = activity_data.get('whale_buy_volume', 0)
                     whale_sell_volume = activity_data.get('whale_sell_volume', 0)
-                    net_trade_volume = activity_data.get('net_trade_volume', 0)
                     trade_imbalance = activity_data.get('trade_imbalance', 0)
                     trade_confirmation = activity_data.get('trade_confirmation', False)
                     
-                    # Calculate current price from available data
+                    # Price calculation
                     bid_usd = activity_data.get('whale_bid_usd', 0)
                     ask_usd = activity_data.get('whale_ask_usd', 0)
                     bid_volume = activity_data.get('whale_bid_volume', 0)
                     ask_volume = activity_data.get('whale_ask_volume', 0)
                     
-                    # Calculate current price as weighted average if volumes exist
                     current_price = 0
                     if bid_volume > 0 or ask_volume > 0:
                         total_volume = bid_volume + ask_volume
@@ -565,98 +782,81 @@ class AlertManager:
                         if total_volume > 0:
                             current_price = total_usd / total_volume
                     
-                    # Debug: Log extracted values including trade data
-                    self.logger.debug(f"Extracted values - Order Volume: {net_volume}, USD: {net_usd_value}, "
-                                    f"Bid orders: {whale_bid_orders}, Ask orders: {whale_ask_orders}, "
-                                    f"Price: {current_price}, Order Imbalance: {imbalance}, "
-                                    f"Trade Count: {whale_trades_count}, Trade Volume: {net_trade_volume}, "
-                                    f"Trade Imbalance: {trade_imbalance}, Trade Confirmation: {trade_confirmation}")
+                    # Generate unique alert ID
+                    import time as time_module
+                    alert_id = f"WA-{int(time_module.time())}-{symbol}"
                     
-                    # Determine signal strength based on both order book and trade data
-                    if trade_confirmation and whale_trades_count > 0:
-                        signal_strength = "CONFIRMED"
-                        strength_emoji = "✅"
+                    # Enhanced signal strength classification - Only EXECUTING and CONFLICTING
+                    if whale_trades_count > 0 and not trade_confirmation:
+                        signal_strength = "CONFLICTING"
+                        strength_emoji = "🚨"
+                        signal_context = "POTENTIAL MANIPULATION DETECTED"
+                        manipulation_warning = True
                     elif whale_trades_count > 0:
                         signal_strength = "EXECUTING"
                         strength_emoji = "⚡"
+                        signal_context = "Active whale trades happening now"
+                        manipulation_warning = False
                     else:
-                        signal_strength = "POSITIONING"
-                        strength_emoji = "👀"
+                        # Skip POSITIONING and CONFIRMED alerts
+                        return
                     
-                    # Enhanced metrics - Calculate risk/reward and price impact
-                    risk_level = "LOW"
-                    if abs(imbalance) > 0.7:
-                        risk_level = "HIGH"
-                    elif abs(imbalance) > 0.4:
-                        risk_level = "MEDIUM"
+                    # Essential calculations only
+                    volume_multiple = self._calculate_volume_multiple(abs(net_usd_value))
                     
-                    # Calculate price targets based on order book depth and imbalance
-                    avg_price = current_price if current_price > 0 else 1.0  # Default to 1 if price is 0
-                    price_impact = 0
-                    
-                    # Calculate price impact based on imbalance and volume
-                    if abs(imbalance) > 0.3 and avg_price > 0:
-                        price_impact = imbalance * min(abs(net_usd_value) / 1000000, 5) * 0.01 * avg_price
-                    
-                    # Set price targets based on subtype and impact
-                    if subtype == "accumulation":
-                        support_level = max(avg_price - (avg_price * 0.005), avg_price - abs(price_impact))
-                        target_level = avg_price + (abs(price_impact) * 1.5)
-                        price_prediction = f"Support: ${support_level:.2f} | Target: ${target_level:.2f}"
-                    else:
-                        resistance_level = min(avg_price + (avg_price * 0.005), avg_price + abs(price_impact))
-                        target_level = avg_price - (abs(price_impact) * 1.5)
-                        price_prediction = f"Resistance: ${resistance_level:.2f} | Target: ${target_level:.2f}"
-                    
-                    # Calculate volume impact percentage safely
-                    volume_impact_pct = "0.00%" if avg_price == 0 else f"{abs(price_impact/avg_price):.2%}"
-                    
-                    # Create the enhanced description with both order book and trade data
-                    description = (
-                        f"{emoji} **Whale {subtype.capitalize()} Detected** for {symbol} {strength_emoji}\n"
-                        f"• **Signal Strength:** {signal_strength}\n"
-                        f"• Net positioning: {abs(net_volume):.2f} units (${abs(net_usd_value):,.2f})\n"
-                        f"• Whale orders: {whale_bid_orders} bids, {whale_ask_orders} asks ({bid_percentage:.1%} of book)\n"
-                        f"• Whale trades: {whale_trades_count} executed ({whale_buy_volume:.0f} buy / {whale_sell_volume:.0f} sell)\n"
-                        f"• Order imbalance: {imbalance:.1%} | Trade imbalance: {trade_imbalance:.1%}\n"
-                        f"• Current price: ${current_price:.2f}\n"
-                        f"• Market Impact: {volume_impact_pct}\n"
-                        f"• Price Prediction: {price_prediction}"
+                    # Plain English interpretation
+                    interpretation = self._generate_plain_english_interpretation(
+                        signal_strength, subtype, symbol, abs(net_usd_value), 
+                        whale_trades_count, whale_buy_volume, whale_sell_volume, signal_context
                     )
                     
-                    # Create Discord embed with the exact title format
+                    # Get individual trades/orders for display
+                    trades_details = self._format_whale_trades(activity_data.get('top_whale_trades', []))
+                    orders_details = self._format_whale_orders(activity_data.get('top_whale_bids', []), 
+                                                             activity_data.get('top_whale_asks', []), subtype)
+                    
+                    # Build description with prominent manipulation warning if needed
+                    if manipulation_warning:
+                        description = (
+                            f"🚨🚨🚨 **MANIPULATION ALERT** 🚨🚨🚨\n\n"
+                            f"{emoji} **{signal_strength} Whale {subtype.capitalize()}** {strength_emoji}\n"
+                            f"**{symbol}** - ${abs(net_usd_value):,.0f} | {whale_trades_count} trades | {volume_multiple}\n\n"
+                            f"⚠️ **DANGER: {signal_context}** ⚠️\n"
+                            f"**What this means:**\n{interpretation}\n\n"
+                            f"**Recent Whale Activity:**\n{trades_details}\n\n"
+                            f"**Large Orders on Book:**\n{orders_details}"
+                        )
+                    else:
+                        description = (
+                            f"{emoji} **{signal_strength} Whale {subtype.capitalize()}** {strength_emoji}\n\n"
+                            f"**{symbol}** - ${abs(net_usd_value):,.0f} | {whale_trades_count} trades | {volume_multiple}\n\n"
+                            f"**What this means:**\n{interpretation}\n\n"
+                            f"**Recent Whale Activity:**\n{trades_details}\n\n"
+                            f"**Large Orders on Book:**\n{orders_details}"
+                        )
+                    
+                    # Create Discord embed
                     embed = DiscordEmbed(
                         title="Virtuoso Signals APP",
                         description=description,
                         color=color
                     )
                     
-                    # Add timestamp
                     embed.set_timestamp()
                     
-                    # Enhanced four-column table showing both orders and trades
+                    # Add footer with Alert ID in the format: "Virtuoso Whale Detection • ID: WA-123456-BTCUSDT"
+                    embed.set_footer(text=f"Virtuoso Whale Detection • ID: {alert_id}")
+                    
+                    # Simplified two-panel layout with essential info only
                     embed.add_embed_field(
-                        name="Order Book",
-                        value=f"{whale_bid_orders} bids\n{whale_ask_orders} asks\n${bid_usd:,.0f} / ${ask_usd:,.0f}",
+                        name="📊 Trade Activity",
+                        value=f"**${abs(net_usd_value):,.0f}** total value\n**{whale_trades_count}** whale trades\n**{whale_buy_volume:.0f}** buy / **{whale_sell_volume:.0f}** sell",
                         inline=True
                     )
                     
                     embed.add_embed_field(
-                        name="Trade Execution",
-                        value=f"{whale_trades_count} trades\n{whale_buy_volume:.0f} buy / {whale_sell_volume:.0f} sell",
-                        inline=True
-                    )
-                    
-                    embed.add_embed_field(
-                        name=f"👀 {signal_strength}",
-                        value=f"Imbalances\nOrders: {imbalance:.1%}\nTrades: {trade_imbalance:.1%}\nConfirmed: {'✅' if trade_confirmation else '❌'}",
-                        inline=True
-                    )
-                    
-                    # Add a new row with market impact and price prediction
-                    embed.add_embed_field(
-                        name="Market Analysis",
-                        value=f"Risk Level: {risk_level}\nVolume Impact: {volume_impact_pct}\n{price_prediction}",
+                        name=f"{strength_emoji} Signal Type",
+                        value=f"**{signal_strength}**\n{signal_context}\nCurrent price: **${current_price:.2f}**",
                         inline=True
                     )
                     
@@ -1211,6 +1411,13 @@ class AlertManager:
         # Generate a unique alert ID
         alert_id = str(uuid.uuid4())[:8]
         
+        # CALL SOURCE TRACKING: Log alert processing (extract from results if available)
+        call_source = results.get('call_source', 'UNKNOWN_SOURCE') if isinstance(results, dict) else 'UNKNOWN_SOURCE'
+        call_id = results.get('call_id', 'UNKNOWN_CALL') if isinstance(results, dict) else 'UNKNOWN_CALL'
+        cycle_call_source = results.get('cycle_call_source', 'UNKNOWN_CYCLE') if isinstance(results, dict) else 'UNKNOWN_CYCLE'
+        cycle_call_id = results.get('cycle_call_id', 'UNKNOWN_CYCLE_CALL') if isinstance(results, dict) else 'UNKNOWN_CYCLE_CALL'
+        
+        self.logger.info(f"[CALL_TRACKING][ALERT_MGR][{call_source}→{cycle_call_source}][CALL_ID:{call_id}→{cycle_call_id}][TXN:{txn_id}][SIG:{sig_id}][ALERT:{alert_id}] Processing confluence alert for {symbol}")
         self.logger.debug(f"[TXN:{txn_id}][SIG:{sig_id}][ALERT:{alert_id}] Starting confluence alert for {symbol}")
         
         try:
@@ -1257,6 +1464,11 @@ class AlertManager:
             # Debug: Log components received
             self.logger.debug(f"[TXN:{txn_id}][SIG:{sig_id}][ALERT:{alert_id}] Components received: {components}")
             
+            # Check if reliability is less than 100% (1.0), if so, skip alert
+            if reliability < 1.0:
+                self.logger.info(f"[TXN:{txn_id}][SIG:{sig_id}][ALERT:{alert_id}] Skipping alert for {symbol} due to reliability {reliability*100:.1f}% < 100%")
+                return
+                
             # Use explicit signal_type if provided, otherwise determine based on score and thresholds
             if not signal_type:
                 if confluence_score >= buy_threshold:
@@ -1384,58 +1596,128 @@ class AlertManager:
             # Save component data as JSON for future reference
             json_path = self._save_component_data(symbol, components, results, signal_type)
             
+            # Note: PDF generation is handled by Monitor.py -> send_signal_alert() workflow
+            # Disable internal PDF generation to avoid conflicts with the main PDF generation path
+            pdf_path = None
+            if False:  # Disabled to prevent dual PDF generation
+                try:
+                    self.logger.info(f"[TXN:{txn_id}][SIG:{sig_id}][ALERT:{alert_id}] 🔧 Generating PDF for {symbol} {signal_type} signal...")
+                    
+                    # Prepare report data for PDF generation
+                    report_data = {
+                        'symbol': symbol,
+                        'signal_type': signal_type,
+                        'confluence_score': confluence_score,
+                        'components': components,
+                        'results': results,
+                        'price': price,
+                        'reliability': reliability,
+                        'transaction_id': txn_id,
+                        'buy_threshold': buy_threshold,
+                        'sell_threshold': sell_threshold,
+                        'weights': weights or {},
+                        'timestamp': datetime.now().isoformat(),
+                        'market_interpretations': market_interpretations,
+                        'actionable_insights': actionable_insights,
+                        'influential_components': influential_components,
+                        'top_weighted_subcomponents': top_weighted_subcomponents
+                    }
+                    
+                    # Generate PDF using the report generator
+                    pdf_result = await self.pdf_generator.generate_report(
+                        signal_data=report_data,
+                        output_path=f"reports/pdf/{symbol.lower()}_{signal_type.lower()}_{confluence_score:.1f}p{int(confluence_score*10)%10}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+                    )
+                    
+                    if pdf_result and pdf_result != False:
+                        # pdf_result is a tuple (pdf_path, json_path) if successful
+                        if isinstance(pdf_result, tuple) and len(pdf_result) >= 1:
+                            pdf_path = pdf_result[0]
+                            self.logger.info(f"[TXN:{txn_id}][SIG:{sig_id}][ALERT:{alert_id}] ✅ PDF generated successfully: {pdf_path}")
+                        else:
+                            pdf_path = pdf_result
+                            self.logger.info(f"[TXN:{txn_id}][SIG:{sig_id}][ALERT:{alert_id}] ✅ PDF generated successfully: {pdf_path}")
+                    else:
+                        self.logger.error(f"[TXN:{txn_id}][SIG:{sig_id}][ALERT:{alert_id}] ❌ PDF generation failed: No result returned")
+                        
+                except Exception as pdf_error:
+                    self.logger.error(f"[TXN:{txn_id}][SIG:{sig_id}][ALERT:{alert_id}] ❌ PDF generation error: {str(pdf_error)}")
+                    self.logger.debug(f"[TXN:{txn_id}][SIG:{sig_id}][ALERT:{alert_id}] PDF error traceback: {traceback.format_exc()}")
+            else:
+                self.logger.debug(f"[TXN:{txn_id}][SIG:{sig_id}][ALERT:{alert_id}] PDF generation disabled (enabled: {self.pdf_enabled})")
+            
             # Add interpretations if available
             if results or market_interpretations:
                 # Process detailed interpretations from results
                 self.logger.debug(f"[TXN:{txn_id}][SIG:{sig_id}][ALERT:{alert_id}] Processing detailed interpretations from results")
                 
-                # Check for enhanced formatted data first - Add fallback market interpretations if none provided
+                # Process market interpretations using centralized InterpretationManager
                 if market_interpretations and isinstance(market_interpretations, list) and len(market_interpretations) > 0:
-                    self.logger.debug(f"[TXN:{txn_id}][SIG:{sig_id}][ALERT:{alert_id}] Using enhanced market interpretations: {len(market_interpretations)} items")
-                    description += "\n**MARKET INTERPRETATIONS:**\n"
-                    
-                    # Log the received interpretations for debugging
-                    for i, interp in enumerate(market_interpretations[:5]):
-                        self.logger.debug(f"[TXN:{txn_id}][SIG:{sig_id}][ALERT:{alert_id}] Interpretation {i}: {type(interp)} - {interp}")
-                    
-                    # Add each interpretation - properly extract from objects
-                    for interp_idx, interp_obj in enumerate(market_interpretations[:3]):
-                        # Debug the current interpretation object
-                        self.logger.debug(f"[TXN:{txn_id}][SIG:{sig_id}][ALERT:{alert_id}] Processing interpretation {interp_idx}: {type(interp_obj)}")
+                    try:
+                        self.logger.debug(f"[TXN:{txn_id}][SIG:{sig_id}][ALERT:{alert_id}] Processing {len(market_interpretations)} interpretations with InterpretationManager")
                         
-                        if isinstance(interp_obj, dict):
-                            # Extract component name and interpretation text
-                            component = interp_obj.get('display_name', interp_obj.get('component', 'Unknown'))
-                            interp_text = interp_obj.get('interpretation', 'No interpretation available')
-                            
-                            # Handle nested interpretation object
-                            if isinstance(interp_text, dict):
-                                # Convert dict to string if needed
-                                if 'message' in interp_text:
-                                    interp_text = interp_text['message']
-                                # Special handling for sentiment which has a specific structure
-                                elif component.lower() == 'sentiment' and 'sentiment' in interp_text:
-                                    # Extract main sentiment message and use it directly
-                                    interp_text = interp_text.get('sentiment', '')
-                                    # Add other important insights if available
-                                    if 'funding_rate' in interp_text:
-                                        interp_text += f" with {interp_text['funding_rate'].lower()}"
-                                    if 'market_activity' in interp_text:
-                                        interp_text += f" and {interp_text['market_activity'].lower()}"
-                                else:
-                                    # For other dictionary types, format more readably
-                                    interp_text = '; '.join([f"{k.replace('_', ' ').title()}: {v}" for k, v in interp_text.items()])
-                            
-                            # Format with component name and text
-                            description += f"• **{component}**: {interp_text}\n"
-                            self.logger.debug(f"[TXN:{txn_id}][SIG:{sig_id}][ALERT:{alert_id}] Added interpretation for {component}")
-                        else:
-                            # Fallback for string interpretations
-                            description += f"• {interp_obj}\n"
-                            self.logger.debug(f"[TXN:{txn_id}][SIG:{sig_id}][ALERT:{alert_id}] Added string interpretation")
+                        # Use InterpretationManager to process and standardize interpretations
+                        interpretation_set = self.interpretation_manager.process_interpretations(
+                            market_interpretations, 
+                            f"alert_{symbol}",
+                            market_data=None,  # No market data available at this point
+                            timestamp=datetime.now()
+                        )
                         
-                        # No extra spacing after each item to keep formatting compact
-                        # description += "\n"
+                        # Format interpretations for Discord alert
+                        formatted_for_alert = self.interpretation_manager.get_formatted_interpretation(
+                            interpretation_set, 'alert'
+                        )
+                        
+                        description += "\n**MARKET INTERPRETATIONS:**\n"
+                        
+                        # Add each standardized interpretation
+                        for interpretation in interpretation_set.interpretations[:3]:  # Limit to top 3
+                            # Extract the proper component name with proper display mapping
+                            # Map component types to proper display names
+                            component_type_display_map = {
+                                'technical_indicator': 'Technical',
+                                'volume_analysis': 'Volume',
+                                'sentiment_analysis': 'Sentiment',
+                                'price_analysis': 'Price Structure',
+                                'funding_analysis': 'Funding',
+                                'whale_analysis': 'Whale Activity',
+                                'general_analysis': 'General Analysis',
+                                'unknown': 'Unknown'
+                            }
+                            
+                            # Special handling for orderbook and orderflow components
+                            if 'orderbook' in interpretation.component_name.lower():
+                                component_name = 'Orderbook'
+                            elif 'orderflow' in interpretation.component_name.lower():
+                                component_name = 'Orderflow'
+                            else:
+                                # Use component type mapping for proper display names
+                                component_type_value = interpretation.component_type.value
+                                component_name = component_type_display_map.get(component_type_value, 
+                                                                             interpretation.component_name.replace('_', ' ').title())
+                                
+                                # Safeguard against typos and ensure proper text
+                                if component_name in ['Genral Analyis', 'Genral Analysis']:
+                                    component_name = 'General Analysis'
+                            
+                            interp_text = interpretation.interpretation_text
+                            severity_indicator = "🔴" if interpretation.severity.value == "critical" else "🟡" if interpretation.severity.value == "warning" else "🟢"
+                            
+                            description += f"• {severity_indicator} **{component_name}**: {interp_text}\n"
+                            self.logger.debug(f"[TXN:{txn_id}][SIG:{sig_id}][ALERT:{alert_id}] Added standardized interpretation for {component_name}")
+                        
+                    except Exception as e:
+                        self.logger.error(f"[TXN:{txn_id}][SIG:{sig_id}][ALERT:{alert_id}] Error processing interpretations with InterpretationManager: {e}")
+                        # Fallback to original processing
+                        description += "\n**MARKET INTERPRETATIONS:**\n"
+                        for interp_obj in market_interpretations[:3]:
+                            if isinstance(interp_obj, dict):
+                                component = interp_obj.get('display_name', interp_obj.get('component', 'Unknown'))
+                                interp_text = interp_obj.get('interpretation', 'No interpretation available')
+                                description += f"• **{component}**: {interp_text}\n"
+                            else:
+                                description += f"• {interp_obj}\n"
                 else:
                     # Use original format if enhanced data not available
                     self.logger.debug(f"[TXN:{txn_id}][SIG:{sig_id}][ALERT:{alert_id}] Enhanced market interpretations not available, using fallback")
@@ -1499,6 +1781,9 @@ class AlertManager:
                 else:
                     subcomps_to_display = top_weighted_subcomponents
                 
+                # Sort by weighted_impact to ensure we show the most impactful ones first
+                subcomps_to_display.sort(key=lambda x: x.get('weighted_impact', 0), reverse=True)
+                
                 for i, sub_comp in enumerate(subcomps_to_display[:3]):  # Always limit to top 3
                     sub_name = sub_comp.get('display_name', 'Unknown')
                     parent_name = sub_comp.get('parent_display_name', 'Unknown')
@@ -1510,8 +1795,18 @@ class AlertManager:
                     # Build gauge for sub-component
                     sub_gauge = self._build_gauge(raw_score, width=10)
                     
-                    # Add formatted sub-component with impact percentage
-                    description += f"{i+1}. **{sub_name}** `{raw_score:.1f}` {indicator} ({parent_name}) - Impact: `{impact:.1f}%` {sub_gauge}\n"
+                    # Determine strength description based on impact
+                    if impact > 15:
+                        strength_desc = "🔥 **MAJOR**"
+                    elif impact > 10:
+                        strength_desc = "⚡ **HIGH**"
+                    elif impact > 5:
+                        strength_desc = "📊 **MODERATE**"
+                    else:
+                        strength_desc = "📉 **LOW**"
+                    
+                    # Add formatted sub-component with impact percentage and strength indicator
+                    description += f"{i+1}. {strength_desc} **{sub_name}** `{raw_score:.1f}` {indicator} ({parent_name}) - Impact: `{impact:.1f}%` {sub_gauge}\n"
                 
                 # Add spacing
                 description += "\n"
@@ -1615,6 +1910,12 @@ class AlertManager:
                     
                     if response and response.status_code == 200:
                         self.logger.info(f"[TXN:{txn_id}][SIG:{sig_id}][ALERT:{alert_id}] Successfully sent confluence alert for {symbol}")
+                        
+                        # Note: PDF attachment is handled by send_signal_alert() workflow
+                        # Skip PDF attachment here to avoid duplicate PDF messages
+                        if pdf_path and os.path.exists(pdf_path):
+                            self.logger.info(f"[TXN:{txn_id}][SIG:{sig_id}][ALERT:{alert_id}] 📎 PDF attachment will be handled by send_signal_alert() workflow")
+                        
                         break
                     else:
                         status_code = response.status_code if response else "N/A"
@@ -1673,6 +1974,12 @@ class AlertManager:
                         ) as resp:
                             if resp.status == 200:
                                 self.logger.info(f"[TXN:{txn_id}][SIG:{sig_id}][ALERT:{alert_id}] Successfully sent alert using fallback method")
+                                
+                                # Note: PDF attachment is handled by send_signal_alert() workflow
+                                # Skip PDF attachment here to avoid duplicate PDF messages
+                                if pdf_path and os.path.exists(pdf_path):
+                                    self.logger.info(f"[TXN:{txn_id}][SIG:{sig_id}][ALERT:{alert_id}] 📎 PDF attachment will be handled by send_signal_alert() workflow (fallback)")
+                                
                                 # Update success stats
                                 self._alert_stats['total'] = int(self._alert_stats.get('total', 0)) + 1
                                 self._alert_stats['sent'] = int(self._alert_stats.get('sent', 0)) + 1
@@ -1910,18 +2217,66 @@ class AlertManager:
             if self.discord_webhook_url:
                 # Clean up the URL in case there are any whitespace or newlines
                 webhook_url = self.discord_webhook_url.strip()
-                if webhook_url:
+                if webhook_url and self._validate_discord_webhook_url(webhook_url):
                     self.logger.debug(f"Initializing Discord webhook with URL: {webhook_url[:20]}...{webhook_url[-10:]}")
                     self.webhook = DiscordWebhook(url=webhook_url)
                     self.logger.info("Discord webhook initialized successfully")
                 else:
-                    self.logger.error("Discord webhook URL is empty after stripping")
+                    self.logger.error("Discord webhook URL validation failed")
             else:
                 self.logger.warning("No Discord webhook URL configured")
                 
         except Exception as e:
             self.logger.error(f"Error initializing Discord webhook: {str(e)}")
             self.logger.error(traceback.format_exc())
+    
+    def _validate_discord_webhook_url(self, url: str) -> bool:
+        """Validate Discord webhook URL format.
+        
+        Args:
+            url: Discord webhook URL to validate
+            
+        Returns:
+            bool: True if URL is valid, False otherwise
+        """
+        if not url or not isinstance(url, str):
+            self.logger.error("Discord webhook URL is empty or not a string")
+            return False
+        
+        url = url.strip()
+        if not url:
+            self.logger.error("Discord webhook URL is empty after stripping")
+            return False
+        
+        # Check if URL starts with Discord webhook pattern
+        if not url.startswith('https://discord.com/api/webhooks/') and not url.startswith('https://discordapp.com/api/webhooks/'):
+            self.logger.error(f"Discord webhook URL does not match expected pattern. URL starts with: {url[:50]}...")
+            return False
+        
+        # Check if URL has the required parts (webhook ID and token)
+        parts = url.split('/')
+        if len(parts) < 7:  # https://discord.com/api/webhooks/ID/TOKEN
+            self.logger.error("Discord webhook URL is missing required components (ID/TOKEN)")
+            return False
+        
+        webhook_id = parts[5] if len(parts) > 5 else ""
+        webhook_token = parts[6] if len(parts) > 6 else ""
+        
+        if not webhook_id or not webhook_token:
+            self.logger.error("Discord webhook URL is missing webhook ID or token")
+            return False
+        
+        # Basic format validation
+        if not webhook_id.isdigit():
+            self.logger.error("Discord webhook ID should be numeric")
+            return False
+        
+        if len(webhook_token) < 10:  # Tokens are typically much longer
+            self.logger.error("Discord webhook token appears to be too short")
+            return False
+        
+        self.logger.debug(f"Discord webhook URL validation passed for ID: {webhook_id}")
+        return True
     
     async def _send_discord_alert(self, alert: Dict[str, Any]) -> None:
         """Send alert to Discord webhook with retry logic and fallback mechanism.
@@ -1946,6 +2301,11 @@ class AlertManager:
             # Check if this is a whale_activity alert and handle specially
             if details.get('type') == 'whale_activity':
                 await self._send_whale_activity_discord_alert(alert, alert_id)
+                return
+            
+            # Check if this is a smart_money alert and handle specially
+            if details.get('type') == 'smart_money':
+                await self._send_smart_money_discord_alert(alert, alert_id)
                 return
             
             # Format timestamp
@@ -1990,30 +2350,69 @@ class AlertManager:
                         inline=False if len(formatted_value) > 100 else True
                     )
             
-            # Create webhook and add embed
-            webhook = DiscordWebhook(url=self.discord_webhook_url)
-            webhook.add_embed(embed)
+            # Create webhook and add embed with enhanced error handling
+            try:
+                webhook = DiscordWebhook(url=self.discord_webhook_url)
+                webhook.add_embed(embed)
+                self.logger.debug(f"[ALERT:{alert_id}] Created Discord webhook with embed")
+            except Exception as webhook_err:
+                self.logger.error(f"[ALERT:{alert_id}] Failed to create Discord webhook: {type(webhook_err).__name__}: {str(webhook_err)}")
+                self._alert_stats['errors'] = int(self._alert_stats.get('errors', 0)) + 1
+                return
             
             # Retry logic with exponential backoff
             max_retries = self.webhook_max_retries
             retry_delay = self.webhook_initial_retry_delay
             response = None
             
+            # Enhanced debugging for webhook configuration
+            self.logger.debug(f"[ALERT:{alert_id}] Discord webhook URL configured: {bool(self.discord_webhook_url)}")
+            if self.discord_webhook_url:
+                self.logger.debug(f"[ALERT:{alert_id}] Webhook URL length: {len(self.discord_webhook_url)}")
+                self.logger.debug(f"[ALERT:{alert_id}] Webhook URL starts with: {self.discord_webhook_url[:50]}...")
+            
             self.logger.debug(f"[ALERT:{alert_id}] Attempting to send Discord alert (max {max_retries} retries)")
+            
+            # Validate webhook before attempting to send
+            if not self.discord_webhook_url or not self.discord_webhook_url.strip():
+                self.logger.error(f"[ALERT:{alert_id}] Discord webhook URL is not configured or empty")
+                self._alert_stats['errors'] = int(self._alert_stats.get('errors', 0)) + 1
+                return
+            
+            # Validate webhook URL format
+            if not self._validate_discord_webhook_url(self.discord_webhook_url):
+                self.logger.error(f"[ALERT:{alert_id}] Discord webhook URL format validation failed")
+                self._alert_stats['errors'] = int(self._alert_stats.get('errors', 0)) + 1
+                return
             
             for attempt in range(max_retries):
                 try:
                     # Attempt to send the webhook
+                    self.logger.debug(f"[ALERT:{alert_id}] Executing webhook on attempt {attempt + 1}")
                     response = webhook.execute()
+                    
+                    # Enhanced response checking
+                    self.logger.debug(f"[ALERT:{alert_id}] Webhook response type: {type(response)}")
+                    if response:
+                        self.logger.debug(f"[ALERT:{alert_id}] Response attributes: {dir(response)}")
                     
                     # Check if successful
                     if response and hasattr(response, 'status_code') and 200 <= response.status_code < 300:
-                        self.logger.debug(f"[ALERT:{alert_id}] Discord alert sent successfully on attempt {attempt + 1}")
+                        self.logger.info(f"[ALERT:{alert_id}] Discord alert sent successfully on attempt {attempt + 1} (status: {response.status_code})")
                         self._alert_stats['sent'] = int(self._alert_stats.get('sent', 0)) + 1
                         return
                     else:
                         status_code = response.status_code if response and hasattr(response, 'status_code') else "N/A"
                         self.logger.warning(f"[ALERT:{alert_id}] Failed to send alert (attempt {attempt+1}/{max_retries}): Status code {status_code}")
+                        
+                        # Enhanced response logging
+                        if response:
+                            if hasattr(response, 'text'):
+                                self.logger.debug(f"[ALERT:{alert_id}] Response text: {response.text[:500]}")
+                            if hasattr(response, 'content'):
+                                self.logger.debug(f"[ALERT:{alert_id}] Response content: {str(response.content)[:500]}")
+                            if hasattr(response, 'reason'):
+                                self.logger.debug(f"[ALERT:{alert_id}] Response reason: {response.reason}")
                         
                         # Check for recoverable status codes
                         if (response and hasattr(response, 'status_code') and 
@@ -2024,16 +2423,12 @@ class AlertManager:
                                 if self.webhook_exponential_backoff:
                                     retry_delay *= 2  # Exponential backoff
                                 continue
-                        
-                        # Log response details if available
-                        if response and hasattr(response, 'text'):
-                            self.logger.debug(f"[ALERT:{alert_id}] Response: {response.text[:200]}")
                             
                 except (requests.exceptions.ConnectionError, 
                         requests.exceptions.Timeout,
                         requests.exceptions.HTTPError) as req_err:
                     # Handle requests library errors (including RemoteDisconnected)
-                    self.logger.warning(f"[ALERT:{alert_id}] Network error sending alert (attempt {attempt+1}/{max_retries}): {str(req_err)}")
+                    self.logger.error(f"[ALERT:{alert_id}] Network error sending alert (attempt {attempt+1}/{max_retries}): {type(req_err).__name__}: {str(req_err)}")
                     if attempt < max_retries - 1:
                         self.logger.info(f"[ALERT:{alert_id}] Retrying after {retry_delay} seconds...")
                         await asyncio.sleep(retry_delay)
@@ -2042,8 +2437,9 @@ class AlertManager:
                         continue
                     
                 except Exception as e:
-                    # Handle other unexpected errors
-                    self.logger.error(f"[ALERT:{alert_id}] Unexpected error sending alert (attempt {attempt+1}/{max_retries}): {str(e)}")
+                    # Handle other unexpected errors with full traceback
+                    self.logger.error(f"[ALERT:{alert_id}] Unexpected error sending alert (attempt {attempt+1}/{max_retries}): {type(e).__name__}: {str(e)}")
+                    self.logger.error(f"[ALERT:{alert_id}] Traceback: {traceback.format_exc()}")
                     if attempt < max_retries - 1:
                         await asyncio.sleep(retry_delay)
                         if self.webhook_exponential_backoff:
@@ -2106,205 +2502,406 @@ class AlertManager:
             self.logger.error(f"[ALERT:{alert_id}] Error in _send_discord_alert: {str(e)}")
             self.logger.error(traceback.format_exc())
             self._alert_stats['errors'] = int(self._alert_stats.get('errors', 0)) + 1
-    
-    async def send_discord_webhook_message(self, message: Dict[str, Any], files: List[str] = None) -> None:
-        """Send a message to Discord webhook.
+
+    async def send_discord_webhook_message(self, message: Dict[str, Any], files: List[str] = None, alert_type: str = None) -> Tuple[bool, Optional[Dict[str, Any]]]:
+        """Send message to Discord webhook with enhanced error handling and logging.
         
         Args:
-            message: Message data to send
+            message: Discord webhook message data
             files: Optional list of file paths to attach
+            alert_type: Optional alert type for routing (e.g., 'market_report')
+            
+        Returns:
+            Tuple of (success: bool, response_data: Optional[Dict])
         """
+        delivery_id = str(uuid.uuid4())[:8]
+        start_time = time.time()
+        self._delivery_stats['total_attempts'] += 1
+        
         try:
-            # Create a unique ID for this webhook message for tracking
-            webhook_id = str(uuid.uuid4())[:8]
+            self.logger.info(f"[WEBHOOK_DELIVERY:{delivery_id}] Starting Discord webhook delivery (type: {alert_type or 'general'})")
             
-            # Handle mock mode for testing
-            if self.mock_mode:
-                self.logger.info(f"[WH:{webhook_id}][MOCK] Would send webhook message: {message.get('content', '')[:50]}...")
-                
-                # Store the message if capture is enabled
-                if self.capture_alerts:
-                    self.captured_alerts.append({
-                        'message': message,
-                        'files': files,
-                        'timestamp': time.time(),
-                        'webhook_id': webhook_id
-                    })
-                    self.logger.debug(f"[WH:{webhook_id}][MOCK] Message captured for testing")
-                
-                return
-            
-            if not self.discord_webhook_url:
-                self.logger.warning(f"[WH:{webhook_id}] Cannot send Discord webhook message: webhook URL not set")
-                return
-                
-            # Log message being sent (limit content preview to 50 chars)
-            content_preview = message.get('content', '')[:50]
-            self.logger.debug(f"[WH:{webhook_id}] Sending webhook with content: {content_preview}...")
-            
-            # Create webhook object
-            webhook = DiscordWebhook(
-                url=self.discord_webhook_url,
-                content=message.get('content', ''),
-                username=message.get('username', 'Virtuoso Alert')
-            )
-            
-            # Process file attachments if provided
+            # Validate files before processing
+            validated_files = []
             if files:
-                self.logger.info(f"[WH:{webhook_id}][FILES] Processing {len(files)} file attachment(s)")
+                validated_files = self._validate_attachment_files(files, delivery_id)
+                if files and not validated_files:
+                    self.logger.warning(f"[WEBHOOK_DELIVERY:{delivery_id}] All file attachments failed validation")
+                    self._delivery_stats['file_attachment_failures'] += 1
+            # Determine which webhook URL to use based on alert type and configuration
+            webhook_url = self.discord_webhook_url  # Default to main webhook
+            
+            # Check if this should be routed to system webhook based on alert type
+            if alert_type:
+                system_alerts_config = self.config.get('monitoring', {}).get('alerts', {}).get('system_alerts', {})
+                use_system_webhook = system_alerts_config.get('use_system_webhook', False)
+                types_config = system_alerts_config.get('types', {})
                 
-                # Normalize file list to handle both string paths and dicts with file info
-                normalized_files = []
+                # Check if mirroring is enabled for this alert type
+                mirror_config = system_alerts_config.get('mirror_alerts', {})
+                should_mirror = mirror_config.get('enabled', False) and mirror_config.get('types', {}).get(alert_type, False)
                 
-                for i, file_item in enumerate(files):
-                    self.logger.debug(f"[WH:{webhook_id}][FILES] Processing file {i+1}/{len(files)}: {file_item}")
+                if should_mirror and self.system_webhook_url:
+                    # Mirror to system webhook and continue to main webhook
+                    self.logger.info(f"[WEBHOOK_DELIVERY:{delivery_id}] Mirroring {alert_type} Discord message to system webhook")
                     
-                    if isinstance(file_item, str):
-                        # Simple path string
-                        file_path = file_item
-                        file_name = os.path.basename(file_path)
-                        file_desc = None
-                    elif isinstance(file_item, dict):
-                        # Dictionary with file details
-                        file_path = file_item.get('path')
-                        file_name = file_item.get('filename', os.path.basename(file_path))
-                        file_desc = file_item.get('description')
-                    else:
-                        self.logger.warning(f"[WH:{webhook_id}][FILES] Skipping invalid file item type: {type(file_item).__name__}")
-                        continue
+                    # Create system webhook payload
+                    content = message.get('content', '')
+                    details = {
+                        'type': alert_type,
+                        'discord_message': message,  # Include original message for reference
+                        'report_time': datetime.now(timezone.utc).isoformat()
+                    }
                     
-                    # Check if file exists and is actually a file (not a directory)
-                    if not file_path:
-                        self.logger.warning(f"[WH:{webhook_id}][FILES] Invalid file path: {file_path}")
-                        continue
+                    await self._send_system_webhook_alert(content, details)
+                    # Continue to send to main webhook below
                     
-                    if not os.path.exists(file_path):
-                        self.logger.warning(f"[WH:{webhook_id}][FILES] File not found: {file_path}")
-                        continue
+                elif use_system_webhook and types_config.get(alert_type, False) and self.system_webhook_url:
+                    # Send only to system webhook (no mirroring)
+                    webhook_url = self.system_webhook_url
+                    self.logger.info(f"[WEBHOOK_DELIVERY:{delivery_id}] Routing {alert_type} Discord message to system webhook only")
                     
-                    if os.path.isdir(file_path):
-                        self.logger.error(f"[WH:{webhook_id}][FILES] Error attaching file {file_path}: Is a directory")
-                        continue
-                        
-                    # Check if file is empty or too large
-                    try:
-                        file_size = os.path.getsize(file_path)
-                        if file_size == 0:
-                            self.logger.warning(f"[WH:{webhook_id}][FILES] File is empty: {file_path}")
-                            continue
-                        
-                        if file_size > 8 * 1024 * 1024:  # 8MB (Discord limit)
-                            self.logger.warning(f"[WH:{webhook_id}][FILES] File too large ({file_size/1024/1024:.2f} MB): {file_path}")
-                            continue
+                    # For system webhook, we need to convert the rich Discord message to system webhook format
+                    # Extract the main content and create a system alert
+                    content = message.get('content', '')
+                    
+                    # Create system webhook payload
+                    details = {
+                        'type': alert_type,
+                        'discord_message': message,  # Include original message for reference
+                        'report_time': datetime.now(timezone.utc).isoformat()
+                    }
+                    
+                    await self._send_system_webhook_alert(content, details)
+                    delivery_time = time.time() - start_time
+                    self.logger.info(f"[WEBHOOK_DELIVERY:{delivery_id}] System webhook delivery completed in {delivery_time:.2f}s")
+                    self._delivery_stats['successful_deliveries'] += 1
+                    return True, {'status': 'sent_to_system_webhook'}
+            
+            # Send to Discord webhook (original logic)
+            if not webhook_url:
+                self.logger.warning(f"[WEBHOOK_DELIVERY:{delivery_id}] No Discord webhook URL configured")
+                self._delivery_stats['failed_deliveries'] += 1
+                return False, {'error': 'no_webhook_url'}
+                
+            webhook_url = webhook_url.strip()
+            
+            if not webhook_url:
+                self.logger.warning(f"[WEBHOOK_DELIVERY:{delivery_id}] Discord webhook URL is empty after stripping")
+                self._delivery_stats['failed_deliveries'] += 1
+                return False, {'error': 'empty_webhook_url'}
+            
+            # Create webhook
+            self.logger.debug(f"[WEBHOOK_DELIVERY:{delivery_id}] Creating Discord webhook for URL: {webhook_url[:50]}...")
+            webhook = DiscordWebhook(url=webhook_url)
+            
+            # Add content if provided
+            if 'content' in message and message['content']:
+                webhook.content = message['content']
+                self.logger.debug(f"[WEBHOOK_DELIVERY:{delivery_id}] Added content ({len(message['content'])} chars)")
+            
+            # Add username if provided
+            if 'username' in message and message['username']:
+                webhook.username = message['username']
+                self.logger.debug(f"[WEBHOOK_DELIVERY:{delivery_id}] Added username: {message['username']}")
+            
+            # Add avatar URL if provided
+            if 'avatar_url' in message and message['avatar_url']:
+                webhook.avatar_url = message['avatar_url']
+                self.logger.debug(f"[WEBHOOK_DELIVERY:{delivery_id}] Added avatar URL")
+            
+            # Add embeds if provided
+            embed_count = 0
+            if 'embeds' in message and isinstance(message['embeds'], list):
+                for embed_data in message['embeds']:
+                    if isinstance(embed_data, dict):
+                        try:
+                            embed = DiscordEmbed()
                             
-                        self.logger.debug(f"[WH:{webhook_id}][FILES] File {file_path} validated, size: {file_size/1024:.2f} KB")
-                    except Exception as size_err:
-                        self.logger.warning(f"[WH:{webhook_id}][FILES] Error checking file size: {str(size_err)}")
-                        
-                    # Verify file type/headers for common formats
+                            # Set basic embed properties
+                            if 'title' in embed_data:
+                                embed.set_title(embed_data['title'])
+                            if 'description' in embed_data:
+                                embed.set_description(embed_data['description'])
+                            if 'color' in embed_data:
+                                embed.set_color(embed_data['color'])
+                            if 'url' in embed_data:
+                                embed.set_url(embed_data['url'])
+                            
+                            # Set author if provided
+                            if 'author' in embed_data and isinstance(embed_data['author'], dict):
+                                author = embed_data['author']
+                                embed.set_author(
+                                    name=author.get('name', ''),
+                                    url=author.get('url', ''),
+                                    icon_url=author.get('icon_url', '')
+                                )
+                            
+                            # Set footer if provided
+                            if 'footer' in embed_data and isinstance(embed_data['footer'], dict):
+                                footer = embed_data['footer']
+                                embed.set_footer(
+                                    text=footer.get('text', ''),
+                                    icon_url=footer.get('icon_url', '')
+                                )
+                            
+                            # Set thumbnail if provided
+                            if 'thumbnail' in embed_data and isinstance(embed_data['thumbnail'], dict):
+                                embed.set_thumbnail(url=embed_data['thumbnail'].get('url', ''))
+                            
+                            # Set image if provided
+                            if 'image' in embed_data and isinstance(embed_data['image'], dict):
+                                embed.set_image(url=embed_data['image'].get('url', ''))
+                            
+                            # Set timestamp if provided
+                            if 'timestamp' in embed_data:
+                                embed.set_timestamp(embed_data['timestamp'])
+                            
+                            # Add fields if provided
+                            if 'fields' in embed_data and isinstance(embed_data['fields'], list):
+                                for field in embed_data['fields']:
+                                    if isinstance(field, dict) and 'name' in field and 'value' in field:
+                                        embed.add_embed_field(
+                                            name=field['name'],
+                                            value=field['value'],
+                                            inline=field.get('inline', False)
+                                        )
+                            
+                            webhook.add_embed(embed)
+                            embed_count += 1
+                            
+                        except Exception as e:
+                            self.logger.warning(f"[WEBHOOK_DELIVERY:{delivery_id}] Failed to process embed {embed_count}: {str(e)}")
+                            
+            if embed_count > 0:
+                self.logger.debug(f"[WEBHOOK_DELIVERY:{delivery_id}] Added {embed_count} embeds")
+            
+            # Add files if provided
+            file_count = 0
+            if validated_files:
+                self.logger.info(f"[WEBHOOK_DELIVERY:{delivery_id}] Processing {len(validated_files)} file attachments")
+                
+                for file_info in validated_files:
                     try:
+                        file_path = file_info['path']
+                        filename = file_info['filename']
+                        file_size = file_info['size']
+                        
+                        self.logger.debug(f"[WEBHOOK_DELIVERY:{delivery_id}] Attaching file: {filename} ({file_size / 1024:.1f} KB)")
+                        
+                        # Clean filename to prevent null byte errors
+                        clean_filename = filename.replace('\x00', '').strip()
+                        if not clean_filename:
+                            clean_filename = f"attachment_{file_count}.pdf"
+                        
+                        # Ensure filename is properly encoded
+                        try:
+                            clean_filename = clean_filename.encode('ascii', 'ignore').decode('ascii')
+                        except Exception:
+                            clean_filename = f"attachment_{file_count}.pdf"
+                        
                         with open(file_path, 'rb') as f:
-                            header = f.read(8)  # Read first 8 bytes for file signature
-                            
-                        if file_path.lower().endswith('.pdf') and not header.startswith(b'%PDF'):
-                            self.logger.warning(f"[WH:{webhook_id}][FILES] File has .pdf extension but doesn't have PDF header: {file_path}")
-                        elif file_path.lower().endswith(('.png', '.jpg', '.jpeg')) and not any([
-                            header.startswith(b'\x89PNG'),  # PNG
-                            header.startswith(b'\xff\xd8\xff'),  # JPEG
-                        ]):
-                            self.logger.warning(f"[WH:{webhook_id}][FILES] File has image extension but doesn't have image header: {file_path}")
-                            
-                    except Exception as header_err:
-                        self.logger.debug(f"[WH:{webhook_id}][FILES] Error checking file header: {str(header_err)}")
-                        
-                    normalized_files.append({
-                        'path': file_path,
-                        'name': file_name,
-                        'description': file_desc
-                    })
-                
-                # Add each file to the webhook
-                successful_attachments = 0
-                for file_info in normalized_files:
-                    try:
-                        self.logger.debug(f"[WH:{webhook_id}][FILES] Reading file: {file_info['path']}")
-                        with open(file_info['path'], 'rb') as f:
                             file_content = f.read()
+                            # Verify file content is not empty and is valid
+                            if len(file_content) == 0:
+                                self.logger.warning(f"[WEBHOOK_DELIVERY:{delivery_id}] File is empty: {filename}")
+                                continue
                             
-                        self.logger.info(f"[WH:{webhook_id}][FILES] Attaching file: {file_info['name']} ({len(file_content)/1024:.2f} KB)")
-                        webhook.add_file(file=file_content, filename=file_info['name'])
-                        successful_attachments += 1
+                            # Use discord_webhook's add_file method directly with bytes and filename
+                            webhook.add_file(file=file_content, filename=clean_filename)
+                            file_count += 1
+                            self._delivery_stats['file_attachments'] += 1
+                            
                     except Exception as e:
-                        self.logger.error(f"[WH:{webhook_id}][FILES] Error attaching file {file_info['path']}: {str(e)}")
+                        self.logger.error(f"[WEBHOOK_DELIVERY:{delivery_id}] Failed to attach file {file_info.get('filename', 'unknown')}: {str(e)}")
+                        self._delivery_stats['file_attachment_failures'] += 1
                         
-                # Log summary of attachments
-                self.logger.info(f"[WH:{webhook_id}][FILES] Successfully attached {successful_attachments}/{len(normalized_files)} files to webhook")
+            if file_count > 0:
+                self.logger.info(f"[WEBHOOK_DELIVERY:{delivery_id}] Successfully attached {file_count} files")
             
-            # Send the webhook with retry logic
-            self.logger.debug(f"[WH:{webhook_id}] Executing webhook with retry logic")
-            
+            # Send webhook with retry logic
             max_retries = self.webhook_max_retries
             retry_delay = self.webhook_initial_retry_delay
             response = None
+            last_error = None
+            
+            self.logger.info(f"[WEBHOOK_DELIVERY:{delivery_id}] Sending webhook message (max retries: {max_retries})")
             
             for attempt in range(max_retries):
                 try:
-                    response = webhook.execute()
+                    attempt_start = time.time()
+                    self.logger.debug(f"[WEBHOOK_DELIVERY:{delivery_id}] Attempt {attempt + 1}/{max_retries}")
                     
-                    # Check if successful
+                    response = webhook.execute()
+                    attempt_time = time.time() - attempt_start
+                    
                     if response and hasattr(response, 'status_code') and 200 <= response.status_code < 300:
-                        self.logger.info(f"[WH:{webhook_id}] Discord webhook message sent successfully on attempt {attempt + 1}")
-                        return
+                        delivery_time = time.time() - start_time
+                        webhook_type = 'system webhook' if webhook_url == self.system_webhook_url else 'Discord webhook'
+                        
+                        self.logger.info(f"[WEBHOOK_DELIVERY:{delivery_id}] {webhook_type} message sent successfully in {delivery_time:.2f}s (attempt {attempt + 1})")
+                        self._delivery_stats['successful_deliveries'] += 1
+                        
+                        if attempt > 0:
+                            self._delivery_stats['retries'] += attempt
+                            
+                        # Return success with response data
+                        response_data = {
+                            'status_code': response.status_code,
+                            'delivery_time': delivery_time,
+                            'attempts': attempt + 1,
+                            'file_attachments': file_count,
+                            'embeds': embed_count
+                        }
+                        
+                        return True, response_data
+                        
                     else:
                         status_code = response.status_code if response and hasattr(response, 'status_code') else "N/A"
-                        self.logger.warning(f"[WH:{webhook_id}] Failed to send webhook (attempt {attempt+1}/{max_retries}): Status code {status_code}")
+                        response_text = getattr(response, 'text', 'No response text') if response else 'No response'
                         
-                        # Check for recoverable status codes
-                        if (response and hasattr(response, 'status_code') and 
-                            response.status_code in self.webhook_recoverable_status_codes):
-                            if attempt < max_retries - 1:
-                                self.logger.info(f"[WH:{webhook_id}] Recoverable error, retrying after {retry_delay} seconds...")
-                                await asyncio.sleep(retry_delay)
-                                if self.webhook_exponential_backoff:
-                                    retry_delay *= 2
-                                continue
+                        self.logger.warning(f"[WEBHOOK_DELIVERY:{delivery_id}] Webhook failed (attempt {attempt+1}/{max_retries}): Status {status_code}")
+                        self.logger.debug(f"[WEBHOOK_DELIVERY:{delivery_id}] Response: {response_text}")
                         
-                        # Log response details if available
-                        if response and hasattr(response, 'text'):
-                            self.logger.debug(f"[WH:{webhook_id}] Response text: {response.text[:200]}")
-                            
-                except (requests.exceptions.ConnectionError, 
-                        requests.exceptions.Timeout,
-                        requests.exceptions.HTTPError) as req_err:
-                    # Handle requests library errors (including RemoteDisconnected)
-                    self.logger.warning(f"[WH:{webhook_id}] Network error sending webhook (attempt {attempt+1}/{max_retries}): {str(req_err)}")
-                    if attempt < max_retries - 1:
-                        self.logger.info(f"[WH:{webhook_id}] Retrying after {retry_delay} seconds...")
-                        await asyncio.sleep(retry_delay)
-                        if self.webhook_exponential_backoff:
-                            retry_delay *= 2
-                        continue
+                        last_error = f"HTTP {status_code}: {response_text}"
                         
                 except Exception as e:
-                    # Handle other unexpected errors
-                    self.logger.error(f"[WH:{webhook_id}] Unexpected error sending webhook (attempt {attempt+1}/{max_retries}): {str(e)}")
-                    if attempt < max_retries - 1:
-                        await asyncio.sleep(retry_delay)
-                        if self.webhook_exponential_backoff:
-                            retry_delay *= 2
-                        continue
-                    else:
-                        # Final attempt failed
-                        self.logger.error(f"[WH:{webhook_id}] All attempts failed")
-                        break
+                    attempt_time = time.time() - attempt_start
+                    self.logger.warning(f"[WEBHOOK_DELIVERY:{delivery_id}] Error sending webhook (attempt {attempt+1}/{max_retries}): {str(e)}")
+                    self.logger.debug(f"[WEBHOOK_DELIVERY:{delivery_id}] Attempt {attempt + 1} failed in {attempt_time:.2f}s")
+                    last_error = str(e)
+                    
+                # Wait before retry (except on last attempt)
+                if attempt < max_retries - 1:
+                    self.logger.debug(f"[WEBHOOK_DELIVERY:{delivery_id}] Retrying in {retry_delay:.1f}s...")
+                    await asyncio.sleep(retry_delay)
+                    if self.webhook_exponential_backoff:
+                        retry_delay *= 2
             
-            # If we reach here, all attempts failed
-            self.logger.error(f"[WH:{webhook_id}] Failed to send Discord webhook message after all retry attempts")
-                
+            # If all retries failed, log error and update stats
+            total_time = time.time() - start_time
+            self.logger.error(f"[WEBHOOK_DELIVERY:{delivery_id}] Failed to send Discord webhook message after {max_retries} attempts in {total_time:.2f}s")
+            self.logger.error(f"[WEBHOOK_DELIVERY:{delivery_id}] Last error: {last_error}")
+            
+            self._delivery_stats['failed_deliveries'] += 1
+            self._delivery_stats['retries'] += max_retries - 1
+            
+            return False, {'error': last_error, 'attempts': max_retries, 'total_time': total_time}
+            
         except Exception as e:
-            self.logger.error(f"[WH:{webhook_id}] Error sending Discord webhook message: {str(e)}")
-            self.logger.debug(traceback.format_exc())
+            total_time = time.time() - start_time
+            self.logger.error(f"[WEBHOOK_DELIVERY:{delivery_id}] Unexpected error in send_discord_webhook_message: {str(e)}")
+            self.logger.error(f"[WEBHOOK_DELIVERY:{delivery_id}] Traceback: {traceback.format_exc()}")
+            
+            self._delivery_stats['failed_deliveries'] += 1
+            
+            return False, {'error': f'Unexpected error: {str(e)}', 'total_time': total_time}
     
+    def _validate_attachment_files(self, files: List[Union[str, Dict[str, Any]]], delivery_id: str) -> List[Dict[str, Any]]:
+        """
+        Validate file attachments before sending.
+        
+        Args:
+            files: List of file paths or file dictionaries
+            delivery_id: Delivery ID for logging
+            
+        Returns:
+            List of validated file information dictionaries
+        """
+        validated_files = []
+        
+        for file_item in files:
+            try:
+                # Handle different file formats
+                if isinstance(file_item, str):
+                    file_path = file_item
+                    filename = os.path.basename(file_path)
+                elif isinstance(file_item, dict):
+                    file_path = file_item.get('path', '')
+                    filename = file_item.get('filename', os.path.basename(file_path))
+                else:
+                    self.logger.warning(f"[WEBHOOK_DELIVERY:{delivery_id}] Invalid file item type: {type(file_item)}")
+                    continue
+                
+                # Check if file exists
+                if not os.path.exists(file_path):
+                    self.logger.warning(f"[WEBHOOK_DELIVERY:{delivery_id}] File does not exist: {file_path}")
+                    continue
+                
+                # Check if it's actually a file (not a directory)
+                if not os.path.isfile(file_path):
+                    self.logger.warning(f"[WEBHOOK_DELIVERY:{delivery_id}] Path is not a file: {file_path}")
+                    continue
+                
+                # Get file size
+                try:
+                    file_size = os.path.getsize(file_path)
+                except OSError as e:
+                    self.logger.warning(f"[WEBHOOK_DELIVERY:{delivery_id}] Cannot get file size for {file_path}: {str(e)}")
+                    continue
+                
+                # Check file size limits
+                if file_size == 0:
+                    self.logger.warning(f"[WEBHOOK_DELIVERY:{delivery_id}] File is empty: {file_path}")
+                    continue
+                
+                if file_size > self.max_file_size:
+                    self.logger.warning(f"[WEBHOOK_DELIVERY:{delivery_id}] File too large ({file_size / 1024 / 1024:.1f} MB): {filename}")
+                    continue
+                
+                # Check file extension
+                file_ext = os.path.splitext(filename)[1].lower()
+                if self.allowed_file_types and file_ext not in self.allowed_file_types:
+                    self.logger.warning(f"[WEBHOOK_DELIVERY:{delivery_id}] File type not allowed ({file_ext}): {filename}")
+                    continue
+                
+                # Additional validation for PDF files
+                if file_ext == '.pdf':
+                    try:
+                        with open(file_path, 'rb') as f:
+                            header = f.read(8)
+                            if not header.startswith(b'%PDF'):
+                                self.logger.warning(f"[WEBHOOK_DELIVERY:{delivery_id}] Invalid PDF file: {filename}")
+                                continue
+                    except Exception as e:
+                        self.logger.warning(f"[WEBHOOK_DELIVERY:{delivery_id}] Cannot validate PDF file {filename}: {str(e)}")
+                        continue
+                
+                # File passed all validations
+                validated_files.append({
+                    'path': file_path,
+                    'filename': filename,
+                    'size': file_size,
+                    'extension': file_ext
+                })
+                
+                self.logger.debug(f"[WEBHOOK_DELIVERY:{delivery_id}] Validated file: {filename} ({file_size / 1024:.1f} KB)")
+                
+            except Exception as e:
+                self.logger.error(f"[WEBHOOK_DELIVERY:{delivery_id}] Error validating file {file_item}: {str(e)}")
+                continue
+        
+        self.logger.info(f"[WEBHOOK_DELIVERY:{delivery_id}] Validated {len(validated_files)}/{len(files)} files")
+        return validated_files
+
+    def get_delivery_stats(self) -> Dict[str, Any]:
+        """
+        Get delivery statistics for monitoring.
+        
+        Returns:
+            Dictionary containing delivery statistics
+        """
+        return {
+            **self._delivery_stats,
+            'success_rate': (
+                self._delivery_stats['successful_deliveries'] / max(1, self._delivery_stats['total_attempts'])
+            ) * 100,
+            'file_attachment_success_rate': (
+                (self._delivery_stats['file_attachments'] - self._delivery_stats['file_attachment_failures']) / 
+                max(1, self._delivery_stats['file_attachments'])
+            ) * 100 if self._delivery_stats['file_attachments'] > 0 else 100
+        }
+
     def register_discord_handler(self) -> None:
         """Register Discord alert handler.
         
@@ -2603,22 +3200,25 @@ class AlertManager:
             # Generate transaction ID if not provided
             transaction_id = transaction_id or str(uuid.uuid4())[:8]
             
+            # Handle both string and enum inputs for divergence_type
+            divergence_str = divergence_type.value if hasattr(divergence_type, 'value') else str(divergence_type)
+            
             # Determine alert urgency and formatting based on pattern type
-            if divergence_type == "beta_expansion":
+            if divergence_str == "beta_expansion":
                 emoji = "🚀"
                 pattern_name = "BETA EXPANSION"
                 alert_color = 0xFF4500  # Orange-red for momentum
                 urgency = "HIGH MOMENTUM"
                 description_prefix = "**📈 AGGRESSIVE MOVEMENT DETECTED**\n"
                 
-            elif divergence_type == "correlation_breakdown":
+            elif divergence_str == "correlation_breakdown":
                 emoji = "🎯"
                 pattern_name = "CORRELATION BREAKDOWN"
                 alert_color = 0x9932CC  # Purple for independence
                 urgency = "INDEPENDENCE OPPORTUNITY"
                 description_prefix = "**🔄 INDEPENDENCE DETECTED**\n"
                 
-            elif divergence_type == "beta_compression":
+            elif divergence_str == "beta_compression":
                 emoji = "📉"
                 pattern_name = "BETA COMPRESSION"
                 alert_color = 0x32CD32  # Green for alpha opportunity
@@ -2627,7 +3227,7 @@ class AlertManager:
                 
             else:
                 emoji = "⚡"
-                pattern_name = divergence_type.upper().replace('_', ' ')
+                pattern_name = divergence_str.upper().replace('_', ' ')
                 alert_color = 0x00CED1  # Default cyan
                 urgency = "ALPHA OPPORTUNITY"
                 description_prefix = "**📊 PATTERN DETECTED**\n"
@@ -2678,7 +3278,8 @@ class AlertManager:
             ]
             
             # Add pattern-specific guidance
-            if divergence_type == "beta_expansion":
+            # Use the same string conversion for comparisons
+            if divergence_str == "beta_expansion":
                 description.extend([
                     "",
                     f"**🎯 Beta Expansion Strategy:**",
@@ -2688,7 +3289,7 @@ class AlertManager:
                     f"• Risk: High correlation to Bitcoin moves"
                 ])
                 
-            elif divergence_type == "correlation_breakdown":
+            elif divergence_str == "correlation_breakdown":
                 description.extend([
                     "",
                     f"**🎯 Independence Strategy:**",
@@ -2700,15 +3301,22 @@ class AlertManager:
 
             # Send Discord alert using standard webhook mechanism instead of manual aiohttp
             webhook = DiscordWebhook(url=self.discord_webhook_url)
-            webhook.add_embed(DiscordEmbed(
+            
+            # Create embed and add fields properly (discord_webhook doesn't support method chaining)
+            embed = DiscordEmbed(
                 title=alert_title,
                 description="\n".join(filter(None, description)),
                 color=alert_color
-            ).add_embed_field(
+            )
+            embed.add_embed_field(
                 name=f"{emoji} Quick Stats",
                 value=f"Alpha: {alpha_text}\nConfidence: {confidence_text}\nRisk: {risk_level}",
                 inline=True
-            ).set_footer(text=f"Virtuoso Alpha Detection • ID: {transaction_id}").set_timestamp())
+            )
+            embed.set_footer(text=f"Virtuoso Alpha Detection • ID: {transaction_id}")
+            embed.set_timestamp()
+            
+            webhook.add_embed(embed)
             
             # Execute webhook with retry logic
             max_retries = self.webhook_max_retries
@@ -3153,6 +3761,178 @@ class AlertManager:
             self.logger.debug(traceback.format_exc())
             self._alert_stats['errors'] = int(self._alert_stats.get('errors', 0)) + 1
 
+    async def _send_smart_money_discord_alert(self, alert: Dict[str, Any], alert_id: str) -> None:
+        """Send smart money alert to Discord with enhanced formatting."""
+        try:
+            details = alert.get('details', {})
+            event_type = details.get('event_type', '')
+            symbol = details.get('symbol', '')
+            event_data = details.get('data', {})
+            
+            # Get sophistication and confidence scores
+            sophistication_score = event_data.get('sophistication_score', 0)
+            confidence = event_data.get('confidence', 0)
+            
+            # Determine color and sophistication text based on sophistication level
+            if sophistication_score >= 9:
+                color = 0x8B00FF  # Purple for expert level
+                sophistication_text = "🎯 EXPERT"
+                sophistication_emoji = "🎯"
+            elif sophistication_score >= 7:
+                color = 0xFF4500  # Orange for high level
+                sophistication_text = "🔥 HIGH"
+                sophistication_emoji = "🔥"
+            elif sophistication_score >= 4:
+                color = 0xFFD700  # Gold for medium level
+                sophistication_text = "⚡ MEDIUM"
+                sophistication_emoji = "⚡"
+            else:
+                color = 0x32CD32  # Green for low level
+                sophistication_text = "📊 LOW"
+                sophistication_emoji = "📊"
+
+            # Create embed for smart money alert
+            embed = DiscordEmbed(
+                title=f"🧠 Smart Money Alert - {event_type.replace('_', ' ').title()}",
+                description=f"**Sophisticated trading pattern detected**\n{alert.get('message', '')}",
+                color=color
+            )
+            
+            # Add timestamp
+            embed.set_timestamp()
+            
+            # Add main fields
+            embed.add_embed_field(
+                name="📈 Symbol",
+                value=f"**{symbol}**",
+                inline=True
+            )
+            
+            embed.add_embed_field(
+                name="🎯 Sophistication",
+                value=f"{sophistication_text}\n{sophistication_score:.1f}/10",
+                inline=True
+            )
+            
+            embed.add_embed_field(
+                name="🎲 Confidence",
+                value=f"**{confidence*100:.1f}%**",
+                inline=True
+            )
+
+            # Add event-specific fields
+            if event_type == 'orderflow_imbalance':
+                side = event_data.get('side', '').upper()
+                imbalance = event_data.get('imbalance', 0)
+                side_emoji = "🟢" if side == "BUY" else "🔴"
+                
+                embed.add_embed_field(
+                    name=f"{side_emoji} Imbalance Side",
+                    value=f"**{side}**",
+                    inline=True
+                )
+                
+                embed.add_embed_field(
+                    name="📊 Imbalance Ratio",
+                    value=f"**{abs(imbalance)*100:.1f}%**",
+                    inline=True
+                )
+                
+                embed.add_embed_field(
+                    name="🎯 Execution Quality",
+                    value=f"{event_data.get('execution_quality', 0)*100:.0f}%",
+                    inline=True
+                )
+                
+            elif event_type == 'volume_spike':
+                spike_ratio = event_data.get('spike_ratio', 0)
+                timing_score = event_data.get('timing_score', 0)
+                
+                embed.add_embed_field(
+                    name="📈 Spike Ratio",
+                    value=f"**{spike_ratio:.1f}x**",
+                    inline=True
+                )
+                
+                embed.add_embed_field(
+                    name="⏰ Timing Score",
+                    value=f"{timing_score*100:.0f}%",
+                    inline=True
+                )
+                
+                embed.add_embed_field(
+                    name="🤝 Coordination",
+                    value=f"{event_data.get('coordination_evidence', 0)*100:.0f}%",
+                    inline=True
+                )
+                
+            elif event_type == 'depth_change':
+                side = event_data.get('side', '').upper()
+                change_ratio = event_data.get('change_ratio', 0)
+                side_emoji = "📗" if side == "BID" else "📕"
+                
+                embed.add_embed_field(
+                    name=f"{side_emoji} Order Book Side",
+                    value=f"**{side}**",
+                    inline=True
+                )
+                
+                embed.add_embed_field(
+                    name="📊 Depth Change",
+                    value=f"**{change_ratio*100:+.1f}%**",
+                    inline=True
+                )
+                
+                embed.add_embed_field(
+                    name="🥷 Stealth Score",
+                    value=f"{event_data.get('stealth_score', 0)*100:.0f}%",
+                    inline=True
+                )
+                
+            elif event_type == 'position_change':
+                direction = event_data.get('direction', '').title()
+                change_value = event_data.get('change_value', 0)
+                direction_emoji = "📈" if direction == "Increase" else "📉"
+                
+                embed.add_embed_field(
+                    name=f"{direction_emoji} Direction",
+                    value=f"**{direction}**",
+                    inline=True
+                )
+                
+                embed.add_embed_field(
+                    name="💰 Change Value",
+                    value=f"**{change_value:,.0f}**",
+                    inline=True
+                )
+                
+                embed.add_embed_field(
+                    name="🏛️ Institutional Pattern",
+                    value=f"{event_data.get('institutional_pattern', 0)*100:.0f}%",
+                    inline=True
+                )
+
+            # Add footer with additional context
+            embed.set_footer(text=f"Smart Money Detection • Pattern: {event_type.replace('_', ' ').title()} • Alert ID: {alert_id}")
+
+            # Create webhook and send
+            webhook = DiscordWebhook(url=self.discord_webhook_url)
+            webhook.add_embed(embed)
+            
+            # Execute webhook
+            response = webhook.execute()
+            
+            # Check response status
+            if response and hasattr(response, 'status_code') and 200 <= response.status_code < 300:
+                self.logger.info(f"[{alert_id}] Smart money Discord alert sent successfully for {symbol}: {event_type}")
+                self._alert_stats['sent'] = int(self._alert_stats.get('sent', 0)) + 1
+            else:
+                self.logger.warning(f"[{alert_id}] Failed to send smart money Discord alert: {response}")
+                
+        except Exception as e:
+            self.logger.error(f"[{alert_id}] Error sending smart money Discord alert: {str(e)}")
+            self.logger.error(traceback.format_exc())
+
     async def _send_whale_activity_discord_alert(self, alert: Dict[str, Any], alert_id: str) -> None:
         """Send whale activity alert with proper three-column table format.
         
@@ -3260,123 +4040,242 @@ class AlertManager:
             self._alert_stats['errors'] = int(self._alert_stats.get('errors', 0)) + 1
 
     async def _send_system_webhook_alert(self, message: str, details: Optional[Dict[str, Any]] = None) -> None:
-        """Send an alert to the system webhook.
-        
-        Args:
-            message: Alert message
-            details: Alert details
-        """
+        """Send alert to system webhook for monitoring."""
+        if not self.system_webhook_url:
+            return
+            
         try:
-            if not self.system_webhook_url:
-                self.logger.warning("Cannot send system alert: webhook URL not set")
-                return
-            
-            # Determine alert type and format accordingly
-            alert_type = details.get('type', 'general') if details else 'general'
-            
-            # Determine alert color
-            color_map = {
-                'info': 0x3498db,     # Blue
-                'warning': 0xf39c12,  # Orange
-                'error': 0xe74c3c,    # Red
-                'critical': 0x9b59b6  # Purple
+            payload = {
+                "text": message,
+                "details": details or {},
+                "timestamp": time.time(),
+                "source": "virtuoso_trading"
             }
-            level = details.get('level', 'info').lower() if details else 'info'
-            color = color_map.get(level, 0x3498db)  # Default to blue
             
-            # For market reports, customize the message
-            if alert_type == 'market_report':
-                # Get formatted timestamp
-                timestamp = details.get('report_time', None)
-                if timestamp and isinstance(timestamp, str):
-                    try:
-                        dt = datetime.fromisoformat(timestamp)
-                        formatted_date = dt.strftime("%B %d, %Y - %H:%M UTC")
-                    except (ValueError, TypeError):
-                        formatted_date = datetime.now(timezone.utc).strftime("%B %d, %Y - %H:%M UTC")
-                else:
-                    formatted_date = datetime.now(timezone.utc).strftime("%B %d, %Y - %H:%M UTC")
-                
-                # Create webhook payload for market report
-                payload = {
-                    'username': 'Virtuoso Market Intelligence',
-                    'content': '📊 **MARKET REPORT NOTIFICATION** 📊',
-                    'embeds': [{
-                        'title': 'Market Report Generated',
-                        'color': color,
-                        'description': f'A new market report has been generated for {formatted_date}. See main channel for the full report with attachments.',
-                        'fields': [
-                            {
-                                'name': 'Timestamp',
-                                'value': f'<t:{int(time.time())}:F>',
-                                'inline': True
-                            },
-                            {
-                                'name': 'Report Type',
-                                'value': details.get('report_type', 'market_report'),
-                                'inline': True
-                            }
-                        ],
-                        'footer': {
-                            'text': 'Virtuoso Market Intelligence'
-                        }
-                    }]
-                }
-                
-                # Add symbols covered if available
-                symbols_covered = details.get('symbols_covered', None)
-                if symbols_covered and isinstance(symbols_covered, list) and len(symbols_covered) > 0:
-                    symbols_str = ', '.join(symbols_covered[:5])
-                    if len(symbols_covered) > 5:
-                        symbols_str += f' and {len(symbols_covered) - 5} more'
-                    
-                    payload['embeds'][0]['fields'].append({
-                        'name': 'Symbols Covered',
-                        'value': symbols_str,
-                        'inline': True
-                    })
-            else:
-                # Default alert format
-                payload = {
-                    'username': 'Virtuoso System Monitor',
-                    'content': '⚠️ **SYSTEM ALERT** ⚠️',
-                    'embeds': [{
-                        'title': f'{level.capitalize()} Alert',
-                        'color': color,
-                        'description': message,
-                        'fields': [
-                            {
-                                'name': 'Timestamp',
-                                'value': f'<t:{int(time.time())}:F>',
-                                'inline': True
-                            },
-                            {
-                                'name': 'Level',
-                                'value': level,
-                                'inline': True
-                            }
-                        ],
-                        'footer': {
-                            'text': 'Virtuoso System Monitoring'
-                        }
-                    }]
-                }
-            
-            # Send webhook request
             async with aiohttp.ClientSession() as session:
-                try:
-                    async with session.post(
-                        self.system_webhook_url,
-                        json=payload,
-                        timeout=10
-                    ) as response:
-                        if response.status >= 400:
-                            self.logger.error(f"Error sending system webhook: status {response.status}")
-                        else:
-                            self.logger.debug(f"System webhook sent successfully: {response.status}")
-                except Exception as e:
-                    self.logger.error(f"Error sending system webhook request: {str(e)}")
-                    
+                async with session.post(
+                    self.system_webhook_url,
+                    json=payload,
+                    timeout=aiohttp.ClientTimeout(total=10)
+                ) as response:
+                    if response.status == 200:
+                        self.logger.debug("System webhook alert sent successfully")
+                    else:
+                        self.logger.warning(f"System webhook failed with status {response.status}")
+                        
         except Exception as e:
-            self.logger.error(f"Error in _send_system_webhook_alert: {str(e)}")
-            self.logger.debug(traceback.format_exc())
+            self.logger.error(f"Error sending system webhook alert: {str(e)}")
+
+    # Enhanced whale alert helper methods
+    def _calculate_volume_multiple(self, usd_value: float) -> str:
+        """Calculate volume multiple compared to normal whale activity."""
+        # Base threshold for normal whale activity (configurable)
+        base_whale_threshold = 1000000  # $1M base
+        
+        if usd_value >= base_whale_threshold * 5:
+            return "5.0x+ above normal"
+        elif usd_value >= base_whale_threshold * 3:
+            return "3.0x+ above normal"
+        elif usd_value >= base_whale_threshold * 2:
+            return "2.0x+ above normal"
+        elif usd_value >= base_whale_threshold * 1.5:
+            return "1.5x above normal"
+        else:
+            return "Normal level"
+
+    def _calculate_liquidity_stress(self, total_orders: int, imbalance: float) -> str:
+        """Calculate market liquidity stress level."""
+        # Combine order count and imbalance to assess liquidity stress
+        order_stress = min(total_orders / 20.0, 1.0)  # Normalize to 0-1
+        imbalance_stress = abs(imbalance)
+        
+        combined_stress = (order_stress * 0.4) + (imbalance_stress * 0.6)
+        
+        if combined_stress > 0.7:
+            return "HIGH"
+        elif combined_stress > 0.4:
+            return "MEDIUM"
+        else:
+            return "LOW"
+
+    def _get_market_session(self) -> str:
+        """Determine current market session based on UTC time."""
+        import datetime
+        utc_hour = datetime.datetime.utcnow().hour
+        
+        # Market sessions (UTC):
+        # Asian: 00:00-09:00 UTC
+        # European: 07:00-16:00 UTC  
+        # US: 13:00-22:00 UTC
+        
+        if 0 <= utc_hour < 7:
+            return "Asian (Lower liquidity)"
+        elif 7 <= utc_hour < 13:
+            return "European overlap"
+        elif 13 <= utc_hour < 16:
+            return "US-EU overlap (High liquidity)"
+        elif 16 <= utc_hour < 22:
+            return "US session"
+        else:
+            return "Asian session"
+
+    def _assess_volatility_context(self) -> str:
+        """Assess current volatility context."""
+        # This could be enhanced with actual volatility calculations
+        # For now, return a basic assessment
+        import datetime
+        current_hour = datetime.datetime.utcnow().hour
+        
+        # Higher volatility during session opens and closes
+        if current_hour in [0, 1, 7, 8, 13, 14, 22, 23]:
+            return "Elevated (session transition)"
+        elif 13 <= current_hour <= 16:
+            return "High (overlapping sessions)"
+        else:
+            return "Normal"
+
+    def _calculate_execution_efficiency(self, trades_count: int, orders_count: int) -> str:
+        """Calculate whale execution efficiency."""
+        if orders_count == 0:
+            return "N/A"
+        
+        efficiency_ratio = trades_count / orders_count if orders_count > 0 else 0
+        
+        if efficiency_ratio > 0.5:
+            return "High"
+        elif efficiency_ratio > 0.2:
+            return "Medium"
+        elif efficiency_ratio > 0:
+            return "Low"
+        else:
+            return "None"
+
+    def _get_liquidity_note(self, stress_level: str) -> str:
+        """Get explanatory note for liquidity stress level."""
+        if stress_level == "HIGH":
+            return "significant slippage risk"
+        elif stress_level == "MEDIUM":
+            return "moderate slippage expected"
+        else:
+            return "normal execution conditions"
+
+    def _calculate_signal_confidence(self, signal_strength: str, trade_confirmation: bool) -> int:
+        """Calculate confidence percentage for signal strength."""
+        base_confidence = {
+            "POSITIONING": 60,
+            "EXECUTING": 75,
+            "CONFIRMED": 90,
+            "CONFLICTING": 30
+        }
+        
+        confidence = base_confidence.get(signal_strength, 50)
+        
+        # Adjust based on trade confirmation
+        if trade_confirmation and signal_strength != "CONFLICTING":
+            confidence = min(confidence + 10, 95)
+        elif not trade_confirmation and signal_strength != "POSITIONING":
+            confidence = max(confidence - 15, 25)
+            
+        return confidence
+
+    def _analyze_historical_patterns(self, symbol: str, subtype: str, usd_value: float) -> str:
+        """Analyze historical patterns for context."""
+        # This could be enhanced with actual historical analysis
+        # For now, provide basic pattern insights
+        
+        if usd_value > 10000000:  # > $10M
+            return f"Pattern: Large {subtype} - historically leads to 2-5% moves"
+        elif usd_value > 5000000:  # > $5M  
+            return f"Pattern: Significant {subtype} - typically 1-3% impact"
+        else:
+            return f"Pattern: Moderate {subtype} - usually 0.5-1.5% movement"
+
+    def _generate_plain_english_interpretation(self, signal_strength: str, subtype: str, symbol: str, 
+                                             usd_value: float, trades_count: int, buy_volume: float, 
+                                             sell_volume: float, signal_context: str) -> str:
+        """Generate plain English interpretation of the whale activity."""
+        
+        # Volume size context
+        if usd_value > 10000000:
+            size_context = "massive"
+        elif usd_value > 5000000:
+            size_context = "large"
+        elif usd_value > 2000000:
+            size_context = "significant"
+        else:
+            size_context = "moderate"
+        
+        if signal_strength == "EXECUTING":
+            if subtype == "accumulation":
+                interpretation = (
+                    f"A whale is actively buying {symbol} with {size_context} volume. "
+                    f"They've executed {trades_count} buy trades totaling {buy_volume:.0f} units. "
+                    f"This suggests strong bullish conviction and potential upward price pressure."
+                )
+            else:  # distribution
+                interpretation = (
+                    f"A whale is actively selling {symbol} with {size_context} volume. "
+                    f"They've executed {trades_count} sell trades totaling {sell_volume:.0f} units. "
+                    f"This suggests bearish sentiment and potential downward price pressure."
+                )
+        
+        elif signal_strength == "CONFLICTING":
+            if subtype == "accumulation":
+                interpretation = (
+                    f"🚨 **POTENTIAL MANIPULATION:** Order book shows large buy orders but actual trades are sells. "
+                    f"Whales may be spoofing/fake-walling to create false accumulation signals then selling into the fake demand. "
+                    f"⚠️ **HIGH RISK:** Price may drop suddenly when fake orders are pulled. DO NOT FOMO BUY."
+                )
+            else:  # distribution
+                interpretation = (
+                    f"🚨 **POTENTIAL MANIPULATION:** Order book shows large sell orders but actual trades are buys. "
+                    f"Whales may be spoofing/fake-walling to create false distribution signals then buying the fake dip. "
+                    f"⚠️ **HIGH RISK:** Price may pump suddenly when fake orders are pulled. DO NOT PANIC SELL."
+                )
+        
+        return interpretation
+
+    def _format_whale_trades(self, top_trades: list) -> str:
+        """Format the top whale trades for display."""
+        if not top_trades:
+            return "• No significant trades detected"
+        
+        formatted_trades = []
+        for i, trade in enumerate(top_trades[:3], 1):  # Show top 3 trades
+            side = trade['side'].upper()
+            side_emoji = "🟢" if side == "BUY" else "🔴"
+            size = trade['size']
+            price = trade['price']
+            value = trade['value']
+            
+            formatted_trades.append(f"• {side_emoji} {side} {size:.2f} @ ${price:.2f} = ${value:,.0f}")
+        
+        return "\n".join(formatted_trades)
+
+    def _format_whale_orders(self, top_bids: list, top_asks: list, subtype: str) -> str:
+        """Format the top whale orders for display."""
+        formatted_orders = []
+        
+        # Focus on relevant orders based on signal type
+        if subtype == "accumulation" and top_bids:
+            formatted_orders.append("**🟢 Large Buy Orders:**")
+            for i, (price, size, usd_value) in enumerate(top_bids[:3], 1):
+                formatted_orders.append(f"• BID {size:.2f} @ ${price:.2f} = ${usd_value:,.0f}")
+        
+        if subtype == "distribution" and top_asks:
+            formatted_orders.append("**🔴 Large Sell Orders:**")
+            for i, (price, size, usd_value) in enumerate(top_asks[:3], 1):
+                formatted_orders.append(f"• ASK {size:.2f} @ ${price:.2f} = ${usd_value:,.0f}")
+        
+        # For conflicting signals, show both sides
+        if not formatted_orders:
+            if top_bids:
+                formatted_orders.append("**🟢 Buy Orders:**")
+                for price, size, usd_value in top_bids[:2]:
+                    formatted_orders.append(f"• BID {size:.2f} @ ${price:.2f} = ${usd_value:,.0f}")
+            if top_asks:
+                formatted_orders.append("**🔴 Sell Orders:**")
+                for price, size, usd_value in top_asks[:2]:
+                    formatted_orders.append(f"• ASK {size:.2f} @ ${price:.2f} = ${usd_value:,.0f}")
+        
+        return "\n".join(formatted_orders) if formatted_orders else "• No large orders detected"

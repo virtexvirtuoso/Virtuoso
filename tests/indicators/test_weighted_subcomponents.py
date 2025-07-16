@@ -118,7 +118,7 @@ def create_test_signal_data() -> Dict[str, Any]:
                 'components': {
                     'key_levels': 76.2,
                     'fibonacci': 78.5,
-                    'market_structure': 79.1,
+                    'swing_structure': 79.1,
                     'vwap_relation': 74.9
                 },
                 'interpretation': 'Bullish structure with strong support levels'

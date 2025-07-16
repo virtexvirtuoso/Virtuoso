@@ -872,28 +872,35 @@ class MetricsManager:
             value: Metric value to record
             tags: Optional tags for the metric
         """
+        # Ensure value is numeric
+        try:
+            numeric_value = float(value)
+        except (ValueError, TypeError):
+            self.logger.error(f"Cannot convert metric value to float: {metric_name}={value} (type: {type(value)})")
+            return
+        
         if metric_name not in self.metrics:
             self.metrics[metric_name] = {
                 "values": [],
                 "timestamps": [],
                 "count": 0,
-                "sum": 0,
+                "sum": 0.0,  # Initialize as float to prevent type errors
                 "min": float('inf'),
                 "max": float('-inf'),
-                "avg": 0,
+                "avg": 0.0,  # Initialize as float
                 "last_value": None,
                 "tags": set()
             }
         
         metric = self.metrics[metric_name]
-        metric["values"].append(value)
+        metric["values"].append(numeric_value)
         metric["timestamps"].append(time.time())
         metric["count"] += 1
-        metric["sum"] += value
-        metric["min"] = min(metric["min"], value)
-        metric["max"] = max(metric["max"], value)
+        metric["sum"] += numeric_value
+        metric["min"] = min(metric["min"], numeric_value)
+        metric["max"] = max(metric["max"], numeric_value)
         metric["avg"] = metric["sum"] / metric["count"]
-        metric["last_value"] = value
+        metric["last_value"] = numeric_value
         
         # Store tags
         if tags:

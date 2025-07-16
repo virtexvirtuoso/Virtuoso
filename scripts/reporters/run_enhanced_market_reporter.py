@@ -508,51 +508,48 @@ async def send_enhanced_report(report, webhook_url=None):
         logger.error(traceback.format_exc())
         return False
 
-async def run_enhanced_market_reporter():
-    """Run the MarketReporter with live data and generate an enhanced report."""
-    start_time = time.time()
-    components = {}
+async def main():
+    """Main function to run the enhanced market reporter."""
+    logger.info("🚀 Starting Enhanced Market Reporter")
     
     try:
-        # Step 1: Initialize ConfigManager
-        logger.info("Initializing ConfigManager")
-        config_manager = ConfigManager()
-        components['config_manager'] = config_manager
+        # Use centralized initialization from main.py
+        logger.info("Initializing components using centralized function...")
         
-        # Step 2: Initialize ExchangeManager
-        logger.info("Initializing ExchangeManager")
-        exchange_manager = ExchangeManager(config_manager)
-        components['exchange_manager'] = exchange_manager
+        # Import and use centralized initialization
+        from src.main import initialize_components
+        components = await initialize_components()
         
-        # Step 3: Initialize exchanges
-        logger.info("Initializing exchanges")
-        if not await exchange_manager.initialize():
-            logger.error("Failed to initialize exchange manager")
-            return False
+        # Extract components
+        config_manager = components['config_manager']
+        exchange_manager = components['exchange_manager']
+        primary_exchange = components['primary_exchange']
+        database_client = components['database_client']
+        portfolio_analyzer = components['portfolio_analyzer']
+        confluence_analyzer = components['confluence_analyzer']
+        alert_manager = components['alert_manager']
+        metrics_manager = components['metrics_manager']
+        top_symbols_manager = components['top_symbols_manager']
+        market_data_manager = components['market_data_manager']
+        market_reporter = components['market_reporter']
+        health_monitor = components['health_monitor']
+        validation_service = components['validation_service']
         
-        # Step 4: Get the primary exchange
-        primary_exchange = await exchange_manager.get_primary_exchange()
-        if not primary_exchange:
-            logger.error("No primary exchange available")
-            return False
+        logger.info("✅ All components initialized successfully")
         
-        exchange_name = primary_exchange.exchange_id
-        logger.info(f"Using {exchange_name} as primary exchange")
-        components['exchange'] = primary_exchange
-        
-        # Step 5: Initialize AlertManager for notifications
-        logger.info("Initializing AlertManager")
-        alert_manager = AlertManager(config_manager.config)
-        components['alert_manager'] = alert_manager
-        
-        # Step 6: Initialize MarketReporter
-        logger.info("Initializing MarketReporter")
-        market_reporter = MarketReporter(
-            exchange=primary_exchange,
-            logger=logger,
-            alert_manager=alert_manager
+        # Create enhanced market reporter
+        enhanced_reporter = EnhancedMarketReporter(
+            config_manager=config_manager,
+            exchange_manager=exchange_manager,
+            database_client=database_client,
+            portfolio_analyzer=portfolio_analyzer,
+            confluence_analyzer=confluence_analyzer,
+            alert_manager=alert_manager,
+            metrics_manager=metrics_manager,
+            top_symbols_manager=top_symbols_manager,
+            market_data_manager=market_data_manager,
+            logger=logger
         )
-        components['market_reporter'] = market_reporter
         
         # Test symbols to use
         test_symbols = ["BTC/USDT:USDT", "ETH/USDT:USDT", "SOL/USDT:USDT", "XRP/USDT:USDT", "DOGE/USDT:USDT"]
@@ -659,7 +656,7 @@ if __name__ == "__main__":
     logger.info("STARTING ENHANCED MARKET REPORTER WITH LIVE DATA")
     logger.info("="*50)
     
-    result = asyncio.run(run_enhanced_market_reporter())
+    result = asyncio.run(main())
     
     logger.info("="*50)
     logger.info(f"TEST {'PASSED' if result else 'FAILED'}")

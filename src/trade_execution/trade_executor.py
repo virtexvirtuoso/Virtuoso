@@ -21,69 +21,79 @@ from src.monitoring.alert_manager import AlertManager
 logger = logging.getLogger(__name__)
 
 class TradeExecutor:
-    def __init__(self, config: Dict[str, Any]):
+    """
+    Advanced trade execution engine with market prism analysis integration
+    """
+    
+    def __init__(self, config: Dict[str, Any], alert_manager: Optional['AlertManager'] = None):
         """
-        Initialize the trade executor
+        Initialize the TradeExecutor
         
         Args:
-            config: Configuration dictionary
+            config: Configuration dictionary containing API credentials and settings
+            alert_manager: Optional AlertManager instance. If not provided, will create one.
         """
         self.config = config
+        self.logger = logging.getLogger(__name__)
         
-        # Extract trading parameters from config
+        # Extract exchange configuration
         exchange_config = config.get('exchanges', {}).get('bybit', {})
-        self.position_config = config.get('position_manager', {})
+        if not exchange_config:
+            raise ValueError("Bybit exchange configuration not found")
         
         # API credentials
-        self.api_key = exchange_config.get('api_credentials', {}).get('api_key', '')
-        self.api_secret = exchange_config.get('api_credentials', {}).get('api_secret', '')
+        self.api_key = exchange_config.get('api_key')
+        self.api_secret = exchange_config.get('api_secret')
         
-        # Position sizing parameters
-        self.base_position_pct = self.position_config.get('base_position_pct', 0.03)
-        self.max_position_pct = self.position_config.get('max_position_pct', 0.10)
-        self.scale_factor = self.position_config.get('scale_factor', 0.01)
-        self.trailing_stop_pct = self.position_config.get('trailing_stop_pct', 0.03)
+        if not self.api_key or not self.api_secret:
+            raise ValueError("API key and secret are required")
         
-        # Get thresholds from config
-        thresholds = config.get('confluence', {}).get('thresholds', {})
-        self.buy_threshold = thresholds.get('buy', 69)
-        self.sell_threshold = thresholds.get('sell', 31)
+        # Trading configuration
+        trading_config = config.get('trading', {})
+        self.is_demo = trading_config.get('demo_mode', True)
+        self.max_position_size = trading_config.get('max_position_size', 0.1)  # 10% of balance
+        self.default_leverage = trading_config.get('default_leverage', 1)
+        self.buy_threshold = trading_config.get('buy_threshold', 70)
+        self.sell_threshold = trading_config.get('sell_threshold', 30)
         
-        # Determine if we're in demo mode
-        self.is_demo = config.get('demo_mode', True)
-        self.base_url = 'https://api-testnet.bybit.com' if self.is_demo else 'https://api.bybit.com'
+        # Risk management
+        risk_config = config.get('risk_management', {})
+        self.max_daily_loss = risk_config.get('max_daily_loss', 0.05)  # 5%
+        self.max_drawdown = risk_config.get('max_drawdown', 0.10)  # 10%
+        self.stop_loss_pct = risk_config.get('default_stop_loss', 0.02)  # 2%
+        self.take_profit_pct = risk_config.get('default_take_profit', 0.04)  # 4%
         
-        # Load thresholds from config
-        self.confluence_config = config.get('confluence', {})
-        self.thresholds = self.confluence_config.get('thresholds', {})
-        self.buy_threshold = self.thresholds.get('buy', 68)  # Default to 68 if not found
-        self.sell_threshold = self.thresholds.get('sell', 35)  # Default to 35 if not found
+        # Exchange setup
+        if self.is_demo:
+            self.base_url = "https://api-testnet.bybit.com"
+            self.logger.info("Using Bybit testnet (demo mode)")
+        else:
+            self.base_url = "https://api.bybit.com"
+            self.logger.info("Using Bybit mainnet (live trading)")
         
-        # For backward compatibility, if min_confluence_score is specified, use it for signal interpretation
-        self.min_confluence_score = self.position_config.get('min_confluence_score', self.buy_threshold)
-        
-        # Create an async CCXT client for Bybit
+        # Initialize exchange
         self.exchange = ccxt.bybit({
             'apiKey': self.api_key,
             'secret': self.api_secret,
+            'sandbox': self.is_demo,
             'enableRateLimit': True,
-            'urls': {
-                'api': {
-                    'public': self.base_url,
-                    'private': self.base_url,
-                    'v5': self.base_url
-                }
-            }
         })
         
-        # Session for direct API calls when needed
+        # HTTP session for direct API calls
         self._session = None
         
         # Active positions tracking
         self.active_positions = {}
         
         # Initialize AlertManager
-        self.alert_manager = AlertManager(config)
+        if alert_manager:
+            self.alert_manager = alert_manager
+            self.logger.info("Using provided AlertManager instance")
+        else:
+            # Import AlertManager here to avoid circular import
+            from src.monitoring.alert_manager import AlertManager
+            self.alert_manager = AlertManager(config)
+            self.logger.info("Created new AlertManager instance")
 
     async def initialize(self):
         """Initialize the executor by creating HTTP session and loading market data"""
@@ -316,29 +326,29 @@ class TradeExecutor:
             return 0.0
         
         # Base position is a percentage of available balance
-        base_position = available_balance * self.base_position_pct
+        base_position = available_balance * self.max_position_size
         
         # Scale position based on signal strength
         # For buy, calculate scaling relative to buy threshold
         if side == 'buy' and confluence_score > self.buy_threshold:
             # Increase position for stronger long signals
             score_above_threshold = confluence_score - self.buy_threshold
-            scaling_factor = min(score_above_threshold * self.scale_factor, 
-                               self.max_position_pct - self.base_position_pct)
+            scaling_factor = min(score_above_threshold * 0.01, 
+                               self.max_position_size - self.max_position_size)
             position_size = base_position + (available_balance * scaling_factor)
         # For sell, calculate scaling relative to sell threshold
         elif side == 'sell' and confluence_score < self.sell_threshold:
             # Increase position for stronger short signals
             score_below_threshold = self.sell_threshold - confluence_score
-            scaling_factor = min(score_below_threshold * self.scale_factor,
-                               self.max_position_pct - self.base_position_pct)
+            scaling_factor = min(score_below_threshold * 0.01,
+                               self.max_position_size - self.max_position_size)
             position_size = base_position + (available_balance * scaling_factor)
         else:
             # Use base position for moderate signals
             position_size = base_position
         
         # Cap at maximum position size
-        max_position = available_balance * self.max_position_pct
+        max_position = available_balance * self.max_position_size
         position_size = min(position_size, max_position)
         
         return position_size
@@ -869,22 +879,22 @@ class TradeExecutor:
         """
         # Calculate what percentage of max position this represents
         position_pct = position_size / available_balance
-        max_position_pct = self.max_position_pct
+        max_position_pct = self.max_position_size
         
         # Calculate where this position falls between base and max position
         # 0.0 means at base position, 1.0 means at max position
-        if position_pct <= self.base_position_pct:
+        if position_pct <= self.max_position_size:
             # For base positions, use the default trailing stop
-            return self.trailing_stop_pct
+            return self.stop_loss_pct
         
-        position_scale = (position_pct - self.base_position_pct) / (max_position_pct - self.base_position_pct)
+        position_scale = (position_pct - self.max_position_size) / (max_position_pct - self.max_position_size)
         
         # Calculate scaled stop loss
         # As position_scale increases from 0 to 1, stop loss tightens from default to min value
         # Default trailing stop: typically 2% (0.02) or whatever is set in config
         # Minimum stop loss: now 2/3 of default instead of 1/2 for more forgiving stops
-        min_stop_pct = self.trailing_stop_pct * (2/3)  # Increased from half to two-thirds
-        scaled_stop_pct = self.trailing_stop_pct - (position_scale * (self.trailing_stop_pct - min_stop_pct))
+        min_stop_pct = self.stop_loss_pct * (2/3)  # Increased from half to two-thirds
+        scaled_stop_pct = self.stop_loss_pct - (position_scale * (self.stop_loss_pct - min_stop_pct))
         
         return scaled_stop_pct
         
@@ -901,7 +911,7 @@ class TradeExecutor:
             Stop loss percentage (decimal format, e.g., 0.03 for 3%)
         """
         # Base stop loss from config
-        base_stop = self.trailing_stop_pct
+        base_stop = self.stop_loss_pct
         # Maximum stop (for highest confidence trades) - 1.5x the base
         max_stop = base_stop * 1.5
         # Minimum stop (for threshold trades) - 0.8x the base

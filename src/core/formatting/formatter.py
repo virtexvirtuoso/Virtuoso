@@ -9,6 +9,16 @@ import datetime
 import textwrap
 from typing import Dict, Any, Optional
 
+# Import PrettyTable for clean table formatting - required dependency
+from prettytable import PrettyTable, SINGLE_BORDER, DOUBLE_BORDER, DEFAULT, MARKDOWN
+
+# Import our centralized interpretation system
+try:
+    from src.core.interpretation.interpretation_manager import InterpretationManager
+except ImportError:
+    # Fallback if not available
+    InterpretationManager = None
+
 class AnalysisFormatter:
     """Formatter for analysis results with enhanced visualizations.
     
@@ -172,7 +182,7 @@ class AnalysisFormatter:
         return result
 
     def format_analysis_result(self, analysis_result, symbol_str):
-        """Format analysis results with enhanced visualization.
+        """Format analysis results with enhanced visualization using PrettyTable.
         
         Args:
             analysis_result (dict): Analysis result data
@@ -184,132 +194,31 @@ class AnalysisFormatter:
         if not analysis_result:
             return f"No analysis results available for {symbol_str}"
         
+        # Use PrettyTableFormatter for consistent formatting with proper borders
         score = analysis_result.get('score', analysis_result.get('confluence_score', 0))
         reliability = analysis_result.get('reliability', 0)
         components = analysis_result.get('components', {})
         results = analysis_result.get('results', {})
         
-        # Create a nice bordered dashboard layout
-        output = "╔══════════════════════════════════════════════════════════════╗\n"
-        output += f"║ {symbol_str} MARKET ANALYSIS - {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ║\n"
-        output += "╠═════════════════════════╦══════════╦═════════════════════╦════╣\n"
-        output += "║ COMPONENT               ║ SCORE    ║ GAUGE               ║ TREND ║\n"
-        output += "╠═════════════════════════╬══════════╬═════════════════════╬════╣\n"
+        # Use the enhanced confluence score table which provides complete PrettyTable formatting
+        formatted_output = PrettyTableFormatter.format_enhanced_confluence_score_table(
+            symbol=symbol_str,
+            confluence_score=score,
+            components=components,
+            results=results,
+            weights=analysis_result.get('weights', None),
+            reliability=reliability,
+            border_style="double"  # Use double borders for main dashboard
+        )
         
-        # Overall confluence score
-        gauge = self._create_fancy_gauge(score)
-        trend = self._get_trend_indicator(score)
-        output += f"║ OVERALL CONFLUENCE      ║ {score:.2f}    ║ {gauge} ║ {trend}  ║\n"
-        output += "╠═════════════════════════╬══════════╬═════════════════════╬════╣\n"
-        
-        # Component scores
-        for name, component_score in sorted(components.items(), key=lambda x: x[1], reverse=True):
-            # Format display name
-            display_name = name.replace('_', ' ').title()
-            display_name = f"{display_name:<20}"
-            
-            # Create gauge and trend indicator
-            gauge = self._create_fancy_gauge(component_score)
-            trend = self._get_trend_indicator(component_score)
-            
-            output += f"║ {display_name}      ║ {component_score:.2f}    ║ {gauge} ║ {trend}  ║\n"
-        
-        # Footer with reliability
-        output += "╠═════════════════════════╩══════════╩═════════════════════╩════╣\n"
-        reliability_text = f"Reliability: {self.get_color_code(reliability)}{reliability:.2f}{self.RESET} ({'HIGH' if reliability >= 0.8 else 'MEDIUM' if reliability >= 0.5 else 'LOW'})"
-        reliability_padding = 56 - len(reliability_text) + len(self.get_color_code(reliability)) + len(self.RESET)
-        output += f"║ {reliability_text}{' ' * reliability_padding}║\n"
-        
-        # Add detailed component breakdown if available
-        has_detailed_components = False
-        for component_name, component_data in results.items():
-            # Skip non-dictionary component data
-            if not isinstance(component_data, dict):
-                continue
-            
-            if 'components' in component_data and component_data['components'] and isinstance(component_data['components'], dict):
-                has_detailed_components = True
-                break
-        
-        if has_detailed_components:
-            output += "\n╠══════════════════════════════════════════════════════════════╣\n"
-            output += "║ DETAILED COMPONENT BREAKDOWN:                                ║\n"
-            
-            # Add details for each component that has sub-components
-            for component_name, component_data in results.items():
-                # Skip non-dictionary component data
-                if not isinstance(component_data, dict):
-                    continue
-                    
-                if 'components' in component_data and component_data['components'] and isinstance(component_data['components'], dict):
-                    # Format display name
-                    display_name = component_name.replace('_', ' ').title()
-                    output += f"║ {display_name} Analysis:                                         ║\n"
-                    
-                    # Create mini-table for component details
-                    output += "║ ┌──────────────────────┬─────────┬──────────────────────┐ ║\n"
-                    output += "║ │ Indicator            │ Score   │ Gauge                │ ║\n"
-                    output += "║ ├──────────────────────┼─────────┼──────────────────────┤ ║\n"
-                    
-                    # Sort sub-components by score
-                    sorted_subcomponents = []
-                    try:
-                        sorted_subcomponents = sorted(
-                            component_data['components'].items(),
-                            key=lambda x: float(x[1]) if isinstance(x[1], (int, float)) else 0,
-                            reverse=True
-                        )
-                    except (TypeError, ValueError, AttributeError) as e:
-                        # Log warning but continue with empty sorted_subcomponents
-                        # This avoids breaking the entire report if one component is malformed
-                        sorted_subcomponents = []
-                    
-                    for sub_name, sub_score in sorted_subcomponents:
-                        if isinstance(sub_score, (int, float)):
-                            # Format sub-component name
-                            sub_display_name = sub_name.replace('_', ' ').title()
-                            sub_display_name = f"{sub_display_name:<20}"
-                            
-                            # Create mini-gauge for sub-component
-                            mini_gauge = self._create_mini_gauge(sub_score)
-                            
-                            output += f"║ │ {sub_display_name} │ {sub_score:.2f}   │ {mini_gauge} │ ║\n"
-                    
-                    output += "║ └──────────────────────┴─────────┴──────────────────────┘ ║\n"
-        
-        # Add potential interpretations
-        has_interpretations = False
-        for component_name, component_data in results.items():
-            if 'interpretation' in component_data:
-                has_interpretations = True
-                break
-        
-        if has_interpretations:
-            output += "\n╠══════════════════════════════════════════════════════════════╣\n"
-            output += "║ MARKET INTERPRETATION:                                      ║\n"
-            
-            for component_name, component_data in results.items():
-                if 'interpretation' in component_data:
-                    interp = component_data['interpretation']
-                    display_name = component_name.replace('_', ' ').title()
-                    
-                    if isinstance(interp, dict):
-                        if 'summary' in interp:
-                            output += f"║ • {display_name}: {interp['summary'][:45]}... ║\n"
-                    else:
-                        output += f"║ • {display_name}: {str(interp)[:45]}... ║\n"
-        
-        # Close the box
-        output += "╚══════════════════════════════════════════════════════════════╝\n"
-        
-        # Add signal notice if above threshold
+        # Add signal notice if above threshold (preserve existing logic)
         if score >= 70:
             signal_type = "BULLISH" if score > 50 else "BEARISH"
-            output += f"\nSIGNAL GENERATED: {signal_type} with {score:.2f} score\n"
+            formatted_output += f"\nSIGNAL GENERATED: {signal_type} with {score:.2f} score\n"
         else:
-            output += f"\nNo signal generated (threshold: 70.00)\n"
+            formatted_output += f"\nNo signal generated (threshold: 70.00)\n"
         
-        return output
+        return formatted_output
 
     def _create_fancy_gauge(self, value):
         """Create a fancy gauge bar for the dashboard.
@@ -501,178 +410,122 @@ class LogFormatter:
         return f"\n╔{border}╗\n║{left_padding}{title} FINAL SCORE: {color}{score:.2f}{AnalysisFormatter.RESET} ({status}){left_padding} ║\n║ {gauge} {' ' * (80 - len(gauge) - 4)} ║\n╚{border}╝"
 
     @staticmethod
-    def format_score_contribution_section(title, contributions, symbol="", divergence_adjustments=None, final_score=None):
+    def format_score_contribution_section(title, contributions, symbol="", divergence_adjustments=None, final_score=None, use_pretty_table=True, border_style="single"):
         """
-        Format a complete score contribution section with header and individual contributions.
+        Formats a section with a detailed breakdown of score contributions using PrettyTable.
         
         Args:
             title: Section title
             contributions: List of (component_name, score, weight, contribution) tuples
             symbol: Optional symbol to include in the title
             divergence_adjustments: Optional dict of components with divergence adjustments {component: adjustment}
-            final_score: Optional final score to override the calculated sum
-        
-        Returns:
-            str: Formatted section with header and all contributions
+            final_score: Optional final score to display at the bottom.
+            use_pretty_table: Always True - kept for compatibility
+            border_style: Can be 'single' or 'double'.
         """
-        # Calculate total contribution for reference only
-        calculated_sum = sum(contrib for _, _, _, contrib in contributions)
-        
-        # ALWAYS use the provided final score if available, otherwise use the calculated sum
-        # This ensures the final score in the breakdown matches the timeframe analysis score
-        total_score = final_score if final_score is not None else calculated_sum
-        
-        # Include symbol in the title if provided
-        display_title = f"{symbol} {title}" if symbol else title
-        
-        # Check if we need to add a column for divergences
-        has_divergences = divergence_adjustments and any(divergence_adjustments.values())
-        column_width = 8 if has_divergences else 0
-        
-        # Standardize box width to 80 characters for consistent alignment with final score box
-        header = f"\n┌{'─' * 80}┐"
-        header += f"\n│ {AnalysisFormatter.BOLD}{AnalysisFormatter.CYAN}{display_title}{AnalysisFormatter.RESET}{' ' * (78 - len(display_title))}│"
-        
-        if has_divergences:
-            # Include divergence column
-            header += f"\n├{'─' * 20}┬{'─' * 8}┬{'─' * 7}┬{'─' * 8}┬{'─' * 8}┬{'─' * 26}┤"
-            header += f"\n│ {'COMPONENT':<18} │ {'SCORE':<6} │ {'WEIGHT':<5} │ {'IMPACT':<6} │ {'DIV':<6} │ {'GAUGE':<24} │"
-            header += f"\n├{'─' * 20}┼{'─' * 8}┼{'─' * 7}┼{'─' * 8}┼{'─' * 8}┼{'─' * 26}┤"
-        else:
-            # Original format without divergence column
-            header += f"\n├{'─' * 20}┬{'─' * 8}┬{'─' * 7}┬{'─' * 8}┬{'─' * 34}┤"
-            header += f"\n│ {'COMPONENT':<18} │ {'SCORE':<6} │ {'WEIGHT':<5} │ {'IMPACT':<6} │ {'GAUGE':<32} │"
-            header += f"\n├{'─' * 20}┼{'─' * 8}┼{'─' * 7}┼{'─' * 8}┼{'─' * 34}┤"
-        
-        # Format each contribution
-        formatted_contributions = []
-        for component, score, weight, contribution in contributions:
-            # Color based on score
-            if score >= 70:
-                color = AnalysisFormatter.GREEN
-            elif score >= 45:
-                color = AnalysisFormatter.YELLOW
-            else:
-                color = AnalysisFormatter.RED
-                
-            # Create gauge with consistent width and characters
-            gauge_width = 24 if has_divergences else 32  # Adjusted width if showing divergences
-            filled = int((score / 100) * gauge_width)
-            
-            # Use the same characters as in create_gauge for consistency
-            if score >= 70:
-                gauge_char = "█"  # Solid block for bullish
-            elif score >= 45:
-                gauge_char = "▓"  # Medium-density dotted for neutral
-            else:
-                gauge_char = "░"  # Low-density dotted for bearish
-                
-            gauge = gauge_char * filled + "·" * (gauge_width - filled)
-            
-            # Format divergence adjustment if available
-            div_part = ""
-            if has_divergences:
-                div_value = divergence_adjustments.get(component, 0.0)
-                
-                # Determine color and prefix for divergence
-                if div_value > 0:
-                    div_color = AnalysisFormatter.GREEN
-                    div_display = f"+{div_value:.1f}"
-                elif div_value < 0:
-                    div_color = AnalysisFormatter.RED
-                    div_display = f"{div_value:.1f}"
-                else:
-                    div_color = AnalysisFormatter.RESET
-                    div_display = "0.0"
-                
-                div_part = f" │ {div_color}{div_display:<6}{AnalysisFormatter.RESET}"
-            
-            # Format line with increased component width and fixed decimal places for better alignment
-            # Use a consistent format for the contribution value to ensure proper alignment
-            impact_str = f"{contribution:6.1f}"  # Fixed width with 1 decimal place for better alignment
-            
-            if has_divergences:
-                line = f"│ {component:<18} │ {color}{score:<6.2f}{AnalysisFormatter.RESET} │ {weight:<5.2f} │ {impact_str}{div_part} │ {color}{gauge}{AnalysisFormatter.RESET} │"
-            else:
-                line = f"│ {component:<18} │ {color}{score:<6.2f}{AnalysisFormatter.RESET} │ {weight:<5.2f} │ {impact_str} │ {color}{gauge}{AnalysisFormatter.RESET} │"
-            
-            formatted_contributions.append(line)
-        
-        # Format footer with total
-        if has_divergences:
-            footer = f"├{'─' * 20}┴{'─' * 8}┴{'─' * 7}┴{'─' * 8}┴{'─' * 8}┴{'─' * 26}┤"
-        else:
-            footer = f"├{'─' * 20}┴{'─' * 8}┴{'─' * 7}┴{'─' * 8}┴{'─' * 34}┤"
-        
-        # Add total score at the bottom - use the provided final_score
-        if total_score >= 70:
-            total_color = AnalysisFormatter.GREEN
-            status = "BULLISH"
-        elif total_score >= 45:
-            total_color = AnalysisFormatter.YELLOW
-            status = "NEUTRAL"
-        else:
-            total_color = AnalysisFormatter.RED
-            status = "BEARISH"
-            
-        # Create gauge with same style as individual components
-        gauge_width = 24 if has_divergences else 32  # Adjusted width if showing divergences
-        filled = int((total_score / 100) * gauge_width)
-        if total_score >= 70:
-            gauge_char = "█"
-        elif total_score >= 45:
-            gauge_char = "▓"
-        else:
-            gauge_char = "░"
-            
-        total_gauge = gauge_char * filled + "·" * (gauge_width - filled)
-        
-        # Calculate total divergence adjustment if available
-        div_total_part = ""
-        if has_divergences:
-            total_adjustment = sum(divergence_adjustments.values())
-            
-            # Determine color and prefix for total divergence
-            if total_adjustment > 0:
-                div_total_color = AnalysisFormatter.GREEN
-                div_total_display = f"+{total_adjustment:.1f}"
-            elif total_adjustment < 0:
-                div_total_color = AnalysisFormatter.RED
-                div_total_display = f"{total_adjustment:.1f}"
-            else:
-                div_total_color = AnalysisFormatter.RESET
-                div_total_display = "0.0"
-                
-            div_total_part = f" │ {div_total_color}{div_total_display:<6}{AnalysisFormatter.RESET}"
-        
-        # Format the final score line
-        if has_divergences:
-            footer += f"\n│ {'FINAL SCORE':<18} │ {total_color}{total_score:<6.2f}{AnalysisFormatter.RESET} │ {' ' * 5} │ {' ' * 6}{div_total_part} │ {total_color}{total_gauge}{AnalysisFormatter.RESET} │"
-            footer += f"\n└{'─' * 20}┴{'─' * 8}┴{'─' * 7}┴{'─' * 8}┴{'─' * 8}┴{'─' * 26}┘"
-            
-            # Add legend for divergence adjustment column if there are non-zero adjustments
-            if any(divergence_adjustments.values()):
-                footer += f"\n* DIV column shows timeframe divergence adjustments"
-        else:
-            footer += f"\n│ {'FINAL SCORE':<18} │ {total_color}{total_score:<6.2f}{AnalysisFormatter.RESET} │ {' ' * 5} │ {' ' * 6} │ {total_color}{total_gauge}{AnalysisFormatter.RESET} │"
-            footer += f"\n└{'─' * 20}┴{'─' * 8}┴{'─' * 7}┴{'─' * 8}┴{'─' * 34}┘"
-        
-        # Combine all parts
-        return header + "\n" + "\n".join(formatted_contributions) + "\n" + footer
+        # Always use PrettyTable - no fallback
+        return PrettyTableFormatter.format_score_contribution_section(
+            title, 
+            contributions, 
+            symbol, 
+            divergence_adjustments,
+            final_score,
+            border_style=border_style
+        )
         
     @staticmethod
-    def format_component_analysis_section(title, components, detailed=False):
+    def format_component_analysis_section(title, components, detailed=False, use_pretty_table=True, border_style="single"):
         """
-        Format a complete component analysis section with header and individual components.
+        Format a complete component analysis section with header and individual components using PrettyTable.
         
         Args:
             title: Section title
             components: List of (component_name, score, status) tuples
             detailed: Whether to include additional details
+            use_pretty_table: Whether to use PrettyTable formatting (default: True)
+            border_style: Border style for PrettyTable ("single", "double", "markdown")
             
         Returns:
             str: Formatted section with header and all components
         """
+        if not PrettyTable or not use_pretty_table:
+            # Fallback to manual formatting if PrettyTable not available
+            return LogFormatter._format_component_analysis_section_manual(title, components, detailed)
+        
+        # Create PrettyTable for component analysis
+        table = PrettyTable()
+        
+        # Set border style
+        if border_style == "single" and SINGLE_BORDER:
+            table.set_style(SINGLE_BORDER)
+        elif border_style == "double" and DOUBLE_BORDER:
+            table.set_style(DOUBLE_BORDER)
+        elif border_style == "markdown" and MARKDOWN:
+            table.set_style(MARKDOWN)
+        else:
+            table.set_style(DEFAULT if DEFAULT else None)
+        
+        # Set field names based on detailed flag
+        if detailed:
+            table.field_names = ["Component", "Status", "Score", "Gauge"]
+            table.align["Component"] = "l"
+            table.align["Status"] = "l"
+            table.align["Score"] = "r"
+            table.align["Gauge"] = "l"
+        else:
+            table.field_names = ["Component", "Status", "Score", "Trend", "Interpretation"]
+            table.align["Component"] = "l"
+            table.align["Status"] = "l"
+            table.align["Score"] = "r"
+            table.align["Trend"] = "c"
+            table.align["Interpretation"] = "l"
+        
+        # Add component rows
+        for component, score, status in components:
+            # Get color based on status
+            if "strong bullish" in status.lower():
+                color = AnalysisFormatter.GREEN
+                indicator = "↑↑"
+            elif "bullish" in status.lower():
+                color = AnalysisFormatter.GREEN
+                indicator = "↑"
+            elif "strong bearish" in status.lower():
+                color = AnalysisFormatter.RED
+                indicator = "↓↓"
+            elif "bearish" in status.lower():
+                color = AnalysisFormatter.RED
+                indicator = "↓"
+            else:
+                color = AnalysisFormatter.YELLOW
+                indicator = "→"
+            
+            # Format status with color
+            colored_status = f"{color}{status}{AnalysisFormatter.RESET}"
+            
+            if detailed:
+                # Create gauge for detailed view
+                gauge_width = 18
+                filled = int((score / 100) * gauge_width)
+                gauge_char = "█" if score >= 70 else "▓" if score >= 45 else "░"
+                gauge = gauge_char * filled + "·" * (gauge_width - filled)
+                colored_gauge = f"{color}{gauge}{AnalysisFormatter.RESET}"
+                
+                table.add_row([component, colored_status, f"{score:.2f}", colored_gauge])
+            else:
+                # Simple view with trend indicator
+                interpretation = f"{indicator} {status.split()[0]}"
+                table.add_row([component, colored_status, f"{score:.2f}", indicator, interpretation])
+        
+        # Create section with header
+        output = []
+        output.append(f"{AnalysisFormatter.BOLD}{AnalysisFormatter.CYAN}{title}{AnalysisFormatter.RESET}")
+        output.append(str(table))
+        
+        return "\n".join(output)
+    
+    @staticmethod
+    def _format_component_analysis_section_manual(title, components, detailed=False):
+        """Fallback manual formatting method for component analysis."""
         # Format header with box drawing
         header = f"\n┌{'─' * 64}┐"
         header += f"\n│ {AnalysisFormatter.BOLD}{AnalysisFormatter.CYAN}{title}{AnalysisFormatter.RESET}{' ' * (62 - len(title))}│"
@@ -905,7 +758,7 @@ class LogFormatter:
         return header + "\n" + "\n".join(formatted_components) + "\n" + footer
 
     @staticmethod
-    def format_confluence_score_table(symbol, confluence_score, components, results, weights=None, reliability=0.0, extra_right_borders=0):
+    def format_confluence_score_table(symbol, confluence_score, components, results, weights=None, reliability=0.0, extra_right_borders=0, use_pretty_table=True, border_style="double"):
         """
         Format a comprehensive table for the overall confluence score components,
         including top influential individual components and market interpretations.
@@ -918,10 +771,23 @@ class LogFormatter:
             weights: Optional dictionary of component weights
             reliability: Reliability score of the analysis (0.0-1.0)
             extra_right_borders: Number of extra right borders to add
+            use_pretty_table: Whether to use PrettyTable formatting (default: False for backward compatibility)
+            border_style: Border style for PrettyTable ("default", "single", "double", "markdown")
             
         Returns:
             str: Formatted table with comprehensive analysis
         """
+        # Use PrettyTable if requested and available
+        if use_pretty_table and PrettyTable:
+            return PrettyTableFormatter.format_confluence_score_table(
+                symbol=symbol,
+                confluence_score=confluence_score,
+                components=components,
+                results=results,
+                weights=weights,
+                reliability=reliability,
+                border_style=border_style
+            )
         # Set table width - ensure it's consistent throughout
         table_width = 80
         
@@ -1088,11 +954,11 @@ class LogFormatter:
                         gauge_char = "█" if comp_score >= 70 else "▓" if comp_score >= 45 else "░"
                         gauge = gauge_char * filled + "·" * (mini_gauge_width - filled)
                         
-                        # Format the component display part with consistent padding
-                        comp_display_part = f"  • {comp_display_name:<25}: {comp_color}{comp_score:<6.2f}{AnalysisFormatter.RESET} {indicator} "
+                        # Format the component display part with consistent padding (using 30 chars for better alignment)
+                        comp_display_part = f"  • {comp_display_name:<30}: {comp_color}{comp_score:<6.2f}{AnalysisFormatter.RESET} {indicator} "
                         
                         # Calculate visible length (without color codes) for the display part
-                        visible_display_length = len(f"  • {comp_display_name:<25}: {comp_score:<6.2f} {indicator} ")
+                        visible_display_length = len(f"  • {comp_display_name:<30}: {comp_score:<6.2f} {indicator} ")
                         
                         # Calculate how much space is left for the gauge
                         remaining_width = table_width - visible_display_length - 2  # -2 for the borders
@@ -1168,9 +1034,9 @@ class LogFormatter:
                             gauge_char = "█" if comp_score >= 70 else "▓" if comp_score >= 45 else "░"
                             gauge = gauge_char * filled + "·" * (mini_gauge_width - filled)
                             
-                            # Format the component display part with consistent padding
-                            comp_display_part = f"  • {clean_name:<20}: {comp_color}{comp_score:<6.2f}{AnalysisFormatter.RESET} {indicator} "
-                            visible_length = len(f"  • {clean_name:<20}: {comp_score:<6.2f} {indicator} ")
+                            # Format the component display part with consistent padding (using 30 chars for better alignment)
+                            comp_display_part = f"  • {clean_name:<30}: {comp_color}{comp_score:<6.2f}{AnalysisFormatter.RESET} {indicator} "
+                            visible_length = len(f"  • {clean_name:<30}: {comp_score:<6.2f} {indicator} ")
                             
                             # Calculate remaining space
                             remaining_width = table_width - visible_length - 2
@@ -1264,11 +1130,11 @@ class LogFormatter:
                             gauge_char = "█" if comp_score >= 70 else "▓" if comp_score >= 45 else "░"
                             gauge = gauge_char * filled + "·" * (mini_gauge_width - filled)
                             
-                            # Format the component display part with consistent padding
-                            comp_display_part = f"  • {comp_display_name:<20}: {comp_color}{comp_score:<6.2f}{AnalysisFormatter.RESET} {indicator} "
+                            # Format the component display part with consistent padding (using 30 chars for better alignment)
+                            comp_display_part = f"  • {comp_display_name:<30}: {comp_color}{comp_score:<6.2f}{AnalysisFormatter.RESET} {indicator} "
                             
                             # Calculate visible length (without color codes) for the display part
-                            visible_display_length = len(f"  • {comp_display_name:<20}: {comp_score:<6.2f} {indicator} ")
+                            visible_display_length = len(f"  • {comp_display_name:<30}: {comp_score:<6.2f} {indicator} ")
                             
                             # Calculate how much space is left for the gauge
                             remaining_width = table_width - visible_display_length - 2  # -2 for the borders
@@ -1389,12 +1255,9 @@ class LogFormatter:
         return header
 
     @staticmethod
-    def format_enhanced_confluence_score_table(symbol, confluence_score, components, results, weights=None, reliability=0.0):
+    def format_enhanced_confluence_score_table(symbol, confluence_score, components, results, weights=None, reliability=0.0, use_pretty_table=True, border_style="double"):
         """
-        Format a comprehensive table with enhanced market interpretations.
-        
-        This method uses the EnhancedFormatter to provide richer market interpretations,
-        cross-component insights, and actionable trading insights.
+        Format a comprehensive confluence analysis table with enhanced interpretations.
         
         Args:
             symbol: Trading symbol
@@ -1403,10 +1266,25 @@ class LogFormatter:
             results: Dictionary of detailed results for each component
             weights: Optional dictionary of component weights
             reliability: Reliability score of the analysis (0.0-1.0)
+            use_pretty_table: Whether to use PrettyTable formatting (default: True)
+            border_style: Border style for PrettyTable ("default", "single", "double", "markdown")
             
         Returns:
-            str: Formatted table with comprehensive analysis
+            str: Formatted table with comprehensive analysis and enhanced interpretations
         """
+        # Use PrettyTable if requested and available
+        if use_pretty_table and PrettyTable:
+            return PrettyTableFormatter.format_enhanced_confluence_score_table(
+                symbol=symbol,
+                confluence_score=confluence_score,
+                components=components,
+                results=results,
+                weights=weights,
+                reliability=reliability,
+                border_style=border_style
+            )
+        
+        # Fallback to EnhancedFormatter if PrettyTable is not available or not requested
         return EnhancedFormatter.format_enhanced_confluence_score_table(
             symbol=symbol,
             confluence_score=confluence_score,
@@ -1420,8 +1298,13 @@ class EnhancedFormatter:
     """Enhanced formatter for market interpretations with improved readability."""
     
     @staticmethod
-    def format_market_interpretations(results, table_width=80, extra_right_borders=0):
-        """Format market interpretations section with enhanced readability."""
+    def format_market_interpretations(results, table_width=80, extra_right_borders=0, use_pretty_table=True, border_style="single"):
+        """Format market interpretations section with enhanced readability using PrettyTable and centralized InterpretationManager."""
+        if use_pretty_table and PrettyTable:
+            # Use PrettyTable for consistent formatting
+            return PrettyTableFormatter._format_interpretations_table(results, border_style)
+        
+        # Fallback to manual formatting
         # Market interpretations title with enhanced styling
         title = f"{AnalysisFormatter.BOLD}{AnalysisFormatter.CYAN}MARKET INTERPRETATIONS{AnalysisFormatter.RESET}"
         # Calculate padding for title, accounting for the length of the visible text, not formatting codes
@@ -1432,58 +1315,133 @@ class EnhancedFormatter:
         header += f"\n║ {title}{' ' * padding}║"
         header += f"\n╠{'═' * table_width}╣"
         
-        # Extract interpretations from results
+        # Extract interpretations from results using centralized InterpretationManager if available
         interpretations_section = []
-        for component_name, component_data in results.items():
-            display_name = f"{AnalysisFormatter.BOLD}{component_name.replace('_', ' ').title()}{AnalysisFormatter.RESET}"
-            # Calculate visible length without formatting codes
-            visible_display_name_len = len(component_name.replace('_', ' ').title())
-            
-            # Skip non-dictionary values to prevent errors
-            if not isinstance(component_data, dict):
-                continue
-            
-            # Try to get enhanced interpretation
-            interpretation = None
-            
-            # First check for enhanced_interpretation field that might be added
-            if 'enhanced_interpretation' in component_data:
-                interpretation = component_data['enhanced_interpretation']
-            # Then try the interpretation field
-            elif 'interpretation' in component_data:
-                interp = component_data['interpretation']
-                if isinstance(interp, str):
-                    interpretation = interp
-                elif isinstance(interp, dict) and 'summary' in interp:
-                    interpretation = interp['summary']
-            # Finally, build from signals
-            elif 'signals' in component_data:
-                signals = component_data['signals']
-                if signals:
-                    interpretation = ", ".join(f"{k}={v}" for k, v in signals.items())
-            
-            # If we have an interpretation, add it to the section
-            if interpretation:
-                # Calculate effective width for wrapping to account for the leading "• Display_name: "
-                effective_width = table_width - 4 - visible_display_name_len - 2  # -4 for "║ • ", -2 for ": "
+        
+        # Try to use InterpretationManager for consistent processing
+        if InterpretationManager:
+            try:
+                # Convert results to format suitable for InterpretationManager
+                raw_interpretations = []
+                for component_name, component_data in results.items():
+                    if not isinstance(component_data, dict):
+                        continue
+                    
+                    # Extract interpretation from component data
+                    interpretation = None
+                    if 'enhanced_interpretation' in component_data:
+                        interpretation = component_data['enhanced_interpretation']
+                    elif 'interpretation' in component_data:
+                        interp = component_data['interpretation']
+                        if isinstance(interp, str):
+                            interpretation = interp
+                        elif isinstance(interp, dict) and 'summary' in interp:
+                            interpretation = interp['summary']
+                    elif 'signals' in component_data:
+                        signals = component_data['signals']
+                        if signals:
+                            interpretation = ", ".join(f"{k}={v}" for k, v in signals.items())
+                    
+                    if interpretation:
+                        raw_interpretations.append({
+                            'component': component_name,
+                            'display_name': component_name.replace('_', ' ').title(),
+                            'interpretation': interpretation
+                        })
                 
-                # Format multi-line interpretations with proper wrapping
-                wrapped_lines = textwrap.wrap(interpretation, width=effective_width)
-                if wrapped_lines:
-                    first_line = wrapped_lines[0]
-                    # Calculate visible length of the line without formatting codes
-                    visible_line_len = len(f"• {component_name.replace('_', ' ').title()}: {first_line}")
-                    padding = table_width - visible_line_len - 2  # -2 for "║ " at the start
-                    interpretations_section.append(f"║ • {display_name}: {first_line}{' ' * padding}║")
+                # Process through InterpretationManager
+                if raw_interpretations:
+                    manager = InterpretationManager()
+                    interpretation_set = manager.process_interpretations(
+                        raw_interpretations, 
+                        'formatter',
+                        None,  # No market data available in this context
+                        datetime.datetime.now()
+                    )
                     
-                    # Add subsequent lines with proper indentation
-                    for subsequent_line in wrapped_lines[1:]:
-                        visible_line_len = len(f"  {subsequent_line}")
+                    # Format the standardized interpretations
+                    for interpretation in interpretation_set.interpretations:
+                        display_name = f"{AnalysisFormatter.BOLD}{interpretation.component_name.replace('_', ' ').title()}{AnalysisFormatter.RESET}"
+                        visible_display_name_len = len(interpretation.component_name.replace('_', ' ').title())
+                        
+                        # Add severity indicator
+                        severity_indicator = "🔴" if interpretation.severity.value == "critical" else "🟡" if interpretation.severity.value == "warning" else "🔵"
+                        
+                        # Calculate effective width for wrapping
+                        effective_width = table_width - 6 - visible_display_name_len - 2  # -6 for "║ 🔵 • ", -2 for ": "
+                        
+                        # Format multi-line interpretations with proper wrapping
+                        wrapped_lines = textwrap.wrap(interpretation.interpretation_text, width=effective_width)
+                        if wrapped_lines:
+                            first_line = wrapped_lines[0]
+                            visible_line_len = len(f"{severity_indicator} • {interpretation.component_name.replace('_', ' ').title()}: {first_line}")
+                            padding = table_width - visible_line_len - 2
+                            interpretations_section.append(f"║ {severity_indicator} • {display_name}: {first_line}{' ' * padding}║")
+                            
+                            # Add subsequent lines with proper indentation
+                            for subsequent_line in wrapped_lines[1:]:
+                                visible_line_len = len(f"    {subsequent_line}")
+                                padding = table_width - visible_line_len - 2
+                                interpretations_section.append(f"║     {subsequent_line}{' ' * padding}║")
+                            
+                            # Add empty line between components for readability
+                            interpretations_section.append(f"║{' ' * table_width}║")
+                            
+            except Exception as e:
+                # Fallback to original processing if InterpretationManager fails
+                pass
+        
+        # Fallback to original processing if InterpretationManager is not available or failed
+        if not interpretations_section:
+            for component_name, component_data in results.items():
+                display_name = f"{AnalysisFormatter.BOLD}{component_name.replace('_', ' ').title()}{AnalysisFormatter.RESET}"
+                visible_display_name_len = len(component_name.replace('_', ' ').title())
+                
+                # Skip non-dictionary values to prevent errors
+                if not isinstance(component_data, dict):
+                    continue
+                
+                # Try to get enhanced interpretation
+                interpretation = None
+                
+                # First check for enhanced_interpretation field that might be added
+                if 'enhanced_interpretation' in component_data:
+                    interpretation = component_data['enhanced_interpretation']
+                # Then try the interpretation field
+                elif 'interpretation' in component_data:
+                    interp = component_data['interpretation']
+                    if isinstance(interp, str):
+                        interpretation = interp
+                    elif isinstance(interp, dict) and 'summary' in interp:
+                        interpretation = interp['summary']
+                # Finally, build from signals
+                elif 'signals' in component_data:
+                    signals = component_data['signals']
+                    if signals:
+                        interpretation = ", ".join(f"{k}={v}" for k, v in signals.items())
+                
+                # If we have an interpretation, add it to the section
+                if interpretation:
+                    # Calculate effective width for wrapping to account for the leading "• Display_name: "
+                    effective_width = table_width - 4 - visible_display_name_len - 2  # -4 for "║ • ", -2 for ": "
+                    
+                    # Format multi-line interpretations with proper wrapping
+                    wrapped_lines = textwrap.wrap(interpretation, width=effective_width)
+                    if wrapped_lines:
+                        first_line = wrapped_lines[0]
+                        # Calculate visible length of the line without formatting codes
+                        visible_line_len = len(f"• {component_name.replace('_', ' ').title()}: {first_line}")
                         padding = table_width - visible_line_len - 2  # -2 for "║ " at the start
-                        interpretations_section.append(f"║   {subsequent_line}{' ' * padding}║")
-                    
-                    # Add empty line between components for readability
-                    interpretations_section.append(f"║{' ' * table_width}║")
+                        interpretations_section.append(f"║ • {display_name}: {first_line}{' ' * padding}║")
+                        
+                        # Add subsequent lines with proper indentation
+                        for subsequent_line in wrapped_lines[1:]:
+                            visible_line_len = len(f"  {subsequent_line}")
+                            padding = table_width - visible_line_len - 2  # -2 for "║ " at the start
+                            interpretations_section.append(f"║   {subsequent_line}{' ' * padding}║")
+                        
+                        # Add empty line between components for readability
+                        interpretations_section.append(f"║{' ' * table_width}║")
         
         # Add the interpretations section to the header
         header += "\n" + "\n".join(interpretations_section)
@@ -1693,3 +1651,1340 @@ class EnhancedFormatter:
         enhanced_table = header + market_interpretations + cross_component_section + actionable_section + footer
         
         return enhanced_table 
+
+
+class PrettyTableFormatter:
+    """
+    Modern table formatter using PrettyTable for clean, professional table formatting.
+    
+    This formatter provides a cleaner alternative to the box-drawing character tables,
+    using PrettyTable for consistent formatting and better readability.
+    """
+    
+    # Reference to AnalysisFormatter attributes for consistency
+    GREEN = AnalysisFormatter.GREEN
+    YELLOW = AnalysisFormatter.YELLOW
+    RED = AnalysisFormatter.RED
+    CYAN = AnalysisFormatter.CYAN
+    BLUE = AnalysisFormatter.BLUE
+    MAGENTA = AnalysisFormatter.MAGENTA
+    BOLD = AnalysisFormatter.BOLD
+    RESET = AnalysisFormatter.RESET
+    
+    @staticmethod
+    def _get_score_color(score):
+        """Get color based on score value."""
+        if score >= 70:
+            return PrettyTableFormatter.GREEN
+        elif score >= 45:
+            return PrettyTableFormatter.YELLOW
+        else:
+            return PrettyTableFormatter.RED
+    
+    @staticmethod
+    def _create_gauge(score, width=30):
+        """Create a visual gauge for the score."""
+        # Ensure score is within bounds
+        score = max(0, min(100, score))
+        
+        # Calculate filled portion
+        filled = int((score / 100) * width)
+        
+        # Choose characters and color based on score
+        if score >= 70:
+            fill_char = "█"  # Solid block for bullish
+            color = PrettyTableFormatter.GREEN
+        elif score >= 45:
+            fill_char = "▓"  # Medium-density for neutral
+            color = PrettyTableFormatter.YELLOW
+        else:
+            fill_char = "░"  # Low-density for bearish
+            color = PrettyTableFormatter.RED
+        
+        # Create the gauge
+        gauge = color + fill_char * filled + "·" * (width - filled) + PrettyTableFormatter.RESET
+        return gauge
+    
+    @staticmethod
+    def _get_trend_indicator(score):
+        """Get trend indicator based on score."""
+        if score >= 70:
+            return PrettyTableFormatter.GREEN + "↑" + PrettyTableFormatter.RESET
+        elif score >= 45:
+            return PrettyTableFormatter.YELLOW + "→" + PrettyTableFormatter.RESET
+        else:
+            return PrettyTableFormatter.RED + "↓" + PrettyTableFormatter.RESET
+    
+    @staticmethod
+    def format_confluence_score_table(symbol, confluence_score, components, results, weights=None, reliability=0.0, border_style="double"):
+        """
+        Format a comprehensive confluence analysis table using PrettyTable.
+        
+        Args:
+            symbol: Trading symbol
+            confluence_score: Overall confluence score
+            components: Dictionary of component scores
+            results: Dictionary of detailed results for each component
+            weights: Optional dictionary of component weights
+            reliability: Reliability score of the analysis (0.0-1.0)
+            border_style: Border style ("default", "single", "double", "markdown")
+            
+        Returns:
+            str: Formatted table with comprehensive analysis
+        """
+        if not PrettyTable:
+            # Fallback to original formatter if PrettyTable is not available
+            return LogFormatter.format_confluence_score_table(
+                symbol, confluence_score, components, results, weights, reliability
+            )
+        
+        output = []
+        
+        # Header section with enhanced styling
+        if border_style == "double":
+            header_text = f"{PrettyTableFormatter.BOLD}{PrettyTableFormatter.CYAN}╔══ {symbol} CONFLUENCE ANALYSIS ══╗{PrettyTableFormatter.RESET}"
+        elif border_style == "single":
+            header_text = f"{PrettyTableFormatter.BOLD}{PrettyTableFormatter.CYAN}┌── {symbol} CONFLUENCE ANALYSIS ──┐{PrettyTableFormatter.RESET}"
+        else:
+            header_text = f"{PrettyTableFormatter.BOLD}{PrettyTableFormatter.CYAN}{symbol} CONFLUENCE ANALYSIS{PrettyTableFormatter.RESET}"
+        
+        output.append(f"\n{header_text}")
+        
+        # Choose separator based on border style
+        if border_style == "double":
+            separator = "═" * 80
+        elif border_style == "single":
+            separator = "─" * 80
+        else:
+            separator = "=" * 80
+            
+        output.append(separator)
+        
+        # Overall score and reliability
+        score_color = PrettyTableFormatter._get_score_color(confluence_score)
+        overall_status = "BULLISH" if confluence_score >= 60 else "NEUTRAL" if confluence_score >= 40 else "BEARISH"
+        
+        reliability_pct = reliability * 100
+        reliability_color = PrettyTableFormatter.GREEN if reliability >= 0.8 else PrettyTableFormatter.YELLOW if reliability >= 0.5 else PrettyTableFormatter.RED
+        reliability_status = "HIGH" if reliability >= 0.8 else "MEDIUM" if reliability >= 0.5 else "LOW"
+        
+        output.append(f"Overall Score: {score_color}{confluence_score:.2f}{PrettyTableFormatter.RESET} ({overall_status})")
+        output.append(f"Reliability: {reliability_color}{reliability_pct:.0f}%{PrettyTableFormatter.RESET} ({reliability_status})")
+        output.append("")
+        
+        # Main components table
+        if components:
+            # Calculate weighted contributions
+            contributions = []
+            if weights:
+                for component, score in components.items():
+                    weight = weights.get(component, 0)
+                    contribution = score * weight
+                    contributions.append((component, score, weight, contribution))
+            else:
+                # Estimate equal weights if not provided
+                weight = 1.0 / max(len(components), 1)
+                for component, score in components.items():
+                    contribution = score * weight
+                    contributions.append((component, score, weight, contribution))
+            
+            # Sort by contribution (descending)
+            contributions.sort(key=lambda x: x[3], reverse=True)
+            
+            # Create main components table with enhanced borders
+            table = PrettyTable()
+            table.field_names = ["Component", "Score", "Impact", "Gauge"]
+            table.align = "l"
+            table.align["Score"] = "r"
+            table.align["Impact"] = "r"
+            
+            # Apply border style
+            if border_style == "double" and DOUBLE_BORDER:
+                table.set_style(DOUBLE_BORDER)
+            elif border_style == "single" and SINGLE_BORDER:
+                table.set_style(SINGLE_BORDER)
+            elif border_style == "markdown" and MARKDOWN:
+                table.set_style(MARKDOWN)
+            else:
+                table.set_style(DEFAULT if DEFAULT else None)
+            
+            for component, score, weight, contribution in contributions:
+                display_name = component.replace('_', ' ').title()
+                score_color = PrettyTableFormatter._get_score_color(score)
+                gauge = PrettyTableFormatter._create_gauge(score, 30)
+                
+                table.add_row([
+                    display_name,
+                    f"{score_color}{score:.2f}{PrettyTableFormatter.RESET}",
+                    f"{contribution:.1f}",
+                    gauge
+                ])
+            
+            # Add Component Breakdown section header
+            output.append(f"{PrettyTableFormatter.BOLD}Component Breakdown{PrettyTableFormatter.RESET}")
+            
+            # Add the table directly (PrettyTable handles its own borders)
+            output.append(str(table))
+            output.append("")
+        
+                # Top influential individual components (optimized with PrettyTable)
+        if results:
+            top_components_table = PrettyTableFormatter._format_top_components_table(results, border_style)
+            if top_components_table:
+                output.append(top_components_table)
+
+        # Market interpretations (optimized with PrettyTable)
+        interpretations_table = PrettyTableFormatter._format_interpretations_table(results, border_style)
+        if interpretations_table:
+            output.append(interpretations_table)
+        
+        # Actionable insights
+        insights = PrettyTableFormatter._generate_actionable_insights(confluence_score, components, results)
+        if insights:
+            output.append(f"{PrettyTableFormatter.BOLD}Actionable Trading Insights:{PrettyTableFormatter.RESET}")
+            for insight in insights:
+                output.append(f"  • {insight}")
+            output.append("")
+        
+        output.append(separator)
+        return "\n".join(output)
+    
+    @staticmethod
+    def _extract_top_components(results):
+        """Extract top individual components from results."""
+        top_components = []
+        
+        # Look for top_influential section first
+        if 'top_influential' in results and isinstance(results['top_influential'], dict):
+            top_influential = results['top_influential']
+            if 'components' in top_influential and isinstance(top_influential['components'], dict):
+                for comp_name, comp_score in top_influential['components'].items():
+                    if isinstance(comp_score, (int, float)):
+                        display_name = comp_name.replace('_', ' ')
+                        top_components.append((display_name, comp_score))
+        
+        # Fallback: extract from individual component results
+        if not top_components:
+            for component_name, component_data in results.items():
+                if isinstance(component_data, dict) and 'components' in component_data:
+                    sub_components = component_data['components']
+                    if isinstance(sub_components, dict):
+                        for sub_name, sub_score in sub_components.items():
+                            if isinstance(sub_score, (int, float)):
+                                display_name = f"{sub_name} ({component_name})"
+                                top_components.append((display_name, sub_score))
+        
+        # Sort by score descending
+        top_components.sort(key=lambda x: x[1], reverse=True)
+        return top_components
+    
+    @staticmethod
+    def _format_interpretations(results):
+        """Format market interpretations from results."""
+        interpretations = []
+        
+        # PRIORITY 1: Check if market_interpretations field exists (from enhanced data generation)
+        if results and isinstance(results, dict) and 'market_interpretations' in results:
+            market_interpretations = results['market_interpretations']
+            
+            if isinstance(market_interpretations, list):
+                for interp_data in market_interpretations:
+                    if isinstance(interp_data, dict):
+                        display_name = interp_data.get('display_name', interp_data.get('component', 'Unknown')).replace('_', ' ').title()
+                        interpretation_text = interp_data.get('interpretation', '')
+                        
+                        if interpretation_text:
+                            # Wrap long interpretations
+                            wrapped_interp = textwrap.fill(interpretation_text, width=70)
+                            interpretations.append(f"{display_name}: {wrapped_interp}")
+                
+                if interpretations:
+                    return interpretations
+        
+        # PRIORITY 2: Fallback to component-level interpretation extraction
+        for component_name, component_data in results.items():
+            # Skip the market_interpretations field itself
+            if component_name == 'market_interpretations':
+                continue
+                
+            if not isinstance(component_data, dict):
+                continue
+            
+            display_name = component_name.replace('_', ' ').title()
+            
+            # Try to get interpretation
+            interpretation = None
+            if 'enhanced_interpretation' in component_data:
+                interpretation = component_data['enhanced_interpretation']
+            elif 'interpretation' in component_data:
+                interp = component_data['interpretation']
+                if isinstance(interp, str):
+                    interpretation = interp
+                elif isinstance(interp, dict) and 'summary' in interp:
+                    interpretation = interp['summary']
+            
+            if interpretation:
+                # Wrap long interpretations
+                wrapped_interp = textwrap.fill(interpretation, width=70)
+                interpretations.append(f"{display_name}: {wrapped_interp}")
+        
+        return interpretations
+    
+    @staticmethod
+    def _generate_actionable_insights(confluence_score, components, results):
+        """Generate actionable trading insights based on analysis."""
+        insights = []
+        
+        # Overall stance
+        if confluence_score >= 60:
+            insights.append("BULLISH STANCE: Consider long positions with proper risk management")
+        elif confluence_score >= 40:
+            insights.append("NEUTRAL STANCE: Range-bound conditions likely - consider mean-reversion strategies")
+        else:
+            insights.append("BEARISH STANCE: Consider short positions or avoid long exposure")
+        
+        # Risk assessment
+        if hasattr(results, 'get') and results.get('risk_level'):
+            risk_level = results['risk_level']
+            if risk_level == 'HIGH':
+                insights.append("RISK ASSESSMENT: HIGH - Avoid new positions until risk conditions improve")
+            elif risk_level == 'MEDIUM':
+                insights.append("RISK ASSESSMENT: MEDIUM - Use reduced position sizing")
+            else:
+                insights.append("RISK ASSESSMENT: LOW - Normal position sizing acceptable")
+        
+        # Component-specific insights
+        if components:
+            # Find strongest component
+            strongest_component = max(components.items(), key=lambda x: x[1])
+            if strongest_component[1] >= 70:
+                comp_name = strongest_component[0].replace('_', ' ').title()
+                insights.append(f"STRENGTH: {comp_name} shows strong bullish signals")
+            
+            # Find weakest component
+            weakest_component = min(components.items(), key=lambda x: x[1])
+            if weakest_component[1] <= 30:
+                comp_name = weakest_component[0].replace('_', ' ').title()
+                insights.append(f"WEAKNESS: {comp_name} shows concerning bearish signals")
+        
+        # Timing insights
+        if confluence_score >= 55:
+            insights.append("TIMING: Bullish momentum building; favorable for trend-following entries")
+        elif confluence_score <= 45:
+            insights.append("TIMING: Bearish pressure increasing; consider defensive positioning")
+        else:
+            insights.append("TIMING: Mixed signals; wait for clearer directional confirmation")
+        
+        return insights
+
+    @staticmethod
+    def format_score_contribution_section(title, contributions, symbol="", divergence_adjustments=None, final_score=None, border_style="single"):
+        """
+        Formats score contributions using PrettyTable for a clean, professional look.
+        
+        Args:
+            title: Section title
+            contributions: List of (name, score, weight, impact) tuples.
+            symbol: Optional symbol to include in the title.
+            divergence_adjustments: Optional dict of divergence adjustments.
+            final_score: Optional final score to display.
+            border_style: 'single' or 'double'.
+        """
+        # PrettyTable is required - no fallback
+        
+        # Calculate total contribution for reference only
+        calculated_sum = sum(contrib for _, _, _, contrib in contributions)
+        
+        # ALWAYS use the provided final score if available, otherwise use the calculated sum
+        total_score = final_score if final_score is not None else calculated_sum
+        
+        # Include symbol in the title if provided
+        display_title = f"{symbol} {title}" if symbol else title
+        
+        # Check if we need to add a column for divergences
+        has_divergences = divergence_adjustments and any(divergence_adjustments.values())
+        
+        output = []
+        
+        # Header section
+        header_text = f"{PrettyTableFormatter.BOLD}{PrettyTableFormatter.CYAN}{display_title}{PrettyTableFormatter.RESET}"
+        output.append(f"\n{header_text}")
+        output.append("=" * 80)
+        
+        # Create the main table with enhanced borders
+        table = PrettyTable()
+        
+        # Set up field names based on whether divergences are included
+        if has_divergences:
+            table.field_names = ["Component", "Score", "Weight", "Impact", "Div", "Gauge"]
+        else:
+            table.field_names = ["Component", "Score", "Weight", "Impact", "Gauge"]
+        
+        # Set alignment
+        table.align = "l"
+        table.align["Score"] = "r"
+        table.align["Weight"] = "r"
+        table.align["Impact"] = "r"
+        if has_divergences:
+            table.align["Div"] = "r"
+            
+        # Apply border style - use DEFAULT for classic PrettyTable look
+        if border_style == "markdown" and MARKDOWN:
+            table.set_style(MARKDOWN)
+        else:
+            # Use DEFAULT style for classic PrettyTable look with + and | characters
+            table.set_style(DEFAULT if DEFAULT else None)
+        
+        # Add component rows
+        for component, score, weight, contribution in contributions:
+            # Color based on score
+            score_color = PrettyTableFormatter._get_score_color(score)
+            
+            # Create gauge with appropriate width for table
+            gauge = PrettyTableFormatter._create_gauge(score, 30)
+            
+            # Format divergence adjustment if available
+            row_data = [
+                component,
+                f"{score_color}{score:.2f}{PrettyTableFormatter.RESET}",
+                f"{weight:.2f}",
+                f"{contribution:.1f}",
+            ]
+            
+            if has_divergences:
+                div_value = divergence_adjustments.get(component, 0.0)
+                if div_value > 0:
+                    div_color = PrettyTableFormatter.GREEN
+                    div_display = f"+{div_value:.1f}"
+                elif div_value < 0:
+                    div_color = PrettyTableFormatter.RED
+                    div_display = f"{div_value:.1f}"
+                else:
+                    div_color = PrettyTableFormatter.RESET
+                    div_display = "0.0"
+                
+                row_data.append(f"{div_color}{div_display}{PrettyTableFormatter.RESET}")
+            
+            row_data.append(gauge)
+            table.add_row(row_data)
+        
+        # Add separator row
+        separator_data = ["-" * 15, "-" * 8, "-" * 6, "-" * 6]
+        if has_divergences:
+            separator_data.append("-" * 6)
+        separator_data.append("-" * 30)
+        table.add_row(separator_data)
+        
+        # Add final score row
+        if total_score >= 70:
+            total_color = PrettyTableFormatter.GREEN
+            status = "BULLISH"
+        elif total_score >= 45:
+            total_color = PrettyTableFormatter.YELLOW
+            status = "NEUTRAL"
+        else:
+            total_color = PrettyTableFormatter.RED
+            status = "BEARISH"
+        
+        total_gauge = PrettyTableFormatter._create_gauge(total_score, 30)
+        
+        final_row_data = [
+            f"{PrettyTableFormatter.BOLD}FINAL SCORE{PrettyTableFormatter.RESET}",
+            f"{total_color}{total_score:.2f}{PrettyTableFormatter.RESET}",
+            "",
+            "",
+        ]
+        
+        if has_divergences:
+            total_adjustment = sum(divergence_adjustments.values())
+            if total_adjustment > 0:
+                div_total_color = PrettyTableFormatter.GREEN
+                div_total_display = f"+{total_adjustment:.1f}"
+            elif total_adjustment < 0:
+                div_total_color = PrettyTableFormatter.RED
+                div_total_display = f"{total_adjustment:.1f}"
+            else:
+                div_total_color = PrettyTableFormatter.RESET
+                div_total_display = "0.0"
+            
+            final_row_data.append(f"{div_total_color}{div_total_display}{PrettyTableFormatter.RESET}")
+        
+        final_row_data.append(total_gauge)
+        table.add_row(final_row_data)
+        
+        # Add the table to output
+        output.append(str(table))
+        
+        # Add status line
+        output.append("")
+        output.append(f"Status: {total_color}{status}{PrettyTableFormatter.RESET} ({total_score:.2f}/100)")
+        
+        # Add legend for divergence adjustment column if there are non-zero adjustments
+        if has_divergences and any(divergence_adjustments.values()):
+            output.append("* Div column shows timeframe divergence adjustments")
+        
+        output.append("=" * 80)
+        return "\n".join(output)
+
+    @staticmethod
+    def format_enhanced_confluence_score_table(symbol, confluence_score, components, results, weights=None, reliability=0.0, border_style="double"):
+        """
+        Format a comprehensive confluence analysis table with enhanced interpretations using PrettyTable.
+        
+        This method provides the same rich interpretations and actionable insights as the EnhancedFormatter
+        but uses clean PrettyTable formatting with enhanced border styling.
+        
+        Args:
+            symbol: Trading symbol
+            confluence_score: Overall confluence score
+            components: Dictionary of component scores
+            results: Dictionary of detailed results for each component
+            weights: Optional dictionary of component weights
+            reliability: Reliability score of the analysis (0.0-1.0)
+            border_style: Border style ("default", "single", "double", "markdown")
+            
+        Returns:
+            str: Formatted table with comprehensive analysis and enhanced interpretations
+        """
+        if not PrettyTable:
+            # Fallback to EnhancedFormatter if PrettyTable is not available
+            return EnhancedFormatter.format_enhanced_confluence_score_table(
+                symbol, confluence_score, components, results, weights, reliability
+            )
+        
+        output = []
+        
+        # Header section with enhanced styling based on border style
+        if border_style == "double":
+            header_text = f"{PrettyTableFormatter.BOLD}{PrettyTableFormatter.CYAN}╔══ {symbol} CONFLUENCE ANALYSIS ══╗{PrettyTableFormatter.RESET}"
+            separator = "═" * 80
+        elif border_style == "single":
+            header_text = f"{PrettyTableFormatter.BOLD}{PrettyTableFormatter.CYAN}┌── {symbol} CONFLUENCE ANALYSIS ──┐{PrettyTableFormatter.RESET}"
+            separator = "─" * 80
+        else:
+            header_text = f"{PrettyTableFormatter.BOLD}{PrettyTableFormatter.CYAN}{symbol} CONFLUENCE ANALYSIS{PrettyTableFormatter.RESET}"
+            separator = "=" * 80
+        
+        output.append(f"\n{header_text}")
+        output.append(separator)
+        
+        # Overall score and reliability
+        score_color = PrettyTableFormatter._get_score_color(confluence_score)
+        overall_status = "BULLISH" if confluence_score >= 60 else "NEUTRAL" if confluence_score >= 40 else "BEARISH"
+        
+        reliability_pct = reliability * 100
+        reliability_color = PrettyTableFormatter.GREEN if reliability >= 0.8 else PrettyTableFormatter.YELLOW if reliability >= 0.5 else PrettyTableFormatter.RED
+        reliability_status = "HIGH" if reliability >= 0.8 else "MEDIUM" if reliability >= 0.5 else "LOW"
+        
+        output.append(f"Overall Score: {score_color}{confluence_score:.2f}{PrettyTableFormatter.RESET} ({overall_status})")
+        output.append(f"Reliability: {reliability_color}{reliability_pct:.0f}%{PrettyTableFormatter.RESET} ({reliability_status})")
+        output.append("")
+        
+        # Main components table
+        if components:
+            # Calculate weighted contributions
+            contributions = []
+            if weights:
+                for component, score in components.items():
+                    weight = weights.get(component, 0)
+                    contribution = score * weight
+                    contributions.append((component, score, weight, contribution))
+            else:
+                # Estimate equal weights if not provided
+                weight = 1.0 / max(len(components), 1)
+                for component, score in components.items():
+                    contribution = score * weight
+                    contributions.append((component, score, weight, contribution))
+            
+            # Sort by contribution (descending)
+            contributions.sort(key=lambda x: x[3], reverse=True)
+            
+            # Create main components table with enhanced borders
+            table = PrettyTable()
+            table.field_names = ["Component", "Score", "Impact", "Gauge"]
+            table.align = "l"
+            table.align["Score"] = "r"
+            table.align["Impact"] = "r"
+            
+            # Apply border style
+            if border_style == "double" and DOUBLE_BORDER:
+                table.set_style(DOUBLE_BORDER)
+            elif border_style == "single" and SINGLE_BORDER:
+                table.set_style(SINGLE_BORDER)
+            elif border_style == "markdown" and MARKDOWN:
+                table.set_style(MARKDOWN)
+            else:
+                table.set_style(DEFAULT if DEFAULT else None)
+            
+            for component, score, weight, contribution in contributions:
+                display_name = component.replace('_', ' ').title()
+                score_color = PrettyTableFormatter._get_score_color(score)
+                gauge = PrettyTableFormatter._create_gauge(score, 30)
+                
+                table.add_row([
+                    display_name,
+                    f"{score_color}{score:.2f}{PrettyTableFormatter.RESET}",
+                    f"{contribution:.1f}",
+                    gauge
+                ])
+            
+            # Add Component Breakdown section header
+            output.append(f"{PrettyTableFormatter.BOLD}Component Breakdown{PrettyTableFormatter.RESET}")
+            
+            # Add the table directly (PrettyTable handles its own borders)
+            output.append(str(table))
+            output.append("")
+        
+        # Top influential individual components (optimized with PrettyTable)
+        if results:
+            top_components_table = PrettyTableFormatter._format_top_components_table(results, border_style)
+            if top_components_table:
+                output.append(top_components_table)
+        
+        # Enhanced Market Interpretations (optimized with PrettyTable)
+        interpretations_table = PrettyTableFormatter._format_interpretations_table(results, border_style)
+        if interpretations_table:
+            output.append(interpretations_table)
+        
+        # Enhanced Actionable insights using PrettyTable for consistency
+        enhanced_insights = PrettyTableFormatter._generate_enhanced_actionable_insights(confluence_score, components, results)
+        if enhanced_insights:
+            # Create PrettyTable for actionable insights
+            insights_table = PrettyTable()
+            
+            # Set border style to match other tables
+            if border_style == "double" and DOUBLE_BORDER:
+                insights_table.set_style(DOUBLE_BORDER)
+            elif border_style == "single" and SINGLE_BORDER:
+                insights_table.set_style(SINGLE_BORDER)
+            elif border_style == "markdown" and MARKDOWN:
+                insights_table.set_style(MARKDOWN)
+            else:
+                insights_table.set_style(DEFAULT if DEFAULT else None)
+            
+            # Single column table for insights
+            insights_table.field_names = ["Actionable Trading Insights"]
+            insights_table.align["Actionable Trading Insights"] = "l"
+            insights_table.max_width["Actionable Trading Insights"] = 75
+            
+            # Add each insight as a table row
+            for insight in enhanced_insights:
+                if insight.strip():  # Skip empty lines
+                    insights_table.add_row([insight.strip()])
+            
+            # Add the insights table
+            output.append(f"{PrettyTableFormatter.BOLD}Actionable Trading Insights{PrettyTableFormatter.RESET}")
+            output.append(str(insights_table))
+            output.append("")
+        
+        output.append(separator)
+        return "\n".join(output)
+
+    @staticmethod
+    def _format_enhanced_interpretations(results):
+        """Format enhanced market interpretations using InterpretationManager logic."""
+        interpretations = []
+        
+        # Debug logging to see what data we're working with
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.debug(f"_format_enhanced_interpretations called with results keys: {list(results.keys()) if results else 'None'}")
+        
+        # PRIORITY 1: Check if market_interpretations field exists (from enhanced data generation)
+        if results and isinstance(results, dict) and 'market_interpretations' in results:
+            market_interpretations = results['market_interpretations']
+            logger.debug(f"Found market_interpretations field with {len(market_interpretations)} items")
+            
+            if isinstance(market_interpretations, list):
+                for interp_data in market_interpretations:
+                    if isinstance(interp_data, dict):
+                        display_name = interp_data.get('display_name', interp_data.get('component', 'Unknown')).replace('_', ' ').title()
+                        interpretation_text = interp_data.get('interpretation', '')
+                        
+                        if interpretation_text:
+                            # Wrap long interpretations for clean display
+                            wrapped_lines = textwrap.fill(interpretation_text, width=70).split('\n')
+                            
+                            if wrapped_lines:
+                                first_line = wrapped_lines[0]
+                                interpretations.append(f"  🔵 • {display_name}: {first_line}")
+                                
+                                # Add subsequent lines with proper indentation
+                                for subsequent_line in wrapped_lines[1:]:
+                                    interpretations.append(f"     {subsequent_line}")
+                
+                logger.debug(f"Processed market_interpretations field: generated {len(interpretations)} interpretation lines")
+                if interpretations:
+                    return interpretations
+        
+        # PRIORITY 2: Try to use InterpretationManager for consistent processing (existing logic)
+        try:
+            from src.core.interpretation.interpretation_manager import InterpretationManager
+            
+            # Convert results to format suitable for InterpretationManager
+            raw_interpretations = []
+            for component_name, component_data in results.items():
+                # Skip the market_interpretations field itself
+                if component_name == 'market_interpretations':
+                    continue
+                    
+                if not isinstance(component_data, dict):
+                    logger.debug(f"Skipping {component_name}: not a dict ({type(component_data)})")
+                    continue
+                
+                logger.debug(f"Processing {component_name} with keys: {list(component_data.keys())}")
+                
+                # Extract interpretation from component data
+                interpretation = None
+                if 'enhanced_interpretation' in component_data:
+                    interpretation = component_data['enhanced_interpretation']
+                    logger.debug(f"Found enhanced_interpretation for {component_name}")
+                elif 'interpretation' in component_data:
+                    interp = component_data['interpretation']
+                    if isinstance(interp, str):
+                        interpretation = interp
+                        logger.debug(f"Found string interpretation for {component_name}")
+                    elif isinstance(interp, dict) and 'summary' in interp:
+                        interpretation = interp['summary']
+                        logger.debug(f"Found dict interpretation.summary for {component_name}")
+                elif 'signals' in component_data:
+                    signals = component_data['signals']
+                    if signals:
+                        interpretation = ", ".join(f"{k}={v}" for k, v in signals.items())
+                        logger.debug(f"Built interpretation from signals for {component_name}")
+                
+                if interpretation:
+                    raw_interpretations.append({
+                        'component': component_name,
+                        'display_name': component_name.replace('_', ' ').title(),
+                        'interpretation': interpretation
+                    })
+                else:
+                    logger.debug(f"No interpretation found for {component_name}")
+            
+            # Process through InterpretationManager
+            if raw_interpretations:
+                logger.debug(f"Processing {len(raw_interpretations)} interpretations through InterpretationManager")
+                import datetime
+                manager = InterpretationManager()
+                interpretation_set = manager.process_interpretations(
+                    raw_interpretations, 
+                    'formatter',
+                    None,  # No market data available in this context
+                    datetime.datetime.now()
+                )
+                
+                # Format the standardized interpretations for PrettyTable
+                for interpretation in interpretation_set.interpretations:
+                    display_name = interpretation.component_name.replace('_', ' ').title()
+                    
+                    # Add severity indicator
+                    severity_indicator = "🔴" if interpretation.severity.value == "critical" else "🟡" if interpretation.severity.value == "warning" else "🔵"
+                    
+                    # Wrap long interpretations for clean display
+                    wrapped_lines = textwrap.fill(interpretation.interpretation_text, width=70).split('\n')
+                    
+                    if wrapped_lines:
+                        first_line = wrapped_lines[0]
+                        interpretations.append(f"  {severity_indicator} • {display_name}: {first_line}")
+                        
+                        # Add subsequent lines with proper indentation
+                        for subsequent_line in wrapped_lines[1:]:
+                            interpretations.append(f"     {subsequent_line}")
+                        
+                        # Add empty line between components for readability
+                        interpretations.append("")
+            else:
+                logger.debug("No raw interpretations found for InterpretationManager")
+                        
+        except Exception as e:
+            # Fallback to basic interpretation processing
+            logger.debug(f"InterpretationManager processing failed: {e}")
+            pass
+        
+        # PRIORITY 3: Fallback to basic processing if InterpretationManager is not available or failed
+        if not interpretations:
+            logger.debug("Falling back to basic interpretation processing")
+            for component_name, component_data in results.items():
+                # Skip the market_interpretations field itself
+                if component_name == 'market_interpretations':
+                    continue
+                    
+                if not isinstance(component_data, dict):
+                    continue
+                
+                display_name = component_name.replace('_', ' ').title()
+                
+                # Try to get interpretation
+                interpretation = None
+                if 'enhanced_interpretation' in component_data:
+                    interpretation = component_data['enhanced_interpretation']
+                elif 'interpretation' in component_data:
+                    interp = component_data['interpretation']
+                    if isinstance(interp, str):
+                        interpretation = interp
+                    elif isinstance(interp, dict) and 'summary' in interp:
+                        interpretation = interp['summary']
+                
+                if interpretation:
+                    # Wrap long interpretations
+                    wrapped_interp = textwrap.fill(interpretation, width=70)
+                    interpretations.append(f"  🔵 • {display_name}: {wrapped_interp}")
+        
+        # PRIORITY 4: If still no interpretations, generate basic ones from available data
+        if not interpretations:
+            logger.debug("No interpretations found, generating basic ones from component data")
+            for component_name, component_data in results.items():
+                # Skip the market_interpretations field itself
+                if component_name == 'market_interpretations':
+                    continue
+                    
+                if not isinstance(component_data, dict):
+                    continue
+                
+                display_name = component_name.replace('_', ' ').title()
+                
+                # Generate basic interpretation from component structure
+                if 'components' in component_data:
+                    sub_components = component_data['components']
+                    if isinstance(sub_components, dict):
+                        # Count bullish/bearish signals
+                        bullish_count = 0
+                        bearish_count = 0
+                        neutral_count = 0
+                        
+                        for sub_name, sub_data in sub_components.items():
+                            if isinstance(sub_data, dict) and 'signal' in sub_data:
+                                signal = sub_data['signal'].lower()
+                                if 'bull' in signal:
+                                    bullish_count += 1
+                                elif 'bear' in signal:
+                                    bearish_count += 1
+                                else:
+                                    neutral_count += 1
+                        
+                        # Generate interpretation based on signal distribution
+                        total_signals = bullish_count + bearish_count + neutral_count
+                        if total_signals > 0:
+                            if bullish_count > bearish_count:
+                                bias = "bullish"
+                                strength = "strong" if bullish_count > total_signals * 0.6 else "moderate"
+                            elif bearish_count > bullish_count:
+                                bias = "bearish"
+                                strength = "strong" if bearish_count > total_signals * 0.6 else "moderate"
+                            else:
+                                bias = "neutral"
+                                strength = "balanced"
+                            
+                            interpretation = f"{display_name} shows {strength} {bias} signals with {bullish_count} bullish, {bearish_count} bearish, and {neutral_count} neutral indicators."
+                            interpretations.append(f"  🔵 • {display_name}: {interpretation}")
+                
+                # If no components, try to generate from score if available
+                elif 'score' in component_data:
+                    score = component_data['score']
+                    if score >= 70:
+                        interpretation = f"{display_name} shows strong bullish conditions with high score ({score:.1f})."
+                    elif score >= 55:
+                        interpretation = f"{display_name} indicates moderate bullish bias with score ({score:.1f})."
+                    elif score >= 45:
+                        interpretation = f"{display_name} reflects neutral market conditions with balanced score ({score:.1f})."
+                    elif score >= 30:
+                        interpretation = f"{display_name} suggests moderate bearish pressure with score ({score:.1f})."
+                    else:
+                        interpretation = f"{display_name} indicates strong bearish conditions with low score ({score:.1f})."
+                    
+                    interpretations.append(f"  🔵 • {display_name}: {interpretation}")
+        
+        logger.debug(f"Generated {len(interpretations)} interpretation lines")
+        return interpretations
+
+    @staticmethod
+    def _generate_enhanced_actionable_insights(confluence_score, components, results):
+        """Generate enhanced actionable trading insights using EnhancedFormatter logic."""
+        insights = []
+        
+        # Determine buy/sell thresholds from results if available
+        buy_threshold = 60.0
+        sell_threshold = 40.0
+        
+        if results and isinstance(results, dict):
+            for component_data in results.values():
+                if isinstance(component_data, dict):
+                    if 'buy_threshold' in component_data:
+                        buy_threshold = component_data['buy_threshold']
+                    if 'sell_threshold' in component_data:
+                        sell_threshold = component_data['sell_threshold']
+                    break
+        
+        # Overall stance with enhanced logic
+        if confluence_score >= buy_threshold:
+            insights.append(f"  • BULLISH BIAS: Score ({confluence_score:.2f}) above buy threshold - consider long positions")
+        elif confluence_score >= sell_threshold:
+            insights.append(f"  • NEUTRAL STANCE: Range-bound conditions likely - consider mean-reversion strategies")
+        else:
+            insights.append(f"  • BEARISH BIAS: Score ({confluence_score:.2f}) below sell threshold - avoid long exposure")
+        
+        # Risk assessment from components and results
+        risk_assessment_added = False
+        if results:
+            # Look for explicit risk level in results first
+            for component_name, component_data in results.items():
+                if isinstance(component_data, dict) and 'risk_level' in component_data:
+                    risk_level = component_data['risk_level']
+                    if risk_level == 'HIGH':
+                        insights.append("  • RISK ASSESSMENT: HIGH - Avoid new positions until risk conditions improve")
+                    elif risk_level == 'MEDIUM':
+                        insights.append("  • RISK ASSESSMENT: MEDIUM - Use reduced position sizing")
+                    elif risk_level == 'LOW':
+                        insights.append("  • RISK ASSESSMENT: LOW - Normal position sizing acceptable")
+                    risk_assessment_added = True
+                    break
+        
+        # Fallback risk assessment from components if not found in results
+        if not risk_assessment_added and components:
+            sentiment_score = components.get('sentiment', 50.0)
+            if sentiment_score > 80 or sentiment_score < 20:
+                insights.append("  • RISK ASSESSMENT: HIGH - Extreme sentiment conditions detected")
+                risk_assessment_added = True
+            elif sentiment_score > 65 or sentiment_score < 35:
+                insights.append("  • RISK ASSESSMENT: MEDIUM - Elevated sentiment conditions")
+                risk_assessment_added = True
+            else:
+                insights.append("  • RISK ASSESSMENT: LOW - Normal sentiment conditions")
+                risk_assessment_added = True
+        
+        # Component-specific insights
+        if components:
+            # Component-specific insights
+            strongest_component = max(components.items(), key=lambda x: x[1])
+            if strongest_component[1] > 70:
+                component_name = strongest_component[0].replace('_', ' ').title()
+                insights.append(f"  • STRENGTH: {component_name} shows strong bullish signals")
+            
+            # Check for divergences
+            component_scores = list(components.values())
+            if max(component_scores) - min(component_scores) > 30:
+                insights.append("  • DIVERGENCE: Mixed signals across components - wait for clearer direction")
+        
+        # Extract specific insights from results
+        if results:
+            # Look for key levels or specific insights
+            for component_name, component_data in results.items():
+                if isinstance(component_data, dict):
+                    if 'key_levels' in component_data:
+                        insights.append("  • KEY LEVELS: Strong bid liquidity cluster")
+        
+        # Strategy recommendations
+        if confluence_score >= buy_threshold:
+            insights.append("  • STRATEGY: Monitor for pullbacks to key support levels for entry opportunities")
+        elif confluence_score >= sell_threshold:
+            insights.append("  • STRATEGY: Monitor for further confirmation before implementing directional strategies")
+        else:
+            insights.append("  • STRATEGY: Wait for trend reversal signals before considering long positions")
+        
+        return insights
+
+    @staticmethod
+    def _format_top_components_table(results, border_style="double"):
+        """Format top influential components using PrettyTable for clean presentation."""
+        if not results:
+            return ""
+            
+        top_components = PrettyTableFormatter._extract_top_components(results)
+        if not top_components:
+            return ""
+            
+        # Create PrettyTable for top components
+        table = PrettyTable()
+        
+        # Set border style
+        if border_style == "single":
+            table.set_style(SINGLE_BORDER)
+        elif border_style == "double":
+            table.set_style(DOUBLE_BORDER)
+        elif border_style == "markdown":
+            table.set_style(MARKDOWN)
+        else:
+            table.set_style(DEFAULT)
+        
+        # Define field names
+        table.field_names = ["Component", "Parent", "Score", "Trend", "Gauge"]
+        
+        # Set column alignments
+        table.align["Component"] = "l"
+        table.align["Parent"] = "l" 
+        table.align["Score"] = "r"
+        table.align["Trend"] = "c"
+        table.align["Gauge"] = "l"
+        
+        # Set column widths for optimal display
+        table.max_width["Component"] = 25
+        table.max_width["Parent"] = 12
+        table.max_width["Score"] = 8
+        table.max_width["Trend"] = 5
+        table.max_width["Gauge"] = 25
+        
+        # Add top 5 components
+        for comp_name, comp_score in top_components[:5]:
+            # Extract parent component if available
+            parent = "Unknown"
+            if "(" in comp_name and ")" in comp_name:
+                # Extract parent from format like "spread (orderbook)"
+                parent_match = comp_name.split("(")
+                if len(parent_match) > 1:
+                    parent = parent_match[1].replace(")", "").strip().title()
+                    comp_name = parent_match[0].strip()
+            
+            # Get color and formatting
+            gauge = PrettyTableFormatter._create_gauge(comp_score, 20)  # Shorter gauge for table
+            trend = PrettyTableFormatter._get_trend_indicator(comp_score)
+            score_color = PrettyTableFormatter._get_score_color(comp_score)
+            
+            # Format score with color
+            formatted_score = f"{score_color}{comp_score:>6.2f}{PrettyTableFormatter.RESET}"
+            
+            # Add row to table
+            table.add_row([
+                comp_name,
+                parent,
+                formatted_score,
+                trend,
+                gauge
+            ])
+        
+        # Create section with header
+        output = []
+        output.append(f"{PrettyTableFormatter.BOLD}Top Influential Individual Components{PrettyTableFormatter.RESET}")
+        output.append(str(table))
+        output.append("")
+        
+        return "\n".join(output)
+
+    @staticmethod
+    def _format_interpretations_table(results, border_style="double"):
+        """Format market interpretations using PrettyTable for clean presentation."""
+        interpretations = PrettyTableFormatter._format_enhanced_interpretations(results)
+        if not interpretations:
+            return ""
+        
+        # Create PrettyTable for interpretations
+        table = PrettyTable()
+        
+        # Set border style
+        if border_style == "single":
+            table.set_style(SINGLE_BORDER)
+        elif border_style == "double":
+            table.set_style(DOUBLE_BORDER)
+        elif border_style == "markdown":
+            table.set_style(MARKDOWN)
+        else:
+            table.set_style(DEFAULT)
+        
+        # Define field names
+        table.field_names = ["Component", "Interpretation"]
+        
+        # Set column alignments
+        table.align["Component"] = "l"
+        table.align["Interpretation"] = "l"
+        
+        # Set column widths for optimal display
+        table.max_width["Component"] = 20
+        table.max_width["Interpretation"] = 55
+        
+        # Process interpretations into table rows
+        current_component = None
+        current_interpretation_lines = []
+        
+        for interp_line in interpretations:
+            if not interp_line.strip():
+                # Empty line - if we have accumulated interpretation, add it to table
+                if current_component and current_interpretation_lines:
+                    full_interpretation = " ".join(current_interpretation_lines)
+                    table.add_row([current_component, full_interpretation])
+                    current_component = None
+                    current_interpretation_lines = []
+                continue
+                
+            # Check if this is a new component line (starts with emoji and bullet)
+            if interp_line.strip().startswith(("🔵 •", "🟡 •", "🔴 •")):
+                # If we have a previous component, add it first
+                if current_component and current_interpretation_lines:
+                    full_interpretation = " ".join(current_interpretation_lines)
+                    table.add_row([current_component, full_interpretation])
+                
+                # Parse new component
+                parts = interp_line.split(":", 1)
+                if len(parts) >= 2:
+                    # Extract component name (remove emoji and bullet)
+                    component_part = parts[0].replace("🔵 •", "").replace("🟡 •", "").replace("🔴 •", "").strip()
+                    current_component = component_part
+                    current_interpretation_lines = [parts[1].strip()]
+                else:
+                    current_component = interp_line.strip()
+                    current_interpretation_lines = []
+            else:
+                # This is a continuation line
+                if current_component:
+                    current_interpretation_lines.append(interp_line.strip())
+        
+        # Add final component if exists
+        if current_component and current_interpretation_lines:
+            full_interpretation = " ".join(current_interpretation_lines)
+            table.add_row([current_component, full_interpretation])
+        
+        # Create section with header
+        output = []
+        output.append(f"{PrettyTableFormatter.BOLD}Market Interpretations{PrettyTableFormatter.RESET}")
+        output.append(str(table))
+        output.append("")
+        
+        return "\n".join(output)
+
+    @staticmethod
+    def _format_enhanced_analysis_section(enhanced_analysis_text):
+        """
+        Format the Enhanced Analysis section with improved visual hierarchy and structure.
+        
+        Args:
+            enhanced_analysis_text (str): The raw enhanced analysis text from _generate_enhanced_synthesis
+            
+        Returns:
+            str: Formatted enhanced analysis with proper visual hierarchy
+        """
+        if not enhanced_analysis_text or not enhanced_analysis_text.strip():
+            return ""
+        
+        # The enhanced analysis comes as a single line with sections separated by patterns
+        # We need to split on the section markers and parse each section
+        
+        import re
+        
+        # Use regex to split the text into sections
+        # This handles the case where everything is on one line
+        text = enhanced_analysis_text
+        
+        # Extract sections using regex patterns
+        market_state_match = re.search(r'\*\*MARKET STATE:\s*([^*]+?)(?=\s*\*\*|\s*$)', text)
+        drivers_match = re.search(r'\*\*PRIMARY MARKET DRIVERS:\*\*\s*(.*?)(?=\s*\*\*🎯|\s*$)', text, re.DOTALL)
+        recommendations_match = re.search(r'\*\*🎯 ACTIONABLE RECOMMENDATIONS:\*\*\s*(.*?)(?=\s*\*\*⚠️|\s*$)', text, re.DOTALL)
+        risk_match = re.search(r'\*\*⚠️ RISK ASSESSMENT:\*\*\s*(.*?)$', text, re.DOTALL)
+        
+        sections = []
+        
+        if market_state_match:
+            market_state_content = market_state_match.group(1).strip()
+            sections.append(("MARKET_STATE", [f"**MARKET STATE: {market_state_content}**"]))
+        
+        if drivers_match:
+            drivers_content = drivers_match.group(1).strip()
+            sections.append(("PRIMARY_DRIVERS", ["**PRIMARY MARKET DRIVERS:**", drivers_content]))
+        
+        if recommendations_match:
+            recommendations_content = recommendations_match.group(1).strip()
+            sections.append(("ACTIONABLE_RECOMMENDATIONS", ["**🎯 ACTIONABLE RECOMMENDATIONS:**", recommendations_content]))
+        
+        if risk_match:
+            risk_content = risk_match.group(1).strip()
+            sections.append(("RISK_ASSESSMENT", ["**⚠️ RISK ASSESSMENT:**", risk_content]))
+        
+        # Format each section with proper visual hierarchy
+        formatted_sections = []
+        
+        for section_type, content in sections:
+            if section_type == "MARKET_STATE":
+                # Format market state as a prominent header
+                market_state_line = content[0] if content else ""
+                market_state = market_state_line.replace('**MARKET STATE:', '').replace('**', '').strip()
+                formatted_sections.append(f"📊 {PrettyTableFormatter.BOLD}{PrettyTableFormatter.CYAN}MARKET STATE:{PrettyTableFormatter.RESET} {PrettyTableFormatter.BOLD}{market_state}{PrettyTableFormatter.RESET}")
+                
+            elif section_type == "PRIMARY_DRIVERS":
+                # Format primary drivers as a structured list
+                formatted_sections.append(f"\n🎯 {PrettyTableFormatter.BOLD}{PrettyTableFormatter.YELLOW}PRIMARY MARKET DRIVERS:{PrettyTableFormatter.RESET}")
+                
+                # Parse the drivers from the content
+                drivers_text = ' '.join(content[1:]) if len(content) > 1 else ""
+                
+                # Split drivers by • pattern
+                driver_items = drivers_text.split('• **')
+                for item in driver_items:
+                    if item.strip():
+                        # Clean up the item
+                        item = item.strip()
+                        if not item.startswith('**'):
+                            item = '**' + item
+                        
+                        # Parse driver line: **Component** (impact%, bias): description
+                        parts = item.split(':', 1)
+                        if len(parts) == 2:
+                            driver_info = parts[0].replace('**', '').strip()
+                            description = parts[1].strip()
+                            formatted_sections.append(f"  ▪ {PrettyTableFormatter.BOLD}{driver_info}{PrettyTableFormatter.RESET}: {description}")
+                        else:
+                            formatted_sections.append(f"  ▪ {item.replace('**', '').strip()}")
+                
+            elif section_type == "ACTIONABLE_RECOMMENDATIONS":
+                # Format actionable recommendations as a clear action list
+                formatted_sections.append(f"\n🎯 {PrettyTableFormatter.BOLD}{PrettyTableFormatter.GREEN}ACTIONABLE RECOMMENDATIONS:{PrettyTableFormatter.RESET}")
+                
+                # Parse the recommendations from the content
+                recs_text = ' '.join(content[1:]) if len(content) > 1 else ""
+                
+                # Split recommendations by • pattern
+                rec_items = recs_text.split('• **')
+                for item in rec_items:
+                    if item.strip():
+                        # Clean up the item
+                        item = item.strip()
+                        if not item.startswith('**'):
+                            item = '**' + item
+                        
+                        # Parse recommendation: **Type**: description
+                        parts = item.split(':', 1)
+                        if len(parts) == 2:
+                            rec_type = parts[0].replace('**', '').strip()
+                            description = parts[1].replace('**', '').strip()
+                            formatted_sections.append(f"  ✓ {PrettyTableFormatter.BOLD}{rec_type}{PrettyTableFormatter.RESET}: {description}")
+                        else:
+                            formatted_sections.append(f"  ✓ {item.replace('**', '').strip()}")
+                
+            elif section_type == "RISK_ASSESSMENT":
+                # Format risk assessment as a highlighted warning section
+                formatted_sections.append(f"\n⚠️  {PrettyTableFormatter.BOLD}{PrettyTableFormatter.RED}RISK ASSESSMENT:{PrettyTableFormatter.RESET}")
+                
+                # Parse the risk items from the content
+                risk_text = ' '.join(content[1:]) if len(content) > 1 else ""
+                
+                # Split risk items by • pattern
+                risk_items = risk_text.split('• **')
+                for item in risk_items:
+                    if item.strip():
+                        # Clean up the item
+                        item = item.strip()
+                        if not item.startswith('**'):
+                            item = '**' + item
+                        
+                        # Parse risk item: **Risk Level**: description
+                        parts = item.split(':', 1)
+                        if len(parts) == 2:
+                            risk_type = parts[0].replace('**', '').strip()
+                            description = parts[1].replace('**', '').strip()
+                            # Color code risk levels
+                            if 'HIGH' in risk_type.upper():
+                                color = PrettyTableFormatter.RED
+                            elif 'MODERATE' in risk_type.upper() or 'MEDIUM' in risk_type.upper():
+                                color = PrettyTableFormatter.YELLOW
+                            else:
+                                color = PrettyTableFormatter.GREEN
+                            formatted_sections.append(f"  ⚠ {color}{PrettyTableFormatter.BOLD}{risk_type}{PrettyTableFormatter.RESET}: {description}")
+                        else:
+                            formatted_sections.append(f"  ⚠ {item.replace('**', '').strip()}")
+        
+        # Join all sections with proper spacing
+        return '\n'.join(formatted_sections)
+
+    @staticmethod
+    def _format_interpretations_table(results, border_style="double"):
+        """Format market interpretations using PrettyTable for clean presentation."""
+        interpretations = PrettyTableFormatter._format_enhanced_interpretations(results)
+        if not interpretations:
+            return ""
+        
+        # Create PrettyTable for interpretations
+        table = PrettyTable()
+        
+        # Set border style
+        if border_style == "single":
+            table.set_style(SINGLE_BORDER)
+        elif border_style == "double":
+            table.set_style(DOUBLE_BORDER)
+        elif border_style == "markdown":
+            table.set_style(MARKDOWN)
+        else:
+            table.set_style(DEFAULT)
+        
+        # Define field names
+        table.field_names = ["Component", "Interpretation"]
+        
+        # Set column alignments
+        table.align["Component"] = "l"
+        table.align["Interpretation"] = "l"
+        
+        # Set column widths for optimal display
+        table.max_width["Component"] = 20
+        table.max_width["Interpretation"] = 55
+        
+        # Process interpretations into table rows
+        current_component = None
+        current_interpretation_lines = []
+        enhanced_analysis_text = None
+        
+        for interp_line in interpretations:
+            if not interp_line.strip():
+                # Empty line - if we have accumulated interpretation, add it to table
+                if current_component and current_interpretation_lines:
+                    full_interpretation = " ".join(current_interpretation_lines)
+                    
+                    # Check if this is Enhanced Analysis - handle it specially
+                    if current_component.lower() == "enhanced analysis":
+                        enhanced_analysis_text = full_interpretation
+                    else:
+                        table.add_row([current_component, full_interpretation])
+                    
+                    current_component = None
+                    current_interpretation_lines = []
+                continue
+                
+            # Check if this is a new component line (starts with emoji and bullet)
+            if interp_line.strip().startswith(("🔵 •", "🟡 •", "🔴 •")):
+                # If we have a previous component, add it first
+                if current_component and current_interpretation_lines:
+                    full_interpretation = " ".join(current_interpretation_lines)
+                    
+                    # Check if this is Enhanced Analysis - handle it specially
+                    if current_component.lower() == "enhanced analysis":
+                        enhanced_analysis_text = full_interpretation
+                    else:
+                        table.add_row([current_component, full_interpretation])
+                
+                # Parse new component
+                parts = interp_line.split(":", 1)
+                if len(parts) >= 2:
+                    # Extract component name (remove emoji and bullet)
+                    component_part = parts[0].replace("🔵 •", "").replace("🟡 •", "").replace("🔴 •", "").strip()
+                    current_component = component_part
+                    current_interpretation_lines = [parts[1].strip()]
+                else:
+                    current_component = interp_line.strip()
+                    current_interpretation_lines = []
+            else:
+                # This is a continuation line
+                if current_component:
+                    current_interpretation_lines.append(interp_line.strip())
+        
+        # Add final component if exists
+        if current_component and current_interpretation_lines:
+            full_interpretation = " ".join(current_interpretation_lines)
+            
+            # Check if this is Enhanced Analysis - handle it specially
+            if current_component.lower() == "enhanced analysis":
+                enhanced_analysis_text = full_interpretation
+            else:
+                table.add_row([current_component, full_interpretation])
+        
+        # Create section with header
+        output = []
+        output.append(f"{PrettyTableFormatter.BOLD}Market Interpretations{PrettyTableFormatter.RESET}")
+        output.append(str(table))
+        
+        # Add Enhanced Analysis section separately with improved formatting
+        if enhanced_analysis_text:
+            output.append("")  # Add spacing
+            formatted_enhanced_analysis = PrettyTableFormatter._format_enhanced_analysis_section(enhanced_analysis_text)
+            if formatted_enhanced_analysis:
+                output.append(f"{PrettyTableFormatter.BOLD}Enhanced Analysis{PrettyTableFormatter.RESET}")
+                output.append("─" * 60)  # Visual separator
+                output.append(formatted_enhanced_analysis)
+        
+        output.append("")
+        
+        return "\n".join(output)

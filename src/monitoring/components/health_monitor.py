@@ -1,4 +1,5 @@
 import logging
+import os
 import time
 import json
 import psutil
@@ -246,15 +247,15 @@ class HealthMonitor:
         
         # Background task
         self.monitoring_task = None
-        self.is_running = False
+        self.running = False
     
     async def start_monitoring(self) -> None:
         """Start the health monitoring background task."""
-        if self.is_running:
+        if self.running:
             self.logger.warning("Health monitoring is already running")
             return
         
-        self.is_running = True
+        self.running = True
         self.logger.info("Starting health monitoring")
         
         # Create the monitoring task
@@ -262,11 +263,11 @@ class HealthMonitor:
     
     async def stop_monitoring(self) -> None:
         """Stop the health monitoring background task."""
-        if not self.is_running:
+        if not self.running:
             self.logger.warning("Health monitoring is not running")
             return
         
-        self.is_running = False
+        self.running = False
         self.logger.info("Stopping health monitoring")
         
         if self.monitoring_task:
@@ -281,7 +282,7 @@ class HealthMonitor:
     async def _monitoring_loop(self) -> None:
         """Background task to monitor system health."""
         try:
-            while self.is_running:
+            while self.running:
                 operation = self.metrics_manager.start_operation("health_check")
                 
                 try:
@@ -340,19 +341,33 @@ class HealthMonitor:
     
     def _check_threshold_violations(self) -> None:
         """Check for threshold violations and generate alerts."""
-        # Check CPU
-        if self.metrics['cpu'].is_critical():
-            self._create_alert(
-                level="critical",
-                source="system",
-                message=f"CPU usage is critical: {self.metrics['cpu'].get_latest()}%"
-            )
-        elif self.metrics['cpu'].is_warning():
-            self._create_alert(
-                level="warning",
-                source="system",
-                message=f"CPU usage is high: {self.metrics['cpu'].get_latest()}%"
-            )
+        # Check CPU - Apply new CPU alerts configuration
+        cpu_alerts_config = self.config.get('monitoring', {}).get('alerts', {}).get('cpu_alerts', {})
+        cpu_alerts_enabled = cpu_alerts_config.get('enabled', True)
+        use_system_webhook = cpu_alerts_config.get('use_system_webhook', False)
+        cpu_threshold = cpu_alerts_config.get('threshold', 
+                                            self.config.get('cpu_warning_threshold', 80))
+        cpu_cooldown = cpu_alerts_config.get('cooldown', 300)  # Default 5 minute cooldown
+        
+        # Update thresholds in the metric
+        self.metrics['cpu'].thresholds['warning'] = cpu_threshold
+        self.metrics['cpu'].thresholds['critical'] = cpu_threshold + 10  # Critical is 10% higher than warning
+        
+        if cpu_alerts_enabled:
+            if self.metrics['cpu'].is_critical():
+                self._create_alert(
+                    level="critical",
+                    source="system",
+                    message=f"CPU usage is critical: {self.metrics['cpu'].get_latest()}%",
+                    use_system_webhook=use_system_webhook
+                )
+            elif self.metrics['cpu'].is_warning():
+                self._create_alert(
+                    level="warning",
+                    source="system",
+                    message=f"CPU usage is high: {self.metrics['cpu'].get_latest()}%",
+                    use_system_webhook=use_system_webhook
+                )
         
         # Check Memory - Apply new memory tracking configuration
         memory_tracking_config = self.config.get('monitoring', {}).get('memory_tracking', {})
@@ -596,8 +611,15 @@ class HealthMonitor:
         
         self.api_health[exchange_id].record_failure(error_type)
     
-    def _create_alert(self, level: str, source: str, message: str) -> None:
-        """Create a new alert."""
+    def _create_alert(self, level: str, source: str, message: str, use_system_webhook: bool = False) -> None:
+        """Create a new alert.
+        
+        Args:
+            level: Alert level (info, warning, critical)
+            source: Alert source (system, api, etc.)
+            message: Alert message
+            use_system_webhook: Whether to use the system webhook instead of the main webhook
+        """
         # Filter out memory warnings completely
         if level.lower() == "warning" and ("memory" in message.lower() or "memory_usage" in message.lower()):
             memory_tracking_config = self.config.get('monitoring', {}).get('memory_tracking', {})
@@ -605,6 +627,64 @@ class HealthMonitor:
             if disable_memory_warnings:
                 self.logger.debug(f"Suppressing memory warning alert: {message}")
                 return
+        
+        # Check if this alert should be mirrored
+        should_mirror = False
+        mirror_to_both = False
+        system_alerts_config = self.config.get('monitoring', {}).get('alerts', {}).get('system_alerts', {})
+        mirror_config = system_alerts_config.get('mirror_alerts', {})
+        
+        # Extract alert type from source and details
+        alert_type = None
+        source_parts = source.split(':')
+        source_type = source_parts[0] if len(source_parts) > 0 else source
+        
+        # Map source type to alert type
+        source_type_map = {
+            'system': ['cpu', 'memory', 'disk'],
+            'api': ['api', 'network'],
+            'database': ['database'],
+            'validator': ['validation'],
+            'config': ['configuration'],
+            'task': ['tasks'],
+            'lifecycle': ['lifecycle'],
+            'market_report': ['market_report'],
+            'report': ['market_report']
+        }
+        
+        # Check if the source maps to an alert type
+        for map_source, alert_types in source_type_map.items():
+            if source_type.lower() == map_source.lower():
+                for a_type in alert_types:
+                    if mirror_config.get('enabled', False) and mirror_config.get('types', {}).get(a_type, False):
+                        should_mirror = True
+                        mirror_to_both = True
+                        alert_type = a_type
+                        break
+                if should_mirror:
+                    break
+        
+        # If no direct mapping, check if this is a market report
+        if not should_mirror and 'market report' in message.lower():
+            if mirror_config.get('enabled', False) and mirror_config.get('types', {}).get('market_report', False):
+                should_mirror = True
+                mirror_to_both = True
+                alert_type = 'market_report'
+        
+        # Check if this should use the system webhook (if not explicitly set and not mirroring)
+        if not use_system_webhook and not mirror_to_both and system_alerts_config.get('enabled', False) and system_alerts_config.get('use_system_webhook', False):
+            # Check if the source type is configured to use system webhook
+            alert_types = system_alerts_config.get('types', {})
+            
+            # Check if any mapped alert types are enabled for system webhook
+            for alert_category, alert_types_list in source_type_map.items():
+                if source_type.lower() == alert_category.lower():
+                    for alert_type in alert_types_list:
+                        if alert_types.get(alert_type, False):
+                            use_system_webhook = True
+                            break
+                    if use_system_webhook:
+                        break
         
         # Generate a unique ID based on source and level
         alert_id = f"{source}:{level}:{int(time.time())}"
@@ -647,7 +727,138 @@ class HealthMonitor:
                 self.alert_callback(alert)
             except Exception as e:
                 self.logger.error(f"Error in alert callback: {str(e)}")
-    
+        
+        # Handle webhook routing based on mirroring configuration
+        if mirror_to_both:
+            # Send to both webhooks
+            self._send_system_webhook(message, source, level, alert_type)
+            # Main webhook will be handled by the alert manager
+        elif use_system_webhook:
+            # Send only to system webhook
+            self._send_system_webhook(message, source, level, alert_type)
+        # Otherwise, the main webhook will be used by default by the alert manager
+
+    def _send_system_webhook(self, message: str, source: str, level: str, alert_type: str = None) -> None:
+        """Send an alert to the system webhook.
+        
+        Args:
+            message: Alert message
+            source: Alert source
+            level: Alert level
+            alert_type: Alert type (e.g., cpu, memory, market_report)
+        """
+        try:
+            # Get system webhook URL from config
+            system_webhook_raw = self.config.get('monitoring', {}).get('alerts', {}).get('system_alerts_webhook_url', '')
+            
+            # Handle environment variable substitution
+            if system_webhook_raw and system_webhook_raw.startswith('${') and system_webhook_raw.endswith('}'):
+                env_var_name = system_webhook_raw[2:-1]  # Remove ${ and }
+                system_webhook_url = os.getenv(env_var_name, '')
+            else:
+                system_webhook_url = system_webhook_raw or ''
+            
+            if not system_webhook_url:
+                self.logger.warning("Cannot send system alert: webhook URL not set")
+                return
+            
+            # Determine alert color
+            color_map = {
+                'info': 0x3498db,     # Blue
+                'warning': 0xf39c12,  # Orange
+                'error': 0xe74c3c,    # Red
+                'critical': 0x9b59b6  # Purple
+            }
+            color = color_map.get(level.lower(), 0x95a5a6)  # Default to gray
+            
+            # Set title based on alert type or level
+            if alert_type:
+                title_map = {
+                    'cpu': 'CPU Usage Alert',
+                    'memory': 'Memory Usage Alert',
+                    'disk': 'Disk Space Alert',
+                    'database': 'Database Alert',
+                    'api': 'API Alert',
+                    'network': 'Network Alert',
+                    'market_report': 'Market Report Generated'
+                }
+                title = title_map.get(alert_type, f"{level.capitalize()} Alert")
+            else:
+                title = f"{level.capitalize()} Alert"
+                
+            # Create webhook payload
+            payload = {
+                'username': 'Virtuoso System Monitor',
+                'content': f'⚠️ **SYSTEM ALERT** ⚠️\n{message}',
+                'embeds': [{
+                    'title': title,
+                    'color': color,
+                    'description': message,
+                    'fields': [
+                        {
+                            'name': 'Timestamp',
+                            'value': f'<t:{int(time.time())}:F>',
+                            'inline': True
+                        },
+                        {
+                            'name': 'Environment',
+                            'value': self.config.get('system', {}).get('environment', 'unknown'),
+                            'inline': True
+                        },
+                        {
+                            'name': 'Source',
+                            'value': source,
+                            'inline': True
+                        },
+                        {
+                            'name': 'Level',
+                            'value': level,
+                            'inline': True
+                        }
+                    ],
+                    'footer': {
+                        'text': 'Virtuoso System Monitoring'
+                    }
+                }]
+            }
+            
+            # For market reports, customize the message
+            if alert_type == 'market_report':
+                payload['content'] = f'📊 **MARKET REPORT NOTIFICATION** 📊'
+                payload['embeds'][0]['title'] = 'Market Report Generated'
+                payload['embeds'][0]['description'] = 'A new market report has been generated. See main channel for the full report with attachments.'
+            
+            # Send webhook asynchronously
+            import threading
+            threading.Thread(target=self._send_webhook_request, args=(system_webhook_url, payload)).start()
+            
+            self.logger.debug(f"System alert sent to webhook: {message}")
+            
+        except Exception as e:
+            self.logger.error(f"Error sending system webhook alert: {str(e)}")
+            
+    def _send_webhook_request(self, webhook_url: str, payload: dict) -> None:
+        """Send webhook request in a separate thread.
+        
+        Args:
+            webhook_url: Webhook URL
+            payload: Webhook payload
+        """
+        try:
+            import requests
+            response = requests.post(
+                webhook_url,
+                json=payload,
+                headers={'Content-Type': 'application/json'},
+                timeout=10
+            )
+            
+            if response.status_code >= 400:
+                self.logger.error(f"Error sending webhook: status {response.status_code}, response: {response.text}")
+            
+        except Exception as e:
+            self.logger.error(f"Error in webhook request: {str(e)}")
+            
     def _save_alerts(self) -> None:
         """Save alerts to persistent storage."""
         try:

@@ -1,0 +1,845 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ report_data.title or "VIRTUOSO.MARKET.REPORT" }}</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        /* Terminal Style - Matching Screenshot */
+        :root {
+            --bg-primary: #0a1628;
+            --bg-secondary: #0f1b2e;
+            --bg-panel: #1a2332;
+            --text-primary: #ffd700;
+            --text-secondary: #b8860b;
+            --text-muted: #8b7355;
+            --accent-positive: #00ff41;
+            --accent-negative: #ff4444;
+            --accent-warning: #ffaa00;
+            --border-color: #2d3748;
+            --border-accent: #ffd700;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'JetBrains Mono', 'Courier New', monospace;
+        }
+
+        body {
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.4;
+            min-height: 100vh;
+            font-size: 12px;
+            font-weight: 400;
+        }
+
+        /* Header */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 2rem;
+            border-bottom: 1px solid var(--border-color);
+            background: var(--bg-secondary);
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 2rem;
+        }
+
+        .back-button {
+            background: transparent;
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 0.5rem 1rem;
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            transition: all 0.2s ease;
+        }
+
+        .back-button:hover {
+            border-color: var(--border-accent);
+            background: rgba(255, 215, 0, 0.1);
+        }
+
+        .terminal-title {
+            font-size: 16px;
+            color: var(--text-primary);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            font-weight: 700;
+        }
+
+        .subtitle {
+            font-size: 10px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-top: 2px;
+        }
+
+        .header-controls {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .control-button {
+            background: transparent;
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 0.4rem 0.8rem;
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .control-button:hover {
+            border-color: var(--border-accent);
+            background: rgba(255, 215, 0, 0.1);
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--accent-positive);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        /* Main Container */
+        .container {
+            padding: 1rem 2rem;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            grid-template-rows: auto auto auto;
+            gap: 1rem;
+            height: calc(100vh - 80px);
+        }
+
+        /* Panel Styles */
+        .panel {
+            background: var(--bg-panel);
+            border: 1px solid var(--border-color);
+            padding: 1rem;
+            position: relative;
+        }
+
+        .panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .panel-title {
+            font-size: 11px;
+            color: var(--text-primary);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .panel-icon {
+            width: 12px;
+            height: 12px;
+            color: var(--text-primary);
+        }
+
+        /* Market Overview Panel */
+        .market-overview {
+            grid-column: 1 / 3;
+        }
+
+        .overview-content {
+            display: grid;
+            grid-template-columns: 2fr 1fr 1fr;
+            gap: 2rem;
+        }
+
+        .market-status {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .status-item {
+            display: flex;
+            flex-direction: column;
+            gap: 0.3rem;
+        }
+
+        .status-label {
+            font-size: 10px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .status-value {
+            font-size: 14px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .status-indicator-bar {
+            width: 100px;
+            height: 4px;
+            background: var(--border-color);
+            position: relative;
+            margin-top: 0.3rem;
+        }
+
+        .status-fill {
+            height: 100%;
+            background: var(--accent-positive);
+            transition: width 0.3s ease;
+        }
+
+        .bullish { color: var(--accent-positive); }
+        .bearish { color: var(--accent-negative); }
+        .neutral { color: var(--text-secondary); }
+
+        .market-summary {
+            background: rgba(255, 215, 0, 0.05);
+            border: 1px solid rgba(255, 215, 0, 0.2);
+            padding: 1rem;
+            font-size: 11px;
+            line-height: 1.5;
+            color: var(--text-secondary);
+        }
+
+        /* Top Performers Panel */
+        .top-performers {
+            grid-column: 2;
+            grid-row: 1;
+        }
+
+        .performers-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+        }
+
+        .performer-section h4 {
+            font-size: 10px;
+            color: var(--text-primary);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .performer-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.3rem;
+        }
+
+        .performer-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 10px;
+            padding: 0.3rem 0;
+        }
+
+        .symbol {
+            color: var(--text-primary);
+            font-weight: 600;
+        }
+
+        .change-positive {
+            color: var(--accent-positive);
+        }
+
+        .change-negative {
+            color: var(--accent-negative);
+        }
+
+        /* Futures Premium Panel */
+        .futures-premium {
+            grid-column: 1;
+            grid-row: 2;
+        }
+
+        .futures-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .futures-table th,
+        .futures-table td {
+            text-align: left;
+            padding: 0.5rem 0.3rem;
+            font-size: 10px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .futures-table th {
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: 500;
+        }
+
+        .futures-table td {
+            color: var(--text-primary);
+        }
+
+        .premium-positive {
+            color: var(--accent-positive);
+        }
+
+        .status-badge {
+            background: rgba(0, 255, 65, 0.2);
+            color: var(--accent-positive);
+            padding: 0.2rem 0.4rem;
+            font-size: 8px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            border-radius: 2px;
+        }
+
+        .futures-summary {
+            background: rgba(255, 215, 0, 0.05);
+            border: 1px solid rgba(255, 215, 0, 0.2);
+            padding: 0.8rem;
+            margin-top: 1rem;
+            font-size: 10px;
+            line-height: 1.4;
+            color: var(--text-secondary);
+        }
+
+        /* Smart Money Index Panel */
+        .smart-money {
+            grid-column: 2;
+            grid-row: 2;
+        }
+
+        .smi-value {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--accent-positive);
+            margin: 1rem 0;
+        }
+
+        .smi-progress {
+            width: 100%;
+            height: 8px;
+            background: var(--border-color);
+            margin: 1rem 0;
+            position: relative;
+        }
+
+        .smi-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--accent-negative), var(--text-secondary), var(--accent-positive));
+            width: 74.6%;
+            transition: width 0.3s ease;
+        }
+
+        .smi-labels {
+            display: flex;
+            justify-content: space-between;
+            font-size: 9px;
+            color: var(--text-muted);
+            margin-top: 0.5rem;
+        }
+
+        .institutional-flow {
+            background: rgba(0, 255, 65, 0.1);
+            border: 1px solid rgba(0, 255, 65, 0.3);
+            padding: 0.8rem;
+            margin-top: 1rem;
+            text-align: center;
+        }
+
+        .flow-label {
+            font-size: 9px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .flow-value {
+            font-size: 12px;
+            color: var(--accent-positive);
+            font-weight: 600;
+            margin-top: 0.3rem;
+        }
+
+        .smi-summary {
+            background: rgba(255, 215, 0, 0.05);
+            border: 1px solid rgba(255, 215, 0, 0.2);
+            padding: 0.8rem;
+            margin-top: 1rem;
+            font-size: 10px;
+            line-height: 1.4;
+            color: var(--text-secondary);
+        }
+
+        /* Whale Activity Panel */
+        .whale-activity {
+            grid-column: 1;
+            grid-row: 3;
+        }
+
+        .activity-status {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .activity-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 10px;
+        }
+
+        .activity-label {
+            color: var(--text-muted);
+        }
+
+        .activity-value {
+            color: var(--text-primary);
+            font-weight: 600;
+        }
+
+        .activity-detected {
+            background: rgba(255, 170, 0, 0.2);
+            color: var(--accent-warning);
+            padding: 0.2rem 0.4rem;
+            font-size: 8px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            border-radius: 2px;
+        }
+
+        /* System Performance Panel */
+        .system-performance {
+            grid-column: 2;
+            grid-row: 3;
+        }
+
+        .performance-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+        }
+
+        .perf-metric {
+            text-align: center;
+        }
+
+        .perf-value {
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--accent-positive);
+            margin-bottom: 0.3rem;
+        }
+
+        .perf-label {
+            font-size: 9px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .error-rate .perf-value {
+            color: var(--accent-negative);
+        }
+
+        /* Responsive Design */
+        @media (max-width: 1200px) {
+            .container {
+                grid-template-columns: 1fr;
+                grid-template-rows: repeat(6, auto);
+            }
+            
+            .market-overview { grid-column: 1; grid-row: 1; }
+            .top-performers { grid-column: 1; grid-row: 2; }
+            .futures-premium { grid-column: 1; grid-row: 3; }
+            .smart-money { grid-column: 1; grid-row: 4; }
+            .whale-activity { grid-column: 1; grid-row: 5; }
+            .system-performance { grid-column: 1; grid-row: 6; }
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <div class="header">
+        <div class="header-left">
+            {% if navigation.show_back_to_dashboard %}
+            <a href="{{ navigation.dashboard_url or '/' }}" class="back-button">
+                <i data-lucide="arrow-left"></i>
+                {{ navigation.dashboard_title or "Trading Dashboard" }}
+            </a>
+            {% endif %}
+            
+            <div>
+                <h1 class="terminal-title">VIRTUOSO.MARKET.REPORT</h1>
+                <div class="subtitle">COMPREHENSIVE MARKET INTELLIGENCE ANALYSIS</div>
+            </div>
+        </div>
+        
+        <div class="header-controls">
+            <button class="control-button">CONFIG</button>
+            <div class="status-indicator">
+                <div class="status-dot"></div>
+                <span>LIVE</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Container -->
+    <div class="container">
+        <!-- Market Overview Panel -->
+        <div class="panel market-overview">
+            <div class="panel-header">
+                <div class="panel-title">
+                    <i data-lucide="trending-up" class="panel-icon"></i>
+                    MARKET OVERVIEW
+                </div>
+            </div>
+            
+            <div class="overview-content">
+                <div class="market-status">
+                    <div class="status-item">
+                        <div class="status-label">MARKET REGIME</div>
+                        <div class="status-value bullish">
+                            ● BULLISH
+                            <span style="font-size: 10px; color: var(--text-muted);">STRONG</span>
+                        </div>
+                        <div class="status-indicator-bar">
+                            <div class="status-fill" style="width: 78%;"></div>
+                        </div>
+                    </div>
+                    
+                    <div class="status-item">
+                        <div class="status-label">MARKET VOLATILITY</div>
+                        <div class="status-value neutral">
+                            ● {{ report_data.risk_metrics.volatility_index or "24.7" }}%
+                        </div>
+                        <div class="status-indicator-bar">
+                            <div class="status-fill" style="width: 25%; background: var(--accent-warning);"></div>
+                        </div>
+                    </div>
+                    
+                    <div class="status-item">
+                        <div class="status-label">TREND STRENGTH</div>
+                        <div class="status-value bullish">
+                            ● Strong Uptrend
+                        </div>
+                        <div class="status-indicator-bar">
+                            <div class="status-fill" style="width: 85%;"></div>
+                        </div>
+                    </div>
+                    
+                    <div class="status-item">
+                        <div class="status-label">VOLUME PROFILE</div>
+                        <div class="status-value bullish">
+                            ● Above Average
+                        </div>
+                        <div class="status-indicator-bar">
+                            <div class="status-fill" style="width: 68%;"></div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="market-summary">
+                    The market is currently in a bullish regime with strong upward momentum. Volume confirms the trend direction with above-average participation.
+                </div>
+            </div>
+        </div>
+
+        <!-- Top Performers Panel -->
+        <div class="panel top-performers">
+            <div class="panel-header">
+                <div class="panel-title">
+                    <i data-lucide="zap" class="panel-icon"></i>
+                    TOP PERFORMERS
+                </div>
+            </div>
+            
+            <div class="performers-grid">
+                <div class="performer-section">
+                    <h4>🚀 Top Gainers (24h)</h4>
+                    <div class="performer-list">
+                        <div class="performer-item">
+                            <span class="symbol">AVAX/USDT</span>
+                            <span class="change-positive">+18.6%</span>
+                        </div>
+                        <div class="performer-item">
+                            <span class="symbol">SOL/USDT</span>
+                            <span class="change-positive">+14.7%</span>
+                        </div>
+                        <div class="performer-item">
+                            <span class="symbol">LINK/USDT</span>
+                            <span class="change-positive">+11.2%</span>
+                        </div>
+                        <div class="performer-item">
+                            <span class="symbol">ETH/USDT</span>
+                            <span class="change-positive">+8.9%</span>
+                        </div>
+                        <div class="performer-item">
+                            <span class="symbol">MATIC/USDT</span>
+                            <span class="change-positive">+7.3%</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="performer-section">
+                    <h4>📉 Top Losers (24h)</h4>
+                    <div class="performer-list">
+                        <div class="performer-item">
+                            <span class="symbol">ADA/USDT</span>
+                            <span class="change-negative">-5.2%</span>
+                        </div>
+                        <div class="performer-item">
+                            <span class="symbol">DOT/USDT</span>
+                            <span class="change-negative">-3.8%</span>
+                        </div>
+                        <div class="performer-item">
+                            <span class="symbol">ALGO/USDT</span>
+                            <span class="change-negative">-2.1%</span>
+                        </div>
+                        <div class="performer-item">
+                            <span class="symbol">ATOM/USDT</span>
+                            <span class="change-negative">-1.7%</span>
+                        </div>
+                        <div class="performer-item">
+                            <span class="symbol">NEAR/USDT</span>
+                            <span class="change-negative">-0.9%</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Futures Premium Panel -->
+        <div class="panel futures-premium">
+            <div class="panel-header">
+                <div class="panel-title">
+                    <i data-lucide="bar-chart-3" class="panel-icon"></i>
+                    FUTURES PREMIUM
+                </div>
+            </div>
+            
+            <table class="futures-table">
+                <thead>
+                    <tr>
+                        <th>SYMBOL</th>
+                        <th>MARK PRICE</th>
+                        <th>INDEX PRICE</th>
+                        <th>PREMIUM</th>
+                        <th>STATUS</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td class="symbol">BTC/USDT</td>
+                        <td>$46,247.80</td>
+                        <td>$46,189.34</td>
+                        <td class="premium-positive">+0.127%</td>
+                        <td><span class="status-badge">CONTANGO</span></td>
+                    </tr>
+                    <tr>
+                        <td class="symbol">ETH/USDT</td>
+                        <td>$2,847.92</td>
+                        <td>$2,844.15</td>
+                        <td class="premium-positive">+0.132%</td>
+                        <td><span class="status-badge">CONTANGO</span></td>
+                    </tr>
+                    <tr>
+                        <td class="symbol">SOL/USDT</td>
+                        <td>$98.34</td>
+                        <td>$98.21</td>
+                        <td class="premium-positive">+0.132%</td>
+                        <td><span class="status-badge">CONTANGO</span></td>
+                    </tr>
+                </tbody>
+            </table>
+            
+            <div class="futures-summary">
+                Futures markets show positive premium across major pairs, indicating bullish sentiment and expectations of higher future prices.
+            </div>
+        </div>
+
+        <!-- Smart Money Index Panel -->
+        <div class="panel smart-money">
+            <div class="panel-header">
+                <div class="panel-title">
+                    <i data-lucide="zap" class="panel-icon"></i>
+                    SMART MONEY INDEX
+                </div>
+            </div>
+            
+            <div class="smi-value">74.6/100</div>
+            <div class="status-value bullish">● BULLISH</div>
+            
+            <div class="smi-progress">
+                <div class="smi-fill"></div>
+            </div>
+            <div class="smi-labels">
+                <span>0</span>
+                <span>50</span>
+                <span>100</span>
+            </div>
+            
+            <div class="institutional-flow">
+                <div class="flow-label">INSTITUTIONAL FLOW</div>
+                <div class="flow-value">● Net Buying</div>
+            </div>
+            
+            <div class="smi-summary">
+                Smart money index shows strong institutional accumulation with significant net buying pressure from large participants.
+            </div>
+        </div>
+
+        <!-- Whale Activity Panel -->
+        <div class="panel whale-activity">
+            <div class="panel-header">
+                <div class="panel-title">
+                    <i data-lucide="waves" class="panel-icon"></i>
+                    WHALE ACTIVITY
+                </div>
+            </div>
+            
+            <div class="activity-status">
+                <div class="activity-item">
+                    <span class="activity-label">ACTIVITY STATUS</span>
+                    <span class="activity-detected">● Significant Activity Detected</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- System Performance Panel -->
+        <div class="panel system-performance">
+            <div class="panel-header">
+                <div class="panel-title">
+                    <i data-lucide="zap" class="panel-icon"></i>
+                    SYSTEM PERFORMANCE
+                </div>
+            </div>
+            
+            <div class="performance-grid">
+                <div class="perf-metric">
+                    <div class="perf-value">12ms</div>
+                    <div class="perf-label">API LATENCY</div>
+                </div>
+                <div class="perf-metric error-rate">
+                    <div class="perf-value">0.1%</div>
+                    <div class="perf-label">ERROR RATE</div>
+                </div>
+                <div class="perf-metric">
+                    <div class="perf-value">99.9%</div>
+                    <div class="perf-label">DATA QUALITY</div>
+                </div>
+                <div class="perf-metric">
+                    <div class="perf-value">847ms</div>
+                    <div class="perf-label">PROCESSING TIME</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Initialize Lucide icons
+        if (typeof lucide !== 'undefined') {
+            lucide.createIcons();
+        }
+
+        // Real-time data updates
+        function initializeWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = protocol + '//' + window.location.host + '/api/market-analysis/ws';
+            
+            try {
+                const ws = new WebSocket(wsUrl);
+                
+                ws.onmessage = function(event) {
+                    const data = JSON.parse(event.data);
+                    updateMarketData(data);
+                };
+                
+                ws.onerror = function(error) {
+                    console.log('WebSocket error:', error);
+                };
+                
+            } catch (error) {
+                console.log('WebSocket not available, using polling');
+                setInterval(fetchMarketData, 30000);
+            }
+        }
+
+        async function fetchMarketData() {
+            try {
+                const response = await fetch('/market-analysis/data');
+                const data = await response.json();
+                updateMarketData(data.data);
+            } catch (error) {
+                console.error('Error fetching market data:', error);
+            }
+        }
+
+        function updateMarketData(data) {
+            // Update market data in real-time
+            if (data.market_overview) {
+                console.log('Market data updated:', data);
+            }
+        }
+
+        // Initialize real-time updates
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeWebSocket();
+        });
+
+        console.log(`
+[MARKET ANALYSIS] ========================================
+[MARKET ANALYSIS] VIRTUOSO MARKET INTELLIGENCE LOADED
+[MARKET ANALYSIS] TERMINAL STYLE INTERFACE ACTIVE
+[MARKET ANALYSIS] ========================================`);
+    </script>
+</body>
+</html> 

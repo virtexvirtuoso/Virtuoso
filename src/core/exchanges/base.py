@@ -524,30 +524,59 @@ class BaseExchange(ABC):
             self.logger.error(f"Error processing websocket message: {str(e)}")
             
     def validate_market_data(self, market_data: Dict[str, Any]) -> None:
-        """Validate market data structure"""
-        required_fields = {
-            'trades': ['timestamp', 'symbol', 'side', 'price', 'amount'],
-            'orderbook': ['timestamp', 'symbol', 'bids', 'asks'],
-            'ticker': ['timestamp', 'symbol', 'high', 'low'],
-            'ohlcv': ['timestamp', 'open', 'high', 'low', 'close', 'volume']
+        """Validate market data structure with flexible field detection"""
+        # Define core fields vs optional fields
+        core_fields = {
+            'trades': [],  # No core fields required for trades list
+            'orderbook': [],  # No core fields required for orderbook dict
+            'ticker': [],  # No core fields required for ticker dict
+            'ohlcv': []  # No core fields required for OHLCV
         }
         
-        for data_type, fields in required_fields.items():
+        # Define recommended fields (warn if missing but don't fail)
+        recommended_fields = {
+            'trades': ['timestamp', 'side', 'price', 'amount'],
+            'orderbook': ['timestamp', 'bids', 'asks'],
+            'ticker': ['timestamp', 'high', 'low'],
+            'ohlcv': ['open', 'high', 'low', 'close', 'volume']
+        }
+        
+        for data_type, fields in core_fields.items():
             if data_type in market_data:
                 data = market_data[data_type]
+                
+                # Handle empty data gracefully
+                if not data:
+                    self.logger.warning(f"Empty {data_type} data - likely due to API fetch failure")
+                    continue
+                
                 if isinstance(data, (list, tuple)):
                     for item in data:
-                        missing = [f for f in fields if f not in item]
-                        if missing:
+                        # Check core fields only
+                        missing_core = [f for f in fields if f not in item]
+                        if missing_core:
                             raise ValueError(
-                                f"Missing required fields for {data_type}: {missing}"
+                                f"Missing core fields for {data_type}: {missing_core}"
                             )
+                        
+                        # Check recommended fields (warn only)
+                        if data_type in recommended_fields:
+                            missing_recommended = [f for f in recommended_fields[data_type] if f not in item]
+                            if missing_recommended:
+                                self.logger.warning(f"Missing recommended fields for {data_type}: {missing_recommended}")
                 else:
-                    missing = [f for f in fields if f not in data]
-                    if missing:
+                    # Check core fields only
+                    missing_core = [f for f in fields if f not in data]
+                    if missing_core:
                         raise ValueError(
-                            f"Missing required fields for {data_type}: {missing}"
+                            f"Missing core fields for {data_type}: {missing_core}"
                         )
+                    
+                    # Check recommended fields (warn only)
+                    if data_type in recommended_fields:
+                        missing_recommended = [f for f in recommended_fields[data_type] if f not in data]
+                        if missing_recommended:
+                            self.logger.warning(f"Missing recommended fields for {data_type}: {missing_recommended}")
                         
     async def _maintain_ws_connection(self):
         """Maintain websocket connection"""

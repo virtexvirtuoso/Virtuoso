@@ -1,0 +1,1106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Virtuoso Dashboard V8.5 - Terminal Amber Theme</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* Terminal Amber + Navy Blue Theme */
+        :root {
+            --bg-primary: #0c1a2b;
+            --bg-secondary: #0f172a;
+            --bg-hero: #0f172a;
+            --bg-satellite: #0f172a;
+            --bg-header: #0a1525;
+            --text-primary: #ffbf00;
+            --text-secondary: #b8860b;
+            --accent-primary: #ff9900;
+            --accent-positive: #ffc107;
+            --accent-negative: #ff5722;
+            --accent-warning: #ff9900;
+            --border-light: #1a2a40;
+            --glow-amber: #ffbf00;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'JetBrains Mono', 'Courier New', monospace;
+            background: linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
+            color: var(--text-primary);
+            line-height: 1.5;
+            min-height: 100vh;
+            overflow-x: hidden;
+            font-weight: 400;
+        }
+
+        /* Command Center Bar - Always Visible */
+        .command-center {
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            background: var(--bg-header);
+            border-bottom: 1px solid var(--border-light);
+            padding: 1rem 2rem;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+        }
+
+        .command-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            max-width: 1800px;
+            margin: 0 auto;
+        }
+
+        .brand-area {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .brand-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--accent-primary);
+            text-shadow: 0 0 10px var(--glow-amber);
+            font-family: 'JetBrains Mono', monospace;
+            letter-spacing: 1px;
+        }
+
+        .status-badge {
+            background: linear-gradient(135deg, var(--accent-positive), #e6a100);
+            color: var(--bg-primary);
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            animation: pulse 2s infinite;
+        }
+
+        .key-metrics {
+            display: flex;
+            gap: 2rem;
+            align-items: center;
+        }
+
+        .metric-quick {
+            text-align: center;
+        }
+
+        .metric-value {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .metric-label {
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .command-actions {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        .action-btn {
+            background: var(--bg-hero);
+            border: 1px solid var(--border-light);
+            color: var(--text-primary);
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 0.875rem;
+            font-weight: 500;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .action-btn:hover {
+            background: var(--accent-primary);
+            border-color: var(--accent-primary);
+            color: var(--bg-primary);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(255, 153, 0, 0.4);
+        }
+
+        /* Floating Cards Layout */
+        .dashboard-layout {
+            max-width: 1800px;
+            margin: 0 auto;
+            padding: 2rem;
+            position: relative;
+            min-height: calc(100vh - 120px);
+        }
+
+        /* Hero Panel - Centered Background */
+        .hero-panel {
+            position: absolute;
+            top: 2rem;
+            left: 2rem;
+            right: 350px;
+            bottom: 200px;
+            background: linear-gradient(135deg, var(--bg-hero), var(--bg-secondary));
+            border: 1px solid var(--border-light);
+            border-radius: 16px;
+            padding: 2rem;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            z-index: 1;
+            overflow: hidden;
+        }
+
+        .hero-panel::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, var(--accent-primary), var(--accent-positive), var(--accent-warning));
+        }
+
+        .hero-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+        }
+
+        .hero-title {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .hero-title::before {
+            content: '>>>';
+            font-size: 1.75rem;
+            color: var(--accent-primary);
+        }
+
+        .view-toggle {
+            display: flex;
+            background: var(--bg-satellite);
+            border-radius: 8px;
+            padding: 0.25rem;
+            gap: 0.25rem;
+            border: 1px solid var(--border-light);
+        }
+
+        .toggle-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 0.875rem;
+            font-weight: 500;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .toggle-btn.active {
+            background: var(--accent-primary);
+            color: var(--bg-primary);
+            box-shadow: 0 2px 8px rgba(255, 153, 0, 0.4);
+        }
+
+        .signals-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 1.25rem;
+            max-height: 450px;
+            overflow-y: auto;
+        }
+
+        .signals-container::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .signals-container::-webkit-scrollbar-track {
+            background: var(--bg-primary);
+            border-radius: 3px;
+        }
+
+        .signals-container::-webkit-scrollbar-thumb {
+            background: var(--accent-primary);
+            border-radius: 3px;
+        }
+
+        .signal-row {
+            display: grid;
+            grid-template-columns: 1.5fr auto auto auto;
+            align-items: center;
+            padding: 1.25rem;
+            background: var(--bg-satellite);
+            border-radius: 12px;
+            transition: all 0.3s ease;
+            border-left: 4px solid transparent;
+            border: 1px solid var(--border-light);
+        }
+
+        .signal-row:hover {
+            transform: translateY(-2px) scale(1.01);
+            box-shadow: 0 8px 24px rgba(255, 191, 0, 0.2);
+            border-left-color: var(--accent-primary);
+        }
+
+        .signal-row.bullish {
+            border-left-color: var(--accent-positive);
+        }
+
+        .signal-row.bearish {
+            border-left-color: var(--accent-negative);
+        }
+
+        .signal-row.neutral {
+            border-left-color: var(--accent-warning);
+        }
+
+        .signal-symbol {
+            font-weight: 600;
+            font-size: 1.1rem;
+            color: var(--text-primary);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .signal-action {
+            padding: 0.375rem 0.875rem;
+            border-radius: 18px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .action-long {
+            background: rgba(255, 193, 7, 0.2);
+            color: var(--accent-positive);
+            border: 1px solid rgba(255, 193, 7, 0.3);
+        }
+
+        .action-short {
+            background: rgba(255, 87, 34, 0.2);
+            color: var(--accent-negative);
+            border: 1px solid rgba(255, 87, 34, 0.3);
+        }
+
+        .action-watch {
+            background: rgba(255, 153, 0, 0.2);
+            color: var(--accent-warning);
+            border: 1px solid rgba(255, 153, 0, 0.3);
+        }
+
+        .signal-score {
+            font-weight: 700;
+            font-size: 1.25rem;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .score-bullish { color: var(--accent-positive); }
+        .score-bearish { color: var(--accent-negative); }
+        .score-neutral { color: var(--accent-warning); }
+
+        .signal-time {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* Floating Cards */
+        .floating-card {
+            position: absolute;
+            background: linear-gradient(135deg, var(--bg-satellite), var(--bg-hero));
+            border: 1px solid var(--border-light);
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+            transition: all 0.3s ease;
+            cursor: pointer;
+            overflow: hidden;
+        }
+
+        .floating-card:hover {
+            transform: translateY(-6px) scale(1.03);
+            box-shadow: 0 16px 48px rgba(255, 191, 0, 0.3);
+            z-index: 100 !important;
+        }
+
+        .floating-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: var(--accent-color, var(--accent-primary));
+        }
+
+        /* Market Card - Top Right */
+        .market-card {
+            top: 2rem;
+            right: 2rem;
+            width: 300px;
+            height: 250px;
+            z-index: 10;
+            --accent-color: var(--accent-primary);
+        }
+
+        .market-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.75rem;
+            margin-top: 1rem;
+        }
+
+        .market-metric {
+            text-align: center;
+            padding: 0.75rem;
+            background: var(--bg-primary);
+            border-radius: 8px;
+            transition: all 0.3s ease;
+            border: 1px solid var(--border-light);
+        }
+
+        .market-metric:hover {
+            background: var(--bg-hero);
+            transform: scale(1.05);
+            box-shadow: 0 4px 12px rgba(255, 191, 0, 0.1);
+        }
+
+        .market-value {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 0.25rem;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .market-label {
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        /* Alpha Card - Middle Right */
+        .alpha-card {
+            top: 280px;
+            right: 80px;
+            width: 280px;
+            height: 220px;
+            z-index: 8;
+            --accent-color: var(--accent-positive);
+        }
+
+        .alpha-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            margin-top: 1rem;
+        }
+
+        .alpha-item {
+            padding: 0.75rem;
+            background: var(--bg-primary);
+            border-radius: 6px;
+            border-left: 3px solid var(--accent-positive);
+            transition: all 0.3s ease;
+            border: 1px solid var(--border-light);
+        }
+
+        .alpha-item:hover {
+            transform: translateX(4px);
+            background: var(--bg-hero);
+            box-shadow: 0 4px 12px rgba(255, 193, 7, 0.2);
+        }
+
+        .alpha-symbol {
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 0.25rem;
+            font-size: 0.9rem;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .alpha-pattern {
+            font-size: 0.75rem;
+            color: var(--accent-positive);
+            margin-bottom: 0.375rem;
+            text-transform: uppercase;
+            font-weight: 500;
+        }
+
+        .alpha-stats {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* Alerts Card - Bottom Left */
+        .alerts-card {
+            bottom: 2rem;
+            left: 2rem;
+            width: 320px;
+            height: 180px;
+            z-index: 9;
+            --accent-color: var(--accent-warning);
+        }
+
+        .alerts-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.375rem;
+            margin-top: 1rem;
+            max-height: 120px;
+            overflow-y: auto;
+        }
+
+        .alerts-list::-webkit-scrollbar {
+            width: 3px;
+        }
+
+        .alerts-list::-webkit-scrollbar-track {
+            background: var(--bg-primary);
+        }
+
+        .alerts-list::-webkit-scrollbar-thumb {
+            background: var(--accent-warning);
+            border-radius: 2px;
+        }
+
+        .alert-item {
+            padding: 0.5rem;
+            background: var(--bg-primary);
+            border-radius: 4px;
+            border-left: 3px solid;
+            font-size: 0.75rem;
+            transition: all 0.3s ease;
+            border: 1px solid var(--border-light);
+        }
+
+        .alert-high { border-left-color: var(--accent-negative); }
+        .alert-medium { border-left-color: var(--accent-warning); }
+        .alert-low { border-left-color: var(--accent-positive); }
+
+        .alert-item:hover {
+            background: var(--bg-hero);
+            transform: translateX(3px);
+        }
+
+        .alert-time {
+            float: right;
+            font-size: 0.65rem;
+            color: var(--text-secondary);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* Config Card - Bottom Right */
+        .config-card {
+            bottom: 80px;
+            right: 150px;
+            width: 260px;
+            height: 200px;
+            z-index: 7;
+            --accent-color: var(--accent-primary);
+        }
+
+        .config-quick {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 0.5rem;
+            margin-top: 1rem;
+        }
+
+        .config-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.625rem;
+            background: var(--bg-primary);
+            border-radius: 6px;
+            transition: all 0.3s ease;
+            border: 1px solid var(--border-light);
+        }
+
+        .config-item:hover {
+            background: var(--bg-hero);
+            transform: translateX(3px);
+        }
+
+        .config-label {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+
+        .config-value {
+            font-weight: 600;
+            color: var(--text-primary);
+            font-size: 0.8rem;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* Performance Card - Floating Mini */
+        .performance-card {
+            top: 450px;
+            right: 20px;
+            width: 200px;
+            height: 120px;
+            z-index: 6;
+            --accent-color: var(--accent-negative);
+            opacity: 0.95;
+        }
+
+        .performance-metrics {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.5rem;
+            margin-top: 0.75rem;
+        }
+
+        .perf-metric {
+            text-align: center;
+            padding: 0.5rem;
+            background: var(--bg-primary);
+            border-radius: 4px;
+            border: 1px solid var(--border-light);
+        }
+
+        .perf-value {
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .perf-label {
+            font-size: 0.6rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+        }
+
+        /* Shared Card Styles */
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.75rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid var(--border-light);
+        }
+
+        .card-title {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .card-badge {
+            background: var(--accent-color, var(--accent-primary));
+            color: var(--bg-primary);
+            padding: 0.125rem 0.375rem;
+            border-radius: 8px;
+            font-size: 0.65rem;
+            font-weight: 600;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* Responsive Design */
+        @media (max-width: 1400px) {
+            .hero-panel {
+                right: 320px;
+            }
+            
+            .market-card {
+                width: 280px;
+            }
+            
+            .alpha-card {
+                width: 260px;
+                right: 60px;
+            }
+        }
+
+        @media (max-width: 1200px) {
+            .floating-card {
+                position: relative !important;
+                width: 100% !important;
+                height: auto !important;
+                top: auto !important;
+                right: auto !important;
+                bottom: auto !important;
+                left: auto !important;
+                margin-bottom: 1rem;
+            }
+
+            .hero-panel {
+                position: relative !important;
+                top: auto !important;
+                left: auto !important;
+                right: auto !important;
+                bottom: auto !important;
+                margin-bottom: 2rem;
+            }
+
+            .dashboard-layout {
+                display: block;
+            }
+
+            .key-metrics {
+                display: none;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .dashboard-layout {
+                padding: 1rem;
+            }
+
+            .hero-panel {
+                padding: 1.5rem;
+            }
+
+            .signals-container {
+                grid-template-columns: 1fr;
+            }
+
+            .signal-row {
+                grid-template-columns: 1fr;
+                gap: 0.5rem;
+                text-align: center;
+            }
+        }
+
+        /* Animations */
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.8; }
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-3px); }
+        }
+
+        .floating-card {
+            animation: float 4s ease-in-out infinite;
+        }
+
+        .floating-card:nth-child(2) { animation-delay: -1s; }
+        .floating-card:nth-child(3) { animation-delay: -2s; }
+        .floating-card:nth-child(4) { animation-delay: -3s; }
+        .floating-card:nth-child(5) { animation-delay: -0.5s; }
+
+        /* Terminal-style cursor blink effect */
+        @keyframes blink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0; }
+        }
+
+        .brand-title::after {
+            content: '_';
+            animation: blink 1s infinite;
+            color: var(--accent-primary);
+        }
+
+        /* Focus states for accessibility */
+        .action-btn:focus,
+        .toggle-btn:focus {
+            outline: 2px solid var(--accent-primary);
+            outline-offset: 2px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Command Center - Always Visible -->
+    <header class="command-center">
+        <div class="command-bar">
+            <div class="brand-area">
+                <div class="brand-title">VIRTUOSO.TERMINAL</div>
+                <div class="status-badge">V8.5</div>
+            </div>
+            
+            <div class="key-metrics">
+                <div class="metric-quick">
+                    <div class="metric-value">8</div>
+                    <div class="metric-label">SIGNALS</div>
+                </div>
+                <div class="metric-quick">
+                    <div class="metric-value">$3.2B</div>
+                    <div class="metric-label">VOLUME</div>
+                </div>
+                <div class="metric-quick">
+                    <div class="metric-value">+2.8%</div>
+                    <div class="metric-label">P&L</div>
+                </div>
+                <div class="metric-quick">
+                    <div class="metric-value">BULL</div>
+                    <div class="metric-label">MARKET</div>
+                </div>
+            </div>
+            
+            <div class="command-actions">
+                <button class="action-btn" onclick="refreshData()">REFRESH</button>
+                <button class="action-btn" onclick="toggleConfig()">CONFIG</button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Dashboard Layout -->
+    <main class="dashboard-layout">
+        <!-- Hero Panel - Signals Central -->
+        <section class="hero-panel">
+            <div class="hero-header">
+                <h1 class="hero-title">TRADING.SIGNALS</h1>
+                <div class="view-toggle">
+                    <button class="toggle-btn active" onclick="setView('terminal')">TERMINAL</button>
+                    <button class="toggle-btn" onclick="setView('detailed')">DETAILED</button>
+                    <button class="toggle-btn" onclick="setView('analysis')">ANALYSIS</button>
+                </div>
+            </div>
+            
+            <div class="signals-container">
+                <div class="signal-row bullish">
+                    <div class="signal-symbol">BTC/USDT</div>
+                    <div class="signal-action action-long">LONG</div>
+                    <div class="signal-score score-bullish">89.7</div>
+                    <div class="signal-time">01:23</div>
+                </div>
+                
+                <div class="signal-row neutral">
+                    <div class="signal-symbol">ETH/USDT</div>
+                    <div class="signal-action action-watch">WATCH</div>
+                    <div class="signal-score score-neutral">67.4</div>
+                    <div class="signal-time">03:45</div>
+                </div>
+                
+                <div class="signal-row bullish">
+                    <div class="signal-symbol">SOL/USDT</div>
+                    <div class="signal-action action-long">LONG</div>
+                    <div class="signal-score score-bullish">82.1</div>
+                    <div class="signal-time">05:12</div>
+                </div>
+                
+                <div class="signal-row bearish">
+                    <div class="signal-symbol">XRP/USDT</div>
+                    <div class="signal-action action-short">SHORT</div>
+                    <div class="signal-score score-bearish">28.9</div>
+                    <div class="signal-time">08:07</div>
+                </div>
+                
+                <div class="signal-row neutral">
+                    <div class="signal-symbol">ADA/USDT</div>
+                    <div class="signal-action action-watch">WATCH</div>
+                    <div class="signal-score score-neutral">61.3</div>
+                    <div class="signal-time">12:34</div>
+                </div>
+                
+                <div class="signal-row bullish">
+                    <div class="signal-symbol">MATIC/USDT</div>
+                    <div class="signal-action action-long">LONG</div>
+                    <div class="signal-score score-bullish">76.8</div>
+                    <div class="signal-time">15:22</div>
+                </div>
+                
+                <div class="signal-row bullish">
+                    <div class="signal-symbol">AVAX/USDT</div>
+                    <div class="signal-action action-long">LONG</div>
+                    <div class="signal-score score-bullish">85.2</div>
+                    <div class="signal-time">18:45</div>
+                </div>
+                
+                <div class="signal-row bearish">
+                    <div class="signal-symbol">LUNA/USDT</div>
+                    <div class="signal-action action-short">SHORT</div>
+                    <div class="signal-score score-bearish">31.5</div>
+                    <div class="signal-time">21:12</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Floating Market Card -->
+        <aside class="floating-card market-card">
+            <div class="card-header">
+                <div class="card-title">MARKET.STATUS</div>
+                <div class="card-badge">BULLISH</div>
+            </div>
+            <div class="market-grid">
+                <div class="market-metric">
+                    <div class="market-value">52</div>
+                    <div class="market-label">PAIRS</div>
+                </div>
+                <div class="market-metric">
+                    <div class="market-value">3.2B</div>
+                    <div class="market-label">VOLUME</div>
+                </div>
+                <div class="market-metric">
+                    <div class="market-value">1.4T</div>
+                    <div class="market-label">MCAP</div>
+                </div>
+                <div class="market-metric">
+                    <div class="market-value">2.8%</div>
+                    <div class="market-label">VOLATILITY</div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Floating Alpha Card -->
+        <aside class="floating-card alpha-card">
+            <div class="card-header">
+                <div class="card-title">ALPHA.TARGETS</div>
+                <div class="card-badge">4</div>
+            </div>
+            <div class="alpha-list">
+                <div class="alpha-item">
+                    <div class="alpha-symbol">AVAX/USDT</div>
+                    <div class="alpha-pattern">MOMENTUM_BREAKOUT</div>
+                    <div class="alpha-stats">
+                        <span>91.5%</span>
+                        <span>+14.7%</span>
+                    </div>
+                </div>
+                <div class="alpha-item">
+                    <div class="alpha-symbol">LINK/USDT</div>
+                    <div class="alpha-pattern">SUPPORT_BOUNCE</div>
+                    <div class="alpha-stats">
+                        <span>76.8%</span>
+                        <span>+11.9%</span>
+                    </div>
+                </div>
+                <div class="alpha-item">
+                    <div class="alpha-symbol">DOT/USDT</div>
+                    <div class="alpha-pattern">WHALE_ACTIVITY</div>
+                    <div class="alpha-stats">
+                        <span>88.4%</span>
+                        <span>+16.2%</span>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Floating Alerts Card -->
+        <aside class="floating-card alerts-card">
+            <div class="card-header">
+                <div class="card-title">SYSTEM.ALERTS</div>
+                <div class="card-badge">12</div>
+            </div>
+            <div class="alerts-list">
+                <div class="alert-item alert-high">
+                    <span class="alert-time">01:23</span>
+                    <strong>[SIGNAL]:</strong> HIGH_PROB_LONG_BTC
+                </div>
+                <div class="alert-item alert-medium">
+                    <span class="alert-time">04:12</span>
+                    <strong>[PATTERN]:</strong> BREAKOUT_AVAX_DETECTED
+                </div>
+                <div class="alert-item alert-low">
+                    <span class="alert-time">08:07</span>
+                    <strong>[STATUS]:</strong> SYSTEM_OPTIMAL
+                </div>
+                <div class="alert-item alert-medium">
+                    <span class="alert-time">12:34</span>
+                    <strong>[WHALE]:</strong> LARGE_DOT_TRANSACTION
+                </div>
+                <div class="alert-item alert-high">
+                    <span class="alert-time">15:22</span>
+                    <strong>[VOLUME]:</strong> UNUSUAL_MATIC_ACTIVITY
+                </div>
+            </div>
+        </aside>
+
+        <!-- Floating Config Card -->
+        <aside class="floating-card config-card">
+            <div class="card-header">
+                <div class="card-title">CONFIG.PARAMS</div>
+                <div class="card-badge">⚙</div>
+            </div>
+            <div class="config-quick">
+                <div class="config-item">
+                    <div class="config-label">SCAN_FREQ</div>
+                    <div class="config-value">30s</div>
+                </div>
+                <div class="config-item">
+                    <div class="config-label">MIN_SCORE</div>
+                    <div class="config-value">70</div>
+                </div>
+                <div class="config-item">
+                    <div class="config-label">RISK_LVL</div>
+                    <div class="config-value">MODERATE</div>
+                </div>
+                <div class="config-item">
+                    <div class="config-label">ALERTS</div>
+                    <div class="config-value">ENABLED</div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Floating Performance Card -->
+        <aside class="floating-card performance-card">
+            <div class="card-header">
+                <div class="card-title">PERFORMANCE</div>
+                <div class="card-badge">📊</div>
+            </div>
+            <div class="performance-metrics">
+                <div class="perf-metric">
+                    <div class="perf-value">94%</div>
+                    <div class="perf-label">ACCURACY</div>
+                </div>
+                <div class="perf-metric">
+                    <div class="perf-value">12ms</div>
+                    <div class="perf-label">LATENCY</div>
+                </div>
+                <div class="perf-metric">
+                    <div class="perf-value">$12.4K</div>
+                    <div class="perf-label">TODAY_PNL</div>
+                </div>
+                <div class="perf-metric">
+                    <div class="perf-value">156</div>
+                    <div class="perf-label">SIGNALS</div>
+                </div>
+            </div>
+        </aside>
+    </main>
+
+    <script>
+        // View toggle functionality
+        function setView(view) {
+            document.querySelectorAll('.toggle-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            event.target.classList.add('active');
+            
+            console.log(`[SYSTEM] Switched to ${view.toUpperCase()} view`);
+        }
+
+        // Refresh data
+        function refreshData() {
+            console.log('[SYSTEM] Refreshing data stream...');
+            const badge = document.querySelector('.status-badge');
+            badge.style.background = 'linear-gradient(135deg, var(--accent-warning), #e6a100)';
+            badge.textContent = 'SYNC';
+            setTimeout(() => {
+                badge.style.background = 'linear-gradient(135deg, var(--accent-positive), #e6a100)';
+                badge.textContent = 'V8.5';
+            }, 1500);
+        }
+
+        // Config toggle
+        function toggleConfig() {
+            console.log('[SYSTEM] Configuration panel toggled');
+        }
+
+        // Update timestamps
+        function updateTimestamps() {
+            const timeElements = document.querySelectorAll('.signal-time, .alert-time');
+            timeElements.forEach(el => {
+                const currentText = el.textContent;
+                if (currentText.includes(':') && !currentText.includes('ago')) {
+                    const match = currentText.match(/(\d+):(\d+)/);
+                    if (match) {
+                        let minutes = parseInt(match[1]);
+                        let seconds = parseInt(match[2]) + 1;
+                        if (seconds >= 60) {
+                            minutes += 1;
+                            seconds = 0;
+                        }
+                        el.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+                    }
+                }
+            });
+        }
+
+        // Floating card interactions
+        document.querySelectorAll('.floating-card').forEach(card => {
+            card.addEventListener('click', function() {
+                // Bring to front
+                document.querySelectorAll('.floating-card').forEach(c => {
+                    c.style.zIndex = parseInt(c.style.zIndex || c.style.getPropertyValue('z-index') || 1);
+                });
+                this.style.zIndex = 999;
+                
+                // Add highlight effect
+                this.style.boxShadow = '0 20px 60px rgba(255, 153, 0, 0.4)';
+                setTimeout(() => {
+                    this.style.boxShadow = '';
+                }, 2000);
+                
+                console.log(`[SYSTEM] Card ${this.querySelector('.card-title').textContent} activated`);
+            });
+        });
+
+        // Enhanced hover effects for terminal layout
+        document.querySelectorAll('.signal-row, .floating-card').forEach(element => {
+            element.addEventListener('mouseenter', function() {
+                if (this.classList.contains('signal-row')) {
+                    this.style.transform = 'translateY(-3px) scale(1.02)';
+                    this.style.boxShadow = '0 8px 24px rgba(255, 191, 0, 0.3)';
+                } else {
+                    this.style.transform = 'translateY(-8px) scale(1.04)';
+                    this.style.zIndex = '50';
+                }
+            });
+            
+            element.addEventListener('mouseleave', function() {
+                if (this.classList.contains('floating-card')) {
+                    this.style.transform = '';
+                    this.style.zIndex = '';
+                } else {
+                    this.style.transform = '';
+                    this.style.boxShadow = '';
+                }
+            });
+        });
+
+        // Real-time updates
+        setInterval(updateTimestamps, 1000);
+
+        // Terminal startup message
+        setTimeout(() => {
+            console.log(`
+[SYSTEM] ================================================
+[SYSTEM] VIRTUOSO.TERMINAL v8.5 INITIALIZED
+[SYSTEM] AMBER THEME LOADED
+[SYSTEM] JETBRAINS MONO FONT ACTIVE
+[SYSTEM] FLOATING CARDS LAYOUT READY
+[SYSTEM] ================================================`);
+        }, 500);
+
+        // Floating animation randomizer
+        setInterval(() => {
+            if (Math.random() > 0.9) {
+                const cards = document.querySelectorAll('.floating-card');
+                const randomCard = cards[Math.floor(Math.random() * cards.length)];
+                randomCard.style.animation = 'none';
+                setTimeout(() => {
+                    randomCard.style.animation = '';
+                }, 100);
+            }
+        }, 8000);
+
+        console.log('[INIT] 🚀 Virtuoso Terminal Amber Theme Initialized');
+    </script>
+</body>
+</html> 

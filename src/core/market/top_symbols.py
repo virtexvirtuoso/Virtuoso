@@ -203,17 +203,20 @@ class TopSymbolsManager:
                 
                 # Sort and limit to max symbols
                 max_symbols = self.market_config.get('max_symbols', 10)
+                
+                # Fix turnover calculation - Binance uses 'quoteVolume' not 'turnover24h'
                 sorted_markets = sorted(
                     raw_markets,
-                    key=lambda x: float(x.get('turnover24h', 0)),
+                    key=lambda x: float(x.get('quoteVolume', x.get('turnover24h', 0))),
                     reverse=True
                 )[:max_symbols]
 
-                # Log turnover statistics
-                total_turnover = sum(float(m.get('turnover24h', 0)) for m in raw_markets)
+                # Log turnover statistics with corrected field
+                total_turnover = sum(float(m.get('quoteVolume', m.get('turnover24h', 0))) for m in raw_markets)
                 for market in sorted_markets:
                     symbol = market.get('symbol', '')
-                    turnover = float(market.get('turnover24h', 0))
+                    # Use quoteVolume as primary field, fallback to turnover24h for other exchanges
+                    turnover = float(market.get('quoteVolume', market.get('turnover24h', 0)))
                     percentage = (turnover / total_turnover * 100) if total_turnover > 0 else 0
                     self.logger.info(f"Selected {symbol} with turnover {turnover:.2f} ({percentage:.2f}%)")
 
@@ -257,7 +260,8 @@ class TopSymbolsManager:
             
             # Check turnover requirement
             min_turnover = self.market_config.get('min_turnover', 500000)
-            turnover = float(market.get('turnover24h', 0))
+            # Use quoteVolume as primary field (Binance), fallback to turnover24h (Bybit)
+            turnover = float(market.get('quoteVolume', market.get('turnover24h', 0)))
             
             if turnover < min_turnover:
                 self.logger.debug(f"Excluding {symbol} - insufficient turnover ({turnover} < {min_turnover})")
@@ -305,7 +309,7 @@ class TopSymbolsManager:
                         self.logger.warning("No primary exchange found in exchange manager")
                         
                         # Try to use any available exchange as fallback
-                        exchanges = self.exchange_manager.get_exchanges()
+                        exchanges = self.exchange_manager.exchanges
                         if exchanges:
                             self.exchange = next(iter(exchanges.values()))
                             self.logger.info(f"Using fallback exchange: {self.exchange.__class__.__name__}")
@@ -789,3 +793,130 @@ class TopSymbolsManager:
         except Exception as e:
             self.logger.error(f"Error normalizing market data for {symbol}: {str(e)}")
             return data  # Return original data if normalization fails
+
+    async def get_top_symbols(self, limit: int = 10) -> List[Dict[str, Any]]:
+        """Get top symbols with their market data.
+        
+        This method returns a list of dictionaries containing symbol information
+        including price, volume, turnover, and other market metrics.
+        
+        Args:
+            limit: Maximum number of symbols to return
+            
+        Returns:
+            List of dictionaries with symbol market data
+        """
+        try:
+            self.logger.info(f"Getting top {limit} symbols with market data")
+            
+            # Get the symbol strings first
+            symbols = await self.get_symbols(limit=limit)
+            if not symbols:
+                self.logger.warning("No symbols available from get_symbols")
+                return []
+            
+            symbols_data = []
+            
+            # Get market data for each symbol
+            for symbol in symbols:
+                try:
+                    # Get market data using the existing method
+                    market_data = await self.get_market_data(symbol)
+                    
+                    if market_data:
+                        # Extract key metrics from the market data
+                        price = 0
+                        change_24h = 0
+                        volume_24h = 0
+                        turnover_24h = 0
+                        
+                        # Extract price from Bybit ticker data structure
+                        ticker = market_data.get('ticker', {})
+                        
+                        # Bybit uses 'lastPrice' field for current price
+                        if 'lastPrice' in ticker and ticker['lastPrice']:
+                            price = float(ticker['lastPrice'])
+                        elif 'last' in ticker and ticker['last']:
+                            price = float(ticker['last'])
+                        elif 'close' in ticker and ticker['close']:
+                            price = float(ticker['close'])
+                        elif 'lastPrice' in market_data and market_data['lastPrice']:
+                            price = float(market_data['lastPrice'])
+                        elif 'last' in market_data and market_data['last']:
+                            price = float(market_data['last'])
+                        
+                        # Bybit uses 'price24hPcnt' field for 24h percentage change
+                        if 'price24hPcnt' in ticker and ticker['price24hPcnt']:
+                            change_24h = float(ticker['price24hPcnt']) * 100
+                        elif 'price24hPcnt' in market_data and market_data['price24hPcnt']:
+                            change_24h = float(market_data['price24hPcnt']) * 100
+                        elif 'percentage' in ticker and ticker['percentage']:
+                            change_24h = float(ticker['percentage'])
+                        elif 'change' in ticker and ticker['change']:
+                            change_24h = float(ticker['change'])
+                        
+                        # Bybit uses 'volume24h' field for 24h volume
+                        if 'volume24h' in ticker and ticker['volume24h']:
+                            volume_24h = float(ticker['volume24h'])
+                        elif 'volume24h' in market_data and market_data['volume24h']:
+                            volume_24h = float(market_data['volume24h'])
+                        elif 'baseVolume' in ticker and ticker['baseVolume']:
+                            volume_24h = float(ticker['baseVolume'])
+                        elif 'volume' in ticker and ticker['volume']:
+                            volume_24h = float(ticker['volume'])
+                        
+                        # Bybit uses 'turnover24h' field for 24h turnover
+                        if 'turnover24h' in ticker and ticker['turnover24h']:
+                            turnover_24h = float(ticker['turnover24h'])
+                        elif 'turnover24h' in market_data and market_data['turnover24h']:
+                            turnover_24h = float(market_data['turnover24h'])
+                        elif 'quoteVolume' in ticker and ticker['quoteVolume']:
+                            turnover_24h = float(ticker['quoteVolume'])
+                        elif 'turnover' in ticker and ticker['turnover']:
+                            turnover_24h = float(ticker['turnover'])
+                        
+                        symbols_data.append({
+                            'symbol': symbol,
+                            'price': price,
+                            'change_24h': change_24h,
+                            'volume_24h': volume_24h,
+                            'turnover_24h': turnover_24h,
+                            'status': 'active'
+                        })
+                        
+                        self.logger.debug(f"Added market data for {symbol}: price={price}, change={change_24h}%")
+                        
+                    else:
+                        # Add symbol with minimal data if market data fails
+                        self.logger.warning(f"No market data available for {symbol}, adding with default values")
+                        symbols_data.append({
+                            'symbol': symbol,
+                            'price': 0,
+                            'change_24h': 0,
+                            'volume_24h': 0,
+                            'turnover_24h': 0,
+                            'status': 'no_data'
+                        })
+                        
+                except Exception as e:
+                    self.logger.error(f"Error getting market data for {symbol}: {str(e)}")
+                    # Add symbol with error status
+                    symbols_data.append({
+                        'symbol': symbol,
+                        'price': 0,
+                        'change_24h': 0,
+                        'volume_24h': 0,
+                        'turnover_24h': 0,
+                        'status': 'error'
+                    })
+            
+            # Sort by turnover (highest first) to maintain consistency with selection criteria
+            symbols_data.sort(key=lambda x: x['turnover_24h'], reverse=True)
+            
+            self.logger.info(f"Successfully retrieved market data for {len(symbols_data)} symbols")
+            return symbols_data[:limit]
+            
+        except Exception as e:
+            self.logger.error(f"Error getting top symbols with market data: {str(e)}")
+            self.logger.debug(traceback.format_exc())
+            return []

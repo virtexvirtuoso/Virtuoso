@@ -6,6 +6,7 @@ from .bybit_demo import BybitDemoExchange
 from .coinbase import CoinbaseExchange
 from .hyperliquid import HyperliquidExchange
 from .ccxt_exchange import CCXTExchange
+from .binance import BinanceExchange
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +18,8 @@ class ExchangeFactory:
         'bybit_demo': BybitDemoExchange,
         'coinbase': CoinbaseExchange,
         'hyperliquid': HyperliquidExchange,
-        'ccxt': CCXTExchange
+        'ccxt': CCXTExchange,
+        'binance': BinanceExchange,
     }
     
     @classmethod

@@ -20,7 +20,10 @@ import numpy as np
 import shutil
 
 # Local imports
-from src.core.reporting.pdf_generator import ReportGenerator
+try:
+    from .pdf_generator import ReportGenerator
+except ImportError:
+    from core.reporting.pdf_generator import ReportGenerator
 
 class ReportManager:
     """
@@ -52,20 +55,58 @@ class ReportManager:
         for directory in [self.base_dir, self.pdf_dir, self.json_dir]:
             os.makedirs(directory, exist_ok=True)
         
-        # Find the template directory
+        # Find the template directory using canonical configuration approach
         template_dir = self.config.get('template_dir')
         if not template_dir:
-            # Try common locations
-            possible_dirs = [
-                os.path.join(os.getcwd(), 'src/templates'),
-                os.path.join(os.getcwd(), 'templates'),
-                os.path.join(os.getcwd(), 'src/core/reporting/templates')
-            ]
+            # Check for centralized template configuration
+            config_file = os.path.join(os.getcwd(), "config", "templates_config.json")
+            if os.path.exists(config_file):
+                try:
+                    with open(config_file, 'r') as f:
+                        config_data = json.load(f)
+                        if 'template_directory' in config_data and os.path.exists(config_data['template_directory']):
+                            template_dir = config_data['template_directory']
+                            self.logger.info(f"Using template directory from config file: {template_dir}")
+                        else:
+                            raise ValueError("Template directory not found in config or does not exist")
+                except Exception as e:
+                    self.logger.error(f"Error loading template config: {str(e)}")
+                    raise RuntimeError("Template configuration is required but not found or invalid")
+            else:
+                # Use canonical template directory with robust path detection
+                # Check if we're already in src directory
+                current_dir = os.getcwd()
+                if current_dir.endswith('/src') or current_dir.endswith('\\src'):
+                    # Already in src directory
+                    template_dir = os.path.join(current_dir, 'core/reporting/templates')
+                else:
+                    # In root directory
+                    template_dir = os.path.join(current_dir, 'src/core/reporting/templates')
+                
+                # Fallback search if primary path doesn't exist
+                if not os.path.exists(template_dir):
+                    possible_paths = [
+                        os.path.join(current_dir, 'core/reporting/templates'),
+                        os.path.join(current_dir, 'reporting/templates'),
+                        os.path.join(current_dir, 'templates'),
+                        os.path.join(os.path.dirname(current_dir), 'src/core/reporting/templates'),
+                        os.path.join(os.path.dirname(__file__), 'templates')
+                    ]
+                    
+                    for path in possible_paths:
+                        if os.path.exists(path):
+                            template_dir = path
+                            break
+                    else:
+                        raise RuntimeError(f"Template directory not found. Searched paths: {[template_dir] + possible_paths}")
+                
+                self.logger.info(f"Using canonical template directory: {template_dir}")
+        
+        # Verify template directory exists
+        if not template_dir or not os.path.exists(template_dir):
+            raise RuntimeError(f"Template directory is invalid or does not exist: {template_dir}")
             
-            for dir_path in possible_dirs:
-                if os.path.exists(dir_path):
-                    template_dir = dir_path
-                    break
+        self.logger.info(f"Template directory verified: {template_dir}")
         
         # Initialize PDF generator with proper template directory
         self.pdf_generator = ReportGenerator(config=self.config, template_dir=template_dir)

@@ -80,9 +80,8 @@ async def diagnose_and_fix_pdf_issue():
         # 4. Check template directory
         template_dir = reporting_config.get('template_dir')
         template_dirs_to_check = [
-            os.path.join(os.getcwd(), 'templates'),
             os.path.join(os.getcwd(), 'src/core/reporting/templates'),
-            os.path.join(os.getcwd(), 'src/templates')
+            os.path.join(os.getcwd(), 'templates')
         ]
         
         template_dir_exists = False

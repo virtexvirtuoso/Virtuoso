@@ -1,0 +1,990 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Virtuoso Trading Dashboard V4 - Matrix Code Rain</title>
+    <style>
+        /* Matrix Code Rain Theme */
+        :root {
+            --bg-dark: #000000;
+            --bg-card: #001100;
+            --bg-panel: #002200;
+            --text-primary: #00ff00;
+            --text-secondary: #00aa00;
+            --accent-green: #00ff00;
+            --accent-bright: #00ffaa;
+            --accent-dim: #006600;
+            --matrix-rain: #003300;
+            --border-color: #00ff00;
+            --bullish: #00ff00;
+            --bearish: #ff0000;
+            --neutral: #ffff00;
+            --glow: #00ff00;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Courier New', 'Monaco', 'Lucida Console', monospace;
+        }
+
+        body {
+            background: var(--bg-dark);
+            color: var(--text-primary);
+            line-height: 1.6;
+            min-height: 100vh;
+            overflow-x: hidden;
+            position: relative;
+        }
+
+        /* Matrix Rain Background */
+        #matrix-bg {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            opacity: 0.1;
+        }
+
+        .matrix-column {
+            position: absolute;
+            top: -100vh;
+            color: var(--accent-green);
+            font-size: 14px;
+            line-height: 14px;
+            animation: matrixRain linear infinite;
+            text-shadow: 0 0 5px var(--glow);
+        }
+
+        @keyframes matrixRain {
+            to {
+                transform: translateY(100vh);
+            }
+        }
+
+        /* Glitch effect for matrix text */
+        .glitch-text {
+            position: relative;
+            animation: matrixGlitch 2s infinite;
+        }
+
+        @keyframes matrixGlitch {
+            0%, 90%, 100% { transform: translate(0); }
+            10% { transform: translate(-1px, 1px); }
+            20% { transform: translate(1px, -1px); }
+            30% { transform: translate(-1px, -1px); }
+            40% { transform: translate(1px, 1px); }
+            50% { transform: translate(-1px, 1px); }
+            60% { transform: translate(1px, -1px); }
+            70% { transform: translate(-1px, -1px); }
+            80% { transform: translate(1px, 1px); }
+        }
+
+        /* Header */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1.5rem 2rem;
+            border-bottom: 2px solid var(--accent-green);
+            background: linear-gradient(90deg, var(--bg-card), #001a00);
+            box-shadow: 0 0 20px var(--glow);
+            position: relative;
+        }
+
+        .header::before {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            background: var(--accent-green);
+            animation: matrixPulse 1s ease-in-out infinite alternate;
+        }
+
+        @keyframes matrixPulse {
+            from { opacity: 0.5; box-shadow: 0 0 5px var(--glow); }
+            to { opacity: 1; box-shadow: 0 0 15px var(--glow); }
+        }
+
+        .terminal-title {
+            font-size: 2.2rem;
+            color: var(--text-primary);
+            margin: 0;
+            text-transform: uppercase;
+            letter-spacing: 3px;
+            text-shadow: 0 0 10px var(--glow), 0 0 20px var(--glow);
+            animation: matrixFlicker 0.1s infinite alternate;
+        }
+
+        @keyframes matrixFlicker {
+            0% { opacity: 1; }
+            50% { opacity: 0.95; }
+            100% { opacity: 1; }
+        }
+
+        .subtitle {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            margin-top: 5px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .header-controls {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .config-toggle {
+            background: transparent;
+            border: 1px solid var(--accent-green);
+            color: var(--text-primary);
+            padding: 0.7rem 1.2rem;
+            border-radius: 0;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 0 10px var(--glow);
+            text-transform: uppercase;
+            font-weight: bold;
+            letter-spacing: 1px;
+            font-family: inherit;
+        }
+
+        .config-toggle:hover {
+            background: var(--accent-green);
+            color: var(--bg-dark);
+            box-shadow: 0 0 20px var(--glow);
+        }
+
+        .real-time-indicator {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: var(--bg-panel);
+            padding: 10px 15px;
+            border: 1px solid var(--accent-green);
+            box-shadow: 0 0 15px var(--glow);
+        }
+
+        .status-indicator {
+            width: 10px;
+            height: 10px;
+            background: var(--accent-green);
+            display: inline-block;
+            animation: matrixBlink 1s infinite;
+            box-shadow: 0 0 10px var(--glow);
+        }
+
+        @keyframes matrixBlink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0.3; }
+        }
+
+        /* Dashboard Grid */
+        .dashboard-container {
+            padding: 25px;
+            max-width: 1800px;
+            margin: 0 auto;
+        }
+
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            grid-template-rows: auto auto auto;
+            gap: 25px;
+            margin-top: 25px;
+        }
+
+        .panel {
+            background: var(--bg-card);
+            border: 1px solid var(--accent-green);
+            padding: 20px;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 0 15px var(--glow);
+            transition: all 0.3s ease;
+        }
+
+        .panel::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: var(--accent-green);
+            opacity: 0.8;
+        }
+
+        .panel:hover {
+            box-shadow: 0 0 25px var(--glow);
+            border-color: var(--accent-bright);
+        }
+
+        .panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid var(--accent-dim);
+        }
+
+        .panel-title {
+            color: var(--text-primary);
+            font-weight: bold;
+            text-transform: uppercase;
+            font-size: 14px;
+            letter-spacing: 2px;
+            text-shadow: 0 0 10px var(--glow);
+        }
+
+        .panel-count {
+            background: var(--accent-green);
+            color: var(--bg-dark);
+            padding: 4px 10px;
+            font-size: 11px;
+            font-weight: bold;
+            text-transform: uppercase;
+            box-shadow: 0 0 10px var(--glow);
+        }
+
+        /* Signals Panel */
+        .signals-panel {
+            grid-column: 1 / 3;
+            grid-row: 1;
+        }
+
+        .signal-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 0;
+            border-bottom: 1px solid var(--accent-dim);
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .signal-item::before {
+            content: '>';
+            position: absolute;
+            left: -15px;
+            color: var(--accent-green);
+            opacity: 0;
+            transition: all 0.3s ease;
+        }
+
+        .signal-item:hover {
+            background: rgba(0, 255, 0, 0.05);
+            padding-left: 10px;
+        }
+
+        .signal-item:hover::before {
+            opacity: 1;
+            left: -10px;
+        }
+
+        .signal-symbol {
+            font-weight: bold;
+            color: var(--text-primary);
+            font-size: 16px;
+            text-shadow: 0 0 5px var(--glow);
+        }
+
+        .signal-type {
+            margin-left: 15px;
+            font-size: 11px;
+            text-transform: uppercase;
+            padding: 3px 8px;
+            font-weight: bold;
+            border: 1px solid;
+        }
+
+        .signal-score {
+            font-weight: bold;
+            font-size: 18px;
+            text-shadow: 0 0 10px currentColor;
+        }
+
+        .score-bullish { 
+            color: var(--bullish);
+        }
+        .score-bearish { 
+            color: var(--bearish);
+        }
+        .score-neutral { 
+            color: var(--neutral);
+        }
+
+        .signal-type.score-bullish {
+            background: rgba(0, 255, 0, 0.1);
+            border-color: var(--bullish);
+            color: var(--bullish);
+        }
+        .signal-type.score-bearish {
+            background: rgba(255, 0, 0, 0.1);
+            border-color: var(--bearish);
+            color: var(--bearish);
+        }
+        .signal-type.score-neutral {
+            background: rgba(255, 255, 0, 0.1);
+            border-color: var(--neutral);
+            color: var(--neutral);
+        }
+
+        .signal-time {
+            font-size: 11px;
+            color: var(--text-secondary);
+            margin-left: 15px;
+        }
+
+        /* Alpha Panel */
+        .alpha-panel {
+            grid-column: 3;
+            grid-row: 1 / 3;
+        }
+
+        .alpha-item {
+            background: var(--bg-panel);
+            border-left: 3px solid var(--accent-green);
+            padding: 15px;
+            margin: 15px 0;
+            position: relative;
+            transition: all 0.3s ease;
+            box-shadow: 0 0 10px rgba(0, 255, 0, 0.2);
+        }
+
+        .alpha-item:hover {
+            transform: translateX(5px);
+            box-shadow: 0 0 20px rgba(0, 255, 0, 0.4);
+        }
+
+        .alpha-symbol {
+            font-weight: bold;
+            color: var(--text-primary);
+            font-size: 16px;
+            text-shadow: 0 0 10px var(--glow);
+        }
+
+        .alpha-pattern {
+            color: var(--accent-bright);
+            font-size: 12px;
+            margin: 5px 0;
+            text-transform: uppercase;
+        }
+
+        .alpha-confidence, .alpha-potential {
+            font-size: 11px;
+            color: var(--text-secondary);
+            margin: 3px 0;
+        }
+
+        /* Market Panel */
+        .market-panel {
+            grid-column: 1 / 3;
+            grid-row: 2;
+        }
+
+        .market-metrics {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
+        }
+
+        .metric-card {
+            background: var(--bg-panel);
+            padding: 20px;
+            text-align: center;
+            border: 1px solid var(--accent-green);
+            transition: all 0.3s ease;
+            position: relative;
+            box-shadow: 0 0 10px rgba(0, 255, 0, 0.2);
+        }
+
+        .metric-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 0;
+            height: 2px;
+            background: var(--accent-bright);
+            transition: width 0.3s ease;
+        }
+
+        .metric-card:hover::before {
+            width: 100%;
+        }
+
+        .metric-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 0 20px rgba(0, 255, 0, 0.4);
+        }
+
+        .metric-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: var(--text-primary);
+            text-shadow: 0 0 10px var(--glow);
+        }
+
+        .metric-label {
+            font-size: 11px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            margin-top: 8px;
+        }
+
+        /* Alerts Panel */
+        .alerts-panel {
+            grid-column: 1 / 4;
+            grid-row: 3;
+            max-height: 350px;
+            overflow-y: auto;
+        }
+
+        .alerts-panel::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .alerts-panel::-webkit-scrollbar-track {
+            background: var(--bg-panel);
+        }
+
+        .alerts-panel::-webkit-scrollbar-thumb {
+            background: var(--accent-green);
+            box-shadow: 0 0 10px var(--glow);
+        }
+
+        .alert-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 15px;
+            margin: 8px 0;
+            transition: all 0.3s ease;
+            position: relative;
+            border-left: 3px solid transparent;
+        }
+
+        .alert-priority-high { 
+            background: rgba(255, 0, 0, 0.1);
+            border-left-color: var(--bearish);
+        }
+        .alert-priority-medium { 
+            background: rgba(255, 255, 0, 0.1);
+            border-left-color: var(--neutral);
+        }
+        .alert-priority-low { 
+            background: rgba(0, 255, 0, 0.1);
+            border-left-color: var(--bullish);
+        }
+
+        .alert-item:hover {
+            transform: translateX(10px);
+            box-shadow: 0 0 15px rgba(0, 255, 0, 0.3);
+        }
+
+        .alert-time {
+            font-size: 11px;
+            color: var(--text-secondary);
+        }
+
+        /* Config Panel */
+        .config-panel {
+            position: fixed;
+            top: 0;
+            right: -450px;
+            width: 450px;
+            height: 100vh;
+            background: var(--bg-card);
+            border-left: 2px solid var(--accent-green);
+            transition: right 0.4s ease;
+            z-index: 1000;
+            overflow-y: auto;
+            padding: 25px;
+            box-shadow: -10px 0 30px rgba(0, 255, 0, 0.3);
+        }
+
+        .config-panel.open {
+            right: 0;
+        }
+
+        .config-section {
+            margin: 25px 0;
+            padding: 20px;
+            background: var(--bg-panel);
+            border: 1px solid var(--accent-green);
+            position: relative;
+        }
+
+        .config-section::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: var(--accent-green);
+            opacity: 0.6;
+        }
+
+        .config-section h3 {
+            color: var(--text-primary);
+            margin-bottom: 15px;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            text-shadow: 0 0 10px var(--glow);
+        }
+
+        .config-input {
+            width: 100%;
+            padding: 12px;
+            background: var(--bg-dark);
+            border: 1px solid var(--accent-green);
+            color: var(--text-primary);
+            margin: 8px 0;
+            transition: all 0.3s ease;
+            font-family: inherit;
+        }
+
+        .config-input:focus {
+            outline: none;
+            border-color: var(--accent-bright);
+            box-shadow: 0 0 15px rgba(0, 255, 0, 0.3);
+        }
+
+        .config-input label {
+            display: block;
+            margin: 15px 0 8px 0;
+            color: var(--text-secondary);
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .save-btn {
+            background: var(--accent-green);
+            color: var(--bg-dark);
+            font-weight: bold;
+        }
+
+        .reset-btn {
+            background: transparent;
+            color: var(--accent-green);
+            font-weight: bold;
+        }
+
+        .save-btn:hover, .reset-btn:hover {
+            box-shadow: 0 0 20px var(--glow);
+        }
+
+        /* Responsive Design */
+        @media (max-width: 1200px) {
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+                grid-template-rows: auto auto auto auto;
+            }
+            
+            .signals-panel {
+                grid-column: 1;
+                grid-row: 1;
+            }
+            
+            .alpha-panel {
+                grid-column: 1;
+                grid-row: 2;
+            }
+            
+            .market-panel {
+                grid-column: 1;
+                grid-row: 3;
+            }
+            
+            .alerts-panel {
+                grid-column: 1;
+                grid-row: 4;
+            }
+        }
+
+        /* Demo Badge */
+        .demo-badge {
+            background: var(--accent-green);
+            color: var(--bg-dark);
+            padding: 3px 8px;
+            font-size: 10px;
+            text-transform: uppercase;
+            margin-left: 10px;
+            font-weight: bold;
+        }
+
+        /* Matrix characters for background */
+        .matrix-char {
+            position: absolute;
+            color: var(--accent-green);
+            font-size: 12px;
+            opacity: 0.3;
+            animation: matrixFade 3s infinite;
+        }
+
+        @keyframes matrixFade {
+            0%, 100% { opacity: 0.1; }
+            50% { opacity: 0.8; }
+        }
+    </style>
+</head>
+<body>
+    <!-- Matrix Rain Background -->
+    <div id="matrix-bg"></div>
+    
+    <div class="dashboard-container">
+        <!-- Header -->
+        <header class="header">
+            <div>
+                <h1 class="terminal-title glitch-text">MATRIX TRADING SYSTEM</h1>
+                <div class="subtitle">Neural Network Financial Interface</div>
+            </div>
+            <div class="header-controls">
+                <button class="config-toggle" onclick="toggleConfig()">CONFIGURE</button>
+                <div class="real-time-indicator">
+                    <span class="status-indicator"></span>
+                    <span style="font-weight: bold; text-transform: uppercase;">CONNECTED</span>
+                </div>
+            </div>
+        </header>
+        
+        <!-- Main Dashboard Grid -->
+        <div class="dashboard-grid">
+            <!-- Signals Panel -->
+            <div class="panel signals-panel">
+                <div class="panel-header">
+                    <span class="panel-title">ACTIVE SIGNALS</span>
+                    <span class="panel-count">8 LIVE <span class="demo-badge">MATRIX</span></span>
+                </div>
+                <div>
+                    <div class="signal-item">
+                        <div>
+                            <span class="signal-symbol">BTC/USDT</span>
+                            <span class="signal-type score-bullish">LONG</span>
+                        </div>
+                        <div>
+                            <span class="signal-score score-bullish">89.7</span>
+                            <span class="signal-time">1m 23s</span>
+                        </div>
+                    </div>
+                    <div class="signal-item">
+                        <div>
+                            <span class="signal-symbol">ETH/USDT</span>
+                            <span class="signal-type score-neutral">WATCH</span>
+                        </div>
+                        <div>
+                            <span class="signal-score score-neutral">67.4</span>
+                            <span class="signal-time">3m 45s</span>
+                        </div>
+                    </div>
+                    <div class="signal-item">
+                        <div>
+                            <span class="signal-symbol">SOL/USDT</span>
+                            <span class="signal-type score-bullish">LONG</span>
+                        </div>
+                        <div>
+                            <span class="signal-score score-bullish">82.1</span>
+                            <span class="signal-time">5m 12s</span>
+                        </div>
+                    </div>
+                    <div class="signal-item">
+                        <div>
+                            <span class="signal-symbol">XRP/USDT</span>
+                            <span class="signal-type score-bearish">SHORT</span>
+                        </div>
+                        <div>
+                            <span class="signal-score score-bearish">28.9</span>
+                            <span class="signal-time">8m 07s</span>
+                        </div>
+                    </div>
+                    <div class="signal-item">
+                        <div>
+                            <span class="signal-symbol">ADA/USDT</span>
+                            <span class="signal-type score-neutral">WATCH</span>
+                        </div>
+                        <div>
+                            <span class="signal-score score-neutral">61.3</span>
+                            <span class="signal-time">12m 34s</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Alpha Opportunities Panel -->
+            <div class="panel alpha-panel">
+                <div class="panel-header">
+                    <span class="panel-title">ALPHA DETECTION</span>
+                    <span class="panel-count">4 TARGETS</span>
+                </div>
+                <div>
+                    <div class="alpha-item">
+                        <div class="alpha-symbol">AVAX/USDT</div>
+                        <div class="alpha-pattern">Momentum Breakout</div>
+                        <div class="alpha-confidence">Probability: 91.5%</div>
+                        <div class="alpha-potential">Expected: +14.7%</div>
+                    </div>
+                    <div class="alpha-item">
+                        <div class="alpha-symbol">MATIC/USDT</div>
+                        <div class="alpha-pattern">Volume Anomaly</div>
+                        <div class="alpha-confidence">Probability: 83.2%</div>
+                        <div class="alpha-potential">Expected: +9.3%</div>
+                    </div>
+                    <div class="alpha-item">
+                        <div class="alpha-symbol">LINK/USDT</div>
+                        <div class="alpha-pattern">Support Bounce</div>
+                        <div class="alpha-confidence">Probability: 76.8%</div>
+                        <div class="alpha-potential">Expected: +11.9%</div>
+                    </div>
+                    <div class="alpha-item">
+                        <div class="alpha-symbol">DOT/USDT</div>
+                        <div class="alpha-pattern">Whale Activity</div>
+                        <div class="alpha-confidence">Probability: 88.4%</div>
+                        <div class="alpha-potential">Expected: +16.2%</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Market Overview Panel -->
+            <div class="panel market-panel">
+                <div class="panel-header">
+                    <span class="panel-title">MARKET OVERVIEW</span>
+                    <span style="color: var(--bullish); font-weight: bold;">BULLISH MODE</span>
+                </div>
+                <div class="market-metrics">
+                    <div class="metric-card">
+                        <div class="metric-value">52</div>
+                        <div class="metric-label">Active Pairs</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value">3.2B</div>
+                        <div class="metric-label">Volume 24H</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value">1.4T</div>
+                        <div class="metric-label">Total MCap</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value">2.8%</div>
+                        <div class="metric-label">Volatility</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Alerts Panel -->
+            <div class="panel alerts-panel">
+                <div class="panel-header">
+                    <span class="panel-title">SYSTEM ALERTS</span>
+                    <span class="panel-count">15 TODAY</span>
+                </div>
+                <div>
+                    <div class="alert-item alert-priority-high">
+                        <div>
+                            <strong>SIGNAL</strong>: High-probability long signal detected for BTC/USDT
+                        </div>
+                        <div class="alert-time">1m 23s ago</div>
+                    </div>
+                    <div class="alert-item alert-priority-medium">
+                        <div>
+                            <strong>ALPHA</strong>: Momentum breakout pattern identified in AVAX/USDT
+                        </div>
+                        <div class="alert-time">4m 12s ago</div>
+                    </div>
+                    <div class="alert-item alert-priority-low">
+                        <div>
+                            <strong>SYSTEM</strong>: Neural network analysis completed successfully
+                        </div>
+                        <div class="alert-time">8m 07s ago</div>
+                    </div>
+                    <div class="alert-item alert-priority-medium">
+                        <div>
+                            <strong>WHALE</strong>: Large transaction detected in DOT/USDT market
+                        </div>
+                        <div class="alert-time">12m 34s ago</div>
+                    </div>
+                    <div class="alert-item alert-priority-high">
+                        <div>
+                            <strong>SIGNAL</strong>: Short signal triggered for XRP/USDT position
+                        </div>
+                        <div class="alert-time">18m 55s ago</div>
+                    </div>
+                    <div class="alert-item alert-priority-low">
+                        <div>
+                            <strong>SCAN</strong>: Matrix analysis completed for 47 trading pairs
+                        </div>
+                        <div class="alert-time">25m 12s ago</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Configuration Panel -->
+        <div class="config-panel" id="config-panel">
+            <div class="panel-header">
+                <span class="panel-title">SYSTEM CONFIG</span>
+                <button onclick="toggleConfig()" style="background: none; border: none; color: var(--text-primary); cursor: pointer; font-size: 20px;">X</button>
+            </div>
+            
+            <div class="config-section">
+                <h3>MONITORING PARAMETERS</h3>
+                <label>Scan Frequency (seconds):</label>
+                <input type="number" class="config-input" value="30">
+                
+                <label>Alert Threshold:</label>
+                <input type="number" class="config-input" value="5">
+                
+                <label>Cooldown Period (minutes):</label>
+                <input type="number" class="config-input" value="45">
+            </div>
+            
+            <div class="config-section">
+                <h3>SIGNAL FILTERS</h3>
+                <label>Minimum Score:</label>
+                <input type="number" class="config-input" value="70">
+                
+                <label>Confidence Level:</label>
+                <input type="number" class="config-input" value="80">
+            </div>
+            
+            <div class="config-section">
+                <h3>ALPHA DETECTION</h3>
+                <label>Probability Threshold:</label>
+                <input type="number" class="config-input" value="75">
+                
+                <label>Risk Tolerance:</label>
+                <select class="config-input">
+                    <option value="Conservative">Conservative</option>
+                    <option value="Moderate" selected>Moderate</option>
+                    <option value="Aggressive">Aggressive</option>
+                </select>
+            </div>
+            
+            <div class="config-section">
+                <button class="config-input save-btn">SAVE CONFIGURATION</button>
+                <button class="config-input reset-btn">RESET TO DEFAULTS</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function toggleConfig() {
+            const panel = document.getElementById('config-panel');
+            panel.classList.toggle('open');
+        }
+
+        // Create Matrix Rain Effect
+        function createMatrixRain() {
+            const matrixBg = document.getElementById('matrix-bg');
+            const chars = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz!@#$%^&*()';
+            const columnCount = Math.floor(window.innerWidth / 20);
+            
+            for (let i = 0; i < columnCount; i++) {
+                const column = document.createElement('div');
+                column.className = 'matrix-column';
+                column.style.left = `${i * 20}px`;
+                column.style.animationDuration = `${Math.random() * 3 + 2}s`;
+                column.style.animationDelay = `${Math.random() * 2}s`;
+                
+                let columnText = '';
+                for (let j = 0; j < 50; j++) {
+                    columnText += chars[Math.floor(Math.random() * chars.length)] + '<br>';
+                }
+                column.innerHTML = columnText;
+                
+                matrixBg.appendChild(column);
+            }
+        }
+
+        // Update timestamps
+        function updateTimestamps() {
+            const timeElements = document.querySelectorAll('.signal-time, .alert-time');
+            timeElements.forEach(el => {
+                const currentText = el.textContent;
+                if (currentText.includes('m ')) {
+                    const match = currentText.match(/(\d+)m (\d+)s/);
+                    if (match) {
+                        let minutes = parseInt(match[1]);
+                        let seconds = parseInt(match[2]) + 1;
+                        if (seconds >= 60) {
+                            minutes += 1;
+                            seconds = 0;
+                        }
+                        el.textContent = `${minutes}m ${seconds.toString().padStart(2, '0')}s`;
+                    }
+                } else if (currentText.includes('ago')) {
+                    const match = currentText.match(/(\d+)m (\d+)s ago/);
+                    if (match) {
+                        let minutes = parseInt(match[1]);
+                        let seconds = parseInt(match[2]) + 1;
+                        if (seconds >= 60) {
+                            minutes += 1;
+                            seconds = 0;
+                        }
+                        el.textContent = `${minutes}m ${seconds.toString().padStart(2, '0')}s ago`;
+                    }
+                }
+            });
+        }
+
+        // Matrix signal simulation
+        function simulateSignalUpdate() {
+            if (Math.random() > 0.8) {
+                const symbols = ['BNB/USDT', 'UNI/USDT', 'DOGE/USDT'];
+                const actions = ['LONG', 'SHORT', 'WATCH'];
+                const symbol = symbols[Math.floor(Math.random() * symbols.length)];
+                const action = actions[Math.floor(Math.random() * actions.length)];
+                console.log(`> Matrix Signal: ${symbol} - ${action}`);
+                
+                // Add matrix flash effect
+                document.body.style.backgroundColor = '#002200';
+                setTimeout(() => {
+                    document.body.style.backgroundColor = '#000000';
+                }, 200);
+            }
+        }
+
+        // Add random matrix characters
+        function addMatrixChars() {
+            const chars = '01';
+            const container = document.body;
+            
+            for (let i = 0; i < 5; i++) {
+                const char = document.createElement('div');
+                char.className = 'matrix-char';
+                char.textContent = chars[Math.floor(Math.random() * chars.length)];
+                char.style.left = Math.random() * window.innerWidth + 'px';
+                char.style.top = Math.random() * window.innerHeight + 'px';
+                container.appendChild(char);
+                
+                setTimeout(() => char.remove(), 3000);
+            }
+        }
+
+        // Initialize
+        createMatrixRain();
+        setInterval(updateTimestamps, 1000);
+        setInterval(simulateSignalUpdate, 15000);
+        setInterval(addMatrixChars, 2000);
+
+        // Matrix typing sound effect (visual)
+        document.addEventListener('keydown', function() {
+            document.body.style.backgroundColor = '#001100';
+            setTimeout(() => {
+                document.body.style.backgroundColor = '#000000';
+            }, 50);
+        });
+    </script>
+</body>
+</html> 

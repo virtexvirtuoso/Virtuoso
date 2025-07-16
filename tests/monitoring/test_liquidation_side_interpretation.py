@@ -104,7 +104,7 @@ class LiquidationSideTester:
         
         class MockAlertManager:
             def __init__(self):
-                self.liquidation_threshold = 100000
+                self.liquidation_threshold = 250000
                 self.liquidation_cooldown = 0  # Set to 0 to avoid cooldown issues
                 self.logger = logger
                 self.messages = []

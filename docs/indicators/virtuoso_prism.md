@@ -26,6 +26,8 @@
 ## Introduction
 This document consolidates all aspects of a modular trading analysis system that integrates technical indicators, volume, order flow, sentiment, orderbook, and price structure into a single confluence model. Each component is scored and weighted to deliver a unified, high-confidence trading signal.
 
+**Current Implementation**: Optimized for **intraday crypto scalping** with 50% weight on leading indicators (orderflow + orderbook) for maximum responsiveness to real-time market microstructure, while maintaining robust signal validation through confirmatory and supporting indicators.
+
 ---
 
 ## 1. System Architecture Overview
@@ -59,6 +61,22 @@ graph TD
 
 ## 2. Component Breakdown & Weighting
 
+### Intraday Crypto Scalping Configuration (Current Implementation)
+
+| Component       | Weight | Classification | Subcomponents                                                                                                                                           |
+|-----------------|--------|----------------|---------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Orderflow**   | **25%** | **Leading**    | CVD (25%), Trade Flow (20%), Imbalance (15%), Open Interest (15%), Liquidity (15%), Order Block (10%)                                                   |
+| **Orderbook**   | **25%** | **Leading**    | Imbalance (25%), MPI (20%), Depth (20%), Liquidity (10%), Absorption (10%), DOM Momentum (5%), Spread (5%), OBPS (5%)                                   |
+| **Volume**      | **16%** | **Confirmatory** | Volume Delta (25%), ADL (20%), CMF (15%), Relative Volume (20%), OBV (20%)                                                                               |
+| **Price Structure** | **16%** | **Quasi-Leading** | Support/Resistance (20%), Order Block (20%), Trend Position (20%), Swing Structure (20%), Composite Value (5%), Fair Value Gaps (10%), BOS/CHoCH (5%)     |
+| **Technical**   | **11%** | **Lagging**    | RSI (20%), MACD (15%), AO (20%), ATR (15%), CCI (15%), Williams %R (15%)                                                                                |
+| **Sentiment**   | **7%**  | **Lagging**    | Funding Rate (20%), Long/Short Ratio (20%), Liquidations (20%), Volume Sentiment (20%), Market Mood (20%)                                                |
+
+**Total Distribution**: 50% Leading + 32% Confirmatory + 18% Supporting
+
+### Alternative Market Configurations
+
+#### Traditional Balanced Configuration
 | Component       | Weight | Subcomponents                                                                                                                                           |
 |-----------------|--------|---------------------------------------------------------------------------------------------------------------------------------------------------------|
 | Technical       | 20%    | RSI (20%), MACD (15%), AO (20%), ATR (15%), CCI (15%), Williams %R (15%)                                                                                |
@@ -66,7 +84,7 @@ graph TD
 | Orderflow       | 15%    | CVD (25%), Trade Flow (20%), Imbalance (15%), Open Interest (15%), Liquidity (15%), Order Block (10%)                                                   |
 | Sentiment       | 15%    | Funding Rate (20%), Long/Short Ratio (20%), Liquidations (20%), Volume Sentiment (20%), Market Mood (20%)                                                |
 | Orderbook       | 15%    | Imbalance (25%), MPI (20%), Depth (20%), Liquidity (10%), Absorption (10%), DOM Momentum (5%), Spread (5%), OBPS (5%)                                   |
-| Price Structure | 15%    | Order Block (15%), Volume Profile (25%), VWAP (20%), Composite Value (15%), Support/Resistance (10%), Market Structure (15%)                             |
+| Price Structure | 15%    | Support/Resistance (20%), Order Block (20%), Trend Position (20%), Swing Structure (20%), Composite Value (5%), Fair Value Gaps (10%), BOS/CHoCH (5%)     |
 
 ---
 
@@ -1500,83 +1518,17 @@ def analyze_orderblock_zones(ohlcv_data: Dict[str, pd.DataFrame]) -> float:
                           weights=[0.4, 0.3, 0.2, 0.1]))
 ```
 
-#### Volume Profile Analysis (25% weight)
-```python
-def calculate_volume_profile(df: pd.DataFrame) -> float:
-    """
-    Calculate volume profile score.
-    
-    1. Create volume profile:
-       - Calculate adaptive bin size based on volatility
-       - Create price levels with volume
-       - Identify POC and value area (70% of volume)
-       
-    2. Calculate node strength:
-       strength = volume_at_node / total_volume
-       
-    3. Calculate position score:
-       - Distance from POC
-       - Position in value area
-       - Node strength at current price
-       
-    4. Apply acceptance/rejection bonus:
-       +/-10 points based on price acceptance
-    """
-    def calculate_nodes(data):
-        # Calculate adaptive bin size
-        volatility = (data['high'] - data['low']).std()
-        bin_count = int(100 * np.sqrt(len(data) / volatility))
-        
-        # Create volume profile
-        bins = pd.cut(data['close'], bin_count)
-        profile = data.groupby(bins)['volume'].sum()
-        
-        # Find POC and value area
-        poc_idx = profile.idxmax()
-        total_vol = profile.sum()
-        
-        # Calculate value area
-        sorted_vol = profile.sort_values(ascending=False)
-        cumsum_vol = sorted_vol.cumsum()
-        value_area = sorted_vol[cumsum_vol <= total_vol * 0.7].index
-        
-        return {
-            'poc': poc_idx.mid,
-            'value_area': [
-                value_area.min().left,
-                value_area.max().right
-            ],
-            'profile': profile
-        }
-        
-    nodes = calculate_nodes(df)
-    current_price = df['close'].iloc[-1]
-    
-    # Calculate base score from POC distance
-    poc_distance = abs(current_price - nodes['poc']) / current_price
-    score = 50 * (1 + np.exp(-5 * poc_distance))
-    
-    # Adjust for value area position
-    if nodes['value_area'][0] <= current_price <= nodes['value_area'][1]:
-        score += 20
-    else:
-        score -= 20
-        
-    # Add node strength component
-    current_node = nodes['profile'].iloc[
-        np.searchsorted(nodes['profile'].index, current_price)
-    ]
-    node_strength = current_node / nodes['profile'].max()
-    score += 10 * node_strength
-    
-    return float(np.clip(score, 0, 100))
-```
+#### Volume Profile Analysis (Moved to Volume Indicators)
 
-#### Market Structure Analysis (15% weight)
+> **Note**: Volume Profile and VWAP analysis have been moved to the Volume Indicators module for better logical organization. Volume-based analysis is now consolidated in the volume indicators system.
+> 
+> See: [Volume Indicators Documentation](volume_indicators.md) for volume profile implementation details.
+
+#### Swing Structure Analysis (20% weight)
 ```python
-def analyze_market_structure(ohlcv_data: Dict[str, pd.DataFrame]) -> float:
+def analyze_swing_structure(ohlcv_data: Dict[str, pd.DataFrame]) -> float:
     """
-    Calculate market structure score.
+    Calculate swing structure score.
     
     1. Identify swing points:
        - Find local highs/lows using adaptive window
@@ -1731,13 +1683,14 @@ def analyze_confluence(market_data: Dict[str, Any]) -> Dict[str, Any]:
     # Each component has a predefined weight based on its reliability
     # and importance in the overall market analysis
     # These weights should sum to 1.0 (100%)
+    # Current: Intraday Crypto Scalping Configuration
     weights = {
-        'technical': 0.20,     # Technical indicators: reliable but lagging
-        'volume': 0.20,        # Volume: essential for confirming price moves
-        'orderflow': 0.25,     # Order flow: leading indicator of market intent
-        'sentiment': 0.15,     # Sentiment: contrarian indicator at extremes
-        'orderbook': 0.20,     # Order book: immediate market structure
-        'price_structure': 0.20  # Price structure: key levels and patterns
+        'orderflow': 0.25,       # Order flow: leading indicator of market intent (25%)
+        'orderbook': 0.25,       # Order book: immediate market structure (25%)
+        'volume': 0.16,          # Volume: confirmatory for move validation (16%)
+        'price_structure': 0.16, # Price structure: quasi-leading levels (16%)
+        'technical': 0.11,       # Technical indicators: lagging confirmation (11%)
+        'sentiment': 0.07        # Sentiment: minimal weight for noise reduction (7%)
     }
     
     # Normalize weights in case they don't sum to exactly 1.0
@@ -2014,16 +1967,18 @@ def handle_analysis_errors(
 
 ## 7. Configuration Template
 
+### Intraday Crypto Scalping Configuration (Current)
+
 ```python
-config = {
-    # Component weights
+scalping_config = {
+    # Component weights - Optimized for intraday crypto scalping
     'weights': {
-        'technical': 0.20,
-        'volume': 0.20,
-        'orderflow': 0.25,
-        'sentiment': 0.15,
-        'orderbook': 0.20,
-        'price_structure': 0.20
+        'orderflow': 0.25,       # Leading: Real-time order execution pressure
+        'orderbook': 0.25,       # Leading: Bid/ask imbalances and depth shifts
+        'volume': 0.16,          # Confirmatory: Validates move strength
+        'price_structure': 0.16, # Quasi-Leading: Support/resistance levels
+        'technical': 0.11,       # Lagging: Traditional indicators for confirmation
+        'sentiment': 0.07        # Lagging: Market mood and positioning data
     },
     
     # Signal thresholds
@@ -2041,6 +1996,45 @@ config = {
         'min_component_reliability': 0.7,
         'min_signal_confidence': 0.6,
         'time_decay_factor': 0.94
+    },
+    
+    # Risk parameters - Adjusted for scalping
+    'risk': {
+        'max_position_size': 0.05,      # Reduced for scalping volatility
+        'max_risk_per_trade': 0.01,     # Conservative risk per trade
+        'max_correlation': 0.6,         # Lower correlation threshold
+        'stop_loss_atr_multiple': 1.5   # Tighter stops for scalping
+    },
+    
+    # Timeframe weights - Emphasizing shorter timeframes
+    'timeframes': {
+        'base': 0.5,    # 1-minute (increased for scalping)
+        'ltf': 0.3,     # 5-minute
+        'mtf': 0.15,    # 30-minute (reduced)
+        'htf': 0.05     # 4-hour (minimal for scalping)
+    },
+    
+    # Performance monitoring - Optimized for high-frequency
+    'monitoring': {
+        'max_calc_time': 0.5,           # Faster processing required
+        'min_reliability': 0.75,        # Higher reliability threshold
+        'update_interval': 0.5,         # More frequent updates
+        'health_check_interval': 30     # More frequent health checks
+    }
+}
+
+### Traditional Balanced Configuration
+
+```python
+balanced_config = {
+    # Component weights - Traditional balanced approach
+    'weights': {
+        'technical': 0.20,
+        'volume': 0.20,
+        'orderflow': 0.15,
+        'sentiment': 0.15,
+        'orderbook': 0.15,
+        'price_structure': 0.15
     },
     
     # Risk parameters

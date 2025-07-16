@@ -1,15 +1,17 @@
 import logging
+import traceback
 from typing import Dict, Any, List, Optional, Tuple
 import pandas as pd
 import numpy as np
+from datetime import datetime
 from src.utils.error_handling import handle_indicator_error
 import time
 from src.core.logger import Logger
-from .base_indicator import BaseIndicator
+from .base_indicator import BaseIndicator, DebugLevel, debug_method
+from .debug_template import DebugLoggingMixin
 from src.core.analysis.indicator_utils import log_score_contributions, log_component_analysis, log_final_score, log_calculation_details
-import traceback
 
-class SentimentIndicators(BaseIndicator):
+class SentimentIndicators(BaseIndicator, DebugLoggingMixin):
     """
     A class to calculate various sentiment indicators based on market data.
     Each indicator provides a score from 1 (most bearish) to 100 (most bullish).
@@ -2429,3 +2431,48 @@ class SentimentIndicators(BaseIndicator):
         except Exception as e:
             self.logger.error(f"Error calculating market activity score: {str(e)}")
             return 50.0
+
+    def _log_component_specific_alerts(self, component_scores: Dict[str, float], 
+                                     alerts: List[str], indicator_name: str) -> None:
+        """Log Sentiment Indicators specific alerts."""
+        # Funding rate alerts
+        funding_score = component_scores.get('funding_rate', 50)
+        if funding_score >= 75:
+            alerts.append("Funding Rate Extremely Bullish - Shorts paying longs heavily")
+        elif funding_score <= 25:
+            alerts.append("Funding Rate Extremely Bearish - Longs paying shorts heavily")
+        
+        # Long/Short ratio alerts
+        lsr_score = component_scores.get('long_short_ratio', 50)
+        if lsr_score >= 80:
+            alerts.append("Long/Short Ratio Extremely Bullish - Heavy long bias")
+        elif lsr_score <= 20:
+            alerts.append("Long/Short Ratio Extremely Bearish - Heavy short bias")
+        
+        # Liquidations alerts
+        liquidations_score = component_scores.get('liquidations', 50)
+        if liquidations_score >= 75:
+            alerts.append("Liquidations Bullish - Shorts getting liquidated")
+        elif liquidations_score <= 25:
+            alerts.append("Liquidations Bearish - Longs getting liquidated")
+        
+        # Market mood alerts
+        mood_score = component_scores.get('market_mood', 50)
+        if mood_score >= 75:
+            alerts.append("Market Mood Extremely Positive - Strong bullish sentiment")
+        elif mood_score <= 25:
+            alerts.append("Market Mood Extremely Negative - Strong bearish sentiment")
+        
+        # Volume sentiment alerts
+        volume_score = component_scores.get('volume_sentiment', 50)
+        if volume_score >= 75:
+            alerts.append("Volume Sentiment Bullish - Strong buying volume")
+        elif volume_score <= 25:
+            alerts.append("Volume Sentiment Bearish - Strong selling volume")
+        
+        # Risk score alerts
+        risk_score = component_scores.get('risk', 50)
+        if risk_score >= 75:
+            alerts.append("✅ Risk Environment Favorable - Low risk conditions")
+        elif risk_score <= 25:
+            alerts.append("⚠️ Risk Environment Unfavorable - High risk conditions")

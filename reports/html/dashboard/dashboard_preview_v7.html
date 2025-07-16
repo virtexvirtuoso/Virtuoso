@@ -1,0 +1,1064 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Virtuoso Trading Dashboard V7 - Batcave Command</title>
+    <style>
+        /* Batman Batcave Theme */
+        :root {
+            --bg-dark: #0a0a0f;
+            --bg-cave: #1a1a2e;
+            --bg-monitor: #16213e;
+            --bg-panel: #0e3460;
+            --text-primary: #e1e5ff;
+            --text-secondary: #9da8d4;
+            --bat-blue: #1e3a8a;
+            --bat-yellow: #fbbf24;
+            --bat-cyan: #06d6a0;
+            --dark-blue: #0f172a;
+            --electric-blue: #3b82f6;
+            --monitor-glow: #3b82f6;
+            --warning-yellow: #fbbf24;
+            --danger-red: #ef4444;
+            --success-green: #06d6a0;
+            --border-blue: #1e40af;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', 'Arial', sans-serif;
+        }
+
+        body {
+            background: linear-gradient(135deg, var(--bg-dark) 0%, var(--bg-cave) 50%, var(--dark-blue) 100%);
+            color: var(--text-primary);
+            line-height: 1.6;
+            min-height: 100vh;
+            overflow-x: hidden;
+            position: relative;
+        }
+
+        /* Subtle hexagonal pattern overlay */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: 
+                radial-gradient(circle at 25% 25%, rgba(59, 130, 246, 0.05) 0%, transparent 50%),
+                radial-gradient(circle at 75% 75%, rgba(30, 58, 138, 0.05) 0%, transparent 50%);
+            background-size: 200px 200px;
+            opacity: 0.3;
+            z-index: -1;
+            pointer-events: none;
+        }
+
+        /* Batcave ambient lighting */
+        .ambient-glow {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 200px;
+            background: linear-gradient(to top, rgba(30, 58, 138, 0.1), transparent);
+            z-index: -1;
+            pointer-events: none;
+        }
+
+        /* Header */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 2rem 2.5rem;
+            border-bottom: 2px solid var(--border-blue);
+            background: linear-gradient(135deg, var(--bg-monitor), var(--bg-panel));
+            box-shadow: 
+                0 8px 32px rgba(0, 0, 0, 0.4),
+                inset 0 1px 0 rgba(59, 130, 246, 0.3);
+            position: relative;
+        }
+
+        .header::before {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            background: linear-gradient(90deg, 
+                transparent 0%, 
+                var(--electric-blue) 25%, 
+                var(--bat-cyan) 50%, 
+                var(--electric-blue) 75%, 
+                transparent 100%);
+            animation: batScan 3s ease-in-out infinite;
+        }
+
+        @keyframes batScan {
+            0%, 100% { opacity: 0.3; }
+            50% { opacity: 1; }
+        }
+
+        .terminal-title {
+            font-size: 2.4rem;
+            color: var(--text-primary);
+            margin: 0;
+            text-transform: uppercase;
+            letter-spacing: 3px;
+            font-weight: 300;
+            text-shadow: 
+                0 0 20px var(--monitor-glow),
+                0 0 40px var(--monitor-glow);
+            position: relative;
+        }
+
+        .terminal-title::before {
+            content: '◆';
+            position: absolute;
+            left: -40px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--bat-yellow);
+            font-size: 1.5rem;
+            text-shadow: 0 0 15px var(--bat-yellow);
+        }
+
+        .subtitle {
+            font-size: 0.9rem;
+            color: var(--bat-cyan);
+            margin-top: 8px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            font-weight: 400;
+        }
+
+        .header-controls {
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+        }
+
+        .config-toggle {
+            background: linear-gradient(135deg, var(--bat-blue), var(--bg-panel));
+            border: 1px solid var(--electric-blue);
+            color: var(--text-primary);
+            padding: 0.8rem 1.5rem;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 
+                0 4px 15px rgba(59, 130, 246, 0.2),
+                inset 0 1px 0 rgba(255, 255, 255, 0.1);
+            text-transform: uppercase;
+            font-weight: 500;
+            letter-spacing: 1px;
+            font-family: inherit;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .config-toggle::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(59, 130, 246, 0.3), transparent);
+            transition: left 0.5s ease;
+        }
+
+        .config-toggle:hover::before {
+            left: 100%;
+        }
+
+        .config-toggle:hover {
+            transform: translateY(-2px);
+            box-shadow: 
+                0 8px 25px rgba(59, 130, 246, 0.4),
+                inset 0 1px 0 rgba(255, 255, 255, 0.2);
+            border-color: var(--bat-cyan);
+        }
+
+        .real-time-indicator {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            background: linear-gradient(135deg, var(--bg-panel), var(--bg-monitor));
+            padding: 12px 20px;
+            border: 1px solid var(--border-blue);
+            border-radius: 4px;
+            box-shadow: 
+                inset 0 2px 4px rgba(0, 0, 0, 0.3),
+                0 0 15px rgba(59, 130, 246, 0.2);
+        }
+
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            background: var(--bat-cyan);
+            border-radius: 50%;
+            display: inline-block;
+            animation: batPulse 2s infinite;
+            box-shadow: 
+                0 0 10px var(--bat-cyan),
+                0 0 20px var(--bat-cyan);
+        }
+
+        @keyframes batPulse {
+            0%, 100% { 
+                opacity: 1; 
+                transform: scale(1);
+                box-shadow: 0 0 10px var(--bat-cyan), 0 0 20px var(--bat-cyan);
+            }
+            50% { 
+                opacity: 0.7; 
+                transform: scale(1.1);
+                box-shadow: 0 0 15px var(--bat-cyan), 0 0 30px var(--bat-cyan);
+            }
+        }
+
+        /* Dashboard Grid */
+        .dashboard-container {
+            padding: 30px;
+            max-width: 1800px;
+            margin: 0 auto;
+        }
+
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            grid-template-rows: auto auto auto;
+            gap: 25px;
+            margin-top: 30px;
+        }
+
+        .panel {
+            background: linear-gradient(135deg, var(--bg-monitor), var(--bg-panel));
+            border: 1px solid var(--border-blue);
+            border-radius: 8px;
+            padding: 25px;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 
+                0 8px 32px rgba(0, 0, 0, 0.4),
+                inset 0 1px 0 rgba(59, 130, 246, 0.2);
+            transition: all 0.3s ease;
+        }
+
+        .panel::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, var(--electric-blue), var(--bat-cyan));
+            opacity: 0.8;
+        }
+
+        .panel:hover {
+            transform: translateY(-3px);
+            box-shadow: 
+                0 15px 45px rgba(59, 130, 246, 0.3),
+                inset 0 1px 0 rgba(59, 130, 246, 0.3);
+            border-color: var(--bat-cyan);
+        }
+
+        .panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 25px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid var(--border-blue);
+        }
+
+        .panel-title {
+            color: var(--bat-cyan);
+            font-weight: 500;
+            text-transform: uppercase;
+            font-size: 14px;
+            letter-spacing: 2px;
+            text-shadow: 0 0 10px var(--bat-cyan);
+            position: relative;
+        }
+
+        .panel-title::before {
+            content: '▼';
+            margin-right: 10px;
+            color: var(--bat-yellow);
+            font-size: 12px;
+        }
+
+        .panel-count {
+            background: linear-gradient(135deg, var(--electric-blue), var(--bat-blue));
+            color: var(--text-primary);
+            padding: 6px 14px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            border-radius: 12px;
+            box-shadow: 0 0 15px rgba(59, 130, 246, 0.4);
+            letter-spacing: 1px;
+        }
+
+        /* Signals Panel */
+        .signals-panel {
+            grid-column: 1 / 3;
+            grid-row: 1;
+        }
+
+        .signal-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 0;
+            border-bottom: 1px solid rgba(30, 64, 175, 0.3);
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .signal-item::before {
+            content: '';
+            position: absolute;
+            left: -25px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 8px;
+            height: 8px;
+            background: var(--bat-yellow);
+            border-radius: 50%;
+            opacity: 0;
+            transition: all 0.3s ease;
+            box-shadow: 0 0 10px var(--bat-yellow);
+        }
+
+        .signal-item:hover {
+            background: linear-gradient(90deg, rgba(59, 130, 246, 0.1), transparent);
+            padding-left: 20px;
+            transform: translateX(5px);
+        }
+
+        .signal-item:hover::before {
+            opacity: 1;
+            left: -15px;
+        }
+
+        .signal-symbol {
+            font-weight: 600;
+            color: var(--text-primary);
+            font-size: 16px;
+            text-shadow: 0 0 10px var(--monitor-glow);
+        }
+
+        .signal-type {
+            margin-left: 15px;
+            font-size: 11px;
+            text-transform: uppercase;
+            padding: 4px 12px;
+            font-weight: 600;
+            border: 1px solid;
+            border-radius: 12px;
+            letter-spacing: 1px;
+        }
+
+        .signal-score {
+            font-weight: 700;
+            font-size: 18px;
+            text-shadow: 0 0 15px currentColor;
+        }
+
+        .score-bullish { 
+            color: var(--success-green);
+        }
+        .score-bearish { 
+            color: var(--danger-red);
+        }
+        .score-neutral { 
+            color: var(--warning-yellow);
+        }
+
+        .signal-type.score-bullish {
+            background: rgba(6, 214, 160, 0.15);
+            border-color: var(--success-green);
+            color: var(--success-green);
+        }
+        .signal-type.score-bearish {
+            background: rgba(239, 68, 68, 0.15);
+            border-color: var(--danger-red);
+            color: var(--danger-red);
+        }
+        .signal-type.score-neutral {
+            background: rgba(251, 191, 36, 0.15);
+            border-color: var(--warning-yellow);
+            color: var(--warning-yellow);
+        }
+
+        .signal-time {
+            font-size: 11px;
+            color: var(--text-secondary);
+            margin-left: 15px;
+            font-family: 'Courier New', monospace;
+        }
+
+        /* Alpha Panel */
+        .alpha-panel {
+            grid-column: 3;
+            grid-row: 1 / 3;
+        }
+
+        .alpha-item {
+            background: linear-gradient(135deg, var(--bg-panel), var(--bg-monitor));
+            border-left: 4px solid var(--bat-cyan);
+            padding: 18px;
+            margin: 15px 0;
+            position: relative;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+            border-radius: 6px;
+        }
+
+        .alpha-item::after {
+            content: '';
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            width: 6px;
+            height: 6px;
+            background: var(--bat-yellow);
+            border-radius: 50%;
+            box-shadow: 0 0 8px var(--bat-yellow);
+        }
+
+        .alpha-item:hover {
+            transform: translateX(8px);
+            box-shadow: 0 8px 25px rgba(59, 130, 246, 0.3);
+            border-left-color: var(--bat-yellow);
+        }
+
+        .alpha-symbol {
+            font-weight: 600;
+            color: var(--bat-cyan);
+            font-size: 16px;
+            text-shadow: 0 0 10px var(--bat-cyan);
+        }
+
+        .alpha-pattern {
+            color: var(--bat-yellow);
+            font-size: 12px;
+            margin: 6px 0;
+            text-transform: uppercase;
+            font-weight: 500;
+        }
+
+        .alpha-confidence, .alpha-potential {
+            font-size: 11px;
+            color: var(--text-secondary);
+            margin: 4px 0;
+        }
+
+        /* Market Panel */
+        .market-panel {
+            grid-column: 1 / 3;
+            grid-row: 2;
+        }
+
+        .market-metrics {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
+        }
+
+        .metric-card {
+            background: linear-gradient(135deg, var(--bg-panel), var(--bg-monitor));
+            padding: 25px;
+            text-align: center;
+            border: 1px solid var(--border-blue);
+            border-radius: 8px;
+            transition: all 0.3s ease;
+            position: relative;
+            box-shadow: 
+                0 4px 15px rgba(0, 0, 0, 0.3),
+                inset 0 1px 0 rgba(59, 130, 246, 0.2);
+        }
+
+        .metric-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, var(--electric-blue), transparent);
+            animation: metricScan 4s linear infinite;
+        }
+
+        @keyframes metricScan {
+            0% { transform: translateX(-100%); opacity: 0; }
+            50% { opacity: 1; }
+            100% { transform: translateX(100%); opacity: 0; }
+        }
+
+        .metric-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 
+                0 12px 35px rgba(59, 130, 246, 0.4),
+                inset 0 1px 0 rgba(59, 130, 246, 0.3);
+            border-color: var(--bat-cyan);
+        }
+
+        .metric-value {
+            font-size: 26px;
+            font-weight: 700;
+            color: var(--text-primary);
+            text-shadow: 0 0 15px var(--monitor-glow);
+        }
+
+        .metric-label {
+            font-size: 11px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            margin-top: 10px;
+            letter-spacing: 1px;
+            font-weight: 500;
+        }
+
+        /* Alerts Panel */
+        .alerts-panel {
+            grid-column: 1 / 4;
+            grid-row: 3;
+            max-height: 350px;
+            overflow-y: auto;
+        }
+
+        .alerts-panel::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .alerts-panel::-webkit-scrollbar-track {
+            background: var(--bg-panel);
+            border-radius: 4px;
+        }
+
+        .alerts-panel::-webkit-scrollbar-thumb {
+            background: linear-gradient(180deg, var(--electric-blue), var(--bat-blue));
+            border-radius: 4px;
+            box-shadow: 0 0 10px rgba(59, 130, 246, 0.3);
+        }
+
+        .alert-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 18px;
+            margin: 10px 0;
+            transition: all 0.3s ease;
+            position: relative;
+            border-left: 4px solid transparent;
+            border-radius: 6px;
+        }
+
+        .alert-priority-high { 
+            background: linear-gradient(135deg, rgba(239, 68, 68, 0.15), rgba(239, 68, 68, 0.05));
+            border-left-color: var(--danger-red);
+        }
+        .alert-priority-medium { 
+            background: linear-gradient(135deg, rgba(251, 191, 36, 0.15), rgba(251, 191, 36, 0.05));
+            border-left-color: var(--warning-yellow);
+        }
+        .alert-priority-low { 
+            background: linear-gradient(135deg, rgba(6, 214, 160, 0.15), rgba(6, 214, 160, 0.05));
+            border-left-color: var(--success-green);
+        }
+
+        .alert-item:hover {
+            transform: translateX(12px);
+            box-shadow: 0 6px 20px rgba(59, 130, 246, 0.2);
+        }
+
+        .alert-time {
+            font-size: 11px;
+            color: var(--text-secondary);
+            font-family: 'Courier New', monospace;
+        }
+
+        /* Config Panel */
+        .config-panel {
+            position: fixed;
+            top: 0;
+            right: -450px;
+            width: 450px;
+            height: 100vh;
+            background: linear-gradient(135deg, var(--bg-monitor), var(--bg-panel));
+            border-left: 2px solid var(--border-blue);
+            transition: right 0.4s ease;
+            z-index: 1000;
+            overflow-y: auto;
+            padding: 30px;
+            box-shadow: -15px 0 40px rgba(0, 0, 0, 0.4);
+        }
+
+        .config-panel.open {
+            right: 0;
+        }
+
+        .config-section {
+            margin: 25px 0;
+            padding: 20px;
+            background: linear-gradient(135deg, var(--bg-panel), var(--bg-monitor));
+            border: 1px solid var(--border-blue);
+            border-radius: 8px;
+            position: relative;
+            box-shadow: inset 0 1px 0 rgba(59, 130, 246, 0.2);
+        }
+
+        .config-section::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, var(--electric-blue), var(--bat-cyan));
+            opacity: 0.8;
+            border-radius: 8px 8px 0 0;
+        }
+
+        .config-section h3 {
+            color: var(--bat-cyan);
+            margin-bottom: 15px;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            text-shadow: 0 0 10px var(--bat-cyan);
+            font-weight: 500;
+        }
+
+        .config-input {
+            width: 100%;
+            padding: 12px;
+            background: linear-gradient(135deg, var(--bg-dark), var(--bg-cave));
+            border: 1px solid var(--border-blue);
+            color: var(--text-primary);
+            margin: 8px 0;
+            transition: all 0.3s ease;
+            font-family: inherit;
+            border-radius: 4px;
+            font-weight: 500;
+        }
+
+        .config-input:focus {
+            outline: none;
+            border-color: var(--bat-cyan);
+            box-shadow: 0 0 15px rgba(6, 214, 160, 0.3);
+            background: linear-gradient(135deg, var(--bg-dark), var(--bg-monitor));
+        }
+
+        .config-input label {
+            display: block;
+            margin: 15px 0 8px 0;
+            color: var(--text-secondary);
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: 500;
+        }
+
+        .save-btn {
+            background: linear-gradient(135deg, var(--success-green), var(--bat-cyan));
+            color: var(--bg-dark);
+            font-weight: 600;
+        }
+
+        .reset-btn {
+            background: linear-gradient(135deg, var(--danger-red), #dc2626);
+            color: var(--text-primary);
+            font-weight: 600;
+        }
+
+        .save-btn:hover, .reset-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(59, 130, 246, 0.4);
+        }
+
+        /* Responsive Design */
+        @media (max-width: 1200px) {
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+                grid-template-rows: auto auto auto auto;
+            }
+            
+            .signals-panel {
+                grid-column: 1;
+                grid-row: 1;
+            }
+            
+            .alpha-panel {
+                grid-column: 1;
+                grid-row: 2;
+            }
+            
+            .market-panel {
+                grid-column: 1;
+                grid-row: 3;
+            }
+            
+            .alerts-panel {
+                grid-column: 1;
+                grid-row: 4;
+            }
+        }
+
+        /* Demo Badge */
+        .demo-badge {
+            background: linear-gradient(135deg, var(--bat-yellow), #f59e0b);
+            color: var(--bg-dark);
+            padding: 4px 10px;
+            font-size: 10px;
+            text-transform: uppercase;
+            margin-left: 12px;
+            font-weight: 600;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(251, 191, 36, 0.4);
+        }
+    </style>
+</head>
+<body>
+    <!-- Ambient lighting effect -->
+    <div class="ambient-glow"></div>
+    
+    <div class="dashboard-container">
+        <!-- Header -->
+        <header class="header">
+            <div>
+                <h1 class="terminal-title">BATCAVE COMMAND CENTER</h1>
+                <div class="subtitle">Gotham Financial Intelligence Network</div>
+            </div>
+            <div class="header-controls">
+                <button class="config-toggle" onclick="toggleConfig()">CONFIGURE</button>
+                <div class="real-time-indicator">
+                    <span class="status-indicator"></span>
+                    <span style="font-weight: 500; text-transform: uppercase;">MONITORING</span>
+                </div>
+            </div>
+        </header>
+        
+        <!-- Main Dashboard Grid -->
+        <div class="dashboard-grid">
+            <!-- Signals Panel -->
+            <div class="panel signals-panel">
+                <div class="panel-header">
+                    <span class="panel-title">ACTIVE SIGNALS</span>
+                    <span class="panel-count">8 TRACKED <span class="demo-badge">BATCAVE</span></span>
+                </div>
+                <div>
+                    <div class="signal-item">
+                        <div>
+                            <span class="signal-symbol">BTC/USDT</span>
+                            <span class="signal-type score-bullish">LONG</span>
+                        </div>
+                        <div>
+                            <span class="signal-score score-bullish">89.7</span>
+                            <span class="signal-time">01:23</span>
+                        </div>
+                    </div>
+                    <div class="signal-item">
+                        <div>
+                            <span class="signal-symbol">ETH/USDT</span>
+                            <span class="signal-type score-neutral">WATCH</span>
+                        </div>
+                        <div>
+                            <span class="signal-score score-neutral">67.4</span>
+                            <span class="signal-time">03:45</span>
+                        </div>
+                    </div>
+                    <div class="signal-item">
+                        <div>
+                            <span class="signal-symbol">SOL/USDT</span>
+                            <span class="signal-type score-bullish">LONG</span>
+                        </div>
+                        <div>
+                            <span class="signal-score score-bullish">82.1</span>
+                            <span class="signal-time">05:12</span>
+                        </div>
+                    </div>
+                    <div class="signal-item">
+                        <div>
+                            <span class="signal-symbol">XRP/USDT</span>
+                            <span class="signal-type score-bearish">SHORT</span>
+                        </div>
+                        <div>
+                            <span class="signal-score score-bearish">28.9</span>
+                            <span class="signal-time">08:07</span>
+                        </div>
+                    </div>
+                    <div class="signal-item">
+                        <div>
+                            <span class="signal-symbol">ADA/USDT</span>
+                            <span class="signal-type score-neutral">WATCH</span>
+                        </div>
+                        <div>
+                            <span class="signal-score score-neutral">61.3</span>
+                            <span class="signal-time">12:34</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Alpha Opportunities Panel -->
+            <div class="panel alpha-panel">
+                <div class="panel-header">
+                    <span class="panel-title">OPPORTUNITY INTEL</span>
+                    <span class="panel-count">4 TARGETS</span>
+                </div>
+                <div>
+                    <div class="alpha-item">
+                        <div class="alpha-symbol">AVAX/USDT</div>
+                        <div class="alpha-pattern">Momentum Breakout</div>
+                        <div class="alpha-confidence">Confidence: 91.5%</div>
+                        <div class="alpha-potential">Projection: +14.7%</div>
+                    </div>
+                    <div class="alpha-item">
+                        <div class="alpha-symbol">MATIC/USDT</div>
+                        <div class="alpha-pattern">Volume Anomaly</div>
+                        <div class="alpha-confidence">Confidence: 83.2%</div>
+                        <div class="alpha-potential">Projection: +9.3%</div>
+                    </div>
+                    <div class="alpha-item">
+                        <div class="alpha-symbol">LINK/USDT</div>
+                        <div class="alpha-pattern">Support Bounce</div>
+                        <div class="alpha-confidence">Confidence: 76.8%</div>
+                        <div class="alpha-potential">Projection: +11.9%</div>
+                    </div>
+                    <div class="alpha-item">
+                        <div class="alpha-symbol">DOT/USDT</div>
+                        <div class="alpha-pattern">Whale Activity</div>
+                        <div class="alpha-confidence">Confidence: 88.4%</div>
+                        <div class="alpha-potential">Projection: +16.2%</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Market Overview Panel -->
+            <div class="panel market-panel">
+                <div class="panel-header">
+                    <span class="panel-title">MARKET SURVEILLANCE</span>
+                    <span style="color: var(--success-green); font-weight: 600;">SECURE</span>
+                </div>
+                <div class="market-metrics">
+                    <div class="metric-card">
+                        <div class="metric-value">52</div>
+                        <div class="metric-label">MONITORED PAIRS</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value">3.2B</div>
+                        <div class="metric-label">24H VOLUME</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value">1.4T</div>
+                        <div class="metric-label">TOTAL MCAP</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value">2.8%</div>
+                        <div class="metric-label">VOLATILITY</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Alerts Panel -->
+            <div class="panel alerts-panel">
+                <div class="panel-header">
+                    <span class="panel-title">INTELLIGENCE ALERTS</span>
+                    <span class="panel-count">15 TODAY</span>
+                </div>
+                <div>
+                    <div class="alert-item alert-priority-high">
+                        <div>
+                            <strong>SIGNAL</strong>: High-probability long signal detected for BTC/USDT
+                        </div>
+                        <div class="alert-time">01:23</div>
+                    </div>
+                    <div class="alert-item alert-priority-medium">
+                        <div>
+                            <strong>INTEL</strong>: Momentum breakout pattern identified in AVAX/USDT
+                        </div>
+                        <div class="alert-time">04:12</div>
+                    </div>
+                    <div class="alert-item alert-priority-low">
+                        <div>
+                            <strong>STATUS</strong>: Batcave systems running optimal performance levels
+                        </div>
+                        <div class="alert-time">08:07</div>
+                    </div>
+                    <div class="alert-item alert-priority-medium">
+                        <div>
+                            <strong>WHALE</strong>: Large transaction detected in DOT/USDT market
+                        </div>
+                        <div class="alert-time">12:34</div>
+                    </div>
+                    <div class="alert-item alert-priority-high">
+                        <div>
+                            <strong>SIGNAL</strong>: Short signal triggered for XRP/USDT position
+                        </div>
+                        <div class="alert-time">18:55</div>
+                    </div>
+                    <div class="alert-item alert-priority-low">
+                        <div>
+                            <strong>SCAN</strong>: Intelligence sweep completed for 47 trading pairs
+                        </div>
+                        <div class="alert-time">25:12</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Configuration Panel -->
+        <div class="config-panel" id="config-panel">
+            <div class="panel-header">
+                <span class="panel-title">SYSTEM CONFIGURATION</span>
+                <button onclick="toggleConfig()" style="background: none; border: none; color: var(--text-primary); cursor: pointer; font-size: 20px;">×</button>
+            </div>
+            
+            <div class="config-section">
+                <h3>MONITORING PARAMETERS</h3>
+                <label>Scan Frequency (seconds):</label>
+                <input type="number" class="config-input" value="30">
+                
+                <label>Alert Threshold:</label>
+                <input type="number" class="config-input" value="5">
+                
+                <label>Cooldown Period (minutes):</label>
+                <input type="number" class="config-input" value="45">
+            </div>
+            
+            <div class="config-section">
+                <h3>SIGNAL FILTERS</h3>
+                <label>Minimum Score:</label>
+                <input type="number" class="config-input" value="70">
+                
+                <label>Confidence Level:</label>
+                <input type="number" class="config-input" value="80">
+            </div>
+            
+            <div class="config-section">
+                <h3>INTELLIGENCE SETTINGS</h3>
+                <label>Confidence Threshold:</label>
+                <input type="number" class="config-input" value="75">
+                
+                <label>Risk Assessment:</label>
+                <select class="config-input">
+                    <option value="Conservative">Conservative</option>
+                    <option value="Moderate" selected>Moderate</option>
+                    <option value="Aggressive">Aggressive</option>
+                </select>
+            </div>
+            
+            <div class="config-section">
+                <button class="config-input save-btn">DEPLOY CONFIGURATION</button>
+                <button class="config-input reset-btn">RESTORE DEFAULTS</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function toggleConfig() {
+            const panel = document.getElementById('config-panel');
+            panel.classList.toggle('open');
+        }
+
+        // Update timestamps
+        function updateTimestamps() {
+            const timeElements = document.querySelectorAll('.signal-time, .alert-time');
+            timeElements.forEach(el => {
+                const currentText = el.textContent;
+                if (currentText.includes(':') && !currentText.includes('ago')) {
+                    const match = currentText.match(/(\d+):(\d+)/);
+                    if (match) {
+                        let minutes = parseInt(match[1]);
+                        let seconds = parseInt(match[2]) + 1;
+                        if (seconds >= 60) {
+                            minutes += 1;
+                            seconds = 0;
+                        }
+                        el.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+                    }
+                }
+            });
+        }
+
+        // Batcave signal simulation
+        function simulateSignalUpdate() {
+            if (Math.random() > 0.82) {
+                const symbols = ['BNB/USDT', 'UNI/USDT', 'DOGE/USDT'];
+                const actions = ['LONG', 'SHORT', 'WATCH'];
+                const symbol = symbols[Math.floor(Math.random() * symbols.length)];
+                const action = actions[Math.floor(Math.random() * actions.length)];
+                console.log(`🦇 Batcave Alert: ${symbol} - ${action}`);
+                
+                // Add Batcave flash effect
+                document.body.style.background = 'linear-gradient(135deg, #1e3a8a 0%, var(--bg-cave) 50%, var(--dark-blue) 100%)';
+                setTimeout(() => {
+                    document.body.style.background = 'linear-gradient(135deg, var(--bg-dark) 0%, var(--bg-cave) 50%, var(--dark-blue) 100%)';
+                }, 400);
+            }
+        }
+
+        // Enhanced hover effects for Batcave elements
+        document.querySelectorAll('.signal-item, .alpha-item, .alert-item, .metric-card').forEach(item => {
+            item.addEventListener('mouseenter', function() {
+                this.style.filter = 'brightness(1.1)';
+                this.style.boxShadow = '0 8px 25px rgba(59, 130, 246, 0.4)';
+            });
+            
+            item.addEventListener('mouseleave', function() {
+                this.style.filter = '';
+                this.style.boxShadow = '';
+            });
+        });
+
+        // Ambient lighting effect
+        function updateAmbientLighting() {
+            const glow = document.querySelector('.ambient-glow');
+            const intensity = 0.05 + Math.random() * 0.05;
+            glow.style.opacity = intensity;
+        }
+
+        // Update intervals
+        setInterval(updateTimestamps, 1000);
+        setInterval(simulateSignalUpdate, 16000);
+        setInterval(updateAmbientLighting, 2000);
+
+        // Batcave click effects
+        document.addEventListener('click', function(e) {
+            if (e.target.tagName === 'BUTTON' || e.target.closest('.panel')) {
+                // Visual Batcave feedback
+                const flash = document.createElement('div');
+                flash.style.position = 'fixed';
+                flash.style.top = '0';
+                flash.style.left = '0';
+                flash.style.width = '100%';
+                flash.style.height = '100%';
+                flash.style.background = 'radial-gradient(circle, rgba(59, 130, 246, 0.1) 0%, transparent 70%)';
+                flash.style.pointerEvents = 'none';
+                flash.style.zIndex = '9999';
+                document.body.appendChild(flash);
+                setTimeout(() => flash.remove(), 300);
+            }
+        });
+
+        // Initialize Batcave systems
+        window.addEventListener('load', function() {
+            console.log('🦇 Batcave Command Center Online');
+            console.log('🦇 All monitoring systems active');
+            console.log('🦇 Financial intelligence network ready');
+        });
+    </script>
+</body>
+</html> 

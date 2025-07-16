@@ -1,0 +1,872 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Virtuoso Dashboard V8.1 - Vertical Stack Layout</title>
+    <style>
+        /* Modern Hero + Vertical Satellites Theme */
+        :root {
+            --bg-primary: #0f1419;
+            --bg-secondary: #1a2332;
+            --bg-hero: #141b26;
+            --bg-satellite: #1e2936;
+            --text-primary: #ffffff;
+            --text-secondary: #94a3b8;
+            --accent-blue: #3b82f6;
+            --accent-green: #10b981;
+            --accent-yellow: #f59e0b;
+            --accent-red: #ef4444;
+            --border-light: #334155;
+            --glow-blue: #3b82f6;
+            --glow-green: #10b981;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
+            color: var(--text-primary);
+            line-height: 1.5;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* Command Center Bar - Always Visible */
+        .command-center {
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-light);
+            padding: 1rem 2rem;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        .command-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            max-width: 1800px;
+            margin: 0 auto;
+        }
+
+        .brand-area {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .brand-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--accent-blue);
+            text-shadow: 0 0 10px var(--glow-blue);
+        }
+
+        .status-badge {
+            background: linear-gradient(135deg, var(--accent-green), #059669);
+            color: white;
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            animation: pulse 2s infinite;
+        }
+
+        .key-metrics {
+            display: flex;
+            gap: 2rem;
+            align-items: center;
+        }
+
+        .metric-quick {
+            text-align: center;
+        }
+
+        .metric-value {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .metric-label {
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .command-actions {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        .action-btn {
+            background: var(--bg-hero);
+            border: 1px solid var(--border-light);
+            color: var(--text-primary);
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 0.875rem;
+            font-weight: 500;
+        }
+
+        .action-btn:hover {
+            background: var(--accent-blue);
+            border-color: var(--accent-blue);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+        }
+
+        /* VARIATION 1: Vertical Stack Layout */
+        .dashboard-layout {
+            max-width: 1800px;
+            margin: 0 auto;
+            padding: 2rem;
+            display: grid;
+            grid-template-areas: 
+                "hero satellites";
+            grid-template-columns: 2.5fr 1fr;
+            gap: 2rem;
+            min-height: calc(100vh - 120px);
+        }
+
+        /* Hero Panel - Maximum Width */
+        .hero-panel {
+            grid-area: hero;
+            background: linear-gradient(135deg, var(--bg-hero), var(--bg-secondary));
+            border: 1px solid var(--border-light);
+            border-radius: 12px;
+            padding: 2rem;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .hero-panel::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, var(--accent-blue), var(--accent-green));
+        }
+
+        .hero-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+        }
+
+        .hero-title {
+            font-size: 1.75rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .hero-title::before {
+            content: '🎯';
+            font-size: 1.5rem;
+        }
+
+        .view-toggle {
+            display: flex;
+            background: var(--bg-satellite);
+            border-radius: 8px;
+            padding: 0.25rem;
+            gap: 0.25rem;
+        }
+
+        .toggle-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 0.875rem;
+            font-weight: 500;
+        }
+
+        .toggle-btn.active {
+            background: var(--accent-blue);
+            color: white;
+            box-shadow: 0 2px 8px rgba(59, 130, 246, 0.4);
+        }
+
+        .signals-container {
+            display: grid;
+            gap: 1rem;
+        }
+
+        .signal-row {
+            display: grid;
+            grid-template-columns: 1.5fr auto auto auto;
+            align-items: center;
+            padding: 1.25rem;
+            background: var(--bg-satellite);
+            border-radius: 10px;
+            transition: all 0.3s ease;
+            border-left: 4px solid transparent;
+        }
+
+        .signal-row:hover {
+            transform: translateX(6px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+        }
+
+        .signal-row.bullish {
+            border-left-color: var(--accent-green);
+        }
+
+        .signal-row.bearish {
+            border-left-color: var(--accent-red);
+        }
+
+        .signal-row.neutral {
+            border-left-color: var(--accent-yellow);
+        }
+
+        .signal-symbol {
+            font-weight: 700;
+            font-size: 1.2rem;
+            color: var(--text-primary);
+        }
+
+        .signal-action {
+            padding: 0.375rem 1rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .action-long {
+            background: rgba(16, 185, 129, 0.2);
+            color: var(--accent-green);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+
+        .action-short {
+            background: rgba(239, 68, 68, 0.2);
+            color: var(--accent-red);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
+        .action-watch {
+            background: rgba(245, 158, 11, 0.2);
+            color: var(--accent-yellow);
+            border: 1px solid rgba(245, 158, 11, 0.3);
+        }
+
+        .signal-score {
+            font-weight: 700;
+            font-size: 1.375rem;
+        }
+
+        .score-bullish { color: var(--accent-green); }
+        .score-bearish { color: var(--accent-red); }
+        .score-neutral { color: var(--accent-yellow); }
+
+        .signal-time {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            font-family: 'Courier New', monospace;
+        }
+
+        /* Vertical Satellites Stack */
+        .satellites-column {
+            grid-area: satellites;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .satellite-panel {
+            background: linear-gradient(135deg, var(--bg-satellite), var(--bg-hero));
+            border: 1px solid var(--border-light);
+            border-radius: 10px;
+            padding: 1.5rem;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .satellite-panel:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+        }
+
+        /* Market Satellite - Compact Grid */
+        .market-satellite {
+            order: 1;
+        }
+
+        .market-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.75rem;
+        }
+
+        .market-metric {
+            text-align: center;
+            padding: 0.75rem;
+            background: var(--bg-primary);
+            border-radius: 6px;
+            transition: all 0.3s ease;
+        }
+
+        .market-metric:hover {
+            background: var(--bg-hero);
+            transform: scale(1.02);
+        }
+
+        .market-value {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 0.25rem;
+        }
+
+        .market-label {
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        /* Alpha Satellite - Condensed */
+        .alpha-satellite {
+            order: 2;
+        }
+
+        .alpha-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .alpha-item {
+            padding: 0.875rem;
+            background: var(--bg-primary);
+            border-radius: 6px;
+            border-left: 3px solid var(--accent-green);
+            transition: all 0.3s ease;
+        }
+
+        .alpha-item:hover {
+            transform: translateX(4px);
+            background: var(--bg-hero);
+        }
+
+        .alpha-symbol {
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 0.25rem;
+            font-size: 0.95rem;
+        }
+
+        .alpha-pattern {
+            font-size: 0.75rem;
+            color: var(--accent-green);
+            margin-bottom: 0.5rem;
+            text-transform: uppercase;
+            font-weight: 500;
+        }
+
+        .alpha-stats {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+        }
+
+        /* Alerts Satellite - Scrollable */
+        .alerts-satellite {
+            order: 3;
+            flex-grow: 1;
+        }
+
+        .alerts-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            max-height: 250px;
+            overflow-y: auto;
+        }
+
+        .alerts-list::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        .alerts-list::-webkit-scrollbar-track {
+            background: var(--bg-primary);
+        }
+
+        .alerts-list::-webkit-scrollbar-thumb {
+            background: var(--accent-blue);
+            border-radius: 2px;
+        }
+
+        .alert-item {
+            padding: 0.625rem;
+            background: var(--bg-primary);
+            border-radius: 4px;
+            border-left: 3px solid;
+            font-size: 0.8rem;
+            transition: all 0.3s ease;
+        }
+
+        .alert-high { border-left-color: var(--accent-red); }
+        .alert-medium { border-left-color: var(--accent-yellow); }
+        .alert-low { border-left-color: var(--accent-green); }
+
+        .alert-item:hover {
+            background: var(--bg-hero);
+            transform: translateX(3px);
+        }
+
+        .alert-time {
+            float: right;
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+            font-family: 'Courier New', monospace;
+        }
+
+        /* Config Satellite - Mini */
+        .config-satellite {
+            order: 4;
+        }
+
+        .config-quick {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.5rem;
+        }
+
+        .config-item {
+            padding: 0.5rem;
+            background: var(--bg-primary);
+            border-radius: 4px;
+            text-align: center;
+        }
+
+        .config-label {
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+            margin-bottom: 0.25rem;
+        }
+
+        .config-value {
+            font-weight: 600;
+            color: var(--text-primary);
+            font-size: 0.875rem;
+        }
+
+        /* Shared Satellite Styles */
+        .satellite-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid var(--border-light);
+        }
+
+        .satellite-title {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .satellite-badge {
+            background: var(--accent-blue);
+            color: white;
+            padding: 0.125rem 0.375rem;
+            border-radius: 8px;
+            font-size: 0.65rem;
+            font-weight: 600;
+        }
+
+        /* Responsive Design */
+        @media (max-width: 1400px) {
+            .dashboard-layout {
+                grid-template-columns: 2fr 1fr;
+            }
+        }
+
+        @media (max-width: 1200px) {
+            .dashboard-layout {
+                grid-template-areas: 
+                    "hero"
+                    "satellites";
+                grid-template-columns: 1fr;
+                grid-template-rows: auto auto;
+            }
+
+            .satellites-column {
+                flex-direction: row;
+                flex-wrap: wrap;
+            }
+
+            .satellite-panel {
+                flex: 1;
+                min-width: 250px;
+            }
+
+            .key-metrics {
+                display: none;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .dashboard-layout {
+                padding: 1rem;
+                gap: 1rem;
+            }
+
+            .satellites-column {
+                flex-direction: column;
+            }
+
+            .hero-panel {
+                padding: 1.5rem;
+            }
+
+            .signal-row {
+                grid-template-columns: 1fr;
+                gap: 0.5rem;
+                text-align: center;
+            }
+        }
+
+        /* Animations */
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
+        /* Focus states for accessibility */
+        .action-btn:focus,
+        .toggle-btn:focus {
+            outline: 2px solid var(--accent-blue);
+            outline-offset: 2px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Command Center - Always Visible -->
+    <header class="command-center">
+        <div class="command-bar">
+            <div class="brand-area">
+                <div class="brand-title">VIRTUOSO VERTICAL</div>
+                <div class="status-badge">V8.1</div>
+            </div>
+            
+            <div class="key-metrics">
+                <div class="metric-quick">
+                    <div class="metric-value">8</div>
+                    <div class="metric-label">Active Signals</div>
+                </div>
+                <div class="metric-quick">
+                    <div class="metric-value">$3.2B</div>
+                    <div class="metric-label">24H Volume</div>
+                </div>
+                <div class="metric-quick">
+                    <div class="metric-value">+2.8%</div>
+                    <div class="metric-label">Portfolio</div>
+                </div>
+                <div class="metric-quick">
+                    <div class="metric-value">BULL</div>
+                    <div class="metric-label">Market</div>
+                </div>
+            </div>
+            
+            <div class="command-actions">
+                <button class="action-btn" onclick="refreshData()">Refresh</button>
+                <button class="action-btn" onclick="toggleConfig()">Settings</button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Dashboard Layout -->
+    <main class="dashboard-layout">
+        <!-- Hero Panel - Signals Central -->
+        <section class="hero-panel">
+            <div class="hero-header">
+                <h1 class="hero-title">Trading Signals</h1>
+                <div class="view-toggle">
+                    <button class="toggle-btn active" onclick="setView('overview')">Overview</button>
+                    <button class="toggle-btn" onclick="setView('detailed')">Detailed</button>
+                    <button class="toggle-btn" onclick="setView('analysis')">Analysis</button>
+                </div>
+            </div>
+            
+            <div class="signals-container">
+                <div class="signal-row bullish">
+                    <div class="signal-symbol">BTC/USDT</div>
+                    <div class="signal-action action-long">LONG</div>
+                    <div class="signal-score score-bullish">89.7</div>
+                    <div class="signal-time">01:23</div>
+                </div>
+                
+                <div class="signal-row neutral">
+                    <div class="signal-symbol">ETH/USDT</div>
+                    <div class="signal-action action-watch">WATCH</div>
+                    <div class="signal-score score-neutral">67.4</div>
+                    <div class="signal-time">03:45</div>
+                </div>
+                
+                <div class="signal-row bullish">
+                    <div class="signal-symbol">SOL/USDT</div>
+                    <div class="signal-action action-long">LONG</div>
+                    <div class="signal-score score-bullish">82.1</div>
+                    <div class="signal-time">05:12</div>
+                </div>
+                
+                <div class="signal-row bearish">
+                    <div class="signal-symbol">XRP/USDT</div>
+                    <div class="signal-action action-short">SHORT</div>
+                    <div class="signal-score score-bearish">28.9</div>
+                    <div class="signal-time">08:07</div>
+                </div>
+                
+                <div class="signal-row neutral">
+                    <div class="signal-symbol">ADA/USDT</div>
+                    <div class="signal-action action-watch">WATCH</div>
+                    <div class="signal-score score-neutral">61.3</div>
+                    <div class="signal-time">12:34</div>
+                </div>
+                
+                <div class="signal-row bullish">
+                    <div class="signal-symbol">MATIC/USDT</div>
+                    <div class="signal-action action-long">LONG</div>
+                    <div class="signal-score score-bullish">76.8</div>
+                    <div class="signal-time">15:22</div>
+                </div>
+                
+                <div class="signal-row bullish">
+                    <div class="signal-symbol">AVAX/USDT</div>
+                    <div class="signal-action action-long">LONG</div>
+                    <div class="signal-score score-bullish">85.2</div>
+                    <div class="signal-time">18:45</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Vertical Satellites Column -->
+        <aside class="satellites-column">
+            <!-- Market Satellite -->
+            <div class="satellite-panel market-satellite">
+                <div class="satellite-header">
+                    <div class="satellite-title">Market Overview</div>
+                    <div class="satellite-badge">BULLISH</div>
+                </div>
+                <div class="market-grid">
+                    <div class="market-metric">
+                        <div class="market-value">52</div>
+                        <div class="market-label">Pairs</div>
+                    </div>
+                    <div class="market-metric">
+                        <div class="market-value">3.2B</div>
+                        <div class="market-label">Volume</div>
+                    </div>
+                    <div class="market-metric">
+                        <div class="market-value">1.4T</div>
+                        <div class="market-label">MCap</div>
+                    </div>
+                    <div class="market-metric">
+                        <div class="market-value">2.8%</div>
+                        <div class="market-label">Volatility</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Alpha Opportunities Satellite -->
+            <div class="satellite-panel alpha-satellite">
+                <div class="satellite-header">
+                    <div class="satellite-title">Alpha Opportunities</div>
+                    <div class="satellite-badge">4</div>
+                </div>
+                <div class="alpha-list">
+                    <div class="alpha-item">
+                        <div class="alpha-symbol">AVAX/USDT</div>
+                        <div class="alpha-pattern">Momentum Breakout</div>
+                        <div class="alpha-stats">
+                            <span>91.5%</span>
+                            <span>+14.7%</span>
+                        </div>
+                    </div>
+                    <div class="alpha-item">
+                        <div class="alpha-symbol">LINK/USDT</div>
+                        <div class="alpha-pattern">Support Bounce</div>
+                        <div class="alpha-stats">
+                            <span>76.8%</span>
+                            <span>+11.9%</span>
+                        </div>
+                    </div>
+                    <div class="alpha-item">
+                        <div class="alpha-symbol">DOT/USDT</div>
+                        <div class="alpha-pattern">Whale Activity</div>
+                        <div class="alpha-stats">
+                            <span>88.4%</span>
+                            <span>+16.2%</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Alerts Satellite -->
+            <div class="satellite-panel alerts-satellite">
+                <div class="satellite-header">
+                    <div class="satellite-title">Recent Alerts</div>
+                    <div class="satellite-badge">15</div>
+                </div>
+                <div class="alerts-list">
+                    <div class="alert-item alert-high">
+                        <span class="alert-time">01:23</span>
+                        <strong>SIGNAL:</strong> High-probability long for BTC/USDT
+                    </div>
+                    <div class="alert-item alert-medium">
+                        <span class="alert-time">04:12</span>
+                        <strong>PATTERN:</strong> Breakout detected in AVAX/USDT
+                    </div>
+                    <div class="alert-item alert-low">
+                        <span class="alert-time">08:07</span>
+                        <strong>STATUS:</strong> System health optimal
+                    </div>
+                    <div class="alert-item alert-medium">
+                        <span class="alert-time">12:34</span>
+                        <strong>WHALE:</strong> Large transaction in DOT/USDT
+                    </div>
+                    <div class="alert-item alert-high">
+                        <span class="alert-time">15:22</span>
+                        <strong>VOLUME:</strong> Unusual activity in MATIC/USDT
+                    </div>
+                    <div class="alert-item alert-low">
+                        <span class="alert-time">18:45</span>
+                        <strong>SCAN:</strong> Market analysis cycle completed
+                    </div>
+                </div>
+            </div>
+
+            <!-- Config Satellite -->
+            <div class="satellite-panel config-satellite">
+                <div class="satellite-header">
+                    <div class="satellite-title">Quick Config</div>
+                    <div class="satellite-badge">•••</div>
+                </div>
+                <div class="config-quick">
+                    <div class="config-item">
+                        <div class="config-label">Scan Freq</div>
+                        <div class="config-value">30s</div>
+                    </div>
+                    <div class="config-item">
+                        <div class="config-label">Min Score</div>
+                        <div class="config-value">70</div>
+                    </div>
+                    <div class="config-item">
+                        <div class="config-label">Risk Level</div>
+                        <div class="config-value">Moderate</div>
+                    </div>
+                    <div class="config-item">
+                        <div class="config-label">Alerts</div>
+                        <div class="config-value">ON</div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+    </main>
+
+    <script>
+        // View toggle functionality
+        function setView(view) {
+            document.querySelectorAll('.toggle-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            event.target.classList.add('active');
+            
+            console.log(`Switched to ${view} view`);
+        }
+
+        // Refresh data
+        function refreshData() {
+            console.log('Refreshing data...');
+            const badge = document.querySelector('.status-badge');
+            badge.style.background = 'linear-gradient(135deg, var(--accent-yellow), #d97706)';
+            badge.textContent = 'SYNC';
+            setTimeout(() => {
+                badge.style.background = 'linear-gradient(135deg, var(--accent-green), #059669)';
+                badge.textContent = 'V8.1';
+            }, 1500);
+        }
+
+        // Config toggle
+        function toggleConfig() {
+            console.log('Config toggled');
+        }
+
+        // Update timestamps
+        function updateTimestamps() {
+            const timeElements = document.querySelectorAll('.signal-time, .alert-time');
+            timeElements.forEach(el => {
+                const currentText = el.textContent;
+                if (currentText.includes(':') && !currentText.includes('ago')) {
+                    const match = currentText.match(/(\d+):(\d+)/);
+                    if (match) {
+                        let minutes = parseInt(match[1]);
+                        let seconds = parseInt(match[2]) + 1;
+                        if (seconds >= 60) {
+                            minutes += 1;
+                            seconds = 0;
+                        }
+                        el.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+                    }
+                }
+            });
+        }
+
+        // Enhanced hover effects
+        document.querySelectorAll('.signal-row, .satellite-panel').forEach(element => {
+            element.addEventListener('mouseenter', function() {
+                if (this.classList.contains('signal-row')) {
+                    this.style.transform = 'translateX(8px) scale(1.01)';
+                } else {
+                    this.style.transform = 'translateY(-4px) scale(1.02)';
+                }
+            });
+            
+            element.addEventListener('mouseleave', function() {
+                this.style.transform = '';
+            });
+        });
+
+        // Real-time updates
+        setInterval(updateTimestamps, 1000);
+
+        console.log('🚀 Virtuoso Vertical Stack Layout Initialized');
+    </script>
+</body>
+</html> 

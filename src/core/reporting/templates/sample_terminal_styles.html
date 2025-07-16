@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VIRTUOSO.TERMINAL Style Options Preview</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <style>
+        :root {
+            --bg-primary: #0c1a2b;
+            --bg-secondary: #0f172a;
+            --bg-hero: #0f172a;
+            --bg-satellite: #0f172a;
+            --bg-header: #0a1525;
+            --text-primary: #ffbf00;
+            --text-secondary: #b8860b;
+            --accent-primary: #ff9900;
+            --accent-positive: #ffc107;
+            --accent-negative: #ff5722;
+            --accent-warning: #ff9900;
+            --border-light: #1a2a40;
+            --glow-amber: #ffbf00;
+        }
+
+        body {
+            background: linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-secondary) 50%, var(--bg-hero) 100%);
+            color: var(--text-primary);
+            font-family: 'JetBrains Mono', monospace;
+            margin: 0;
+            padding: 2rem;
+            min-height: 100vh;
+        }
+
+        .preview-container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .preview-title {
+            text-align: center;
+            color: var(--accent-positive);
+            font-size: 2rem;
+            margin-bottom: 3rem;
+            text-transform: uppercase;
+            letter-spacing: 3px;
+        }
+
+        .style-option {
+            background: linear-gradient(135deg, var(--bg-hero), var(--bg-satellite));
+            border: 1px solid var(--border-light);
+            border-radius: 12px;
+            padding: 2rem;
+            margin: 2rem 0;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+        }
+
+        .option-label {
+            color: var(--accent-primary);
+            font-size: 0.9rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        .option-description {
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+            margin-bottom: 1.5rem;
+            font-style: italic;
+        }
+
+        .terminal-sample {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 8px;
+            margin: 1rem 0;
+        }
+
+        .terminal-icon {
+            display: inline-block;
+            width: 2rem;
+            height: 2rem;
+            color: var(--accent-positive);
+            margin-right: 1rem;
+            vertical-align: middle;
+            stroke-width: 2.5;
+        }
+
+        /* Option 1: Gradient Cyberpunk */
+        .style-1 {
+            background: linear-gradient(45deg, #ffbf00, #ff9900, #ffc107);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            text-shadow: 0 0 30px #ffbf00, 0 0 60px #ff9900;
+            font-weight: 900;
+            font-size: 2.4rem;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+        }
+
+        /* Option 2: Matrix Terminal */
+        .style-2 {
+            color: #00ff41;
+            font-family: 'Courier New', monospace;
+            text-shadow: 0 0 10px #00ff41, 0 0 20px #00ff41, 0 0 40px #00ff41;
+            letter-spacing: 4px;
+            border: 2px solid #00ff41;
+            padding: 8px 16px;
+            background: rgba(0, 255, 65, 0.1);
+            font-size: 2.4rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            border-radius: 4px;
+        }
+
+        /* Option 3: Elegant Minimalist */
+        .style-3 {
+            font-weight: 300;
+            letter-spacing: 8px;
+            color: #ffffff;
+            text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+            border-bottom: 3px solid #ffbf00;
+            padding-bottom: 8px;
+            font-size: 2.4rem;
+            text-transform: uppercase;
+        }
+
+        /* Option 4: Bold Corporate */
+        .style-4 {
+            font-weight: 800;
+            color: #ffbf00;
+            text-transform: uppercase;
+            letter-spacing: 5px;
+            background: linear-gradient(135deg, #1a1a1a, #2d2d2d);
+            padding: 12px 24px;
+            border-left: 6px solid #ffbf00;
+            box-shadow: 0 4px 15px rgba(255, 191, 0, 0.3);
+            font-size: 2.4rem;
+            border-radius: 4px;
+        }
+
+        /* Option 5: Glitch/Digital */
+        .style-5 {
+            position: relative;
+            color: #ffbf00;
+            animation: glitch 2s infinite;
+            font-weight: 700;
+            text-shadow: 
+                2px 0 #ff0000,
+                -2px 0 #00ffff,
+                0 0 20px #ffbf00;
+            font-size: 2.4rem;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+        }
+
+        @keyframes glitch {
+            0%, 90%, 100% { transform: translate(0); }
+            20% { transform: translate(-2px, 2px); }
+            40% { transform: translate(-2px, -2px); }
+            60% { transform: translate(2px, 2px); }
+            80% { transform: translate(2px, -2px); }
+        }
+
+        /* Option 6: Split Typography */
+        .style-6 .brand-main { 
+            color: #ffbf00; 
+            font-weight: 900; 
+            font-size: 2.6rem; 
+        }
+        .style-6 .brand-separator { 
+            color: #ff9900; 
+            font-size: 2.4rem; 
+            font-weight: 700;
+        }
+        .style-6 .brand-sub { 
+            color: #ffc107; 
+            font-weight: 400; 
+            font-size: 2.2rem; 
+        }
+
+        /* Option 7: Outline/Stroke */
+        .style-7 {
+            color: transparent;
+            -webkit-text-stroke: 2px #ffbf00;
+            text-shadow: 0 0 20px #ffbf00;
+            font-weight: 700;
+            filter: drop-shadow(0 0 15px rgba(255, 191, 0, 0.5));
+            font-size: 2.4rem;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+        }
+
+        /* Option 8: Retro Neon */
+        .style-8 {
+            color: #ffbf00;
+            text-shadow: 
+                0 0 5px #ffbf00,
+                0 0 10px #ffbf00,
+                0 0 15px #ffbf00,
+                0 0 20px #ff9900,
+                0 0 35px #ff9900,
+                0 0 40px #ff9900;
+            animation: neonFlicker 3s infinite alternate;
+            font-weight: 600;
+            font-size: 2.4rem;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+        }
+
+        @keyframes neonFlicker {
+            0%, 19%, 21%, 23%, 25%, 54%, 56%, 100% {
+                text-shadow: 
+                    0 0 5px #ffbf00,
+                    0 0 10px #ffbf00,
+                    0 0 15px #ffbf00,
+                    0 0 20px #ff9900,
+                    0 0 35px #ff9900,
+                    0 0 40px #ff9900;
+            }
+            20%, 24%, 55% {
+                text-shadow: none;
+            }
+        }
+
+        /* Option 9: 3D Embossed */
+        .style-9 {
+            color: #ffbf00;
+            text-shadow: 
+                1px 1px 0px #cc9900,
+                2px 2px 0px #b8860b,
+                3px 3px 0px #a0752a,
+                4px 4px 10px rgba(0, 0, 0, 0.3);
+            font-weight: 800;
+            font-size: 2.4rem;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+        }
+
+        /* Option 10: Glassmorphism */
+        .style-10 {
+            background: rgba(255, 191, 0, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 191, 0, 0.2);
+            border-radius: 12px;
+            padding: 16px 32px;
+            color: #ffbf00;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            font-size: 2.4rem;
+            font-weight: 600;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+        }
+
+        .recommendation {
+            background: linear-gradient(135deg, var(--bg-primary), var(--bg-hero));
+            border: 2px solid var(--accent-positive);
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin: 2rem 0;
+            text-align: center;
+        }
+
+        .recommendation h3 {
+            color: var(--accent-positive);
+            margin-bottom: 1rem;
+        }
+
+        .rec-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+
+        .rec-item {
+            background: rgba(255, 191, 0, 0.1);
+            padding: 1rem;
+            border-radius: 6px;
+            border-left: 3px solid var(--accent-positive);
+        }
+
+        .rec-title {
+            color: var(--accent-positive);
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+
+        .rec-desc {
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="preview-container">
+        <h1 class="preview-title">VIRTUOSO.TERMINAL Style Options Preview</h1>
+
+        <!-- Option 1 -->
+        <div class="style-option">
+            <div class="option-label">Option 1: Gradient Cyberpunk Style</div>
+            <div class="option-description">Rainbow gradient with intense glow, very cyberpunk/futuristic</div>
+            <div class="terminal-sample">
+                <i data-lucide="trending-up" class="terminal-icon"></i>
+                <span class="style-1">VIRTUOSO.TERMINAL</span>
+            </div>
+        </div>
+
+        <!-- Option 2 -->
+        <div class="style-option">
+            <div class="option-label">Option 2: Matrix Terminal Style</div>
+            <div class="option-description">Classic green terminal look with border and background</div>
+            <div class="terminal-sample">
+                <i data-lucide="trending-up" class="terminal-icon"></i>
+                <span class="style-2">VIRTUOSO.TERMINAL</span>
+            </div>
+        </div>
+
+        <!-- Option 3 -->
+        <div class="style-option">
+            <div class="option-label">Option 3: Elegant Minimalist</div>
+            <div class="option-description">Understated elegance with golden underline</div>
+            <div class="terminal-sample">
+                <i data-lucide="trending-up" class="terminal-icon"></i>
+                <span class="style-3">VIRTUOSO.TERMINAL</span>
+            </div>
+        </div>
+
+        <!-- Option 4 -->
+        <div class="style-option">
+            <div class="option-label">Option 4: Bold Corporate</div>
+            <div class="option-description">Strong corporate look with left accent bar</div>
+            <div class="terminal-sample">
+                <i data-lucide="trending-up" class="terminal-icon"></i>
+                <span class="style-4">VIRTUOSO.TERMINAL</span>
+            </div>
+        </div>
+
+        <!-- Option 5 -->
+        <div class="style-option">
+            <div class="option-label">Option 5: Glitch/Digital Style</div>
+            <div class="option-description">Animated glitch effect with RGB shadows</div>
+            <div class="terminal-sample">
+                <i data-lucide="trending-up" class="terminal-icon"></i>
+                <span class="style-5">VIRTUOSO.TERMINAL</span>
+            </div>
+        </div>
+
+        <!-- Option 6 -->
+        <div class="style-option">
+            <div class="option-label">Option 6: Split Typography</div>
+            <div class="option-description">Different weights/sizes for each part</div>
+            <div class="terminal-sample">
+                <i data-lucide="trending-up" class="terminal-icon"></i>
+                <span class="style-6">
+                    <span class="brand-main">VIRTUOSO</span><span class="brand-separator">.</span><span class="brand-sub">TERMINAL</span>
+                </span>
+            </div>
+        </div>
+
+        <!-- Option 7 -->
+        <div class="style-option">
+            <div class="option-label">Option 7: Outline/Stroke Style</div>
+            <div class="option-description">Hollow text with glowing outline</div>
+            <div class="terminal-sample">
+                <i data-lucide="trending-up" class="terminal-icon"></i>
+                <span class="style-7">VIRTUOSO.TERMINAL</span>
+            </div>
+        </div>
+
+        <!-- Option 8 -->
+        <div class="style-option">
+            <div class="option-label">Option 8: Retro Neon Sign</div>
+            <div class="option-description">Classic neon sign with flickering animation</div>
+            <div class="terminal-sample">
+                <i data-lucide="trending-up" class="terminal-icon"></i>
+                <span class="style-8">VIRTUOSO.TERMINAL</span>
+            </div>
+        </div>
+
+        <!-- Option 9 -->
+        <div class="style-option">
+            <div class="option-label">Option 9: 3D Embossed</div>
+            <div class="option-description">Deep 3D embossed look</div>
+            <div class="terminal-sample">
+                <i data-lucide="trending-up" class="terminal-icon"></i>
+                <span class="style-9">VIRTUOSO.TERMINAL</span>
+            </div>
+        </div>
+
+        <!-- Option 10 -->
+        <div class="style-option">
+            <div class="option-label">Option 10: Modern Glassmorphism</div>
+            <div class="option-description">Modern glass/blur effect with transparency</div>
+            <div class="terminal-sample">
+                <i data-lucide="trending-up" class="terminal-icon"></i>
+                <span class="style-10">VIRTUOSO.TERMINAL</span>
+            </div>
+        </div>
+
+        <!-- Recommendations -->
+        <div class="recommendation">
+            <h3>🎯 RECOMMENDATIONS BY USE CASE</h3>
+            <div class="rec-list">
+                <div class="rec-item">
+                    <div class="rec-title">Most Professional</div>
+                    <div class="rec-desc">Option 3 (Elegant Minimalist) or Option 4 (Bold Corporate)</div>
+                </div>
+                <div class="rec-item">
+                    <div class="rec-title">Most Futuristic</div>
+                    <div class="rec-desc">Option 1 (Gradient Cyberpunk) or Option 5 (Glitch Digital)</div>
+                </div>
+                <div class="rec-item">
+                    <div class="rec-title">Most Terminal-like</div>
+                    <div class="rec-desc">Option 2 (Matrix Terminal)</div>
+                </div>
+                <div class="rec-item">
+                    <div class="rec-title">Most Modern</div>
+                    <div class="rec-desc">Option 10 (Glassmorphism) or Option 6 (Split Typography)</div>
+                </div>
+                <div class="rec-item">
+                    <div class="rec-title">Most Eye-catching</div>
+                    <div class="rec-desc">Option 8 (Retro Neon) or Option 5 (Glitch Digital)</div>
+                </div>
+                <div class="rec-item">
+                    <div class="rec-title">Best Balance</div>
+                    <div class="rec-desc">Option 1 (Gradient Cyberpunk) or Option 9 (3D Embossed)</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Initialize Lucide icons
+            if (typeof lucide !== 'undefined') {
+                lucide.createIcons();
+            }
+        });
+    </script>
+</body>
+</html> 

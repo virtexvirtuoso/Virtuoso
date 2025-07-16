@@ -67,7 +67,7 @@ def load_sample_data(file_path: str = "sample_analysis_result.json") -> Dict[str
                 },
                 "price_structure": {
                     "score": 62,
-                    "components": {"market_structure": 65, "vwap": 60},
+                    "components": {"swing_structure": 65, "vwap": 60},
                     "signals": {
                         "trend": {"signal": "uptrend", "value": 65},
                         "support_resistance": {"signal": "strong_level", "bias": "bullish", "value": 70}

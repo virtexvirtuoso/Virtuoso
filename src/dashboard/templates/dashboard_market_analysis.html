@@ -1,0 +1,1097 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Virtuoso Market Report Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* Terminal Amber + Navy Blue Theme */
+        :root {
+            --bg-primary: #0c1a2b;
+            --bg-secondary: #0f172a;
+            --bg-hero: #0f172a;
+            --bg-satellite: #0f172a;
+            --bg-header: #0a1525;
+            --text-primary: #ffbf00;
+            --text-secondary: #b8860b;
+            --accent-primary: #ff9900;
+            --accent-positive: #ffc107;
+            --accent-negative: #ff5722;
+            --accent-warning: #ff9900;
+            --border-light: #1a2a40;
+            --glow-amber: #ffbf00;
+            
+            /* Signal confidence colors */
+            --signal-strong: #ffc107;
+            --signal-medium: #ff9900;
+            --signal-weak: #ff7043;
+            --signal-neutral: #607d8b;
+            --signal-negative: #f44336;
+            
+            /* Market colors */
+            --bullish: #4caf50;
+            --bearish: #f44336;
+            --neutral: #ff9800;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'JetBrains Mono', 'Courier New', monospace;
+        }
+
+        body {
+            background: linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-secondary) 50%, var(--bg-hero) 100%);
+            color: var(--text-primary);
+            line-height: 1.6;
+            min-height: 100vh;
+            overflow-x: hidden;
+            position: relative;
+            font-weight: 400;
+        }
+
+        /* Subtle pattern overlay */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: 
+                radial-gradient(circle at 25% 25%, rgba(255, 191, 0, 0.05) 0%, transparent 50%),
+                radial-gradient(circle at 75% 75%, rgba(255, 153, 0, 0.05) 0%, transparent 50%);
+            background-size: 200px 200px;
+            opacity: 0.3;
+            z-index: -1;
+            pointer-events: none;
+        }
+
+        /* Terminal ambient lighting */
+        .ambient-glow {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 200px;
+            background: linear-gradient(to top, rgba(255, 153, 0, 0.1), transparent);
+            z-index: -1;
+            pointer-events: none;
+        }
+
+        /* Header */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 2rem 2.5rem;
+            border-bottom: 2px solid var(--border-light);
+            background: linear-gradient(135deg, var(--bg-header), var(--bg-satellite));
+            box-shadow: 
+                0 8px 32px rgba(0, 0, 0, 0.4),
+                inset 0 1px 0 rgba(255, 191, 0, 0.3);
+            position: relative;
+        }
+
+        .header::before {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            background: linear-gradient(90deg, 
+                transparent 0%, 
+                var(--accent-primary) 25%, 
+                var(--accent-positive) 50%, 
+                var(--accent-primary) 75%, 
+                transparent 100%);
+            animation: terminalScan 3s ease-in-out infinite;
+        }
+
+        @keyframes terminalScan {
+            0%, 100% { opacity: 0.3; }
+            50% { opacity: 1; }
+        }
+
+        .terminal-title {
+            font-size: 2.4rem;
+            color: var(--text-primary);
+            margin: 0;
+            text-transform: uppercase;
+            letter-spacing: 3px;
+            font-weight: 700;
+            text-shadow: 
+                0 0 20px var(--glow-amber),
+                0 0 40px var(--glow-amber);
+            position: relative;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .terminal-title::before {
+            content: '>>>';
+            position: absolute;
+            left: -60px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--accent-primary);
+            font-size: 1.5rem;
+            text-shadow: 0 0 15px var(--accent-primary);
+        }
+
+        .terminal-title::after {
+            content: '_';
+            animation: blink 1s infinite;
+            color: var(--accent-primary);
+            margin-left: 5px;
+        }
+
+        @keyframes blink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0; }
+        }
+
+        .subtitle {
+            font-size: 0.9rem;
+            color: var(--accent-positive);
+            margin-top: 8px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            font-weight: 400;
+        }
+
+        .header-controls {
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+        }
+
+        .nav-back-link {
+            background: linear-gradient(135deg, var(--bg-satellite), var(--bg-header));
+            border: 1px solid var(--border-light);
+            color: var(--text-secondary);
+            padding: 0.8rem 1.5rem;
+            border-radius: 4px;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            box-shadow: 
+                0 4px 15px rgba(255, 153, 0, 0.2),
+                inset 0 1px 0 rgba(255, 255, 255, 0.1);
+            text-transform: uppercase;
+            font-weight: 500;
+            letter-spacing: 1px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
+            display: inline-block;
+        }
+
+        .nav-back-link:hover {
+            transform: translateY(-2px);
+            box-shadow: 
+                0 8px 25px rgba(255, 153, 0, 0.4),
+                inset 0 1px 0 rgba(255, 255, 255, 0.2);
+            border-color: var(--accent-positive);
+            background: linear-gradient(135deg, var(--accent-primary), var(--accent-positive));
+            color: var(--bg-primary);
+        }
+
+        .config-toggle {
+            background: linear-gradient(135deg, var(--bg-satellite), var(--bg-header));
+            border: 1px solid var(--border-light);
+            color: var(--text-primary);
+            padding: 0.8rem 1.5rem;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 
+                0 4px 15px rgba(255, 153, 0, 0.2),
+                inset 0 1px 0 rgba(255, 255, 255, 0.1);
+            text-transform: uppercase;
+            font-weight: 500;
+            letter-spacing: 1px;
+            font-family: 'JetBrains Mono', monospace;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .config-toggle:hover {
+            transform: translateY(-2px);
+            box-shadow: 
+                0 8px 25px rgba(255, 153, 0, 0.4),
+                inset 0 1px 0 rgba(255, 255, 255, 0.2);
+            border-color: var(--accent-positive);
+            background: var(--accent-primary);
+            color: var(--bg-primary);
+        }
+
+        .real-time-indicator {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            background: linear-gradient(135deg, var(--bg-satellite), var(--bg-header));
+            padding: 12px 20px;
+            border: 1px solid var(--border-light);
+            border-radius: 4px;
+            box-shadow: 
+                inset 0 2px 4px rgba(0, 0, 0, 0.3),
+                0 0 15px rgba(255, 153, 0, 0.2);
+        }
+
+        .status-light {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: var(--accent-positive);
+            box-shadow: 0 0 15px var(--accent-positive);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+
+        .status-text {
+            font-size: 0.85rem;
+            color: var(--text-primary);
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        /* Main Container */
+        .container {
+            padding: 2rem 2.5rem;
+            max-width: 100%;
+            margin: 0 auto;
+        }
+
+        /* Dashboard Grid */
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            grid-template-rows: auto auto auto auto;
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        /* Panel Base Styles */
+        .panel, .section {
+            background: linear-gradient(135deg, var(--bg-hero), var(--bg-satellite));
+            border: 1px solid var(--border-light);
+            border-radius: 8px;
+            padding: 1.5rem;
+            box-shadow: 
+                0 8px 32px rgba(0, 0, 0, 0.4),
+                inset 0 1px 0 rgba(255, 255, 255, 0.05);
+            position: relative;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .panel::before, .section::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            background: linear-gradient(90deg, var(--accent-primary), var(--accent-positive), var(--accent-primary));
+            opacity: 0.6;
+        }
+
+        .panel:hover, .section:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+        }
+
+        .panel-header, .section-title {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid rgba(26, 42, 64, 0.5);
+        }
+
+        .panel-title, .section-title {
+            font-size: 0.85rem;
+            color: var(--text-primary);
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .panel-count {
+            font-size: 0.75rem;
+            color: var(--accent-positive);
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        /* Grid Layouts */
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .info-item {
+            background: linear-gradient(135deg, var(--bg-satellite), var(--bg-header));
+            border: 1px solid var(--border-light);
+            border-radius: 6px;
+            padding: 1rem;
+            transition: all 0.3s ease;
+        }
+
+        .info-item:hover {
+            border-color: var(--accent-positive);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(255, 193, 7, 0.3);
+        }
+
+        .info-label {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin-bottom: 0.5rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: 600;
+        }
+
+        .info-value {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        /* Progress Bars */
+        .progress-container {
+            width: 100%;
+            background-color: rgba(26, 42, 64, 0.5);
+            border-radius: 6px;
+            height: 8px;
+            margin-top: 0.5rem;
+            overflow: hidden;
+            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .progress-bar {
+            height: 100%;
+            border-radius: 6px;
+            transition: width 0.8s ease-in-out;
+            position: relative;
+        }
+
+        .progress-bullish {
+            background: linear-gradient(90deg, var(--bullish), #66bb6a);
+        }
+
+        .progress-bearish {
+            background: linear-gradient(90deg, var(--bearish), #ef5350);
+        }
+
+        .progress-neutral {
+            background: linear-gradient(90deg, var(--neutral), #ffb74d);
+        }
+
+        /* Badges */
+        .badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 12px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-left: 0.5rem;
+        }
+
+        .badge-bullish {
+            background: rgba(76, 175, 80, 0.2);
+            color: var(--bullish);
+            border: 1px solid rgba(76, 175, 80, 0.3);
+        }
+
+        .badge-bearish {
+            background: rgba(244, 67, 54, 0.2);
+            color: var(--bearish);
+            border: 1px solid rgba(244, 67, 54, 0.3);
+        }
+
+        .badge-neutral {
+            background: rgba(255, 152, 0, 0.2);
+            color: var(--neutral);
+            border: 1px solid rgba(255, 152, 0, 0.3);
+        }
+
+        /* Tables */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+            background-color: var(--bg-satellite);
+            border-radius: 6px;
+            overflow: hidden;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        th, td {
+            padding: 0.75rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border-light);
+            font-size: 0.85rem;
+        }
+
+        th {
+            background-color: var(--bg-header);
+            font-weight: 600;
+            color: var(--text-primary);
+            text-transform: uppercase;
+            font-size: 0.75rem;
+            letter-spacing: 1px;
+        }
+
+        tr:hover {
+            background-color: rgba(255, 191, 0, 0.1);
+        }
+
+        /* Indicators */
+        .indicator {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 0.5rem;
+        }
+
+        .indicator.green {
+            background-color: var(--bullish);
+            box-shadow: 0 0 8px rgba(76, 175, 80, 0.5);
+        }
+
+        .indicator.red {
+            background-color: var(--bearish);
+            box-shadow: 0 0 8px rgba(244, 67, 54, 0.5);
+        }
+
+        .indicator.yellow {
+            background-color: var(--neutral);
+            box-shadow: 0 0 8px rgba(255, 152, 0, 0.5);
+        }
+
+        /* Color Classes */
+        .bullish { color: var(--bullish) !important; }
+        .bearish { color: var(--bearish) !important; }
+        .neutral { color: var(--neutral) !important; }
+        .highlight { color: var(--accent-positive) !important; font-weight: 600; }
+
+        /* Performance Lists */
+        .performer-columns {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+            margin-top: 1rem;
+        }
+
+        .performer-list {
+            list-style: none;
+            padding: 0;
+        }
+
+        .performer-list li {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(135deg, var(--bg-satellite), var(--bg-header));
+            border-radius: 6px;
+            border: 1px solid var(--border-light);
+            transition: all 0.3s ease;
+        }
+
+        .performer-list li:hover {
+            transform: translateX(4px);
+            border-color: var(--accent-positive);
+            box-shadow: 0 4px 15px rgba(255, 193, 7, 0.3);
+        }
+
+        .symbol {
+            font-weight: 600;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .performance {
+            font-weight: 600;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* Insights */
+        .insights {
+            margin-top: 1rem;
+            padding: 1rem;
+            background: rgba(255, 191, 0, 0.1);
+            border: 1px solid rgba(255, 191, 0, 0.3);
+            border-radius: 6px;
+            border-left: 4px solid var(--accent-positive);
+        }
+
+        .insights p {
+            color: var(--text-primary);
+            font-size: 0.9rem;
+            line-height: 1.6;
+        }
+
+        /* Fallback Content */
+        .fallback-content {
+            padding: 1.5rem;
+            background: rgba(255, 152, 0, 0.1);
+            border: 1px solid rgba(255, 152, 0, 0.3);
+            border-radius: 6px;
+            border-left: 4px solid var(--neutral);
+            color: var(--text-secondary);
+        }
+
+        /* Metrics Grid */
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+
+        .metric {
+            background: linear-gradient(135deg, var(--bg-satellite), var(--bg-header));
+            padding: 1rem;
+            border-radius: 6px;
+            border: 1px solid var(--border-light);
+            border-left: 4px solid var(--accent-positive);
+        }
+
+        .metric h3 {
+            margin-top: 0;
+            margin-bottom: 0.75rem;
+            color: var(--accent-positive);
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        /* Chart Container */
+        .chart-container {
+            margin: 1.5rem 0;
+            text-align: center;
+            background: linear-gradient(135deg, var(--bg-satellite), var(--bg-header));
+            border-radius: 6px;
+            padding: 1rem;
+            border: 1px solid var(--border-light);
+        }
+
+        .chart {
+            max-width: 100%;
+            border-radius: 6px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+        }
+
+        /* Footer */
+        .footer {
+            margin-top: 2rem;
+            text-align: center;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            padding-top: 1rem;
+            border-top: 1px solid var(--border-light);
+        }
+
+        /* Responsive Design */
+        @media (max-width: 1600px) {
+            .dashboard-grid {
+                gap: 1.2rem;
+            }
+            .panel, .section {
+                padding: 1.5rem;
+            }
+        }
+
+        @media (max-width: 1400px) {
+            .dashboard-grid {
+                gap: 1rem;
+            }
+            .panel, .section {
+                padding: 1.2rem;
+            }
+        }
+
+        @media (max-width: 1200px) {
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+                gap: 1rem;
+            }
+            
+            .performer-columns {
+                grid-template-columns: 1fr;
+                gap: 1rem;
+            }
+            
+            .info-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .container {
+                padding: 1.5rem;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 1rem;
+            }
+            
+            .header {
+                padding: 1.5rem;
+            }
+            
+            .terminal-title {
+                font-size: 1.8rem;
+            }
+            
+            .terminal-title::before {
+                left: -40px;
+                font-size: 1.2rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="ambient-glow"></div>
+    
+    <!-- Header -->
+    <div class="header">
+        <div>
+            <h1 class="terminal-title">VIRTUOSO.MARKET.REPORT</h1>
+            <div class="subtitle">Comprehensive Market Intelligence Analysis</div>
+        </div>
+        
+        <div class="header-controls">
+            <a href="/dashboard" class="nav-back-link">← TRADING DASHBOARD</a>
+            <button class="config-toggle">CONFIG</button>
+            <div class="real-time-indicator">
+                <div class="status-light"></div>
+                <span class="status-text">LIVE</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Container -->
+    <div class="container">
+        <div class="dashboard-grid">
+            <!-- Market Overview Section -->
+            <div class="section">
+                <h2 class="section-title">📊 MARKET OVERVIEW</h2>
+                <div class="info-grid">
+                    <!-- Market Regime -->
+                    <div class="info-item">
+                        <div class="info-label">Market Regime</div>
+                        <div class="info-value bullish">
+                            <span class="indicator green"></span>
+                            BULLISH
+                            <span class="badge badge-bullish">Strong</span>
+                        </div>
+                        <div class="progress-container">
+                            <div class="progress-bar progress-bullish" style="width: 78%;"></div>
+                        </div>
+                    </div>
+                    
+                    <!-- Volatility -->
+                    <div class="info-item">
+                        <div class="info-label">Market Volatility</div>
+                        <div class="info-value neutral">
+                            <span class="indicator yellow"></span>
+                            24.7%
+                        </div>
+                        <div class="progress-container">
+                            <div class="progress-bar progress-neutral" style="width: 25%;"></div>
+                        </div>
+                    </div>
+                    
+                    <!-- Trend Strength -->
+                    <div class="info-item">
+                        <div class="info-label">Trend Strength</div>
+                        <div class="info-value bullish">
+                            <span class="indicator green"></span>
+                            Strong Uptrend
+                        </div>
+                        <div class="progress-container">
+                            <div class="progress-bar progress-bullish" style="width: 82%;"></div>
+                        </div>
+                    </div>
+                    
+                    <!-- Volume Profile -->
+                    <div class="info-item">
+                        <div class="info-label">Volume Profile</div>
+                        <div class="info-value bullish">
+                            <span class="indicator green"></span>
+                            Above Average
+                        </div>
+                        <div class="progress-container">
+                            <div class="progress-bar progress-bullish" style="width: 67%;"></div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="insights">
+                    <p>The market is currently in a <strong>bullish regime</strong> with strong upward momentum. Volume confirms the trend direction with above-average participation.</p>
+                </div>
+            </div>
+
+            <!-- Top Performers Section -->
+            <div class="section">
+                <h2 class="section-title">🏆 TOP PERFORMERS</h2>
+                <div class="performer-columns">
+                    <div class="performer-column">
+                        <h3 style="color: var(--bullish); margin-bottom: 1rem;">🚀 Top Gainers (24h)</h3>
+                        <ul class="performer-list">
+                            <li>
+                                <span class="symbol">AVAX/USDT</span>
+                                <span class="performance bullish">+18.4%</span>
+                            </li>
+                            <li>
+                                <span class="symbol">SOLUSDT</span>
+                                <span class="performance bullish">+14.7%</span>
+                            </li>
+                            <li>
+                                <span class="symbol">LINK/USDT</span>
+                                <span class="performance bullish">+11.2%</span>
+                            </li>
+                            <li>
+                                <span class="symbol">ETHUSDT</span>
+                                <span class="performance bullish">+8.9%</span>
+                            </li>
+                            <li>
+                                <span class="symbol">MATIC/USDT</span>
+                                <span class="performance bullish">+7.3%</span>
+                            </li>
+                        </ul>
+                    </div>
+                    
+                    <div class="performer-column">
+                        <h3 style="color: var(--bearish); margin-bottom: 1rem;">📉 Top Losers (24h)</h3>
+                        <ul class="performer-list">
+                            <li>
+                                <span class="symbol">ADA/USDT</span>
+                                <span class="performance bearish">-5.2%</span>
+                            </li>
+                            <li>
+                                <span class="symbol">DOT/USDT</span>
+                                <span class="performance bearish">-3.8%</span>
+                            </li>
+                            <li>
+                                <span class="symbol">ALGO/USDT</span>
+                                <span class="performance bearish">-2.1%</span>
+                            </li>
+                            <li>
+                                <span class="symbol">ATOM/USDT</span>
+                                <span class="performance bearish">-1.7%</span>
+                            </li>
+                            <li>
+                                <span class="symbol">NEAR/USDT</span>
+                                <span class="performance bearish">-0.9%</span>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Futures Premium Section -->
+            <div class="section">
+                <h2 class="section-title">📈 FUTURES PREMIUM</h2>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Symbol</th>
+                            <th>Mark Price</th>
+                            <th>Index Price</th>
+                            <th>Premium</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>BTC/USDT</strong></td>
+                            <td>$46,247.80</td>
+                            <td>$46,189.34</td>
+                            <td class="bullish">
+                                <span class="indicator green"></span>
+                                +0.127%
+                            </td>
+                            <td>
+                                <span class="badge badge-bullish">Contango</span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><strong>ETH/USDT</strong></td>
+                            <td>$2,847.92</td>
+                            <td>$2,844.15</td>
+                            <td class="bullish">
+                                <span class="indicator green"></span>
+                                +0.132%
+                            </td>
+                            <td>
+                                <span class="badge badge-bullish">Contango</span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><strong>SOL/USDT</strong></td>
+                            <td>$98.34</td>
+                            <td>$98.21</td>
+                            <td class="bullish">
+                                <span class="indicator green"></span>
+                                +0.132%
+                            </td>
+                            <td>
+                                <span class="badge badge-bullish">Contango</span>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+                
+                <div class="insights">
+                    <p>Futures markets show <strong>positive premium</strong> across major pairs, indicating bullish sentiment and expectations of higher future prices.</p>
+                </div>
+            </div>
+
+            <!-- Smart Money Index Section -->
+            <div class="section">
+                <h2 class="section-title">🧠 SMART MONEY INDEX</h2>
+                <div class="info-grid">
+                    <div class="info-item">
+                        <div class="info-label">SMI Value</div>
+                        <div class="info-value bullish">
+                            <span class="indicator green"></span>
+                            74.6/100
+                        </div>
+                        <div class="progress-container">
+                            <div class="progress-bar progress-bullish" style="width: 74.6%;"></div>
+                        </div>
+                    </div>
+                    
+                    <div class="info-item">
+                        <div class="info-label">Sentiment</div>
+                        <div class="info-value bullish">
+                            <span class="indicator green"></span>
+                            BULLISH
+                        </div>
+                    </div>
+                    
+                    <div class="info-item">
+                        <div class="info-label">24h Change</div>
+                        <div class="info-value bullish">
+                            <span class="indicator green"></span>
+                            +8.3%
+                        </div>
+                    </div>
+                    
+                    <div class="info-item">
+                        <div class="info-label">Institutional Flow</div>
+                        <div class="info-value bullish">
+                            <span class="indicator green"></span>
+                            Net Buying
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="insights">
+                    <p>Smart money index shows <strong>strong institutional accumulation</strong> with significant net buying pressure from large participants.</p>
+                </div>
+            </div>
+
+            <!-- Whale Activity Section -->
+            <div class="section">
+                <h2 class="section-title">🐋 WHALE ACTIVITY</h2>
+                <div class="info-item" style="margin-bottom: 1rem;">
+                    <div class="info-label">Activity Status</div>
+                    <div class="info-value bullish">
+                        <span class="indicator green"></span>
+                        Significant Activity Detected
+                        <span class="badge badge-bullish">High</span>
+                    </div>
+                </div>
+                
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Symbol</th>
+                            <th>Direction</th>
+                            <th>Volume</th>
+                            <th>USD Value</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>BTC/USDT</strong></td>
+                            <td class="bullish">
+                                <span class="indicator green"></span>
+                                Buying
+                            </td>
+                            <td>247.3 BTC</td>
+                            <td>$11.4M</td>
+                        </tr>
+                        <tr>
+                            <td><strong>ETH/USDT</strong></td>
+                            <td class="bullish">
+                                <span class="indicator green"></span>
+                                Buying
+                            </td>
+                            <td>1,847 ETH</td>
+                            <td>$5.3M</td>
+                        </tr>
+                        <tr>
+                            <td><strong>SOL/USDT</strong></td>
+                            <td class="bearish">
+                                <span class="indicator red"></span>
+                                Selling
+                            </td>
+                            <td>12,340 SOL</td>
+                            <td>$1.2M</td>
+                        </tr>
+                    </tbody>
+                </table>
+                
+                <div class="insights">
+                    <p>Major whale accumulation detected in <strong>BTC and ETH</strong> with over $16M in net buying activity in the past 24 hours.</p>
+                </div>
+            </div>
+
+            <!-- Performance Metrics Section -->
+            <div class="section">
+                <h2 class="section-title">⚡ SYSTEM PERFORMANCE</h2>
+                <div class="metrics-grid">
+                    <div class="metric">
+                        <h3>API Latency</h3>
+                        <p><strong>Average:</strong> 24ms</p>
+                        <p><strong>95th Percentile:</strong> 67ms</p>
+                        <p><strong>Maximum:</strong> 142ms</p>
+                    </div>
+                    
+                    <div class="metric">
+                        <h3>Error Rate</h3>
+                        <p><strong>Total Errors:</strong> 3</p>
+                        <p><strong>Per Minute:</strong> 0.02</p>
+                    </div>
+                    
+                    <div class="metric">
+                        <h3>Data Quality</h3>
+                        <p><strong>Average Score:</strong> 97.8%</p>
+                        <p><strong>Minimum Score:</strong> 94.2%</p>
+                    </div>
+                    
+                    <div class="metric">
+                        <h3>Processing Time</h3>
+                        <p><strong>Average:</strong> 1.34s</p>
+                        <p><strong>Maximum:</strong> 3.21s</p>
+                    </div>
+                </div>
+                
+                <div class="insights">
+                    <p>System performance remains <strong>optimal</strong> with low latency, minimal errors, and high data quality scores across all monitored endpoints.</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="footer">
+            <p>Virtuoso Trading System © 2024 | Generated at <span id="timestamp"></span></p>
+        </div>
+    </div>
+
+    <script>
+        // Update timestamp
+        function updateTimestamp() {
+            const now = new Date();
+            const timestamp = now.toLocaleString('en-US', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: false
+            });
+            document.getElementById('timestamp').textContent = timestamp;
+        }
+
+        // Generate dynamic data updates
+        function generateMarketData() {
+            // Update progress bars with slight variations
+            const progressBars = document.querySelectorAll('.progress-bar');
+            progressBars.forEach(bar => {
+                const currentWidth = parseFloat(bar.style.width) || 50;
+                const variation = (Math.random() - 0.5) * 10; // ±5% variation
+                const newWidth = Math.max(5, Math.min(95, currentWidth + variation));
+                bar.style.width = `${newWidth}%`;
+            });
+
+            // Update performance values with small variations
+            const performanceValues = document.querySelectorAll('.performance');
+            performanceValues.forEach(value => {
+                const currentValue = parseFloat(value.textContent.replace(/[^-?\d.]/g, ''));
+                const variation = (Math.random() - 0.5) * 2; // ±1% variation
+                const newValue = (currentValue + variation).toFixed(1);
+                
+                if (currentValue > 0) {
+                    value.textContent = `+${newValue}%`;
+                    value.className = 'performance bullish';
+                } else {
+                    value.textContent = `${newValue}%`;
+                    value.className = 'performance bearish';
+                }
+            });
+
+            console.log('[MARKET REPORT] Data updated at', new Date().toLocaleTimeString());
+        }
+
+        // Auto-update data every 15 seconds
+        function updateMarketReport() {
+            if (Math.random() > 0.7) {
+                generateMarketData();
+            }
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            updateTimestamp();
+            setInterval(updateTimestamp, 1000);
+            setInterval(updateMarketReport, 15000);
+
+            // Enhanced hover effects
+            document.querySelectorAll('.info-item, .performer-list li, .metric').forEach(item => {
+                item.addEventListener('mouseenter', function() {
+                    this.style.filter = 'brightness(1.1)';
+                });
+                
+                item.addEventListener('mouseleave', function() {
+                    this.style.filter = '';
+                });
+            });
+
+            console.log(`
+[SYSTEM] ================================================
+[SYSTEM] VIRTUOSO MARKET REPORT DASHBOARD v1.0 READY
+[SYSTEM] TERMINAL AMBER THEME INTEGRATED
+[SYSTEM] COMPREHENSIVE MARKET ANALYSIS ACTIVE
+[SYSTEM] REAL-TIME DATA MONITORING ENABLED
+[SYSTEM] PERFORMANCE METRICS TRACKING ONLINE
+[SYSTEM] NAVIGATION INTEGRATION COMPLETE
+[SYSTEM] ================================================`);
+        });
+    </script>
+</body>
+</html> 

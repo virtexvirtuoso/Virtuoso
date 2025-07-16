@@ -24,6 +24,11 @@ import pandas as pd
 from dotenv import load_dotenv
 import traceback
 
+# Add project root and src to Python path
+project_root = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(project_root))
+sys.path.insert(0, str(project_root / "src"))
+
 # Configure detailed logging
 logging.basicConfig(
     level=logging.DEBUG,
@@ -291,7 +296,6 @@ async def test_market_data_report():
         # Initialize config manager exactly as in the main application
         logger.info("Initializing config manager...")
         config_manager = ConfigManager()
-        config_manager.config = load_config()
         logger.info("Config manager initialized")
         
         # Print API key info for debugging (show just first/last few characters)

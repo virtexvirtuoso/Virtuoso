@@ -39,27 +39,55 @@ logger = logging.getLogger("liquidation_monitor")
 
 
 class LiquidationMonitor:
-    """Monitor liquidation events and verify alert functionality."""
-
-    def __init__(self, config_path: Optional[str] = None, symbol: str = "BTCUSDT"):
-        """Initialize the liquidation monitor.
+    """Monitor for liquidation events on a specific symbol."""
+    
+    def __init__(
+        self, 
+        symbol: str = "BTCUSDT",
+        config_manager: Optional['ConfigManager'] = None,
+        alert_manager: Optional['AlertManager'] = None,
+        exchange_manager: Optional['ExchangeManager'] = None,
+        config_path: Optional[str] = None
+    ):
+        """
+        Initialize the liquidation monitor.
         
         Args:
-            config_path: Path to configuration file
-            symbol: Symbol to monitor for liquidations
+            symbol: Trading symbol to monitor
+            config_manager: Optional ConfigManager instance
+            alert_manager: Optional AlertManager instance  
+            exchange_manager: Optional ExchangeManager instance
+            config_path: Optional path to config file (used only if config_manager not provided)
         """
         self.symbol = symbol
         self.running = False
         self.logger = logger
         
-        # Load configuration
-        self.config_manager = ConfigManager(config_path)
-        self.config = self.config_manager._config
+        # Initialize or use provided config manager
+        if config_manager:
+            self.config_manager = config_manager
+            self.config = config_manager.config
+            self.logger.info("Using provided ConfigManager instance")
+        else:
+            # Fallback to creating own instance
+            from src.core.config.config_manager import ConfigManager
+            self.config_manager = ConfigManager(config_path)
+            self.config = self.config_manager._config
+            self.logger.info("Created new ConfigManager instance")
         
-        # Create AlertManager instance
-        self.alert_manager = AlertManager(config=self.config)
+        # Initialize or use provided alert manager
+        if alert_manager:
+            self.alert_manager = alert_manager
+            self.logger.info("Using provided AlertManager instance")
+        else:
+            # Fallback to creating own instance
+            self.alert_manager = AlertManager(config=self.config)
+            self.logger.info("Created new AlertManager instance")
         
-        # Create MarketDataManager instance
+        # Store exchange manager (will be initialized in start() if not provided)
+        self.exchange_manager = exchange_manager
+        
+        # Create MarketDataManager instance (will be initialized in start())
         self.market_data_manager = None
         
         # Tracking for detected liquidations
@@ -88,9 +116,12 @@ class LiquidationMonitor:
             # Initialize the alert manager
             await self.alert_manager.start()
             
-            # Create and initialize exchange manager
-            self.exchange_manager = ExchangeManager(self.config_manager)
-            await self.exchange_manager.initialize()
+            # Create and initialize exchange manager if not provided
+            if not self.exchange_manager:
+                from src.core.exchanges.manager import ExchangeManager
+                self.exchange_manager = ExchangeManager(self.config_manager)
+                await self.exchange_manager.initialize()
+                self.logger.info("Created and initialized new ExchangeManager instance")
             
             # Create and initialize market data manager
             self.market_data_manager = MarketDataManager(

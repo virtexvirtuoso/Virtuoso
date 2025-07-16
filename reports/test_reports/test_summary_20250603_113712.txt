@@ -1,0 +1,27 @@
+COMPREHENSIVE MARKET REPORTER PIPELINE TEST SUMMARY
+============================================================
+
+Test Suite: Comprehensive Market Reporter Pipeline Test
+Start Time: 2025-06-03 11:32:40.196506
+End Time: 2025-06-03 11:37:12.250245
+Total Duration: 272.05 seconds
+
+Tests Run: 10
+Tests Passed: 7
+Tests Failed: 3
+Success Rate: 70.0%
+
+ERRORS ENCOUNTERED:
+  - Exchange init: bybit GET https://api.bybit.com/v5/market/instruments-info?category=spot
+
+DETAILED TEST RESULTS:
+  Exchange Initialization: FAILED (3.44s)
+  Market Reporter Initialization: PASSED (2.33s)
+  Live Data Collection: FAILED (51.65s)
+  Calculation Methods: PASSED (67.46s)
+  Market Summary Generation: PASSED (66.09s)
+  PDF Generation: FAILED (0.01s)
+  JSON Export: PASSED (0.00s)
+  Performance Monitoring: PASSED (6.02s)
+  Error Handling: PASSED (6.02s)
+  Complete Pipeline Integration: PASSED (69.03s)

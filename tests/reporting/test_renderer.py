@@ -24,8 +24,12 @@ if 'whale_activity' in data and 'summary' not in data['whale_activity']:
     has_activity = data['whale_activity'].get('has_significant_activity', False)
     data['whale_activity']['summary'] = f'Whale activity is {"significant" if has_activity else "minimal"}.'
 
-# Set up Jinja2 environment
-env = Environment(loader=FileSystemLoader('./src/templates'))
+# Use canonical template directory
+template_dir = os.path.join(os.getcwd(), 'src', 'core', 'reporting', 'templates')
+if not os.path.exists(template_dir):
+    raise RuntimeError(f"Canonical template directory not found: {template_dir}")
+
+env = Environment(loader=FileSystemLoader(template_dir))
 template = env.get_template('market_report_dark.html')
 
 # Render template

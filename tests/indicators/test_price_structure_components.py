@@ -58,15 +58,15 @@ async def main():
     for component, score in result['components'].items():
         print(f"  {component}: {score:.2f}")
     
-    # Verify that both market_structure and composite_value have their own scores
-    print("\nVerifying component scores...")
-    if 'market_structure' in result['components'] and 'composite_value' in result['components']:
-        print("  ✅ Both market_structure and composite_value have their own scores")
-        print(f"  market_structure: {result['components']['market_structure']:.2f}")
+    # Verify that both swing_structure and composite_value have their own scores
+    print("\nChecking component separation...")
+    if 'swing_structure' in result['components'] and 'composite_value' in result['components']:
+        print("  ✅ Both swing_structure and composite_value have their own scores")
+        print(f"  swing_structure: {result['components']['swing_structure']:.2f}")
         print(f"  composite_value: {result['components']['composite_value']:.2f}")
     else:
-        print("  ❌ Missing one or both components:")
-        print(f"  market_structure in components: {'market_structure' in result['components']}")
+        print("  ❌ Component separation issue detected:")
+        print(f"  swing_structure in components: {'swing_structure' in result['components']}")
         print(f"  composite_value in components: {'composite_value' in result['components']}")
     
     # Verify that the weights are being properly applied

@@ -3,8 +3,10 @@ from typing import Dict, List, Optional
 from ..models.trading import OrderRequest, OrderResponse, Position, PortfolioSummary
 from src.core.exchanges.manager import ExchangeManager
 from fastapi import Request
+import logging
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 async def get_exchange_manager(request: Request) -> ExchangeManager:
     """Dependency to get exchange manager from app state"""
@@ -121,6 +123,94 @@ async def update_position(
         else:
             return {"message": "No parameters to update"}
             
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.get("/portfolio", response_model=PortfolioSummary)
+async def get_portfolio(
+    exchange_manager: ExchangeManager = Depends(get_exchange_manager)
+) -> PortfolioSummary:
+    """Get portfolio summary across all exchanges (alias for /portfolio/summary)."""
+    try:
+        summary = {
+            'total_equity': 0.0,
+            'total_pnl': 0.0,
+            'positions_count': 0,
+            'exchanges': {}
+        }
+        
+        for exchange_id, exchange in exchange_manager.exchanges.items():
+            try:
+                # Get balance and positions
+                balance = await exchange.fetch_balance()
+                positions = await exchange.fetch_positions()
+                
+                exchange_summary = {
+                    'equity': sum(float(bal['total']) for bal in balance.values()),
+                    'pnl': sum(float(pos['unrealizedPnl']) for pos in positions),
+                    'positions': len(positions)
+                }
+                
+                summary['exchanges'][exchange_id] = exchange_summary
+                summary['total_equity'] += exchange_summary['equity']
+                summary['total_pnl'] += exchange_summary['pnl']
+                summary['positions_count'] += exchange_summary['positions']
+                
+            except Exception as e:
+                logger.error(f"Error getting data from {exchange_id}: {str(e)}")
+                continue
+                
+        return PortfolioSummary(**summary)
+        
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.get("/orders")
+async def get_all_orders(
+    limit: int = Query(default=50, ge=1, le=500),
+    exchange_manager: ExchangeManager = Depends(get_exchange_manager)
+) -> List[OrderResponse]:
+    """Get orders from all exchanges."""
+    try:
+        all_orders = []
+        
+        for exchange_id, exchange in exchange_manager.exchanges.items():
+            try:
+                orders = await exchange.fetch_orders(limit=limit)
+                for order in orders:
+                    order['exchange'] = exchange_id  # Add exchange info
+                    all_orders.append(OrderResponse(**order))
+            except Exception as e:
+                logger.error(f"Error getting orders from {exchange_id}: {str(e)}")
+                continue
+                
+        # Sort by timestamp (most recent first)
+        all_orders.sort(key=lambda x: x.timestamp or 0, reverse=True)
+        return all_orders[:limit]
+        
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.get("/positions")
+async def get_all_positions(
+    exchange_manager: ExchangeManager = Depends(get_exchange_manager)
+) -> List[Position]:
+    """Get open positions from all exchanges."""
+    try:
+        all_positions = []
+        
+        for exchange_id, exchange in exchange_manager.exchanges.items():
+            try:
+                positions = await exchange.fetch_positions()
+                for pos in positions:
+                    pos['exchange'] = exchange_id  # Add exchange info
+                    all_positions.append(Position(**pos))
+            except Exception as e:
+                logger.error(f"Error getting positions from {exchange_id}: {str(e)}")
+                continue
+                
+        return all_positions
+        
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 

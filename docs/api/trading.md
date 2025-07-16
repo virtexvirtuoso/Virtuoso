@@ -217,7 +217,7 @@ GET /{exchange_id}/positions
     "liquidation_price": null
   },
   {
-    "symbol": "ETH/USDT",
+    "symbol": "ETHUSDT",
     "exchange": "binance",
     "timestamp": 1647356789123,
     "type": "spot",

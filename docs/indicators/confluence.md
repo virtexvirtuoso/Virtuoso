@@ -15,7 +15,7 @@ The confluence analysis uses the following weighted components:
 | Orderflow | 25% | Order flow analysis |
 | Sentiment | 15% | Market sentiment indicators |
 | Orderbook | 20% | Order book analysis |
-| Price Structure | 10% | Market structure analysis |
+| Price Structure | 20% | Market structure analysis |
 
 ## Analysis Components
 

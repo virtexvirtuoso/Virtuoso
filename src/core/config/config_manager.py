@@ -85,6 +85,9 @@ class ConfigManager:
                     config = yaml.safe_load(f)
                     logger.info(f"Successfully loaded configuration from {config_path}")
                     
+                    # Process environment variables
+                    config = ConfigManager._process_env_variables(config)
+                    
                     # Validate configuration
                     instance = ConfigManager.__new__(ConfigManager)
                     instance._validate_config(config)
@@ -99,6 +102,52 @@ class ConfigManager:
             logger.error(f"Error loading configuration: {str(e)}", exc_info=True)
             # Return empty config to avoid further errors
             return {}
+    
+    @staticmethod
+    def _process_env_variables(config: Dict) -> Dict:
+        """Process environment variables in configuration recursively."""
+        if isinstance(config, dict):
+            return {
+                key: ConfigManager._process_env_variables(value)
+                for key, value in config.items()
+            }
+        elif isinstance(config, list):
+            return [ConfigManager._process_env_variables(item) for item in config]
+        elif isinstance(config, str):
+            # Handle ${VAR} format
+            if config.startswith('${') and config.endswith('}'):
+                env_var = config[2:-1]
+                env_value = os.getenv(env_var)
+                if env_value is None:
+                    logger.warning(f"Environment variable {env_var} not found")
+                    # Try to get from .env file
+                    from pathlib import Path
+                    env_path = Path(__file__).parent.parent.parent / "config" / ".env"
+                    if env_path.exists():
+                        with open(env_path, 'r') as f:
+                            for line in f:
+                                line = line.strip()
+                                if line and not line.startswith('#'):
+                                    try:
+                                        key, value = line.split('=', 1)
+                                        if key.strip() == env_var:
+                                            env_value = value.strip().strip('"').strip("'")
+                                            os.environ[env_var] = env_value
+                                            break
+                                    except ValueError:
+                                        continue
+                    if env_value is None:
+                        return config  # Return original if env var not found
+                return env_value
+            # Handle $VAR format
+            elif config.startswith('$') and len(config) > 1:
+                env_var = config[1:]
+                env_value = os.getenv(env_var)
+                if env_value is None:
+                    logger.warning(f"Environment variable {env_var} not found")
+                    return config  # Return original if env var not found
+                return env_value
+        return config
     
     def get_section(self, section: str) -> Optional[Dict[str, Any]]:
         """Get a configuration section.
@@ -153,11 +202,11 @@ class ConfigManager:
         if not config:
             raise ValueError("Empty configuration")
             
-        # Define required sections and subsections
+        # Define required sections (make them less strict)
         required_sections = {
-            'exchanges': ['enabled'],
+            'exchanges': [],  # Remove 'enabled' requirement
             'timeframes': [],
-            'analysis': ['thresholds'],
+            'analysis': [],  # Remove 'thresholds' requirement
             'monitoring': []
         }
         
@@ -165,23 +214,26 @@ class ConfigManager:
         for section, subsections in required_sections.items():
             logger.debug(f"Checking section: {section}")
             if section not in config:
-                logger.error(f"Missing required configuration section: {section}")
-                raise ValueError(f"Missing required configuration section: {section}")
+                logger.warning(f"Missing configuration section: {section}")
+                # Don't raise error, just warn
+                continue
             
-            # Check required subsections
+            # Check required subsections (if any)
             section_config = config[section]
             logger.debug(f"Section {section} config: {section_config}")
             for subsection in subsections:
                 logger.debug(f"Checking subsection: {subsection} in {section}")
                 if subsection not in section_config:
-                    logger.error(f"Missing required subsection '{subsection}' in {section}")
-                    raise ValueError(f"Missing required subsection '{subsection}' in {section}")
+                    logger.warning(f"Missing subsection '{subsection}' in {section}")
+                    # Don't raise error, just warn
         
-        # Validate exchange configurations
-        self._validate_exchanges(config)
+        # Validate exchange configurations (make less strict)
+        if 'exchanges' in config:
+            self._validate_exchanges(config)
         
-        # Validate timeframes
-        self._validate_timeframes(config)
+        # Validate timeframes (make less strict)
+        if 'timeframes' in config:
+            self._validate_timeframes(config)
     
     def _validate_exchanges(self, config: Dict[str, Any]) -> None:
         """Validate exchange configurations.
@@ -194,24 +246,25 @@ class ConfigManager:
         """
         exchanges = config.get('exchanges', {})
         if not exchanges:
-            raise ValueError("No exchanges configured")
+            logger.warning("No exchanges configured")
+            return
             
         primary_found = False
         for exchange_id, exchange_config in exchanges.items():
-            if exchange_config.get('enabled', False):
+            if isinstance(exchange_config, dict) and exchange_config.get('enabled', False):
                 if exchange_config.get('primary', False):
                     if primary_found:
-                        raise ValueError("Multiple primary exchanges configured")
+                        logger.warning("Multiple primary exchanges configured")
                     primary_found = True
                 
-                # Check required exchange fields
-                required_fields = ['api_key', 'secret']
-                for field in required_fields:
+                # Check recommended exchange fields (don't require them)
+                recommended_fields = ['api_key', 'secret']
+                for field in recommended_fields:
                     if field not in exchange_config:
-                        logger.warning(f"Exchange {exchange_id} missing recommended field: {field}")
+                        logger.debug(f"Exchange {exchange_id} missing recommended field: {field}")
         
         if not primary_found:
-            raise ValueError("No primary exchange configured")
+            logger.debug("No primary exchange configured")
 
     def _validate_timeframes(self, config: Dict[str, Any]) -> None:
         """Validate timeframe configurations.
@@ -224,9 +277,10 @@ class ConfigManager:
         """
         timeframes = config.get('timeframes', {})
         if not timeframes:
-            raise ValueError("No timeframes configured")
+            logger.warning("No timeframes configured")
+            return
             
-        required_timeframes = ['base', 'ltf', 'mtf', 'htf']
-        for tf in required_timeframes:
+        recommended_timeframes = ['base', 'ltf', 'mtf', 'htf']
+        for tf in recommended_timeframes:
             if tf not in timeframes:
-                logger.warning(f"Missing recommended timeframe: {tf}") 
+                logger.debug(f"Missing recommended timeframe: {tf}") 

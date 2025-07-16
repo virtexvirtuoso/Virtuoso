@@ -699,7 +699,7 @@ class MarketReporter:
             
             # Generate HTML report
             self.logger.info(f"Generating HTML report: {html_path}")
-            template_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "templates", "market_report_dark.html")
+            template_path = os.path.join(os.getcwd(), "src", "templates", "market_report_dark.html")
             self.logger.debug(f"Template path: {template_path}")
             
             # Debug the market_data structure

@@ -143,7 +143,7 @@ def create_sample_signal_data():
             'subcomponents': {
                 'vwap': {'value': 50345.67, 'score': 54.08, 'impact': 1.3},
                 'composite_value': {'value': 0.07, 'score': 47.99, 'impact': 1.2},
-                'market_structure': {'value': -0.06, 'score': 47.00, 'impact': 1.1},
+                'swing_structure': {'value': -0.06, 'score': 47.00, 'impact': 1.1},
                 'volume_profile': {'value': -0.07, 'score': 46.41, 'impact': 1.0},
                 'order_blocks': {'value': -0.13, 'score': 43.52, 'impact': 1.4}
             }
