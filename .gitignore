@@ -200,3 +200,4 @@ src/indicators/price_structure_indicators.py
 
 # Except the main README.md in the root directory
 !/README.md 
+*.rtf 
