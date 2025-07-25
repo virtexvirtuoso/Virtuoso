@@ -53,6 +53,12 @@ CLAUDE.local.md
 .claude-code
 *claude*.md
 
+# Documentation
+docs/
+*/README.md
+*/README_*.md
+!README.md
+
 # Log files in root directory
 *.log
 *.txt
