@@ -48,6 +48,21 @@ class DashboardIntegrationService:
         
         return {"signals": processed_signals}
     
+    async def get_symbols_data(self) -> Dict[str, Any]:
+        """Get symbols data with prices and confluence scores."""
+        try:
+            # For now, return empty symbols until we connect to the actual data source
+            return {
+                "symbols": [],
+                "timestamp": datetime.utcnow().isoformat()
+            }
+        except Exception as e:
+            self.logger.error(f"Error getting symbols data: {e}")
+            return {
+                "symbols": [],
+                "timestamp": datetime.utcnow().isoformat()
+            }
+    
     async def _build_confluence_signals(self, signal_data: Dict[str, Any]) -> Dict[str, Any]:
         """Build complete confluence signals with all 11 components."""
         components = signal_data.get('components', {})

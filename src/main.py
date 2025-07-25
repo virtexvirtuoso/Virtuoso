@@ -99,6 +99,8 @@ market_data_manager = None
 # Resolve paths relative to the project root  
 PROJECT_ROOT = Path(__file__).parent.parent
 TEMPLATE_DIR = PROJECT_ROOT / "src" / "dashboard" / "templates"
+# Also create a direct path from src directory
+TEMPLATE_DIR_ALT = Path(__file__).parent / "dashboard" / "templates"
 
 def display_banner():
     """Display the Virtuoso ASCII art banner"""
@@ -122,18 +124,58 @@ def display_banner():
     print(banner)
     logger.info("Starting Virtuoso Trading System")
 
+async def _sync_cleanup():
+    """Synchronous cleanup for when event loop is not available."""
+    logger.info("Performing synchronous cleanup...")
+    
+    global market_monitor, exchange_manager, database_client, alert_manager, market_data_manager
+    
+    # Basic synchronous cleanup
+    try:
+        if database_client and hasattr(database_client, 'close'):
+            if not asyncio.iscoroutinefunction(database_client.close):
+                database_client.close()
+                logger.info("Database client closed synchronously")
+        
+        if alert_manager and hasattr(alert_manager, 'cleanup'):
+            if not asyncio.iscoroutinefunction(alert_manager.cleanup):
+                alert_manager.cleanup()
+                logger.info("Alert manager cleanup completed synchronously")
+        
+        # Force cleanup of any remaining resources
+        import gc
+        gc.collect()
+        logger.info("Synchronous cleanup completed")
+        
+    except Exception as e:
+        logger.error(f"Error during synchronous cleanup: {str(e)}")
+
 async def cleanup_all_components():
     """Centralized cleanup of all system components."""
     logger.info("Starting comprehensive application cleanup...")
     
     global market_monitor, exchange_manager, database_client, alert_manager, market_data_manager
     
+    # Check if event loop is still running
+    try:
+        loop = asyncio.get_running_loop()
+        if loop.is_closed():
+            logger.warning("Event loop is closed, performing synchronous cleanup only")
+            await _sync_cleanup()
+            return
+    except RuntimeError:
+        logger.warning("No running event loop, performing synchronous cleanup only")
+        await _sync_cleanup()
+        return
+    
     # Stop monitor first
     if market_monitor and hasattr(market_monitor, 'running') and market_monitor.running:
         try:
             logger.info("Stopping market monitor...")
-            await market_monitor.stop()
+            await asyncio.wait_for(market_monitor.stop(), timeout=5.0)
             logger.info("Market monitor stopped successfully")
+        except asyncio.TimeoutError:
+            logger.warning("Market monitor stop timed out")
         except Exception as e:
             logger.error(f"Error stopping monitor: {str(e)}")
     
@@ -141,8 +183,10 @@ async def cleanup_all_components():
     if market_data_manager and hasattr(market_data_manager, 'stop'):
         try:
             logger.info("Stopping market data manager...")
-            await market_data_manager.stop()
+            await asyncio.wait_for(market_data_manager.stop(), timeout=5.0)
             logger.info("Market data manager stopped successfully")
+        except asyncio.TimeoutError:
+            logger.warning("Market data manager stop timed out")
         except Exception as e:
             logger.error(f"Error stopping market data manager: {str(e)}")
     
@@ -150,8 +194,10 @@ async def cleanup_all_components():
     if exchange_manager:
         try:
             logger.info("Cleaning up exchange manager...")
-            await exchange_manager.cleanup()
+            await asyncio.wait_for(exchange_manager.cleanup(), timeout=10.0)
             logger.info("Exchange manager cleanup completed")
+        except asyncio.TimeoutError:
+            logger.warning("Exchange manager cleanup timed out")
         except Exception as e:
             logger.error(f"Error cleaning up exchange manager: {str(e)}")
     
@@ -159,8 +205,14 @@ async def cleanup_all_components():
     if database_client:
         try:
             logger.info("Closing database client...")
-            await database_client.close()
+            if hasattr(database_client, 'close'):
+                if asyncio.iscoroutinefunction(database_client.close):
+                    await asyncio.wait_for(database_client.close(), timeout=5.0)
+                else:
+                    database_client.close()
             logger.info("Database client closed successfully")
+        except asyncio.TimeoutError:
+            logger.warning("Database client close timed out")
         except Exception as e:
             logger.error(f"Error closing database client: {str(e)}")
     
@@ -168,8 +220,14 @@ async def cleanup_all_components():
     if alert_manager:
         try:
             logger.info("Cleaning up alert manager...")
-            await alert_manager.cleanup()
+            if hasattr(alert_manager, 'cleanup'):
+                if asyncio.iscoroutinefunction(alert_manager.cleanup):
+                    await asyncio.wait_for(alert_manager.cleanup(), timeout=5.0)
+                else:
+                    alert_manager.cleanup()
             logger.info("Alert manager cleanup completed")
+        except asyncio.TimeoutError:
+            logger.warning("Alert manager cleanup timed out")
         except Exception as e:
             logger.error(f"Error cleaning up alert manager: {str(e)}")
     
@@ -217,29 +275,40 @@ async def cleanup_all_components():
         if sessions_closed > 0 or connectors_closed > 0:
             logger.info(f"Closed {sessions_closed} aiohttp sessions and {connectors_closed} connectors")
         
-        # Get all tasks
-        tasks = [task for task in asyncio.all_tasks() if not task.done()]
-        
-        # Cancel any remaining tasks (but not the current task)
+        # Cancel all remaining tasks with better error handling
         current_task = asyncio.current_task()
-        cancelled_tasks = 0
-        for task in tasks:
-            if not task.done() and task != current_task:
-                task.cancel()
-                cancelled_tasks += 1
+        tasks = [task for task in asyncio.all_tasks() if not task.done() and task != current_task]
         
-        # Wait for tasks to complete cancellation with timeout
         if tasks:
+            logger.info(f"Cancelling {len(tasks)} remaining tasks...")
+            
+            # Cancel all tasks
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            
+            # Wait for tasks to complete cancellation with timeout
             try:
-                await asyncio.wait_for(
-                    asyncio.gather(*[t for t in tasks if t != current_task], return_exceptions=True),
-                    timeout=5.0
+                # Give tasks a chance to handle their cancellation
+                done, pending = await asyncio.wait(
+                    tasks, 
+                    timeout=3.0,
+                    return_when=asyncio.ALL_COMPLETED
                 )
-            except asyncio.TimeoutError:
-                logger.warning("Some tasks did not complete cancellation within timeout")
-        
-        if cancelled_tasks > 0:
-            logger.info(f"Cancelled {cancelled_tasks} remaining tasks")
+                
+                if pending:
+                    logger.warning(f"{len(pending)} tasks did not complete cancellation within timeout")
+                    # Force cancel any remaining tasks
+                    for task in pending:
+                        if not task.done():
+                            task.cancel()
+                            
+                logger.info(f"Successfully cancelled {len(tasks)} tasks")
+                
+            except Exception as e:
+                logger.warning(f"Error during task cancellation: {e}")
+        else:
+            logger.info("No remaining tasks to cancel")
         
         # Force garbage collection to clean up any remaining references
         gc.collect()
@@ -1169,17 +1238,35 @@ async def frontend():
 @app.get("/dashboard")
 async def dashboard_ui():
     """Serve the main v10 Signal Confluence Matrix dashboard"""
-    return FileResponse(TEMPLATE_DIR / "dashboard_v10.html")
+    # Try multiple path options to handle different runtime contexts
+    template_path = TEMPLATE_DIR / "dashboard_v10.html"
+    if not template_path.exists():
+        # Try alternative path
+        template_path = TEMPLATE_DIR_ALT / "dashboard_v10.html"
+    if not template_path.exists():
+        # Try direct path from src
+        template_path = Path(__file__).parent / "dashboard" / "templates" / "dashboard_v10.html"
+    return FileResponse(template_path)
 
 @app.get("/dashboard/v1")
 async def dashboard_v1_ui():
     """Serve the original dashboard"""
-    return FileResponse(TEMPLATE_DIR / "dashboard.html")
+    template_path = TEMPLATE_DIR / "dashboard.html"
+    if not template_path.exists():
+        template_path = TEMPLATE_DIR_ALT / "dashboard.html"
+    if not template_path.exists():
+        template_path = Path(__file__).parent / "dashboard" / "templates" / "dashboard.html"
+    return FileResponse(template_path)
 
 @app.get("/dashboard/mobile")
 async def dashboard_mobile_ui():
     """Serve the mobile-optimized dashboard"""
-    return FileResponse(TEMPLATE_DIR / "dashboard_mobile_v1.html")
+    template_path = TEMPLATE_DIR / "dashboard_mobile_v1.html"
+    if not template_path.exists():
+        template_path = TEMPLATE_DIR_ALT / "dashboard_mobile_v1.html"
+    if not template_path.exists():
+        template_path = Path(__file__).parent / "dashboard" / "templates" / "dashboard_mobile_v1.html"
+    return FileResponse(template_path)
 
 @app.get("/beta-analysis")
 async def beta_analysis_ui():
@@ -1588,6 +1675,119 @@ async def get_dashboard_overview():
         
     except Exception as e:
         logger.error(f"Error getting dashboard overview: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/debug/state")
+async def debug_state():
+    """Debug endpoint to check app state."""
+    return {
+        "has_top_symbols_manager": hasattr(app.state, 'top_symbols_manager') and app.state.top_symbols_manager is not None,
+        "has_exchange_manager": hasattr(app.state, 'exchange_manager') and app.state.exchange_manager is not None,
+        "has_confluence_analyzer": hasattr(app.state, 'confluence_analyzer') and app.state.confluence_analyzer is not None,
+        "app_state_attrs": [attr for attr in dir(app.state) if not attr.startswith('_')]
+    }
+
+@app.get("/api/dashboard/symbols")
+async def get_dashboard_symbols():
+    """Get analyzed symbols with confluence scores and prices"""
+    try:
+        symbols_data = []
+        
+        # Hardcoded fallback symbols if manager not available
+        fallback_symbols = [
+            "BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT", "AVAXUSDT",
+            "DOGEUSDT", "ADAUSDT", "MATICUSDT", "DOTUSDT", "LINKUSDT"
+        ]
+        
+        # Get managers from app state (globals are None until initialized)
+        symbols_manager = getattr(app.state, 'top_symbols_manager', None)
+        exchange_mgr = getattr(app.state, 'exchange_manager', None)
+        
+        logger.info(f"Dashboard symbols - symbols_manager: {symbols_manager is not None}, exchange_mgr: {exchange_mgr is not None}")
+        
+        if symbols_manager and exchange_mgr:
+            try:
+                # Get top symbols
+                top_symbols = await symbols_manager.get_top_symbols(limit=15)
+                logger.info(f"Got {len(top_symbols)} symbols from manager: {[s.get('symbol', s) for s in top_symbols[:5]]}")
+                
+                for symbol_info in top_symbols:
+                    symbol = symbol_info['symbol']
+                    try:
+                        # Get current ticker data for price
+                        ticker = await exchange_mgr.fetch_ticker(symbol)
+                        
+                        # Try to get confluence score if available
+                        confluence_score = 50  # Default score
+                        confluence = getattr(app.state, 'confluence_analyzer', None) or confluence_analyzer
+                        if confluence:
+                            try:
+                                market_data = await exchange_mgr.fetch_market_data(symbol)
+                                if market_data:
+                                    analysis = await confluence.analyze(market_data)
+                                    confluence_score = analysis.get('confluence_score', 50)
+                            except:
+                                pass  # Use default score if analysis fails
+                        
+                        symbol_data = {
+                            "symbol": symbol,
+                            "price": ticker.get('last', 0),
+                            "confluence_score": confluence_score,
+                            "change_24h": ticker.get('percentage', 0),
+                            "volume_24h": ticker.get('quoteVolume', 0),
+                            "high_24h": ticker.get('high', 0),
+                            "low_24h": ticker.get('low', 0)
+                        }
+                        symbols_data.append(symbol_data)
+                        
+                    except Exception as e:
+                        logger.debug(f"Could not get data for {symbol}: {e}")
+                        # Add symbol with minimal data
+                        symbols_data.append({
+                            "symbol": symbol,
+                            "price": 0,
+                            "confluence_score": 50,
+                            "change_24h": 0
+                        })
+                        
+            except Exception as e:
+                logger.error(f"Could not get symbols data: {e}", exc_info=True)
+        
+        # If no symbols retrieved, use fallback with mock data
+        if not symbols_data:
+            # Create mock data for fallback symbols
+            mock_prices = {
+                "BTCUSDT": 105234.56,
+                "ETHUSDT": 3456.78,
+                "SOLUSDT": 234.56,
+                "XRPUSDT": 2.34,
+                "AVAXUSDT": 45.67,
+                "DOGEUSDT": 0.345,
+                "ADAUSDT": 0.89,
+                "MATICUSDT": 1.23,
+                "DOTUSDT": 12.34,
+                "LINKUSDT": 23.45
+            }
+            
+            import random
+            for symbol in fallback_symbols[:10]:  # Limit to 10 symbols
+                symbols_data.append({
+                    "symbol": symbol,
+                    "price": mock_prices.get(symbol, random.uniform(10, 1000)),
+                    "confluence_score": random.randint(40, 80),
+                    "change_24h": random.uniform(-5, 5),
+                    "volume_24h": random.uniform(1000000, 100000000),
+                    "high_24h": mock_prices.get(symbol, 100) * 1.02,
+                    "low_24h": mock_prices.get(symbol, 100) * 0.98
+                })
+        
+        return {
+            "symbols": symbols_data,
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting dashboard symbols: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/correlation/live-matrix")

@@ -336,6 +336,16 @@ async def get_dashboard_symbols() -> Dict[str, Any]:
         }
 
 # HTML Dashboard Routes
+@router.get("/login")
+async def login_page():
+    """Serve the mobile login screen"""
+    return FileResponse(TEMPLATE_DIR / "login_mobile.html")
+
+@router.get("/favicon.svg")
+async def favicon():
+    """Serve the custom amber trending-up favicon"""
+    return FileResponse(TEMPLATE_DIR / "favicon.svg", media_type="image/svg+xml")
+
 @router.get("/")
 async def dashboard_page():
     """Serve the main v10 Signal Confluence Matrix dashboard"""

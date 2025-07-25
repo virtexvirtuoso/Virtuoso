@@ -1,0 +1,8 @@
+<svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Dark background matching dashboard theme -->
+  <rect width="24" height="24" rx="4" fill="#0a1525"/>
+  
+  <!-- Amber trending-up icon -->
+  <path d="m3 17 6-6 4 4 8-8" stroke="#FFBF00" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="m21 7-4 4V7h4z" fill="#FFBF00" stroke="#FFBF00" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
