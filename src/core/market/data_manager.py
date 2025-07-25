@@ -3,7 +3,8 @@ from typing import Dict, Any, Optional, List
 import asyncio
 import time
 import pandas as pd
-from src.utils.error_handling import handle_errors, ConfigError
+from src.core.error.decorators import handle_errors
+from src.core.error.utils import ConfigurationError
 from src.core.exchanges.manager import ExchangeManager
 from src.core.exchanges.base import BaseExchange
 
@@ -64,7 +65,7 @@ class DataManager:
             timeframes_config = self.config.get('timeframes', {})
             
             if not timeframes_config:
-                raise ConfigError("No timeframes configuration found")
+                raise ConfigurationError("No timeframes configuration found")
             
             # Initialize timeframe weights
             self.timeframe_weights = {}
@@ -84,7 +85,7 @@ class DataManager:
                 
                 # Validate timeframe interval is numeric
                 if not interval.isdigit():
-                    raise ConfigError(f"Invalid timeframe interval: {interval}. Must be numeric minutes.")
+                    raise ConfigurationError(f"Invalid timeframe interval: {interval}. Must be numeric minutes.")
             
             # Normalize weights
             total_weight = sum(tf['weight'] for tf in self.timeframe_weights.values())
@@ -96,7 +97,7 @@ class DataManager:
             
         except Exception as e:
             self.logger.error(f"Error initializing timeframes: {str(e)}")
-            raise ConfigError(f"Failed to initialize timeframes: {str(e)}")
+            raise ConfigurationError(f"Failed to initialize timeframes: {str(e)}")
 
     async def _fetch_market_data(self, symbol: str) -> Dict[str, Any]:
         """Fetch market data for a symbol."""

@@ -3,13 +3,13 @@
 import unittest
 import logging
 from datetime import datetime, timedelta
-from core.validation import (
+from src.core.validation import (
     ValidationResult,
     ValidationRule,
     AsyncValidationService,
     ValidationContext
 )
-from core.validation.rules import TimeRangeRule, SymbolRule, NumericRangeRule
+from src.core.validation.rules import TimeRangeRule, SymbolRule, NumericRangeRule
 
 # Configure logging
 logging.basicConfig(

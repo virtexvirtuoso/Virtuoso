@@ -1,0 +1,1104 @@
+system:
+  base_dir: .
+  cache_dir: cache
+  data_dir: data
+  enable_reporting: true
+  environment: development
+  log_level: INFO
+  reports_dir: ./reports
+  version: 1.0.0
+signal_tracking:
+  enabled: false
+  api_url: http://localhost:8001/api/signal-tracking
+signal_frequency_tracking:
+  enabled: true
+  cooldown_periods:
+    BUY: 1800
+    SELL: 1800
+    NEUTRAL: 900
+  score_improvement_threshold: 5.0
+  max_history_per_symbol: 50
+  frequency_analysis_window: 3600
+  alert_on_higher_score: true
+  min_score_for_frequency_alert: 65
+  frequency_thresholds:
+    high_frequency: 3
+    medium_frequency: 2
+    low_frequency: 1
+websocket:
+  enabled: true
+  reconnect_attempts: 5
+  ping_interval: 30
+  timeout: 10
+  channels:
+    ticker: true
+    kline: true
+    orderbook: true
+    trade: true
+    liquidation: true
+  log_level: INFO
+alpha_scanning:
+  alerts:
+    cooldown_minutes: 60
+    enabled: false
+    max_alerts_per_scan: 3
+  enabled: false
+  interval_minutes: 15
+  max_symbols_per_scan: 10
+  min_data_points: 50
+  pattern_types:
+  - correlation_breakdown
+  - beta_expansion
+  - alpha_breakout
+  performance_tiers:
+    fast:
+    - mtf
+    stable:
+    - htf
+    ultra_fast:
+    - base
+    - ltf
+  skip_low_volume_symbols: true
+  thresholds:
+    alpha_threshold: 0.03
+    beta_divergence: 0.25
+    correlation_breakdown: 0.25
+    min_confidence: 0.75
+  timeframe_thresholds:
+    base:
+      alpha_threshold: 0.02
+      beta_divergence: 0.2
+      correlation_breakdown: 0.15
+      min_confidence: 0.85
+    htf:
+      alpha_threshold: 0.04
+      beta_divergence: 0.3
+      correlation_breakdown: 0.3
+      min_confidence: 0.7
+    ltf:
+      alpha_threshold: 0.025
+      beta_divergence: 0.25
+      correlation_breakdown: 0.2
+      min_confidence: 0.8
+    mtf:
+      alpha_threshold: 0.03
+      beta_divergence: 0.25
+      correlation_breakdown: 0.25
+      min_confidence: 0.75
+  timeframes:
+  - htf
+  - mtf
+  - ltf
+  - base
+  use_cached_data: true
+alpha_scanning_optimized:
+  alpha_tiers:
+    tier_1_critical:
+      cooldown_override: true
+      max_alerts_per_hour: 2
+      min_alpha: 0.5
+      min_confidence: 0.95
+      scan_interval_minutes: 1
+    tier_2_high:
+      cooldown_minutes: 15
+      max_alerts_per_hour: 3
+      min_alpha: 0.15
+      min_confidence: 0.9
+      scan_interval_minutes: 3
+    tier_3_medium:
+      cooldown_minutes: 60
+      max_alerts_per_hour: 2
+      min_alpha: 0.08
+      min_confidence: 0.85
+      scan_interval_minutes: 10
+    tier_4_background:
+      cooldown_minutes: 240
+      max_alerts_per_hour: 1
+      min_alpha: 0.05
+      min_confidence: 0.8
+      scan_interval_minutes: 30
+  enabled: true
+  filtering:
+    min_alert_value_score: 25.0
+    volume_confirmation:
+      min_volume_multiplier: 2.0
+      tier_1_required: true
+      tier_2_required: true
+      tier_3_required: false
+  pattern_weights:
+    alpha_breakout: 0.6
+    beta_compression: 1.0
+    beta_expansion: 1.0
+    correlation_breakdown: 0.4
+    cross_timeframe: 0.2
+  throttling:
+    emergency_override:
+      min_alpha_for_override: 1.0
+      min_confidence_for_override: 0.98
+    max_total_alerts_per_day: 30
+    max_total_alerts_per_hour: 8
+  value_scoring:
+    alpha_weight: 0.4
+    confidence_weight: 0.25
+    pattern_weight: 0.2
+    risk_weight: 0.05
+    volume_weight: 0.1
+analysis:
+  confluence_reference: See 'confluence' section at the bottom of this file for all
+    weights and thresholds
+  indicators:
+    orderbook:
+      parameters:
+        absorption:
+          exhaustion_factor: 0.8
+          min_size: 50000
+          size_impact_weight: 0.6
+          threshold: 2.0
+        depth:
+          levels: 25
+          normalization_factor: 100
+          significance_threshold: 0.1
+          weight_decay: 0.95
+        depth_levels: 25
+        dom_momentum:
+          lag: 2
+          lookback: 5
+          smoothing: 2
+          threshold: 0.1
+        imbalance:
+          extreme_threshold: 0.5
+          lookback: 20
+          smoothing: 3
+          threshold: 0.2
+        large_orders:
+          alert_threshold: 0.01
+          min_size: 100000
+          relative_size: true
+          significance_factor: 2.0
+        liquidity:
+          depth_weight: 0.7
+          relative_scale: true
+          spread_weight: 0.3
+          threshold: 1.5
+        min_data_points: 10
+        mpi:
+          lookback: 10
+          sensitivity: 0.75
+          threshold: 0.3
+        obps:
+          lookback: 10
+          price_levels: 10
+          smoothing: 2
+          threshold: 0.15
+        pressure:
+          impact_multiplier: 1.2
+          sensitivity: 0.75
+          smoothing: 5
+          threshold: 0.25
+        price_impact:
+          calculation_size: 100000
+          max_levels: 20
+          normalize: true
+          threshold: 0.005
+        sigmoid_transformation:
+          default_sensitivity: 0.12
+          imbalance_sensitivity: 0.15
+          pressure_sensitivity: 0.18
+        spread:
+          historical_lookback: 50
+          normalize: true
+          relative_threshold: 0.001
+          volatility_adjustment: true
+        support_resistance:
+          cluster_threshold: 0.005
+          max_levels: 5
+          min_size: 100000
+          strength_decay: 0.9
+        update_interval: 100
+    orderflow:
+      cvd:
+        price_direction_threshold: 0.01
+        cvd_significance_threshold: 0.01
+      divergence:
+        impact_multiplier: 0.1
+        lookback: 20
+        min_points: 5
+        recency_factor: 1.5
+        strength_threshold: 20
+        time_weighting: true
+      imbalance:
+        normalize: true
+        smoothing: 2
+        threshold: 0.2
+        window: 20
+      liquidity:
+        frequency_weight: 0.5
+        max_trades_per_sec: 5
+        max_volume: 1000
+        volume_weight: 0.5
+        window_minutes: 5
+      min_trades: 1000
+      open_interest:
+        normalization_threshold: 5.0
+        minimal_change_threshold: 0.02
+        price_direction_threshold: 0.01
+      trade_flow:
+        momentum_lookback: 10
+        pressure_sensitivity: 0.8
+        significance_threshold: 0.3
+        smoothing: 3
+        window: 20
+      trades_pressure:
+        volume_weight: 0.4
+        value_weight: 0.3
+        count_weight: 0.2
+        large_trade_weight: 0.1
+        large_trade_threshold: 100000
+        window: 50
+        decay_factor: 0.95
+      trades_imbalance:
+        short_window: 10
+        medium_window: 30
+        long_window: 100
+        short_weight: 0.5
+        medium_weight: 0.3
+        long_weight: 0.2
+      liquidity_zones:
+        swing_length: 50
+        range_percent: 0.01
+        interpolate_missing_cvd: true
+      volume_threshold: 1.5
+    price_structure:
+      parameters:
+        order_block:
+          lookback: 20
+          proximity_weight: 0.6
+          strength_threshold: 2.0
+        range:
+          lookback: 50
+          sfp_threshold: 0.005
+          msb_window: 5
+        support_resistance:
+          level_threshold: 0.005
+          lookback: 100
+          strength_threshold: 1.5
+        swing_points:
+          threshold: 0.01
+          window: 5
+        trend:
+          ma_periods:
+          - 20
+          - 50
+          - 200
+          momentum_period: 14
+        volume_profile:
+          bins: 100
+          threshold: 1.5
+          value_area: 0.7
+        vwap:
+          debug_logging: false
+          scoring:
+            extreme_overbought: 95
+            extreme_oversold: 5
+            moderate_overbought: 65
+            moderate_oversold: 35
+            neutral: 50
+            strong_overbought: 80
+            strong_oversold: 20
+          session_weights:
+            daily: 0.6
+            weekly: 0.4
+          use_std_bands: true
+      vwap_debug_logging: false
+      vwap_use_std_bands: true
+    sentiment:
+      funding_threshold: 0.01
+      liquidation_threshold: 1000000
+      parameters:
+        funding_rate:
+          period: 8
+          threshold: 0.01
+        sigmoid_transformation:
+          default_sensitivity: 0.12
+          funding_sensitivity: 0.15
+          liquidation_sensitivity: 0.1
+          long_short_sensitivity: 0.12
+      sentiment_window: 20
+    technical:
+      ao:
+        period: 14
+      atr:
+        period: 14
+      cci:
+        period: 20
+      divergence_impact: 0.2
+      macd:
+        fast_period: 12
+        signal_period: 9
+        slow_period: 26
+      min_points: 100
+      momentum:
+        volatility_threshold: 0.05
+        window_size: 20
+      rsi:
+        overbought: 70
+        oversold: 30
+        period: 14
+      uo:
+        period: 14
+      williams_r:
+        period: 14
+    volume:
+      parameters:
+        adl:
+          period: 20
+          trend_lookback: 10
+        cmf:
+          period: 20
+          smoothing: 0.5
+          threshold: 0.0
+        divergence:
+          impact_multiplier: 0.2
+          significance_threshold: 0.3
+        lookback: 20
+        obv:
+          smoothing: 3
+          trend_lookback: 14
+        relative_volume:
+          period: 30
+          significant_threshold: 2.0
+          strong_threshold: 3.0
+          extreme_threshold: 4.0
+          weak_threshold: 1.0
+          price_aware_mode: true
+          price_weight: 0.6
+          candle_analysis: true
+          momentum_periods: 3
+          directional_volume: true
+        smoothing: 5
+        threshold: 1.5
+        volume_delta:
+          min_trades: 100
+          window: 20
+        volume_profile:
+          bins: 100
+          value_area_percentage: 70.0
+        vwap:
+          bands: 2.0
+          lookback: 20
+          debug_logging: false
+          use_std_bands: true
+          session_weights:
+            daily: 0.6
+            weekly: 0.4
+          scoring:
+            extreme_overbought: 95
+            strong_overbought: 80
+            moderate_overbought: 65
+            neutral: 50
+            moderate_oversold: 35
+            strong_oversold: 20
+            extreme_oversold: 5
+bitcoin_beta_analysis:
+  alpha_detection:
+    alerts:
+      cooldown_minutes: 15
+      enabled: true
+      min_confidence: 0.7
+    enabled: true
+    thresholds:
+      alpha_threshold: 0.05
+      beta_divergence: 0.3
+      confidence_threshold: 0.7
+      correlation_breakdown: 0.3
+      reversion_beta: 1.5
+      rolling_beta_change: 0.5
+      sector_correlation: 0.8
+      timeframe_consensus: 0.6
+  reports:
+    enabled: true
+    output_dir: exports/bitcoin_beta_reports
+    schedule_enabled: true
+    schedule_times:
+    - 00:00
+    - 06:00
+    - '12:00'
+    - '18:00'
+  timeframes:
+    base:
+      analysis_period_hours: 4
+      description: Real-time analysis
+      interval: 1m
+      periods: 240
+    htf:
+      analysis_period_days: 30
+      description: Long-term correlation trends
+      interval: 4h
+      periods: 180
+    ltf:
+      analysis_period_days: 1
+      description: Short-term movements
+      interval: 5m
+      periods: 288
+    mtf:
+      analysis_period_days: 7
+      description: Medium-term patterns
+      interval: 30m
+      periods: 336
+confluence:
+  thresholds:
+    buy: 69
+    neutral_buffer: 0
+    sell: 35
+  weights:
+    components:
+      orderflow: 0.25
+      orderbook: 0.25
+      volume: 0.16
+      price_structure: 0.16
+      technical: 0.11
+      sentiment: 0.07
+    sub_components:
+      orderbook:
+        absorption_exhaustion: 0.1
+        depth: 0.2
+        dom_momentum: 0.05
+        imbalance: 0.25
+        liquidity: 0.1
+        mpi: 0.2
+        obps: 0.05
+        spread: 0.05
+      orderflow:
+        cvd: 0.25
+        imbalance: 0.15
+        trade_flow: 0.2
+        open_interest: 0.15
+        pressure: 0.1
+        liquidity: 0.1
+        liquidity_zones: 0.05
+      price_structure:
+        support_resistance: 0.1667
+        order_blocks: 0.1667
+        trend_position: 0.1667
+        volume_profile: 0.1667
+        market_structure: 0.1667
+        range_analysis: 0.1667
+      sentiment:
+        funding_rate: 0.2
+        liquidations: 0.2
+        long_short_ratio: 0.15
+        market_activity: 0.15
+        risk: 0.12
+        volatility: 0.18
+      technical:
+        ao: 0.2
+        atr: 0.15
+        cci: 0.15
+        macd: 0.15
+        rsi: 0.2
+        williams_r: 0.15
+      volume:
+        adl: 0.15
+        cmf: 0.15
+        obv: 0.15
+        relative_volume: 0.15
+        volume_delta: 0.2
+        volume_profile: 0.1
+        vwap: 0.1
+data_processing:
+  batch_size: 100
+  enabled: true
+  error_handling:
+    log_errors: true
+    max_retries: 3
+    retry_delay: 1.0
+  feature_engineering:
+    market_impact: true
+    orderbook_features: true
+    technical_indicators: true
+  max_history: 1000
+  max_workers: 4
+  mode: real-time
+  performance:
+    cache_enabled: true
+    cache_size: 1000
+    parallel_processing: true
+  pipeline:
+  - enabled: true
+    name: validation
+    timeout: 5
+  - enabled: true
+    name: normalization
+    timeout: 5
+  - enabled: true
+    name: feature_engineering
+    timeout: 10
+  - enabled: true
+    name: aggregation
+    timeout: 10
+  storage:
+    compression: snappy
+    format: parquet
+    partition_by:
+    - date
+    - symbol
+  time_weights:
+    base: 1.0
+    htf: 1.5
+    ltf: 0.8
+    mtf: 1.2
+  update_interval: 5.0
+  validation:
+    check_duplicates: true
+    check_missing: true
+    check_outliers: true
+  volatility_threshold: 0.05
+  window_size: 20
+database:
+  url: ${DATABASE_URL:sqlite:///./data/virtuoso.db}
+  influxdb:
+    bucket: ${INFLUXDB_BUCKET}
+    org: ${INFLUXDB_ORG}
+    timeout: 30000
+    token: ${INFLUXDB_TOKEN}
+    url: ${INFLUXDB_URL}
+exchanges:
+  binance:
+    api_credentials:
+      api_key: ${BINANCE_API_KEY:}
+      api_secret: ${BINANCE_API_SECRET:}
+    data_only: false
+    data_preferences:
+      exclude_symbols: []
+      min_24h_volume: 1000000
+      preferred_quote_currencies:
+      - USDT
+      - BTC
+      - ETH
+    enabled: ${ENABLE_BINANCE_DATA:false}
+    market_types:
+    - spot
+    - futures
+    primary: false
+    rate_limits:
+      requests_per_minute: 1200
+      requests_per_second: 10
+      weight_per_minute: 6000
+    rest_endpoint: https://api.binance.com
+    testnet: false
+    testnet_endpoint: https://testnet.binance.vision
+    websocket:
+      keep_alive: true
+      ping_interval: 30
+      public: wss://stream.binance.com:9443/ws
+      reconnect_attempts: 3
+      testnet_public: wss://testnet.binance.vision/ws
+  bybit:
+    api_credentials:
+      api_key: ${BYBIT_API_KEY}
+      api_secret: ${BYBIT_API_SECRET}
+    enabled: true
+    primary: true
+    rate_limits:
+      requests_per_minute: 1200
+      requests_per_second: 20
+    rest_endpoint: https://api.bybit.com
+    testnet: false
+    websocket:
+      enabled: true
+      keep_alive: true
+      ping_interval: 30
+      private: wss://stream.bybit.com/v5/private
+      public: wss://stream.bybit.com/v5/public
+      mainnet_endpoint: wss://stream.bybit.com/v5/public/linear
+      testnet_endpoint: wss://stream-testnet.bybit.com/v5/public/linear
+      reconnect_attempts: 3
+      channels:
+      - ticker
+      - kline
+      - orderbook
+      - trade
+      - liquidation
+logging:
+  disable_existing_loggers: false
+  formatters:
+    detailed:
+      datefmt: '%Y-%m-%d %H:%M:%S'
+      format: '%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d]
+        - %(message)s'
+    standard:
+      datefmt: '%Y-%m-%d %H:%M:%S'
+      format: '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+  handlers:
+    console:
+      class: logging.StreamHandler
+      formatter: detailed
+      level: DEBUG
+      stream: ext://sys.stdout
+    file:
+      backupCount: 5
+      class: logging.handlers.RotatingFileHandler
+      filename: logs/app.log
+      formatter: detailed
+      level: DEBUG
+      maxBytes: 10485760
+    indicators_file:
+      backupCount: 5
+      class: logging.handlers.RotatingFileHandler
+      filename: logs/indicators.log
+      formatter: detailed
+      level: DEBUG
+      maxBytes: 10485760
+    websocket_file:
+      backupCount: 3
+      class: logging.handlers.RotatingFileHandler
+      filename: logs/websocket.log
+      formatter: detailed
+      level: DEBUG
+      maxBytes: 10485760
+  loggers:
+    ? ''
+    : handlers:
+      - console
+      - file
+      level: DEBUG
+      propagate: true
+    src:
+      handlers:
+      - console
+      - file
+      level: DEBUG
+      propagate: false
+    src.core:
+      handlers:
+      - console
+      - file
+      level: DEBUG
+      propagate: false
+    src.core.analysis:
+      handlers:
+      - console
+      - indicators_file
+      level: DEBUG
+      propagate: false
+    src.core.exchanges:
+      handlers:
+      - file
+      - console
+      level: INFO
+      propagate: false
+    src.core.exchanges.websocket_manager:
+      handlers:
+      - websocket_file
+      - console
+      level: INFO
+      propagate: false
+    src.indicators:
+      handlers:
+      - console
+      - indicators_file
+      level: DEBUG
+      propagate: false
+    src.indicators.orderbook:
+      handlers:
+      - console
+      - indicators_file
+      level: DEBUG
+      propagate: false
+    src.indicators.orderflow:
+      handlers:
+      - console
+      - indicators_file
+      level: DEBUG
+      propagate: false
+    src.indicators.position:
+      handlers:
+      - console
+      - indicators_file
+      level: DEBUG
+      propagate: false
+    src.indicators.sentiment:
+      handlers:
+      - console
+      - indicators_file
+      level: DEBUG
+      propagate: false
+    src.indicators.technical:
+      handlers:
+      - console
+      - indicators_file
+      level: DEBUG
+      propagate: false
+    src.indicators.volume:
+      handlers:
+      - console
+      - indicators_file
+      level: DEBUG
+      propagate: false
+  version: 1
+market:
+  symbols:
+    excluded_symbols: []
+    market_types:
+    - linear
+    max_symbols: 15
+    min_turnover: 1000000
+    min_volume: 50000
+    static_symbols:
+    - BTCUSDT
+    - ETHUSDT
+    - SOLUSDT
+    - AVAXUSDT
+    - XRPUSDT
+    top_symbols_update_interval_hours: 8
+    use_static_list: false
+market_data:
+  batch_size: 100
+  cache:
+    cleanup_interval: 300
+    data_ttl: 30
+    enabled: true
+    symbol_data:
+      enabled: true
+      max_size: 1000
+      ttl: 30
+    symbols_ttl: 300
+    timeframes:
+      base:
+        ttl: 30
+      htf:
+        ttl: 3600
+      ltf:
+        ttl: 300
+      mtf:
+        ttl: 900
+  delay_websocket: false
+  smart_intervals:
+    enabled: true
+    min_interval: 45
+    max_interval: 120
+    default_interval: 45
+    history_limit: 100
+    thresholds:
+      high_volume_ratio: 1.5
+      high_volatility: 0.02
+      low_volume_ratio: 0.7
+      low_volatility: 0.005
+  fetch:
+    batch_size: 1000
+    required_fields:
+    - timestamp
+    - open
+    - high
+    - low
+    - close
+    - volume
+    retry_attempts: 3
+    retry_delay: 1.0
+    timeout: 30
+    validate_response: true
+  included_symbols: []
+  market_type: linear
+  max_history: 1000
+  symbols_cache_update_interval: 300
+  update_interval: 5.0
+  use_dynamic_symbol_list: true
+  validation:
+    candles:
+      check_relationships: true
+      handle_missing: true
+      min_required: 30
+    data_quality:
+      check_gaps: true
+      max_gap_size: 5
+      min_tick_size: 1.0e-05
+    orderbook:
+      depth_levels: 25
+      max_spread: 0.01
+      min_levels: 10
+      update_interval: 100
+    price:
+      max_value: 1000000
+      min_value: 0
+    timeframes:
+      base:
+        max_gap: 60
+        min_candles: 100
+      htf:
+        max_gap: 14400
+        min_candles: 50
+      ltf:
+        max_gap: 300
+        min_candles: 50
+      mtf:
+        max_gap: 1800
+        min_candles: 50
+    trades:
+      max_age: 3600
+      min_trades: 50
+    volume:
+      max_value: 1000000000
+      min_value: 0
+  websocket_log_level: INFO
+  websocket_logging:
+    include_message_content: false
+    message_threshold: 1
+    summary_interval: 60
+    verbose: false
+  websocket_update_throttle: 15
+monitoring:
+  alerts:
+    channels:
+    - console
+    - database
+    cooldown_period: 300
+    cpu_alerts:
+      cooldown: 600
+      enabled: true
+      threshold: 90
+      use_system_webhook: true
+    discord_webhook:
+      exponential_backoff: true
+      fallback_enabled: true
+      initial_retry_delay: 2
+      max_retries: 3
+      recoverable_status_codes:
+      - 429
+      - 500
+      - 502
+      - 503
+      - 504
+      timeout_seconds: 30
+    enabled: true
+    large_orders:
+      cooldown: 300
+      excluded_symbols: []
+      included_symbols: []
+      min_price: 0
+      threshold_usd: 2000000
+    liquidation:
+      cooldown: 300
+      threshold: 250000
+    system_alerts:
+      cooldown:
+        api: 300
+        cpu: 600
+        database: 300
+        disk: 1800
+        error: 180
+        market_report: 60
+        memory: 600
+        network: 300
+        performance: 300
+        warning: 300
+      enabled: true
+      mirror_alerts:
+        enabled: false
+        types:
+          alpha: false
+          market_report: false
+          signal: false
+      types:
+        api: true
+        configuration: true
+        cpu: true
+        database: true
+        disk: true
+        error: true
+        lifecycle: true
+        market_report: true
+        memory: true
+        network: true
+        performance: true
+        tasks: true
+        validation: true
+        warning: true
+      use_system_webhook: true
+    system_alerts_webhook_url: ${SYSTEM_ALERTS_WEBHOOK_URL}
+    whale_activity:
+      accumulation_threshold: 2500000
+      cooldown: 1800
+      distribution_threshold: 2500000
+      enabled: true
+      excluded_symbols: []
+      imbalance_threshold: 0.3
+      included_symbols: []
+      market_percentage: 0.025
+      min_order_count: 4
+      min_trade_imbalance: 0.75
+      min_trade_volume_usd: 500000
+      min_whale_trades: 5
+      trade_alerts_enabled: false
+      trade_cooldown: 900
+    smart_money_detection:
+      enabled: true
+      min_sophistication_score: 6.0
+      min_confidence: 0.7
+      cooldown_minutes: 15
+      max_alerts_per_hour: 10
+      orderflow_imbalance_threshold: 0.65
+      volume_spike_multiplier: 3.0
+      depth_change_threshold: 0.2
+      position_change_threshold: 0.15
+      sophistication_weights:
+        execution_quality: 0.25
+        timing_precision: 0.2
+        market_impact: 0.2
+        pattern_complexity: 0.15
+        coordination: 0.1
+        stealth: 0.1
+  components:
+    analysis:
+      enabled: true
+      timeout: 10
+    database:
+      enabled: true
+      timeout: 5
+    exchange:
+      enabled: true
+      timeout: 5
+  data_collection:
+    klines_limit: 1000
+    orderbook_depth: 50
+    trades_limit: 1000
+  enabled: true
+  error_delay: 5
+  health_check_interval: 120
+  interval: 60
+  max_errors: 10
+  memory_tracking:
+    check_interval_seconds: 600
+    critical_threshold_percent: 98
+    disable_memory_warnings: true
+    enabled: true
+    include_process_details: true
+    log_level: ERROR
+    min_warning_size_mb: 2048
+    suppress_repeated_warnings: true
+    warning_threshold_mb_per_hour: 50
+    warning_threshold_percent: 95
+  metrics:
+    collection_interval: 300
+    enabled: true
+    max_history: 1000
+    metrics:
+    - description: API response time in milliseconds
+      name: response_time
+      type: gauge
+    - description: Number of errors
+      name: error_count
+      type: counter
+    - description: Number of requests
+      name: request_count
+      type: counter
+    - description: Number of actively monitored symbols
+      name: active_symbols
+      type: gauge
+  performance:
+    enabled: true
+    metrics:
+    - calculation_time
+    - data_quality
+    - error_rate
+    thresholds:
+      cpu_usage: 90
+      max_calculation_time: 5000
+      max_error_rate: 0.01
+      memory_usage: 90
+      min_data_quality: 0.95
+      response_time: 5000
+  storage:
+    compression: true
+    enabled: true
+    retention_days: 7
+portfolio:
+  performance:
+    max_turnover: 2.0
+  rebalancing:
+    enabled: true
+    frequency: 1d
+    threshold: 0.05
+  target_allocation:
+    BTC: 0.4
+    DOGE: 0.1
+    ETH: 0.3
+    SOL: 0.2
+reporting:
+  attach_json: true
+  attach_pdf: true
+  base_dir: reports
+  enabled: true
+  pdf:
+    include_charts: true
+    use_dark_mode: true
+  template_dir: templates
+  types:
+    market_reports: true
+    signals: true
+risk:
+  risk_free_rate: 0.02
+  risk_limits:
+    max_drawdown: 0.25
+    max_leverage: 3.0
+    max_position_size: 0.1
+  stop_loss:
+    activation_percentage: 0.01
+    default: 0.02
+    trailing: true
+  take_profit:
+    activation_percentage: 0.02
+    default: 0.04
+    trailing: true
+  long_stop_percentage: 3.5
+  short_stop_percentage: 3.5
+  default_risk_percentage: 1.0
+  min_risk_percentage: 0.5
+  max_risk_percentage: 2.0
+  risk_reward_ratio: 2.0
+rollout:
+  enabled: true
+  mode: complete
+  percentage: 100
+timeframes:
+  base:
+    interval: 1
+    required: 1000
+    validation:
+      max_gap: 60
+      min_candles: 100
+    weight: 0.4
+  htf:
+    interval: 240
+    required: 200
+    validation:
+      max_gap: 14400
+      min_candles: 50
+    weight: 0.1
+  ltf:
+    interval: 5
+    required: 200
+    validation:
+      max_gap: 300
+      min_candles: 50
+    weight: 0.3
+  mtf:
+    interval: 30
+    required: 200
+    validation:
+      max_gap: 1800
+      min_candles: 50
+    weight: 0.2
+web_server:
+  access_log: true
+  auto_fallback: true
+  fallback_ports:
+  - 8001
+  - 8002
+  - 8080
+  - 3000
+  - 5000
+  host: 0.0.0.0
+  log_level: info
+  port: 8003
+  reload: false
+  timeout_keep_alive: 5

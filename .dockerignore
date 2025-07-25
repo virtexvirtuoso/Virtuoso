@@ -1,0 +1,101 @@
+# Virtual environments
+venv/
+venv311/
+venv_new/
+venv_new_py312/
+env/
+ENV/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.eggs/
+
+# Environment files (contains secrets)
+.env
+.env.local
+.env.*.local
+config/.env
+config/*.env
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.cursor/
+
+# Logs and databases
+logs/
+*.log
+*.sqlite
+*.db
+
+# Test files
+tests/
+test_output/
+pytest.ini
+.pytest_cache/
+.coverage
+htmlcov/
+*.test
+
+# Documentation (not needed in container)
+docs/
+*.md
+!README.md
+
+# Backups
+backups/
+*.backup
+*.bak
+
+# Reports and exports (will be mounted as volumes)
+reports/
+exports/
+cache/
+src/exports/
+src/reports/
+src/logs/
+examples/demo/
+**/confluence_visualizations/
+**/market_reports/
+**/bitcoin_beta_reports/
+**/bitcoin_beta_7day_reports/
+**/3d_viz_output/
+**/png_exports/
+**/debug/
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.csv
+*.json
+!package.json
+!requirements.json
+!configuration.json
+!config/*.json
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+temp/
+
+# Scripts not needed in container
+scripts/testing/
+scripts/fixes/
+scripts/test_*.py
+scripts/fix_*.py

@@ -16,10 +16,10 @@ import time
 import math
 
 from src.utils.indicators import IndicatorUtils
-from src.utils.error_handling import handle_calculation_error, handle_indicator_error, validate_input
+from src.core.error.utils import handle_calculation_error, handle_indicator_error, validate_input
 from src.utils.performance import track_performance, track_async_performance
 from src.utils.caching import cache_result, cache_async_result, generate_cache_key
-from src.utils.validation import DataValidator
+from src.validation.data.analysis_validator import DataValidator
 from src.config.manager import ConfigManager
 from .base_indicator import BaseIndicator
 from .debug_template import DebugLoggingMixin

@@ -47,6 +47,16 @@ config/*.env
 *.token
 *.credentials
 
+# Log files in root directory
+*.log
+*.txt
+startup_log.txt
+error_handling_migration_log.txt
+import_update_log.txt
+utils_cleanup_migration_log.txt
+validation_migration_log.txt
+validation_migration_executor_*.log
+
 # API credentials
 *_api_key
 *_api_secret

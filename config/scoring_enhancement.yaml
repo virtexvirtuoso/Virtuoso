@@ -1,0 +1,267 @@
+# Configuration for UnifiedScoringFramework
+# This file demonstrates the configuration management capabilities for
+# the elegant integration of linear and non-linear scoring methods
+
+scoring:
+  # Primary scoring mode
+  # Options: auto_detect, traditional, enhanced, hybrid, linear
+  mode: "auto_detect"
+  
+  # Market regime awareness
+  regime_aware: true
+  confluence_enhanced: true
+  
+  # Core transformation parameters
+  transformations:
+    sigmoid_steepness: 0.1      # Controls steepness of sigmoid curves
+    tanh_sensitivity: 1.0       # Sensitivity for hyperbolic tangent
+    extreme_threshold: 2.0      # Threshold for extreme value detection
+    decay_rate: 0.1            # Exponential decay rate for distance scoring
+  
+  # Indicator-specific thresholds
+  thresholds:
+    rsi_overbought: 70.0       # RSI overbought threshold
+    rsi_oversold: 30.0         # RSI oversold threshold
+    volume_spike: 2.0          # Volume spike threshold (multiple of average)
+    volatility_threshold: 60.0  # Volatility threshold for risk scoring
+    funding_extreme: 0.01      # Funding rate extreme threshold
+  
+  # Performance settings
+  performance:
+    enable_caching: true       # Enable result caching
+    cache_timeout: 60          # Cache timeout in seconds
+    max_cache_size: 1000       # Maximum cache entries
+  
+  # Debugging and logging
+  debug:
+    debug_mode: false          # Enable debug logging
+    log_transformations: false # Log all transformations
+    performance_tracking: true # Track performance metrics
+  
+  # Traditional sophisticated methods (preserve existing behavior)
+  traditional_methods:
+    preserve_obv_sigmoid: true
+    preserve_vwap_tanh_log: true
+    preserve_volume_profile_tanh: true
+    preserve_cvd_tanh: true
+    preserve_relative_volume_tanh: true
+    preserve_orderbook_pressure: true
+    preserve_flow_velocity: true
+    preserve_sentiment_sigmoid: true
+  
+  # Enhanced methods configuration
+  enhanced_methods:
+    rsi_enhancement: true
+    volatility_enhancement: true
+    volume_enhancement: true
+    oir_di_enhancement: true
+    momentum_enhancement: true
+    
+    # RSI-specific enhancements
+    rsi:
+      exponential_intensity: 0.15  # Intensity for exponential extreme handling
+      neutral_zone_steepness: 0.05 # Steepness for neutral zone sigmoid
+      
+    # Volatility-specific enhancements  
+    volatility:
+      exponential_decay_rate: 0.1  # Decay rate for high volatility
+      regime_multipliers:
+        trending: 1.2
+        ranging: 0.8
+        volatile: 1.5
+        
+    # Volume-specific enhancements
+    volume:
+      spike_exponential_rate: 0.3  # Rate for volume spike exponential
+      regime_adjustments:
+        high_volume: 1.5
+        low_volume: 0.7
+        
+    # OIR/DI-specific enhancements
+    oir_di:
+      confidence_scaling: 2.0      # Scaling factor for confidence weighting
+      confidence_range: [0.7, 1.0] # Range for confidence factor
+      
+    # Momentum-specific enhancements
+    momentum:
+      volatility_adjustment: true  # Enable volatility adjustment
+      base_sensitivity: 1.0       # Base sensitivity for momentum
+  
+  # Market regime detection settings
+  regime_detection:
+    enabled: true
+    method: "traditional"  # Options: traditional, hmm, hybrid
+    
+    # Dynamic threshold adjustments by regime
+    regime_adjustments:
+      trending_bullish:
+        rsi_overbought: 5      # Add 5 to overbought (70 -> 75)
+        rsi_oversold: -5       # Subtract 5 from oversold (30 -> 25)
+        volume_spike: 0.5      # Increase volume threshold
+        
+      trending_bearish:
+        rsi_overbought: 5
+        rsi_oversold: -5
+        volume_spike: 0.5
+        
+      ranging_high_vol:
+        rsi_overbought: 10     # Very wide bands for high volatility
+        rsi_oversold: -10
+        volume_spike: 1.0
+        
+      ranging_low_vol:
+        rsi_overbought: -5     # Tighter bands for low volatility
+        rsi_oversold: 5
+        volume_spike: -0.5
+  
+  # Confluence enhancement settings
+  confluence:
+    cross_method_validation: true
+    unified_confidence_scoring: true
+    adaptive_weighting: true
+    
+    # Confluence multiplier ranges
+    multiplier_ranges:
+      strong_alignment: [1.2, 1.3]    # Strong directional alignment
+      moderate_alignment: [1.1, 1.2]  # Moderate alignment
+      neutral: [0.95, 1.05]           # Mostly neutral signals
+      conflicting: [0.7, 0.8]         # Conflicting signals
+    
+    # Volume-price confluence
+    volume_price_confirmation:
+      enabled: true
+      alignment_thresholds:
+        strong: 10      # Score difference < 10 for strong alignment
+        moderate: 20    # Score difference < 20 for moderate alignment
+        weak: 30        # Score difference < 30 for weak alignment
+      
+      confirmation_multipliers:
+        strong: 1.2
+        moderate: 1.1
+        weak: 1.0
+        divergence: 0.8
+  
+  # Feature flags for gradual rollout
+  feature_flags:
+    enable_enhanced_rsi: true
+    enable_enhanced_volatility: true
+    enable_enhanced_volume: true
+    enable_enhanced_oir_di: true
+    enable_enhanced_momentum: true
+    enable_regime_awareness: true
+    enable_confluence_enhancement: true
+    enable_performance_caching: true
+    enable_advanced_logging: false
+  
+  # A/B testing configuration
+  ab_testing:
+    enabled: false
+    test_percentage: 10        # Percentage of requests to use enhanced methods
+    control_group: "traditional"
+    test_group: "enhanced"
+    
+    # Metrics to track
+    metrics:
+      - "calculation_latency"
+      - "signal_accuracy"
+      - "false_positive_rate"
+      - "extreme_value_handling"
+      
+    # Automatic rollback conditions
+    rollback_conditions:
+      latency_increase: 0.2     # 20% increase triggers rollback
+      accuracy_decrease: 0.1    # 10% decrease triggers rollback
+      error_rate_increase: 0.005 # 0.5% increase triggers rollback
+  
+  # Monitoring and alerting
+  monitoring:
+    enabled: true
+    alert_thresholds:
+      calculation_latency: 15   # milliseconds
+      cache_hit_rate: 0.7      # 70% minimum
+      error_rate: 0.001        # 0.1% maximum
+      memory_usage: 1.2        # 20% increase maximum
+    
+    # Performance targets
+    performance_targets:
+      average_latency: 5       # milliseconds
+      p99_latency: 20         # milliseconds
+      cache_efficiency: 0.8   # 80% target
+      transformation_success: 0.999 # 99.9% success rate
+  
+  # Validation settings
+  validation:
+    enabled: true
+    
+    # Input validation
+    input_validation:
+      check_nan_values: true
+      check_infinite_values: true
+      check_bounds: true
+      
+    # Output validation
+    output_validation:
+      enforce_bounds: true     # Ensure scores are 0-100
+      check_consistency: true  # Check for consistent results
+      validate_monotonicity: true # Check expected monotonicity
+      
+    # Mathematical validation
+    mathematical_validation:
+      check_continuity: true   # Check for smooth transitions
+      validate_derivatives: false # Advanced mathematical checks
+      check_convergence: true  # Check for proper convergence
+  
+  # Backward compatibility
+  compatibility:
+    preserve_existing_api: true
+    support_legacy_methods: true
+    gradual_migration: true
+    
+    # Legacy method mappings
+    legacy_mappings:
+      old_rsi_score: "rsi_enhanced"
+      old_volume_score: "volume_enhanced"
+      old_volatility_score: "volatility_enhanced"
+      
+    # Migration schedule
+    migration:
+      phase1_methods: ["rsi", "volatility"]
+      phase2_methods: ["volume", "oir_di"]
+      phase3_methods: ["momentum", "sentiment"]
+      
+      # Timeline in weeks
+      phase1_duration: 2
+      phase2_duration: 3
+      phase3_duration: 2
+
+# Environment-specific overrides
+environments:
+  development:
+    scoring:
+      debug:
+        debug_mode: true
+        log_transformations: true
+      performance:
+        enable_caching: false  # Disable caching for development
+        
+  staging:
+    scoring:
+      ab_testing:
+        enabled: true
+        test_percentage: 50    # Higher percentage for staging
+      monitoring:
+        enabled: true
+        
+  production:
+    scoring:
+      debug:
+        debug_mode: false
+        log_transformations: false
+      performance:
+        enable_caching: true
+        cache_timeout: 300     # Longer cache timeout for production
+      monitoring:
+        enabled: true
+        alert_thresholds:
+          calculation_latency: 10  # Stricter latency requirements
+          error_rate: 0.0005      # Stricter error rate requirements 

@@ -4,7 +4,7 @@ from typing import Dict, Any, List, Optional, Tuple
 import pandas as pd
 import numpy as np
 from datetime import datetime
-from src.utils.error_handling import handle_indicator_error
+from src.core.error.utils import handle_indicator_error
 import time
 from src.core.logger import Logger
 from .base_indicator import BaseIndicator, DebugLevel, debug_method

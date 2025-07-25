@@ -9,7 +9,7 @@ from typing import Dict, Any, Optional
 import aiohttp
 import json
 
-from core.error.models import ErrorContext, ErrorSeverity
+from src.core.error.models import ErrorContext, ErrorSeverity
 
 logger = logging.getLogger(__name__)
 

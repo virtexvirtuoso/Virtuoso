@@ -6,7 +6,7 @@ from typing import Dict, Any, Optional
 
 from .components.manager import ComponentManager
 from .resources.manager import ResourceManager, ResourceLimits
-from .error.handlers import ErrorHandler
+from .error.handlers import SimpleErrorHandler as ErrorHandler
 from .lifecycle.states import ComponentState
 
 @dataclass
