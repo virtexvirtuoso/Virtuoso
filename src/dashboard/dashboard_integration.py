@@ -56,6 +56,11 @@ class DashboardIntegrationService:
         self._running = False
         self._update_task = None
         
+        # Confluence score cache
+        self._confluence_cache = {}
+        self._confluence_cache_ttl = 30  # 30 seconds cache
+        self._confluence_update_task = None
+        
     async def initialize(self) -> bool:
         """Initialize the service and verify components are available.
         
@@ -94,6 +99,7 @@ class DashboardIntegrationService:
             
         self._running = True
         self._update_task = asyncio.create_task(self._update_loop())
+        self._confluence_update_task = asyncio.create_task(self._update_confluence_cache())
         self.logger.info("Dashboard integration service started")
     
     async def stop(self):
@@ -103,6 +109,12 @@ class DashboardIntegrationService:
             self._update_task.cancel()
             try:
                 await self._update_task
+            except asyncio.CancelledError:
+                pass
+        if self._confluence_update_task:
+            self._confluence_update_task.cancel()
+            try:
+                await self._confluence_update_task
             except asyncio.CancelledError:
                 pass
         self.logger.info("Dashboard integration service stopped")
@@ -118,6 +130,63 @@ class DashboardIntegrationService:
             except Exception as e:
                 self.logger.error(f"Error in dashboard update loop: {e}")
                 await asyncio.sleep(self._update_interval)
+    
+    async def _update_confluence_cache(self):
+        """Background task to update confluence scores cache."""
+        while self._running:
+            try:
+                # Get all symbols we're tracking
+                symbols = []
+                if hasattr(self.monitor, 'symbols') and self.monitor.symbols:
+                    symbols = self.monitor.symbols[:15]  # Top 15 symbols
+                elif hasattr(self.monitor, 'top_symbols_manager'):
+                    try:
+                        top_symbols = await self.monitor.top_symbols_manager.get_top_symbols(limit=15)
+                        symbols = [s.get('symbol', s) if isinstance(s, dict) else s for s in top_symbols]
+                    except:
+                        pass
+                
+                # Update confluence scores for each symbol
+                for symbol in symbols:
+                    try:
+                        if hasattr(self.monitor, 'market_data_manager') and hasattr(self.monitor, 'confluence_analyzer'):
+                            market_data = await self.monitor.market_data_manager.get_market_data(symbol)
+                            if market_data:
+                                result = await self.monitor.confluence_analyzer.analyze(market_data)
+                                if result and 'confluence_score' in result:
+                                    score = float(result['confluence_score'])
+                                    self._confluence_cache[symbol] = {
+                                        'score': score,
+                                        'timestamp': time.time()
+                                    }
+                                    self.logger.info(f"Updated confluence cache for {symbol}: {score:.2f}")
+                    except Exception as e:
+                        self.logger.debug(f"Error updating confluence score for {symbol}: {e}")
+                    
+                    # Small delay between symbols to avoid overload
+                    try:
+                        await asyncio.sleep(0.5)
+                    except asyncio.CancelledError:
+                        self.logger.info("Confluence cache update cancelled during symbol processing")
+                        raise
+                
+                # Wait before next update cycle
+                try:
+                    await asyncio.sleep(self._confluence_cache_ttl)
+                except asyncio.CancelledError:
+                    self.logger.info("Confluence cache update cancelled during cycle wait")
+                    raise
+                
+            except asyncio.CancelledError:
+                self.logger.info("Confluence cache update task cancelled")
+                break
+            except Exception as e:
+                self.logger.error(f"Error in confluence cache update loop: {e}")
+                try:
+                    await asyncio.sleep(self._confluence_cache_ttl)
+                except asyncio.CancelledError:
+                    self.logger.info("Confluence cache update task cancelled during sleep")
+                    break
     
     async def _update_dashboard_data(self):
         """Update all dashboard data from the monitoring system."""
@@ -161,7 +230,7 @@ class DashboardIntegrationService:
                             continue
                             
                         # Get latest confluence score if available
-                        confluence_score = self._extract_confluence_score(symbol, market_data)
+                        confluence_score = await self._extract_confluence_score(symbol, market_data)
                         
                         # Determine signal strength
                         signal_strength = self._determine_signal_strength(confluence_score)
@@ -272,10 +341,25 @@ class DashboardIntegrationService:
         except Exception as e:
             self.logger.error(f"Error updating market overview: {e}")
     
-    def _extract_confluence_score(self, symbol: str, market_data: Dict[str, Any]) -> float:
+    async def _extract_confluence_score(self, symbol: str, market_data: Dict[str, Any]) -> float:
         """Extract confluence score from market data or calculate a simple one."""
         try:
-            # Use a simple score based on price momentum and volume
+            # First try to get from confluence analyzer if available
+            if hasattr(self.monitor, 'confluence_analyzer') and self.monitor.confluence_analyzer:
+                try:
+                    result = await self.monitor.confluence_analyzer.analyze(market_data)
+                    if result and 'confluence_score' in result:
+                        score = float(result['confluence_score'])
+                        self.logger.info(f"Got confluence score {score} for {symbol} from analyzer")
+                        return score
+                except Exception as e:
+                    self.logger.debug(f"Could not get confluence score from analyzer: {e}")
+            
+            # Check if market_data already has confluence score
+            if 'confluence' in market_data and 'score' in market_data['confluence']:
+                return float(market_data['confluence']['score'])
+            
+            # Fallback to simple score based on price momentum and volume
             ticker = market_data.get('ticker', {})
             volume = ticker.get('volume', 0)
             change_24h = self._calculate_24h_change(market_data)
@@ -627,6 +711,78 @@ class DashboardIntegrationService:
                     'status': 'emergency_fallback'
                 }
             ]
+    
+    async def get_symbols_data(self) -> Dict[str, Any]:
+        """Get symbols data with prices and confluence scores."""
+        try:
+            symbols_data = []
+            
+            # First ensure signals are updated
+            if self._running and self._dashboard_data.get('signals'):
+                await self._update_signals()
+            
+            # Get top symbols manager from monitor
+            if self.monitor and hasattr(self.monitor, 'top_symbols_manager'):
+                top_symbols_manager = self.monitor.top_symbols_manager
+                exchange_manager = getattr(self.monitor, 'exchange_manager', None)
+                
+                if top_symbols_manager and exchange_manager:
+                    # Get top symbols
+                    top_symbols = await top_symbols_manager.get_top_symbols(limit=15)
+                    
+                    for symbol_info in top_symbols:
+                        symbol = symbol_info.get('symbol', symbol_info) if isinstance(symbol_info, dict) else symbol_info
+                        try:
+                            # Get current ticker data for price
+                            ticker = await exchange_manager.fetch_ticker(symbol)
+                            
+                            # Try to get actual confluence score from cache first
+                            confluence_score = 50  # Default
+                            
+                            # Check cache first
+                            if symbol in self._confluence_cache:
+                                cache_entry = self._confluence_cache[symbol]
+                                cache_age = time.time() - cache_entry['timestamp']
+                                if cache_age < self._confluence_cache_ttl * 2:  # Use cache if less than 2x TTL old
+                                    confluence_score = cache_entry['score']
+                                    self.logger.debug(f"Using cached confluence score {confluence_score:.2f} for {symbol} (age: {cache_age:.1f}s)")
+                            
+                            # If not in cache, check signals data
+                            if confluence_score == 50:
+                                signals = self._dashboard_data.get('signals', [])
+                                for signal in signals:
+                                    if signal.get('symbol') == symbol:
+                                        score = signal.get('score', 50)
+                                        if score != 50:  # Only use if not default
+                                            confluence_score = score
+                                            self.logger.debug(f"Found confluence score {confluence_score} for {symbol} in signals")
+                                        break
+                            
+                            symbol_data = {
+                                "symbol": symbol,
+                                "price": ticker.get('last', 0),
+                                "confluence_score": round(confluence_score, 2),
+                                "change_24h": ticker.get('percentage', 0),
+                                "volume_24h": ticker.get('quoteVolume', 0),
+                                "high_24h": ticker.get('high', 0),
+                                "low_24h": ticker.get('low', 0)
+                            }
+                            symbols_data.append(symbol_data)
+                            
+                        except Exception as e:
+                            self.logger.debug(f"Could not get data for {symbol}: {e}")
+            
+            return {
+                "symbols": symbols_data,
+                "timestamp": datetime.utcnow().isoformat()
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error getting symbols data: {e}")
+            return {
+                "symbols": [],
+                "timestamp": datetime.utcnow().isoformat()
+            }
 
 
 # Global instance for use across the application
