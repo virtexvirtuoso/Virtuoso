@@ -47,6 +47,12 @@ config/*.env
 *.token
 *.credentials
 
+# AI Assistant Instructions
+CLAUDE.md
+CLAUDE.local.md
+.claude-code
+*claude*.md
+
 # Log files in root directory
 *.log
 *.txt
