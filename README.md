@@ -100,8 +100,10 @@ Just as a prism reveals the hidden spectrum within white light, Virtuoso's marke
 
 ### Prerequisites
 
-- Python 3.9+ 
+- Python 3.9, 3.10, or 3.11
 - Git
+- InfluxDB (for metrics storage)
+- Redis (optional, for caching)
 
 ### Installation
 
@@ -112,8 +114,15 @@ Just as a prism reveals the hidden spectrum within white light, Virtuoso's marke
 git clone https://github.com/fil0s/Virtuoso.git
 cd Virtuoso
 
-# Setup development environment
-make setup
+# Create virtual environment
+python -m venv venv
+source venv/bin/activate  # Windows: venv\Scripts\activate
+
+# Install package in development mode
+pip install -e .
+
+# Install development dependencies
+pip install -e .[dev]
 ```
 
 **Option 2: Docker Setup**
@@ -123,14 +132,84 @@ make setup
 git clone https://github.com/fil0s/Virtuoso.git
 cd Virtuoso
 
-# Setup with Docker
-make docker-setup
+# Build and run with Docker
+docker build -t virtuoso .
+docker run -it virtuoso
+```
+
+**Option 3: Quick Start Scripts**
+
+```bash
+# Use the automated setup script
+./scripts/setup_dev.sh  # Linux/Mac
+# or
+scripts\setup_dev.bat   # Windows
 ```
 
 ### Configuration
 
 1. Copy the example environment file: `cp config/.env.example .env`
 2. Edit the `.env` file with your specific configuration
+3. Configure additional features in `config/config.yaml`:
+
+```yaml
+# Signal Tracking Configuration
+signal_tracking:
+  enabled: false  # Enable/disable signal lifecycle tracking
+  api_url: http://localhost:8001/api/signal-tracking
+
+# WebSocket Configuration  
+websocket:
+  enabled: true
+  reconnect_attempts: 5
+  ping_interval: 30
+  timeout: 10
+  channels:
+    ticker: true
+    kline: true
+    orderbook: true
+    trade: true
+    liquidation: true  # Enable for liquidation monitoring
+    
+# Alpha Scanning Configuration
+alpha_scanning:
+  enabled: true
+  interval_minutes: 15
+  alerts:
+    enabled: true
+    cooldown_minutes: 60
+  pattern_types:
+    - correlation_breakdown
+    - beta_expansion
+    - alpha_breakout
+  thresholds:
+    alpha_threshold: 0.03
+    beta_divergence: 0.25
+    correlation_breakdown: 0.25
+
+# Advanced Alpha Tiers (Optimized)
+alpha_scanning_optimized:
+  enabled: true
+  alpha_tiers:
+    tier_1_critical:
+      min_alpha: 0.5
+      min_confidence: 0.95
+      scan_interval_minutes: 1
+    tier_2_high:
+      min_alpha: 0.15
+      min_confidence: 0.9
+      scan_interval_minutes: 3
+      
+# Indicator Configuration
+analysis:
+  indicators:
+    orderbook:
+      parameters:
+        depth_levels: 25
+        absorption:
+          threshold: 2.0
+          min_size: 50000
+```
 
 ---
 
@@ -176,6 +255,42 @@ The dashboard uses a modern tech stack:
 - **Styling**: Custom CSS with terminal amber theme
 - **Real-time**: WebSocket communication with 15-second updates
 - **Data Sources**: JSON files, exchange APIs, monitoring systems
+
+---
+
+## 🔧 Monitoring Tools
+
+### Liquidation Monitor
+A standalone tool for monitoring liquidation events:
+
+```bash
+# Run the liquidation monitor
+python src/monitoring/liquidation_monitor.py --symbol BTCUSDT --duration 300
+
+# Monitor multiple symbols
+python src/monitoring/liquidation_monitor.py --symbol BTCUSDT,ETHUSDT --alert-threshold 100000
+```
+
+Features:
+- Real-time WebSocket liquidation monitoring
+- Alert triggering for significant liquidations
+- Cache verification and statistics
+- Configurable alert thresholds
+
+### Signal Tracking System
+Track the lifecycle and P&L of generated signals:
+
+- Enable in `config/config.yaml` by setting `signal_tracking.enabled: true`
+- Monitors active signals with real-time P&L updates
+- Tracks signal performance history
+- Integrates with dashboard for visualization
+
+### Memory Monitoring
+Enhanced memory monitoring component tracks:
+- Real-time memory usage
+- Memory allocation patterns
+- Garbage collection statistics
+- Alert on memory threshold breaches
 
 ---
 
@@ -809,18 +924,24 @@ Market Data → Enhanced Analysis → Intelligence → Interface
 - Network: Low-latency connection
 
 ### Software Requirements
-- Python 3.9+
-- PostgreSQL 13+
-- Redis 6+
-- TA-Lib
+- Python 3.9, 3.10, or 3.11
+- InfluxDB 2.0+
+- Redis 6+ (optional)
 - Required Python packages:
-  * NumPy
-  * Pandas
-  * Scikit-learn
-  * FastAPI
-  * CCXT
-  * Pydantic
-  * SQLAlchemy
+  * fastapi
+  * uvicorn
+  * python-dotenv
+  * pyyaml
+  * ccxt
+  * pandas
+  * numpy
+  * aiohttp
+  * websockets
+  * influxdb-client
+  * python-jose[cryptography]
+  * passlib[bcrypt]
+  * python-multipart
+  * scikit-learn>=1.0.0
 
 ### Exchange Requirements
 - API access with required permissions
@@ -1001,6 +1122,43 @@ Virtuoso provides a comprehensive suite of REST API endpoints and WebSocket conn
 | `/api/liquidation/stress-indicators` | GET | Market stress indicators |
 | `/api/manipulation/alerts` | GET | Market manipulation detection |
 
+### Whale Activity API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/whale-activity/alerts` | GET | Recent whale activity alerts |
+| `/api/whale-activity/activity` | GET | Get whale activity data for symbols |
+| `/api/whale-activity/summary` | GET | Whale activity summary statistics |
+| `/api/whale-activity/historical` | GET | Historical whale activity data |
+| `/api/whale-activity/thresholds` | GET | Current whale detection thresholds |
+
+### Sentiment Analysis API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/sentiment/current` | GET | Current market sentiment data |
+| `/api/sentiment/fear-greed` | GET | Fear & Greed Index values |
+| `/api/sentiment/social` | GET | Social media sentiment analysis |
+| `/api/sentiment/market-mood` | GET | Overall market mood assessment |
+
+### Signal Tracking API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/signal-tracking/active` | GET | Active signals with P&L tracking |
+| `/api/signal-tracking/history` | GET | Historical signal performance |
+| `/api/signal-tracking/stats` | GET | Signal tracking statistics |
+| `/api/signal-tracking/update` | POST | Update signal status and P&L |
+
+### Top Symbols API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/top-symbols` | GET | Top symbols by confluence score |
+| `/api/top-symbols/gainers` | GET | Top gaining symbols |
+| `/api/top-symbols/losers` | GET | Top losing symbols |
+| `/api/top-symbols/volume` | GET | Top symbols by volume |
+
 ### WebSocket API Endpoints
 
 | Endpoint | Description |
@@ -1057,7 +1215,20 @@ This project is licensed under the [LICENSE](LICENSE) - see the LICENSE file for
 
 ---
 
-**Note**: Additional detailed documentation is available in the `docs/` directory, including API specifications, component details, and advanced usage guides.
+## ⚠️ Important Notes
+
+### Proprietary Code Protection
+The confluence engine and core indicator implementations are proprietary. The public repository contains sample implementations that demonstrate the interface without revealing the actual algorithms. For production use:
+- Real implementation files are required (not included in public repo)
+- Contact the repository owner for access to proprietary components
+- Sample files are marked with clear headers indicating they are demonstrations
+
+### Documentation
+The public repository does not include internal documentation to protect intellectual property. For comprehensive documentation access, please contact the repository maintainers.
+
+---
+
+**Note**: This is the public version of Virtuoso. Some advanced features require proprietary components not included in this repository.
 
 ## 🚀 Recent Major Updates (2025)
 
@@ -1108,5 +1279,9 @@ This project is licensed under the [LICENSE](LICENSE) - see the LICENSE file for
 - **Enhanced Order Block Scoring**: ICT methodology with mitigation tracking
 - **Market Reporter Upgrades**: Advanced institutional analysis
 - **API Expansion**: 50+ comprehensive endpoints across all systems
+- **Liquidation Detection Engine**: Real-time liquidation monitoring and alerts
+- **Dependency Injection System**: Complete DI architecture implementation
+- **Module Migration**: Comprehensive reorganization for better maintainability
+- **Enhanced Validation Service**: Async validation with improved error handling
 
 All updates maintain backward compatibility while significantly improving system reliability, performance, and user experience.

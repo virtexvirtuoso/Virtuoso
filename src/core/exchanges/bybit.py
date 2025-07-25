@@ -457,6 +457,12 @@ class BybitExchange(BaseExchange):
             
             self.logger.info("REST client initialized successfully")
             return True
+        except GeneratorExit:
+            self.logger.info("REST client initialization cancelled due to GeneratorExit")
+            raise
+        except asyncio.CancelledError:
+            self.logger.info("REST client initialization cancelled")
+            raise
         except Exception as e:
             self.logger.error(f"Error initializing REST client: {str(e)}", exc_info=True)
             return False
@@ -539,6 +545,12 @@ class BybitExchange(BaseExchange):
                     self.logger.error(f"Unsupported HTTP method: {method}")
                     return {'retCode': -1, 'retMsg': f'Unsupported method {method}'}
                     
+        except GeneratorExit:
+            self.logger.info("Request cancelled due to GeneratorExit")
+            raise
+        except asyncio.CancelledError:
+            self.logger.info("Request cancelled")
+            raise
         except Exception as e:
             self.logger.error(f"Request error: {str(e)}")
             self.logger.debug(traceback.format_exc())
@@ -3601,6 +3613,12 @@ class BybitExchange(BaseExchange):
             self.logger.info(f"Successfully processed {len(markets)} valid market records out of {len(ticker_list)} total")
             return markets
             
+        except GeneratorExit:
+            self.logger.info("Market tickers fetch cancelled due to GeneratorExit")
+            raise
+        except asyncio.CancelledError:
+            self.logger.info("Market tickers fetch cancelled")
+            raise
         except Exception as e:
             self.logger.error(f"Error fetching market tickers: {str(e)}")
             self.logger.debug(traceback.format_exc())
