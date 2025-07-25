@@ -7,7 +7,7 @@ import logging
 from typing import Dict, Any, Optional, List
 from datetime import datetime
 
-from core.validation import (
+from src.core.validation import (
     ValidationResult,
     ValidationRule,
     ValidationService,

@@ -5,8 +5,8 @@ from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Any, Optional
 import pandas as pd
 import numpy as np
-from src.utils.error_handling import handle_calculation_error, log_exceptions
-from src.utils.validation import DataValidator
+from src.core.error.utils import handle_calculation_error, log_exceptions
+from src.validation.data.analysis_validator import DataValidator
 from src.indicators.technical_indicators import TechnicalIndicators
 from src.indicators.volume_indicators import VolumeIndicators
 from src.indicators.orderflow_indicators import OrderflowIndicators

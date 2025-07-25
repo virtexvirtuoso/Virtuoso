@@ -87,7 +87,7 @@ from src.monitoring.health_monitor import HealthMonitor
 from src.core.exchanges.websocket_manager import WebSocketManager  # Import WebSocketManager
 
 # Add import for liquidation cache
-from src.utils.liquidation_cache import liquidation_cache
+from src.core.cache.liquidation_cache import liquidation_cache
 
 import gc
 
@@ -739,7 +739,7 @@ from src.monitoring.health_monitor import HealthMonitor
 from src.core.exchanges.websocket_manager import WebSocketManager  # Import WebSocketManager
 
 # Add import for liquidation cache
-from src.utils.liquidation_cache import liquidation_cache
+from src.core.cache.liquidation_cache import liquidation_cache
 
 import gc
 
