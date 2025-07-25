@@ -1,0 +1,22 @@
+{
+  "allowedTools": [
+    "Bash",
+    "Edit",
+    "Read",
+    "Search",
+    "List",
+    "Delete",
+    "Terminal"
+  ],
+  "disallowedTools": [],
+  "model": "claude-sonnet-4-20250514",
+  "theme": "dark",
+  "verbose": true,
+  "addDir": [
+    "src",
+    "tests",
+    "scripts",
+    "config",
+    "docs"
+  ]
+} 

@@ -6,7 +6,7 @@ from typing import Dict, Any, Optional, List, Type, Set
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from ..error.handlers import ErrorHandler
+from ..error.handlers import SimpleErrorHandler as ErrorHandler
 from ..error.decorators import handle_errors, measure_execution
 from ..lifecycle.states import ComponentState
 from ..resources.manager import ResourceManager

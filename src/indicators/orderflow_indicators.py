@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 import logging
 from typing import Dict, Any, Tuple, List, Union, Optional
-from src.utils.error_handling import handle_indicator_error
+from src.core.error.utils import handle_indicator_error
 import time
 import traceback
 from src.core.analysis.confluence import DataValidator

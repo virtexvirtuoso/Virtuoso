@@ -7,7 +7,7 @@ import time
 from scipy import stats
 
 from src.utils.indicators import IndicatorUtils
-from src.utils.error_handling import handle_calculation_error, handle_indicator_error, validate_input
+from src.core.error.utils import handle_calculation_error, handle_indicator_error, validate_input
 from src.config.manager import ConfigManager
 from .base_indicator import BaseIndicator, IndicatorMetrics, DebugLevel, debug_method
 from .debug_template import DebugLoggingMixin

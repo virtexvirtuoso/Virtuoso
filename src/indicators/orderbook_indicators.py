@@ -10,7 +10,7 @@ from functools import lru_cache
 import asyncio
 import traceback
 import time
-from src.utils.error_handling import handle_indicator_error
+from src.core.error.utils import handle_indicator_error
 from collections import deque
 from .base_indicator import BaseIndicator
 from .debug_template import DebugLoggingMixin

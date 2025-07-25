@@ -4042,15 +4042,44 @@ class AlertManager:
     async def _send_system_webhook_alert(self, message: str, details: Optional[Dict[str, Any]] = None) -> None:
         """Send alert to system webhook for monitoring."""
         if not self.system_webhook_url:
+            self.logger.debug("System webhook URL not configured, skipping system alert")
+            return
+            
+        # Check if we're in an event loop
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            self.logger.error("❌ ERROR: _send_system_webhook_alert called outside of async context")
             return
             
         try:
+            # Discord webhook expects "content" field, not "text"
             payload = {
-                "text": message,
-                "details": details or {},
-                "timestamp": time.time(),
-                "source": "virtuoso_trading"
+                "content": message[:2000],  # Discord has a 2000 character limit
+                "username": "Virtuoso System Alerts"
             }
+            
+            # If we have details, add them as an embed
+            if details:
+                embed = {
+                    "title": "Alert Details",
+                    "fields": [],
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "color": 16776960  # Yellow color for system alerts
+                }
+                
+                # Add details as fields (limit to first 25 due to Discord limits)
+                for key, value in list(details.items())[:25]:
+                    if key not in ['timestamp', 'source']:  # Skip redundant fields
+                        embed["fields"].append({
+                            "name": str(key).replace('_', ' ').title()[:256],
+                            "value": str(value)[:1024],
+                            "inline": True
+                        })
+                
+                payload["embeds"] = [embed]
+            
+            self.logger.debug(f"Sending system webhook alert to Discord...")
             
             async with aiohttp.ClientSession() as session:
                 async with session.post(
@@ -4058,13 +4087,20 @@ class AlertManager:
                     json=payload,
                     timeout=aiohttp.ClientTimeout(total=10)
                 ) as response:
-                    if response.status == 200:
+                    if response.status in [200, 204]:  # Discord returns 204 for successful webhook posts
                         self.logger.debug("System webhook alert sent successfully")
                     else:
-                        self.logger.warning(f"System webhook failed with status {response.status}")
+                        response_text = await response.text()
+                        self.logger.warning(f"System webhook failed with status {response.status}: {response_text[:200]}")
                         
         except Exception as e:
-            self.logger.error(f"Error sending system webhook alert: {str(e)}")
+            error_msg = str(e) if str(e) else repr(e)
+            error_type = type(e).__name__
+            self.logger.error(f"❌ ERROR: Error sending system webhook alert - {error_type}: {error_msg}")
+            if hasattr(e, '__cause__') and e.__cause__:
+                self.logger.error(f"  Caused by: {type(e.__cause__).__name__}: {str(e.__cause__)}")
+            import traceback
+            self.logger.debug(f"  Traceback: {traceback.format_exc()}")
 
     # Enhanced whale alert helper methods
     def _calculate_volume_multiple(self, usd_value: float) -> str:

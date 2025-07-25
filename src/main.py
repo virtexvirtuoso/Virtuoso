@@ -1176,6 +1176,11 @@ async def dashboard_v1_ui():
     """Serve the original dashboard"""
     return FileResponse(TEMPLATE_DIR / "dashboard.html")
 
+@app.get("/dashboard/mobile")
+async def dashboard_mobile_ui():
+    """Serve the mobile-optimized dashboard"""
+    return FileResponse(TEMPLATE_DIR / "dashboard_mobile_v1.html")
+
 @app.get("/beta-analysis")
 async def beta_analysis_ui():
     """Serve the Beta Analysis dashboard"""

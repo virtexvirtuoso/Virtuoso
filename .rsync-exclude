@@ -1,0 +1,132 @@
+# Virtual environments (install on VPS)
+venv/
+venv311/
+venv_new/
+env/
+ENV/
+.venv/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Git (VPS will clone fresh)
+.git/
+.gitignore
+.gitattributes
+
+# IDE and editor files
+.vscode/
+.idea/
+.cursor/
+*.swp
+*.swo
+*~
+
+# Logs (regenerated on VPS)
+logs/
+src/logs/
+*.log
+*.log.*
+
+# Large data exports (regenerated on VPS)
+reports/
+exports/
+src/exports/
+src/reports/
+examples/demo/
+**/confluence_visualizations/
+**/market_reports/
+**/bitcoin_beta_reports/
+**/bitcoin_beta_7day_reports/
+**/3d_viz_output/
+**/png_exports/
+**/debug/
+
+# Test files and output
+test_output/
+test-reports/
+tests/
+coverage/
+.coverage
+.pytest_cache/
+htmlcov/
+*_test.py
+test_*.py
+*_fix.py
+fix_*.py
+scripts/testing/
+scripts/fixes/
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup
+temp/
+backups/
+cache/
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Large media files
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.pdf
+*.mp4
+*.avi
+*.mov
+
+# Data files (except config)
+*.csv
+*.db
+*.sqlite
+*.json
+!package.json
+!requirements.json
+!configuration.json
+!config/*.json
+!config/*.yaml
+
+# Documentation (optional)
+docs/
+*.md
+!README.md
+!CLAUDE.md
+
+# Jupyter notebooks
+*.ipynb
+.ipynb_checkpoints/
+
+# Environment files (setup separately on VPS)
+.env
+.env.*
+*.env
+!.env.example
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.travis.yml
+
+# Package files
+poetry.lock
+Pipfile.lock
+yarn.lock
+package-lock.json

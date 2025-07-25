@@ -4,9 +4,9 @@ import json
 import asyncio
 import logging
 from datetime import datetime
-from core.exchanges.base import ExchangeInterface
-from core.analysis.technical import TechnicalAnalysis
-from core.analysis.portfolio import PortfolioAnalyzer
+from src.core.exchanges.base import ExchangeInterface
+from src.analysis.core.technical import TechnicalAnalysis
+from src.analysis.core.portfolio import PortfolioAnalyzer
 
 logger = logging.getLogger(__name__)
 
