@@ -1081,11 +1081,21 @@ class ReportGenerator:
             # Ensure output directory exists
             os.makedirs(output_dir, exist_ok=True)
 
-            # Save figure with high quality
+            # Add Virtuoso branding with trending-up symbol
+            fig.text(0.5, 0.02, 'VIRTUOSO', 
+                    fontsize=12, weight='bold', color='#ff9900',
+                    ha='center', va='bottom',
+                    transform=fig.transFigure,
+                    bbox=dict(boxstyle='round,pad=0.3', 
+                             facecolor='#1E1E1E', 
+                             edgecolor='#ff9900',
+                             alpha=0.9))
+            
+            # Save figure with high quality and padding for branding
             chart_path = os.path.abspath(
                 os.path.join(output_dir, "component_chart.png")
             )
-            plt.savefig(chart_path, dpi=120, bbox_inches="tight")
+            plt.savefig(chart_path, dpi=120, bbox_inches="tight", pad_inches=0.2)
             plt.close(fig)
 
             self._log(f"Component chart saved to {chart_path}")
@@ -1630,8 +1640,18 @@ class ReportGenerator:
                 output_dir, f"{symbol.replace('/', '_')}_chart_{timestamp}.png"
             )
 
-            # Save the figure
-            plt.savefig(output_file, dpi=150, bbox_inches="tight")
+            # Add Virtuoso branding with trending-up symbol
+            fig.text(0.5, 0.02, 'VIRTUOSO', 
+                    fontsize=14, weight='bold', color='#ff9900',
+                    ha='center', va='bottom',
+                    transform=fig.transFigure,
+                    bbox=dict(boxstyle='round,pad=0.4', 
+                             facecolor='#1E1E1E', 
+                             edgecolor='#ff9900',
+                             alpha=0.9))
+            
+            # Save the figure with padding for branding
+            plt.savefig(output_file, dpi=150, bbox_inches="tight", pad_inches=0.2)
             plt.close(fig)
 
             self._log(f"Real data candlestick chart saved to: {output_file}")
@@ -2248,8 +2268,10 @@ class ReportGenerator:
             stop_loss = None
             stop_loss_percent = 0
             try:
-                entry_price = signal_data.get("entry_price", price)
-                stop_loss = signal_data.get("stop_loss", None)
+                # Check trade_params first, then fall back to signal_data
+                trade_params = signal_data.get("trade_params", {})
+                entry_price = trade_params.get("entry_price", None) or signal_data.get("entry_price", price)
+                stop_loss = trade_params.get("stop_loss", None) or signal_data.get("stop_loss", None)
 
                 if stop_loss and entry_price:
                     if entry_price > stop_loss:  # Long position
@@ -2264,7 +2286,9 @@ class ReportGenerator:
             # Format targets
             targets = []
             try:
-                targets_data = signal_data.get("targets", {})
+                # Check trade_params first, then fall back to signal_data
+                trade_params = signal_data.get("trade_params", {})
+                targets_data = trade_params.get("targets", None) or signal_data.get("targets", {})
 
                 if isinstance(targets_data, dict):
                     for target_name, target_data in targets_data.items():
@@ -2465,10 +2489,13 @@ class ReportGenerator:
                 json_path = self._export_json_data(signal_data, json_filename, json_dir)
 
                 self._log(f"Trading report generated: HTML: {html_path}, PDF: {pdf_path}, JSON: {json_path}")
-                return pdf_path, json_path
+                
+                # Store chart path in a way that can be accessed
+                chart_path = candlestick_chart if candlestick_chart else None
+                return pdf_path, json_path, chart_path
             except Exception as e:
                 self._log(f"Error generating PDF: {str(e)}", logging.ERROR)
-                return None, json_path
+                return None, json_path, None
 
             # Return the paths to the PDF and JSON files
             if os.path.exists(pdf_path):
@@ -2477,14 +2504,16 @@ class ReportGenerator:
                 # Clear the downsampling cache to free memory
                 self._clear_downsample_cache()
                 
-                return pdf_path, json_path
+                # Return with chart path (stored earlier)
+                chart_path = candlestick_chart if 'candlestick_chart' in locals() else None
+                return pdf_path, json_path, chart_path
             else:
                 self._log(f"Failed to create PDF report: {pdf_path}", level=logging.ERROR)
                 
                 # Clear the cache even if generation failed
                 self._clear_downsample_cache()
                 
-                return None, None
+                return None, None, None
 
         except Exception as e:
             self._log(f"Error generating trading report: {str(e)}", level=logging.ERROR)
@@ -2493,7 +2522,7 @@ class ReportGenerator:
             # Clear the cache on exception
             self._clear_downsample_cache()
             
-            return None, None
+            return None, None, None
 
     async def generate_market_report(
         self, market_data: dict, output_path: Optional[str] = None
@@ -4861,8 +4890,18 @@ class ReportGenerator:
                     output_dir, f"{symbol.replace('/', '_')}_simulated_{timestamp}.png"
                 )
 
-                # Save the figure
-                plt.savefig(output_file, dpi=150, bbox_inches="tight")
+                # Add Virtuoso branding with trending-up symbol
+                fig.text(0.5, 0.02, 'VIRTUOSO', 
+                        fontsize=14, weight='bold', color='#ff9900',
+                        ha='center', va='bottom',
+                        transform=fig.transFigure,
+                        bbox=dict(boxstyle='round,pad=0.4', 
+                                 facecolor='#1E1E1E', 
+                                 edgecolor='#ff9900',
+                                 alpha=0.9))
+                
+                # Save the figure with padding for branding
+                plt.savefig(output_file, dpi=150, bbox_inches="tight", pad_inches=0.2)
                 plt.close(fig)
 
                 self._log(f"Saved simulated chart: {output_file}")

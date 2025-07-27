@@ -4,7 +4,7 @@
 # A lightweight CLI for common operations
 #
 
-SERVICE_NAME="virtuoso-trading"
+SERVICE_NAME="virtuoso"
 API_URL="http://localhost:8003"
 
 # Colors

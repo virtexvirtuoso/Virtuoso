@@ -1,7 +1,7 @@
 [Unit]
 Description=Virtuoso Trading Health Monitor
-After=virtuoso-trading.service
-Wants=virtuoso-trading.service
+After=virtuoso.service
+Wants=virtuoso.service
 
 [Service]
 Type=simple
@@ -13,7 +13,7 @@ WorkingDirectory=/home/linuxuser
 ExecStart=/bin/bash -c 'while true; do \
     if ! curl -s -f -m 5 http://localhost:8000/health > /dev/null 2>&1; then \
         echo "$(date): Health check failed, restarting service..."; \
-        systemctl restart virtuoso-trading; \
+        systemctl restart virtuoso; \
         sleep 30; \
     fi; \
     sleep 60; \
@@ -24,7 +24,7 @@ RestartSec=30
 
 # Resource limits
 CPUQuota=5%
-MemoryLimit=100M
+MemoryMax=100M
 
 [Install]
 WantedBy=multi-user.target

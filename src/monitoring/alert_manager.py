@@ -23,6 +23,7 @@ import requests
 import aiofiles
 import numpy as np
 import pandas as pd
+import sqlite3
 
 try:
     from discord import SyncWebhook
@@ -102,6 +103,15 @@ except ImportError:
 
 if TYPE_CHECKING:
     pass  # No type checking imports needed currently
+
+# Import alert storage
+try:
+    from src.database.alert_storage import AlertStorage
+except ImportError:
+    try:
+        from database.alert_storage import AlertStorage
+    except ImportError:
+        AlertStorage = None
 
 logger = getLogger(__name__)
 
@@ -197,6 +207,19 @@ class AlertManager:
         
         # File attachment limits
         self.max_file_size = config.get('monitoring', {}).get('alerts', {}).get('max_file_size', 25 * 1024 * 1024)  # 25MB default
+        
+        # Initialize alert storage for persistence
+        self.alert_storage = None
+        if AlertStorage:
+            try:
+                db_path = config.get('database', {}).get('url', 'sqlite:///./data/virtuoso.db')
+                if db_path.startswith('sqlite:///'):
+                    db_path = db_path.replace('sqlite:///', '')
+                self.alert_storage = AlertStorage(db_path)
+                self.logger.info("Alert storage initialized for persistence")
+            except Exception as e:
+                self.logger.error(f"Failed to initialize alert storage: {e}")
+                self.alert_storage = None
         self.allowed_file_types = config.get('monitoring', {}).get('alerts', {}).get('allowed_file_types', ['.pdf', '.png', '.jpg', '.jpeg'])
         
         # Delivery tracking
@@ -218,12 +241,12 @@ class AlertManager:
         self.logger.info("Initialized centralized InterpretationManager for alerts")
         self._last_ohlcv_update = {}  # Last update time for OHLCV data
         
-        # CRITICAL DEBUG: Print initialization
-        print("CRITICAL DEBUG: Initializing AlertManager")
+        # Log initialization
+        self.logger.debug("Initializing AlertManager")
         
         # Initialize Discord webhook URL as empty - will be populated from config or environment
         self.discord_webhook_url = ""
-        print("CRITICAL DEBUG: Discord webhook URL will be loaded from config or environment variables")
+        self.logger.debug("Discord webhook URL will be loaded from config or environment variables")
         
         # System webhook URL (for system alerts)
         self.system_webhook_url = ""
@@ -236,16 +259,16 @@ class AlertManager:
             if 'discord_webhook_url' in alert_config and alert_config['discord_webhook_url']:
                 self.discord_webhook_url = alert_config['discord_webhook_url'].strip()
                 if self.discord_webhook_url:
-                        print(f"CRITICAL DEBUG: Webhook URL from direct config: {self.discord_webhook_url[:20]}...{self.discord_webhook_url[-10:]}")
+                        self.logger.debug(f" Webhook URL from direct config: {self.discord_webhook_url[:20]}...{self.discord_webhook_url[-10:]}")
                 else:
-                    print("CRITICAL DEBUG: Discord webhook URL from direct config is empty after stripping")
+                    self.logger.debug(" Discord webhook URL from direct config is empty after stripping")
             # Then check nested discord > webhook_url path (old format)
             elif 'discord' in alert_config and 'webhook_url' in alert_config['discord'] and alert_config['discord']['webhook_url']:
                 self.discord_webhook_url = alert_config['discord']['webhook_url'].strip()
                 if self.discord_webhook_url:
-                        print(f"CRITICAL DEBUG: Webhook URL from nested config: {self.discord_webhook_url[:20]}...{self.discord_webhook_url[-10:]}")
+                        self.logger.debug(f" Webhook URL from nested config: {self.discord_webhook_url[:20]}...{self.discord_webhook_url[-10:]}")
                 else:
-                    print("CRITICAL DEBUG: Discord webhook URL from nested config is empty after stripping")
+                    self.logger.debug(" Discord webhook URL from nested config is empty after stripping")
             # Try to get from environment variable (fallback for empty config values)
             else:
                 self.discord_webhook_url = os.getenv('DISCORD_WEBHOOK_URL', '')  # Use environment variable instead of hardcoded value
@@ -253,9 +276,9 @@ class AlertManager:
                     # Fix potential newline issues
                     self.discord_webhook_url = self.discord_webhook_url.strip().replace('\n', '')
                     if self.discord_webhook_url:
-                            print(f"CRITICAL DEBUG: Webhook URL from environment: {self.discord_webhook_url[:20]}...{self.discord_webhook_url[-10:]}")
+                            self.logger.debug(f" Webhook URL from environment: {self.discord_webhook_url[:20]}...{self.discord_webhook_url[-10:]}")
                     else:
-                        print("CRITICAL DEBUG: Discord webhook URL from environment is empty after cleaning")
+                        self.logger.debug(" Discord webhook URL from environment is empty after cleaning")
                 else:
                     self.logger.warning("No Discord webhook URL found in config or environment")
             
@@ -269,36 +292,36 @@ class AlertManager:
                     if self.system_webhook_url:
                         self.system_webhook_url = self.system_webhook_url.strip().replace('\n', '')
                         if self.system_webhook_url:
-                            print(f"CRITICAL DEBUG: System webhook URL from environment variable {env_var_name}: {self.system_webhook_url[:20]}...{self.system_webhook_url[-10:]}")
+                            self.logger.debug(f" System webhook URL from environment variable {env_var_name}: {self.system_webhook_url[:20]}...{self.system_webhook_url[-10:]}")
                         else:
-                            print(f"CRITICAL DEBUG: System webhook URL from environment variable {env_var_name} is empty after cleaning")
+                            self.logger.debug(f" System webhook URL from environment variable {env_var_name} is empty after cleaning")
                     else:
-                        print(f"CRITICAL DEBUG: Environment variable {env_var_name} not set or empty")
+                        self.logger.debug(f" Environment variable {env_var_name} not set or empty")
                         self.system_webhook_url = ''
                 else:
                     # Direct value from config
                     self.system_webhook_url = system_webhook_raw or ''
                     if self.system_webhook_url:
-                        print(f"CRITICAL DEBUG: System webhook URL from config: {self.system_webhook_url[:20]}...{self.system_webhook_url[-10:]}")
+                        self.logger.debug(f" System webhook URL from config: {self.system_webhook_url[:20]}...{self.system_webhook_url[-10:]}")
                     else:
-                        print("CRITICAL DEBUG: System webhook URL from config is None or empty")
+                        self.logger.debug(" System webhook URL from config is None or empty")
             else:
                 # Fallback to environment variable
                 self.system_webhook_url = os.getenv('SYSTEM_ALERTS_WEBHOOK_URL', '')
                 if self.system_webhook_url:
                     self.system_webhook_url = self.system_webhook_url.strip().replace('\n', '')
                     if self.system_webhook_url:
-                        print(f"CRITICAL DEBUG: System webhook URL from fallback environment: {self.system_webhook_url[:20]}...{self.system_webhook_url[-10:]}")
+                        self.logger.debug(f" System webhook URL from fallback environment: {self.system_webhook_url[:20]}...{self.system_webhook_url[-10:]}")
                     else:
-                        print("CRITICAL DEBUG: System webhook URL from fallback environment is empty after cleaning")
+                        self.logger.debug(" System webhook URL from fallback environment is empty after cleaning")
             
             # Direct discord webhook from config (alternative path) - only override if not already set
             if 'discord_network' in alert_config and alert_config['discord_network'] and not self.discord_webhook_url:
                 self.discord_webhook_url = alert_config['discord_network'].strip()
                 if self.discord_webhook_url:
-                        print(f"CRITICAL DEBUG: Webhook URL from discord_network: {self.discord_webhook_url[:20]}...{self.discord_webhook_url[-10:]}")
+                        self.logger.debug(f" Webhook URL from discord_network: {self.discord_webhook_url[:20]}...{self.discord_webhook_url[-10:]}")
                 else:
-                    print("CRITICAL DEBUG: Discord webhook URL from discord_network is empty after stripping")
+                    self.logger.debug(" Discord webhook URL from discord_network is empty after stripping")
             
             # Thresholds
             if 'thresholds' in alert_config:
@@ -320,7 +343,7 @@ class AlertManager:
             if 'liquidation' in alert_config:
                 if 'threshold' in alert_config['liquidation']:
                     self.liquidation_threshold = alert_config['liquidation']['threshold']
-                    print(f"CRITICAL DEBUG: Loaded liquidation threshold from config: ${self.liquidation_threshold:,}")
+                    self.logger.debug(f" Loaded liquidation threshold from config: ${self.liquidation_threshold:,}")
         
         # Discord webhook retry configuration
         monitoring_config = self.config.get('monitoring', {})
@@ -368,9 +391,9 @@ class AlertManager:
         # Force initialize handlers
         try:
             self._initialize_handlers()
-            print(f"CRITICAL DEBUG: Handlers after initialization: {self.handlers}")
+            self.logger.debug(f"Handlers after initialization: {self.handlers}")
         except Exception as e:
-            print(f"CRITICAL DEBUG: Error initializing handlers: {str(e)}")
+            self.logger.error(f"Error initializing handlers: {str(e)}")
         
         # Test Discord webhook
         # self.test_discord_webhook()  # Removed test webhook to prevent startup alerts
@@ -901,6 +924,36 @@ class AlertManager:
             self._alert_stats[level.lower()] = int(self._alert_stats[level.lower()]) + 1
             self._last_alert[alert_key] = float(time.time())
             
+            # Persist alert to database if available
+            if self.alert_storage:
+                try:
+                    # Prepare alert data for storage
+                    alert_data = {
+                        'alert_id': f"alert_{int(time.time() * 1000)}_{hash(message) & 0xFFFF}",
+                        'alert_type': details.get('type', 'system') if details else 'system',
+                        'symbol': details.get('symbol') if details else None,
+                        'severity': level,
+                        'title': message[:100],  # First 100 chars as title
+                        'message': message,
+                        'description': details.get('description', '') if details else '',
+                        'confluence_score': details.get('confluence_score', details.get('score')) if details else None,
+                        'price': details.get('price', details.get('current_price')) if details else None,
+                        'volume': details.get('volume', details.get('volume_24h')) if details else None,
+                        'change_24h': details.get('change_24h', details.get('price_change_percent')) if details else None,
+                        'timestamp': int(alert['timestamp'] * 1000),  # Convert to milliseconds
+                        'details': details,
+                        'sent_to_discord': False  # Will be updated after successful send
+                    }
+                    
+                    # Store in database
+                    stored = self.alert_storage.store_alert(alert_data)
+                    if stored:
+                        # Add alert_id to the alert object for tracking
+                        alert['alert_id'] = alert_data['alert_id']
+                        self.logger.debug(f"Alert persisted to database: {alert_data['alert_id']}")
+                except Exception as e:
+                    self.logger.error(f"Failed to persist alert to database: {e}")
+            
             # Process alert with debug info
             self.logger.debug("Processing alert through handlers")
             await self._process_alert(alert)
@@ -910,6 +963,28 @@ class AlertManager:
             self.logger.error(f"Error sending alert: {str(e)}")
             self.logger.error(traceback.format_exc())
             self._alert_stats['errors'] = int(self._alert_stats['errors']) + 1
+    
+    def _mark_alert_sent_to_discord(self, alert_id: str, response: Any = None) -> None:
+        """Mark an alert as successfully sent to Discord in the database.
+        
+        Args:
+            alert_id: The alert ID to update
+            response: The webhook response object
+        """
+        if self.alert_storage and alert_id:
+            try:
+                # Update the existing alert record
+                response_str = str(response) if response else "Success"
+                with sqlite3.connect(self.alert_storage.db_path) as conn:
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        "UPDATE alerts SET sent_to_discord = 1, webhook_response = ? WHERE alert_id = ?",
+                        (response_str, alert_id)
+                    )
+                    conn.commit()
+                    self.logger.debug(f"Marked alert {alert_id} as sent to Discord")
+            except Exception as e:
+                self.logger.error(f"Failed to update alert status in database: {e}")
 
     def get_alerts(self, level: Optional[str] = None,
                   limit: Optional[int] = None,
@@ -925,6 +1000,29 @@ class AlertManager:
             List[Dict[str, Any]]: Filtered alerts
         """
         try:
+            # First try to get alerts from database if available
+            if self.alert_storage:
+                try:
+                    # Map level to severity for database query
+                    severity = level.upper() if level else None
+                    alerts = self.alert_storage.get_alerts(
+                        limit=limit or 50,
+                        start_time=start_time,
+                        severity=severity
+                    )
+                    # Ensure compatibility with expected format
+                    for alert in alerts:
+                        # Map database fields to expected fields
+                        if 'severity' in alert and 'level' not in alert:
+                            alert['level'] = alert['severity']
+                        if 'alert_type' in alert and 'type' not in alert:
+                            alert['type'] = alert['alert_type']
+                    return alerts
+                except Exception as e:
+                    self.logger.error(f"Error retrieving alerts from database: {e}")
+                    # Fall back to in-memory alerts
+            
+            # Fall back to in-memory alerts if database not available
             alerts = list(self._alerts)
             
             # Apply filters
@@ -933,11 +1031,11 @@ class AlertManager:
                 if level not in self.alert_levels:
                     logger.error(f"Invalid alert level: {level}")
                     return []
-                alerts = [a for a in alerts if a['level'] == level]
+                alerts = [a for a in alerts if a.get('level', a.get('severity')) == level]
                 
             if start_time is not None:
                 start_time = float(start_time)
-                alerts = [a for a in alerts if float(a['timestamp']) >= start_time]
+                alerts = [a for a in alerts if float(a.get('timestamp', 0)) >= start_time]
                 
             # Apply limit
             if limit is not None:
@@ -3137,6 +3235,59 @@ class AlertManager:
             )
             self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}][ALERT:{alert_id}] Successfully sent confluence alert for {symbol}")
             
+            # Send high-resolution chart image first if available
+            chart_path = signal_data.get('chart_path')
+            if not chart_path and pdf_path:
+                # Try to extract chart path from signal data
+                chart_path = await self._generate_chart_from_signal_data(signal_data, transaction_id, signal_id)
+            
+            if chart_path and os.path.exists(chart_path):
+                self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}][CHART] Sending high-resolution chart: {chart_path}")
+                
+                # Extract trade parameters for the message
+                trade_params = signal_data.get('trade_params', {})
+                entry_price = trade_params.get('entry_price') or signal_data.get('entry_price') or signal_data.get('price')
+                stop_loss = trade_params.get('stop_loss') or signal_data.get('stop_loss')
+                targets = trade_params.get('targets') or signal_data.get('targets', [])
+                
+                # Format stop loss and targets information
+                sl_info = f"**Stop Loss:** ${stop_loss:.4f}" if stop_loss else "**Stop Loss:** Not set"
+                
+                tp_info = []
+                if targets:
+                    if isinstance(targets, list):
+                        for i, target in enumerate(targets):
+                            if isinstance(target, dict):
+                                target_price = target.get('price', 0)
+                                target_size = target.get('size', 0)
+                                if target_price > 0:
+                                    tp_info.append(f"**TP{i+1}:** ${target_price:.4f} ({target_size}%)")
+                    elif isinstance(targets, dict):
+                        for name, target in targets.items():
+                            if isinstance(target, dict):
+                                target_price = target.get('price', 0)
+                                target_size = target.get('size', 0)
+                                if target_price > 0:
+                                    tp_info.append(f"**{name}:** ${target_price:.4f} ({target_size}%)")
+                
+                tp_text = "\n".join(tp_info) if tp_info else "**Targets:** Not set"
+                
+                # Create message for chart
+                chart_emoji = "📊"
+                chart_message = {
+                    "content": f"{chart_emoji} **{symbol} Price Action Chart**\n\n**Entry:** ${entry_price:.4f}\n{sl_info}\n\n{tp_text}",
+                    "username": "Virtuoso Trading",
+                }
+                
+                # Send the chart
+                try:
+                    self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}][CHART] Sending chart with TP/SL details")
+                    await self.send_discord_webhook_message(chart_message, files=[chart_path])
+                    self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}][CHART] Chart sent successfully")
+                except Exception as chart_err:
+                    self.logger.error(f"[TXN:{transaction_id}][SIG:{signal_id}][CHART] Error sending chart: {str(chart_err)}")
+                    self.logger.error(traceback.format_exc())
+            
             # Send PDF attachment as a separate message if available
             if pdf_path:
                 self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}][PDF] Sending PDF attachment: {pdf_path}")
@@ -3168,6 +3319,80 @@ class AlertManager:
             self.logger.error(f"[TXN:{transaction_id}][SIG:{signal_id}] Error sending signal alert: {str(e)}")
             self.logger.debug(traceback.format_exc())
             raise
+
+    async def _generate_chart_from_signal_data(self, signal_data: Dict[str, Any], transaction_id: str, signal_id: str) -> Optional[str]:
+        """Generate a high-resolution chart from signal data.
+        
+        Args:
+            signal_data: Signal data containing OHLCV data and trade parameters
+            transaction_id: Transaction ID for logging
+            signal_id: Signal ID for logging
+            
+        Returns:
+            Path to the generated chart image or None if generation fails
+        """
+        try:
+            self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}][CHART] Attempting to generate chart from signal data")
+            
+            # Check if we have the PDF generator available
+            if not hasattr(self, 'pdf_generator') or not self.pdf_generator:
+                self.logger.warning(f"[TXN:{transaction_id}][SIG:{signal_id}][CHART] PDF generator not available")
+                return None
+            
+            # Extract necessary data
+            symbol = signal_data.get('symbol', 'UNKNOWN')
+            ohlcv_data = signal_data.get('ohlcv_data')
+            trade_params = signal_data.get('trade_params', {})
+            
+            # Get trade parameters
+            entry_price = trade_params.get('entry_price') or signal_data.get('entry_price') or signal_data.get('price')
+            stop_loss = trade_params.get('stop_loss') or signal_data.get('stop_loss')
+            targets = trade_params.get('targets') or signal_data.get('targets')
+            
+            # Create output directory for charts
+            chart_dir = os.path.join(os.getcwd(), 'reports', 'charts')
+            os.makedirs(chart_dir, exist_ok=True)
+            
+            # Try to create the chart
+            if hasattr(self.pdf_generator, '_create_candlestick_chart'):
+                if ohlcv_data is not None:
+                    # Use real OHLCV data if available
+                    chart_path = self.pdf_generator._create_candlestick_chart(
+                        symbol=symbol,
+                        ohlcv_data=ohlcv_data,
+                        entry_price=entry_price,
+                        stop_loss=stop_loss,
+                        targets=targets,
+                        output_dir=chart_dir
+                    )
+                else:
+                    # Use simulated chart if no OHLCV data
+                    if hasattr(self.pdf_generator, '_create_simulated_chart') and entry_price:
+                        chart_path = self.pdf_generator._create_simulated_chart(
+                            symbol=symbol,
+                            entry_price=entry_price,
+                            stop_loss=stop_loss,
+                            targets=targets,
+                            output_dir=chart_dir
+                        )
+                    else:
+                        self.logger.warning(f"[TXN:{transaction_id}][SIG:{signal_id}][CHART] No OHLCV data or entry price for chart generation")
+                        return None
+                
+                if chart_path and os.path.exists(chart_path):
+                    self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}][CHART] Chart generated successfully: {chart_path}")
+                    return chart_path
+                else:
+                    self.logger.warning(f"[TXN:{transaction_id}][SIG:{signal_id}][CHART] Chart generation returned no valid path")
+                    return None
+            else:
+                self.logger.warning(f"[TXN:{transaction_id}][SIG:{signal_id}][CHART] Chart generation methods not available in PDF generator")
+                return None
+                
+        except Exception as e:
+            self.logger.error(f"[TXN:{transaction_id}][SIG:{signal_id}][CHART] Error generating chart: {str(e)}")
+            self.logger.error(traceback.format_exc())
+            return None
 
     async def send_alpha_opportunity_alert(
         self,

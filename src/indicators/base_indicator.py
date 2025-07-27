@@ -788,8 +788,8 @@ class BaseIndicator(ABC):
                 required_sentiments = self.required_sentiment_components if hasattr(self, 'required_sentiment_components') else ['funding_rate', 'long_short_ratio', 'liquidations']
                 missing_sentiments = [comp for comp in required_sentiments if comp not in sentiment]
                 if missing_sentiments:
-                    self.logger.error(f"Missing required sentiment components: {missing_sentiments}")
-                    return False
+                    self.logger.warning(f"Missing sentiment components (will use defaults): {missing_sentiments}")
+                    # Don't return False - allow processing to continue with defaults
             
             self.logger.debug("Input data validation passed successfully.")
             return True

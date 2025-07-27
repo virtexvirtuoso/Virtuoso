@@ -4,9 +4,9 @@
 # Excludes exports, images, PDFs, and other large files
 
 # Configuration
-VPS_USER="root"
-VPS_HOST="your-vps-ip"  # Replace with your VPS IP
-VPS_PATH="/root/Virtuoso_ccxt"
+VPS_USER="linuxuser"
+VPS_HOST="185.162.249.241"
+VPS_PATH="/home/linuxuser/trading/Virtuoso_ccxt"
 LOCAL_PATH="/Users/ffv_macmini/Desktop/Virtuoso_ccxt/"
 
 # Colors for output

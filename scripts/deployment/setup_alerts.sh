@@ -16,7 +16,7 @@ cat > ~/virtuoso_alerts.sh << 'EOF'
 #!/bin/bash
 
 WEBHOOK_URL="$SYSTEM_ALERTS_WEBHOOK_URL"
-SERVICE="virtuoso-trading"
+SERVICE="virtuoso"
 ALERT_LOCKFILE="/tmp/virtuoso_alert.lock"
 ALERT_INTERVAL=300  # 5 minutes between alerts
 

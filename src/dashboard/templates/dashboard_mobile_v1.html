@@ -7,9 +7,20 @@
     <meta name="description" content="Mobile-optimized cryptocurrency trading dashboard">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Virtuoso">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="application-name" content="Virtuoso">
+    <meta name="theme-color" content="#0a1525">
+    
+    <!-- PWA Manifest for Android -->
+    <link rel="manifest" href="/static/manifest.json">
     
     <!-- Custom Favicon with Amber Trending-Up Icon -->
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICA8IS0tIERhcmsgYmFja2dyb3VuZCBtYXRjaGluZyBkYXNoYm9hcmQgdGhlbWUgLS0+CiAgPHJlY3Qgd2lkdGg9IjI0IiBoZWlnaHQ9IjI0IiByeD0iNCIgZmlsbD0iIzBhMTUyNSIvPgogIAogIDwhLS0gQW1iZXIgdHJlbmRpbmctdXAgaWNvbiAtLT4KICA8cGF0aCBkPSJtMyAxNyA2LTYgNCA0IDgtOCIgc3Ryb2tlPSIjRkZCRjAwIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPgogIDxwYXRoIGQ9Im0yMSA3LTQgNFY3aDR6IiBmaWxsPSIjRkZCRjAwIiBzdHJva2U9IiNGRkJGMDAiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+Cjwvc3ZnPg==">
+    
+    <!-- Apple Touch Icons for iOS Home Screen -->
+    <link rel="apple-touch-icon" href="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTgwIiBoZWlnaHQ9IjE4MCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPgogIDxyZWN0IHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgcng9IjQiIGZpbGw9IiMwYTE1MjUiLz4KICA8cGF0aCBkPSJtMyAxNyA2LTYgNCA0IDgtOCIgc3Ryb2tlPSIjRkZCRjAwIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPgogIDxwYXRoIGQ9Im0yMSA3LTQgNFY3aDR6IiBmaWxsPSIjRkZCRjAwIiBzdHJva2U9IiNGRkJGMDAiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+Cjwvc3ZnPg==">
+    <link rel="apple-touch-icon" sizes="152x152" href="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTUyIiBoZWlnaHQ9IjE1MiIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPgogIDxyZWN0IHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgcng9IjQiIGZpbGw9IiMwYTE1MjUiLz4KICA8cGF0aCBkPSJtMyAxNyA2LTYgNCA0IDgtOCIgc3Ryb2tlPSIjRkZCRjAwIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPgogIDxwYXRoIGQ9Im0yMSA3LTQgNFY3aDR6IiBmaWxsPSIjRkZCRjAwIiBzdHJva2U9IiNGRkJGMDAiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+Cjwvc3ZnPg==">
     <link rel="apple-touch-icon" sizes="180x180" href="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTgwIiBoZWlnaHQ9IjE4MCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPgogIDxyZWN0IHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgcng9IjQiIGZpbGw9IiMwYTE1MjUiLz4KICA8cGF0aCBkPSJtMyAxNyA2LTYgNCA0IDgtOCIgc3Ryb2tlPSIjRkZCRjAwIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPgogIDxwYXRoIGQ9Im0yMSA3LTQgNFY3aDR6IiBmaWxsPSIjRkZCRjAwIiBzdHJva2U9IiNGRkJGMDAiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+Cjwvc3ZnPg==">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -752,25 +763,26 @@
                 </div>
             </div>
 
-            <!-- Analyzed Symbols -->
+            <!-- Confluence Scores -->
             <div class="mobile-card">
                 <div class="card-header">
-                    <h2 class="card-title">Analyzed Symbols</h2>
+                    <h2 class="card-title">Confluence Scores</h2>
                     <div style="display: flex; align-items: center; gap: 8px;">
                         <span class="card-badge" id="symbolsCount" style="background: rgba(255, 191, 0, 0.2); color: var(--text-primary);">
                             0
                         </span>
-                        <select id="sortSelector" style="background: var(--bg-secondary); border: 1px solid var(--border-light); border-radius: 4px; padding: 4px 8px; color: var(--text-primary); font-size: 12px;" onchange="sortSymbols()">
+                        <select id="sortSelector" style="background: var(--bg-secondary); border: 1px solid var(--border-light); border-radius: 6px; padding: 6px 12px; color: var(--text-primary); font-size: 12px;" onchange="sortSymbols()">
                             <option value="score">Sort by Score</option>
                             <option value="change">Sort by Change</option>
+                            <option value="volume">Sort by Volume</option>
                             <option value="symbol">Sort by Symbol</option>
                         </select>
                     </div>
                 </div>
                 
-                <div class="symbols-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px;">
+                <div class="symbols-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; padding: 4px;">
                     <div id="analyzedSymbolsList">
-                        <!-- Analyzed symbols will be populated here -->
+                        <!-- Confluence score cards will be populated here -->
                         <div class="loading" style="text-align: center; padding: 40px; grid-column: 1 / -1;">
                             <div class="spinner" style="width: 32px; height: 32px; margin: 0 auto;"></div>
                         </div>
@@ -875,6 +887,56 @@
                 </div>
             </div>
         </div>
+
+        <!-- Bitcoin Beta Tab -->
+        <div class="tab-content" id="betaTab">
+            <div class="mobile-card">
+                <div class="card-header">
+                    <h2 class="card-title">Bitcoin Beta Analysis</h2>
+                    <span class="card-badge" style="background: rgba(255, 191, 0, 0.2); color: var(--accent-warning);">
+                        ₿
+                    </span>
+                </div>
+                
+                <!-- Beta Overview -->
+                <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 16px;">
+                    <div class="overview-metric">
+                        <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 4px;">BETA COEFFICIENT</div>
+                        <div id="betaCoefficient" style="font-size: 20px; font-weight: 700; color: var(--text-primary);">--</div>
+                    </div>
+                    <div class="overview-metric">
+                        <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 4px;">CORRELATION</div>
+                        <div id="btcCorrelation" style="font-size: 20px; font-weight: 700; color: var(--text-primary);">--</div>
+                    </div>
+                    <div class="overview-metric">
+                        <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 4px;">MARKET REGIME</div>
+                        <div id="betaMarketRegime" style="font-size: 14px; font-weight: 600; padding: 4px 8px; border-radius: 6px; text-align: center; background: rgba(255, 191, 0, 0.1); color: var(--text-primary);">--</div>
+                    </div>
+                    <div class="overview-metric">
+                        <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 4px;">VOLATILITY RATIO</div>
+                        <div id="volatilityRatio" style="font-size: 20px; font-weight: 700; color: var(--text-primary);">--</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Symbol Beta Rankings -->
+            <div class="mobile-card">
+                <div class="card-header">
+                    <h2 class="card-title">Beta Rankings</h2>
+                    <select id="betaSortSelector" style="background: var(--bg-secondary); border: 1px solid var(--border-light); border-radius: 6px; padding: 6px 12px; color: var(--text-primary); font-size: 12px;" onchange="sortBetaSymbols()">
+                        <option value="beta">Sort by Beta</option>
+                        <option value="correlation">Sort by Correlation</option>
+                        <option value="volume">Sort by Volume</option>
+                    </select>
+                </div>
+                <div id="betaSymbolsList" style="display: flex; flex-direction: column; gap: 8px;">
+                    <!-- Beta rankings will be populated here -->
+                    <div class="loading" style="text-align: center; padding: 40px;">
+                        <div class="spinner" style="width: 32px; height: 32px; margin: 0 auto;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </main>
 
     <!-- Bottom Navigation -->
@@ -886,6 +948,10 @@
         <button class="nav-item" onclick="switchTab('signals')">
             <i data-lucide="activity" class="nav-icon"></i>
             <span class="nav-label">Signals</span>
+        </button>
+        <button class="nav-item" onclick="switchTab('beta')">
+            <span class="nav-icon" style="font-size: 20px; font-weight: 700;">₿</span>
+            <span class="nav-label">₿ Beta</span>
         </button>
         <button class="nav-item" onclick="switchTab('alpha')">
             <i data-lucide="trending-up" class="nav-icon"></i>
@@ -1050,6 +1116,9 @@
                 case 'alerts':
                     loadAlertsData();
                     break;
+                case 'beta':
+                    loadBetaData();
+                    break;
             }
         }
 
@@ -1158,6 +1227,159 @@
             } catch (error) {
                 console.error('Error loading alerts data:', error);
             }
+        }
+        
+        async function loadBetaData() {
+            try {
+                // Fetch Bitcoin Beta analysis
+                const response = await fetch('/api/bitcoin-beta/status');
+                const data = await response.json();
+                updateBetaOverview(data);
+                
+                // Fetch symbol beta rankings
+                const symbolsResponse = await fetch('/api/dashboard/symbols');
+                const symbolsData = await symbolsResponse.json();
+                updateBetaSymbols(symbolsData);
+            } catch (error) {
+                console.error('Error loading beta data:', error);
+                // Show error state
+                updateBetaOverview({
+                    beta_coefficient: 0,
+                    correlation: 0,
+                    market_regime: 'unknown',
+                    volatility_ratio: 0
+                });
+            }
+        }
+        
+        function updateBetaOverview(data) {
+            // Update beta coefficient
+            const betaCoef = document.getElementById('betaCoefficient');
+            if (betaCoef) {
+                const beta = data.beta_coefficient || 0;
+                betaCoef.textContent = beta.toFixed(2);
+                betaCoef.style.color = beta > 1 ? 'var(--accent-negative)' : beta < 1 ? 'var(--accent-positive)' : 'var(--text-primary)';
+            }
+            
+            // Update correlation
+            const correlation = document.getElementById('btcCorrelation');
+            if (correlation) {
+                const corr = data.correlation || 0;
+                correlation.textContent = (corr * 100).toFixed(0) + '%';
+                correlation.style.color = corr > 0.7 ? 'var(--accent-positive)' : corr < 0.3 ? 'var(--accent-negative)' : 'var(--accent-warning)';
+            }
+            
+            // Update market regime
+            const regime = document.getElementById('betaMarketRegime');
+            if (regime) {
+                const marketRegime = data.market_regime || 'neutral';
+                regime.textContent = marketRegime.toUpperCase();
+                const regimeColors = {
+                    'bullish': 'rgba(76, 175, 80, 0.2)',
+                    'bearish': 'rgba(244, 67, 54, 0.2)',
+                    'neutral': 'rgba(255, 191, 0, 0.2)'
+                };
+                regime.style.background = regimeColors[marketRegime] || regimeColors.neutral;
+            }
+            
+            // Update volatility ratio
+            const volRatio = document.getElementById('volatilityRatio');
+            if (volRatio) {
+                const ratio = data.volatility_ratio || 0;
+                volRatio.textContent = ratio.toFixed(2) + 'x';
+            }
+        }
+        
+        let currentBetaSymbols = [];
+        
+        function updateBetaSymbols(symbols) {
+            const symbolsList = document.getElementById('betaSymbolsList');
+            if (!symbolsList) return;
+            
+            // Calculate beta for each symbol (mock calculation for now)
+            currentBetaSymbols = symbols.map(symbol => {
+                // Generate mock beta based on symbol characteristics
+                const price = symbol.price || 0;
+                const volume = symbol.volume_24h || 0;
+                const change = symbol.change_24h || 0;
+                
+                // Mock beta calculation (in production this would come from the API)
+                const mockBeta = 0.5 + (Math.abs(change) / 10) + (Math.random() * 0.8);
+                const mockCorrelation = 0.3 + (Math.random() * 0.6);
+                
+                return {
+                    ...symbol,
+                    beta: mockBeta,
+                    correlation: mockCorrelation,
+                    volume_usd: volume
+                };
+            });
+            
+            // Sort by beta by default
+            sortBetaSymbols();
+        }
+        
+        function sortBetaSymbols() {
+            const sortBy = document.getElementById('betaSortSelector')?.value || 'beta';
+            let sorted = [...currentBetaSymbols];
+            
+            switch(sortBy) {
+                case 'beta':
+                    sorted.sort((a, b) => b.beta - a.beta);
+                    break;
+                case 'correlation':
+                    sorted.sort((a, b) => b.correlation - a.correlation);
+                    break;
+                case 'volume':
+                    sorted.sort((a, b) => b.volume_usd - a.volume_usd);
+                    break;
+            }
+            
+            renderBetaSymbols(sorted);
+        }
+        
+        function renderBetaSymbols(symbols) {
+            const symbolsList = document.getElementById('betaSymbolsList');
+            if (!symbolsList) return;
+            
+            symbolsList.innerHTML = '';
+            
+            if (symbols.length === 0) {
+                symbolsList.innerHTML = '<div class="empty-state" style="text-align: center; padding: 20px; color: var(--text-secondary);">No beta data available</div>';
+                return;
+            }
+            
+            symbols.slice(0, 10).forEach(symbol => {
+                const betaClass = symbol.beta > 1.2 ? 'high-beta' : symbol.beta < 0.8 ? 'low-beta' : 'medium-beta';
+                const betaColor = symbol.beta > 1.2 ? 'var(--accent-negative)' : symbol.beta < 0.8 ? 'var(--accent-positive)' : 'var(--accent-warning)';
+                
+                symbolsList.innerHTML += `
+                    <div class="signal-card" style="cursor: pointer;" onclick="viewSymbolBeta('${symbol.symbol}')">
+                        <div class="signal-info">
+                            <div class="signal-symbol">${symbol.symbol}</div>
+                            <div class="signal-details">
+                                Beta: ${symbol.beta.toFixed(2)} • Correlation: ${(symbol.correlation * 100).toFixed(0)}%
+                            </div>
+                            <div class="signal-details" style="font-size: 12px; margin-top: 4px;">
+                                $${(symbol.price || 0).toFixed(2)} • Vol: ${((symbol.volume_usd || 0) / 1000000).toFixed(2)}M
+                            </div>
+                        </div>
+                        <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px;">
+                            <div style="font-size: 24px; font-weight: 700; color: ${betaColor};">
+                                ${symbol.beta.toFixed(2)}
+                            </div>
+                            <div class="card-badge" style="background: ${betaColor}20; color: ${betaColor}; font-size: 10px;">
+                                ${betaClass.toUpperCase().replace('-', ' ')}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+        }
+        
+        function viewSymbolBeta(symbol) {
+            // Could expand to show detailed beta analysis for the symbol
+            console.log('View beta details for:', symbol);
         }
 
         // Performance-optimized update functions
@@ -1272,6 +1494,15 @@
                         const changeA = parseFloat(a.price_change_percent || a.change_24h || 0);
                         const changeB = parseFloat(b.price_change_percent || b.change_24h || 0);
                         return changeB - changeA;
+                    });
+                    break;
+                case 'volume':
+                    sortedSymbols.sort((a, b) => {
+                        const priceA = a.price || a.current_price || 0;
+                        const priceB = b.price || b.current_price || 0;
+                        const volumeA = a.volume_usd || a.quote_volume || ((a.volume || a.volume_24h || 0) * priceA) || 0;
+                        const volumeB = b.volume_usd || b.quote_volume || ((b.volume || b.volume_24h || 0) * priceB) || 0;
+                        return volumeB - volumeA;
                     });
                     break;
                 case 'symbol':
@@ -1557,6 +1788,19 @@
             const change = symbol.price_change_percent || symbol.change_24h || 0;
             const changeValue = typeof change === 'string' ? parseFloat(change) : change;
             const volume = symbol.volume || symbol.volume_24h || 0;
+            const volume_usd = symbol.volume_usd || symbol.quote_volume || symbol.turnover_24h || (volume * price) || 0;
+            const high_24h = symbol.high_24h || symbol.high || 0;
+            const low_24h = symbol.low_24h || symbol.low || 0;
+            
+            // Extract component scores if available
+            const components = symbol.components || symbol.results || {};
+            const reliability = symbol.reliability || 0;
+            const signalType = symbol.signal_type || symbol.type || 'NEUTRAL';
+            const signalStrength = symbol.signal_strength || symbol.strength || 'weak';
+            const timestamp = symbol.timestamp || Date.now();
+            
+            // Generate unique ID for expand/collapse
+            const cardId = `card_${symbolName.replace(/[^a-zA-Z0-9]/g, '_')}`;
             
             // Determine score color and get trend icon
             let scoreColor = 'var(--text-secondary)';
@@ -1590,50 +1834,138 @@
             const changePrefix = changeValue > 0 ? '+' : '';
             const changeColor = changeValue >= 0 ? 'var(--accent-positive)' : 'var(--accent-negative)';
             
+            // Format turnover/USD volume
+            let turnoverDisplay = '';
+            if (volume_usd > 0) {
+                turnoverDisplay = volume_usd > 1e9 ? '$' + (volume_usd/1e9).toFixed(2) + 'B' : 
+                                 volume_usd > 1e6 ? '$' + (volume_usd/1e6).toFixed(1) + 'M' : 
+                                 volume_usd > 1e3 ? '$' + (volume_usd/1e3).toFixed(1) + 'K' : 
+                                 '$' + volume_usd.toFixed(0);
+            }
+            
+            // Calculate price range percentage
+            const priceRange = high_24h > 0 && low_24h > 0 ? ((high_24h - low_24h) / low_24h * 100).toFixed(2) : 0;
+            
+            // Component scores for mini visualization
+            const componentScores = {
+                technical: components.technical?.score || 50,
+                volume: components.volume?.score || 50,
+                orderflow: components.orderflow?.score || 50,
+                sentiment: components.sentiment?.score || 50,
+                orderbook: components.orderbook?.score || 50,
+                price_structure: components.price_structure?.score || 50
+            };
+            
             return `
-                <div class="symbol-card" style="background: var(--bg-secondary); border: 1px solid var(--border-light); border-radius: 12px; padding: 12px; cursor: pointer; transition: all 0.2s ease; position: relative; overflow: hidden;" onclick="viewSymbol('${symbolName}')" onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 12px rgba(0,0,0,0.1)'" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none'">
+                <div class="symbol-card" id="${cardId}" style="background: var(--bg-secondary); border: 1px solid var(--border-light); border-radius: 14px; cursor: pointer; transition: all 0.2s ease; position: relative; overflow: hidden;">
                     <!-- Score indicator bar -->
-                    <div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: ${scoreColor}; opacity: 0.8;"></div>
+                    <div style="position: absolute; top: 0; left: 0; right: 0; height: 4px; background: ${scoreColor}; opacity: 0.9;"></div>
                     
-                    <!-- Header with symbol and trend -->
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                        <div style="display: flex; align-items: center; gap: 6px;">
-                            <span style="font-weight: 700; font-size: 16px; color: var(--text-primary);">${displaySymbol}</span>
-                            <i data-lucide="${trendIcon}" style="width: 14px; height: 14px; color: ${scoreColor};"></i>
+                    <!-- Main card content (always visible) -->
+                    <div style="padding: 14px;" onclick="toggleCardExpansion('${cardId}')">
+                        <!-- Header with symbol and score -->
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <span style="font-weight: 700; font-size: 17px; color: var(--text-primary);">${displaySymbol}</span>
+                                <i data-lucide="${trendIcon}" style="width: 15px; height: 15px; color: ${scoreColor};"></i>
+                            </div>
+                            <div style="background: ${scoreBg}; padding: 4px 8px; border-radius: 8px;">
+                                <span style="font-size: 14px; font-weight: 700; color: ${scoreColor};">${Math.round(confluenceScore)}</span>
+                            </div>
                         </div>
-                        <div style="font-size: 10px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px;">
-                            ${scoreLevel}
+                        
+                        <!-- Price and change row -->
+                        <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px;">
+                            <div style="font-size: 16px; font-weight: 600; color: var(--text-primary);">
+                                $${price > 100 ? price.toFixed(2) : price < 1 ? price.toFixed(4) : price.toFixed(3)}
+                            </div>
+                            <div style="font-size: 14px; font-weight: 600; color: ${changeColor};">
+                                ${changePrefix}${Math.abs(changeValue).toFixed(2)}%
+                            </div>
+                        </div>
+                        
+                        <!-- Turnover and range row -->
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px;">
+                            <div style="padding: 6px; background: rgba(0, 0, 0, 0.2); border-radius: 6px;">
+                                <div style="font-size: 9px; color: var(--text-secondary); text-transform: uppercase;">Turnover</div>
+                                <div style="font-size: 12px; font-weight: 600; color: var(--text-primary);">${turnoverDisplay || 'N/A'}</div>
+                            </div>
+                            <div style="padding: 6px; background: rgba(0, 0, 0, 0.2); border-radius: 6px;">
+                                <div style="font-size: 9px; color: var(--text-secondary); text-transform: uppercase;">24H Range</div>
+                                <div style="font-size: 12px; font-weight: 600; color: var(--text-primary);">${priceRange}%</div>
+                            </div>
+                        </div>
+                        
+                        <!-- Component breakdown mini bars -->
+                        <div style="display: flex; gap: 2px; margin-bottom: 8px;">
+                            ${Object.entries(componentScores).map(([comp, score]) => {
+                                const height = Math.max(10, (score / 100) * 30);
+                                const barColor = score >= 70 ? 'var(--accent-positive)' : score >= 30 ? 'var(--accent-warning)' : 'var(--accent-negative)';
+                                return `<div style="flex: 1; background: rgba(255, 255, 255, 0.05); border-radius: 2px; height: 30px; position: relative; overflow: hidden;">
+                                    <div style="position: absolute; bottom: 0; width: 100%; height: ${height}px; background: ${barColor}; opacity: 0.8;"></div>
+                                </div>`;
+                            }).join('')}
+                        </div>
+                        
+                        <!-- Expand indicator -->
+                        <div style="display: flex; justify-content: center; margin-top: 8px;">
+                            <i data-lucide="chevron-down" style="width: 16px; height: 16px; color: var(--text-secondary); transition: transform 0.3s;" id="${cardId}_chevron"></i>
                         </div>
                     </div>
                     
-                    <!-- Price and change -->
-                    <div style="margin-bottom: 10px;">
-                        <div style="font-size: 15px; font-weight: 600; color: var(--text-primary); margin-bottom: 2px;">
-                            $${price > 100 ? price.toFixed(2) : price < 1 ? price.toFixed(4) : price.toFixed(3)}
+                    <!-- Expanded content (hidden by default) -->
+                    <div id="${cardId}_expanded" style="display: none; padding: 0 14px 14px 14px; border-top: 1px solid var(--border-light);">
+                        <!-- Component scores breakdown -->
+                        <div style="margin-bottom: 12px;">
+                            <h4 style="font-size: 12px; font-weight: 600; color: var(--text-primary); margin-bottom: 8px; text-transform: uppercase;">Component Breakdown</h4>
+                            ${Object.entries(componentScores).map(([comp, score]) => {
+                                const compColor = score >= 70 ? 'var(--accent-positive)' : score >= 30 ? 'var(--accent-warning)' : 'var(--accent-negative)';
+                                const compName = comp.replace('_', ' ').charAt(0).toUpperCase() + comp.replace('_', ' ').slice(1);
+                                return `
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                                    <span style="font-size: 11px; color: var(--text-secondary);">${compName}</span>
+                                    <div style="display: flex; align-items: center; gap: 6px;">
+                                        <div style="width: 60px; height: 4px; background: rgba(255, 255, 255, 0.1); border-radius: 2px; overflow: hidden;">
+                                            <div style="width: ${score}%; height: 100%; background: ${compColor};"></div>
+                                        </div>
+                                        <span style="font-size: 11px; font-weight: 600; color: ${compColor}; min-width: 25px; text-align: right;">${Math.round(score)}</span>
+                                    </div>
+                                </div>`;
+                            }).join('')}
                         </div>
-                        <div style="font-size: 13px; font-weight: 600; color: ${changeColor};">
-                            ${changePrefix}${Math.abs(changeValue).toFixed(2)}%
+                        
+                        <!-- Signal details -->
+                        <div style="margin-bottom: 12px;">
+                            <h4 style="font-size: 12px; font-weight: 600; color: var(--text-primary); margin-bottom: 8px; text-transform: uppercase;">Signal Details</h4>
+                            <div style="padding: 8px; background: rgba(0, 0, 0, 0.2); border-radius: 6px; text-align: center;">
+                                <div style="font-size: 9px; color: var(--text-secondary); margin-bottom: 4px;">Current Signal</div>
+                                <div style="font-size: 14px; font-weight: 700; color: ${signalType === 'BUY' ? 'var(--accent-positive)' : signalType === 'SELL' ? 'var(--accent-negative)' : 'var(--text-secondary)'};">${signalType}</div>
+                            </div>
+                        </div>
+                        
+                        <!-- Reliability and timestamp -->
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <span style="font-size: 9px; color: var(--text-secondary);">Reliability: </span>
+                                <span style="font-size: 11px; font-weight: 600; color: ${reliability >= 80 ? 'var(--accent-positive)' : reliability >= 60 ? 'var(--accent-warning)' : 'var(--accent-negative)'};">${reliability.toFixed(1)}%</span>
+                            </div>
+                            <div style="font-size: 9px; color: var(--text-secondary);">
+                                ${new Date(timestamp).toLocaleTimeString()}
+                            </div>
+                        </div>
+                        
+                        <!-- Action buttons -->
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px;">
+                            <button onclick="viewDetailedAnalysis('${symbolName}')" style="padding: 8px; background: var(--accent-primary); border: none; border-radius: 6px; color: var(--bg-primary); font-size: 12px; font-weight: 600; cursor: pointer;">
+                                <i data-lucide="chart-line" style="width: 12px; height: 12px; display: inline-block; margin-right: 4px;"></i>
+                                Analysis
+                            </button>
+                            <button onclick="viewAlerts('${symbolName}')" style="padding: 8px; background: rgba(255, 191, 0, 0.2); border: 1px solid var(--border-light); border-radius: 6px; color: var(--text-primary); font-size: 12px; font-weight: 600; cursor: pointer;">
+                                <i data-lucide="bell" style="width: 12px; height: 12px; display: inline-block; margin-right: 4px;"></i>
+                                Alerts
+                            </button>
                         </div>
                     </div>
-                    
-                    <!-- Confluence score with progress bar -->
-                    <div style="margin-bottom: 8px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                            <span style="font-size: 10px; color: var(--text-secondary); text-transform: uppercase;">Confluence</span>
-                            <span style="font-size: 14px; font-weight: 700; color: ${scoreColor};">${Math.round(confluenceScore)}</span>
-                        </div>
-                        <div style="height: 4px; background: rgba(255, 255, 255, 0.1); border-radius: 2px; overflow: hidden;">
-                            <div style="height: 100%; width: ${confluenceScore}%; background: ${scoreColor}; transition: width 0.3s ease;"></div>
-                        </div>
-                    </div>
-                    
-                    <!-- Volume indicator -->
-                    ${volume > 0 ? `
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <span style="font-size: 9px; color: var(--text-secondary); text-transform: uppercase;">Volume</span>
-                        <span style="font-size: 10px; color: var(--text-secondary);">${volume > 1e6 ? (volume/1e6).toFixed(1) + 'M' : volume > 1e3 ? (volume/1e3).toFixed(1) + 'K' : volume.toFixed(0)}</span>
-                    </div>
-                    ` : ''}
                 </div>
             `;
         }
@@ -1758,6 +2090,57 @@
             console.log('View symbol:', symbol);
         }
 
+        // Card expansion/collapse functionality
+        function toggleCardExpansion(cardId) {
+            const expandedContent = document.getElementById(`${cardId}_expanded`);
+            const chevron = document.getElementById(`${cardId}_chevron`);
+            
+            if (expandedContent.style.display === 'none') {
+                // Expand
+                expandedContent.style.display = 'block';
+                chevron.style.transform = 'rotate(180deg)';
+                
+                // Smooth animation
+                expandedContent.style.opacity = '0';
+                expandedContent.style.maxHeight = '0';
+                setTimeout(() => {
+                    expandedContent.style.transition = 'all 0.3s ease';
+                    expandedContent.style.opacity = '1';
+                    expandedContent.style.maxHeight = '500px';
+                }, 10);
+            } else {
+                // Collapse
+                expandedContent.style.opacity = '0';
+                expandedContent.style.maxHeight = '0';
+                chevron.style.transform = 'rotate(0deg)';
+                
+                setTimeout(() => {
+                    expandedContent.style.display = 'none';
+                    expandedContent.style.transition = '';
+                }, 300);
+            }
+            
+            // Prevent event bubbling
+            event.stopPropagation();
+        }
+        
+        function viewDetailedAnalysis(symbol) {
+            // Navigate to detailed analysis page or show modal
+            console.log('View detailed analysis for:', symbol);
+            // TODO: Implement detailed analysis view
+            alert(`Detailed analysis for ${symbol} coming soon!`);
+            event.stopPropagation();
+        }
+        
+        function viewAlerts(symbol) {
+            // Navigate to alerts for this symbol
+            console.log('View alerts for:', symbol);
+            // Switch to alerts tab and filter by symbol
+            switchTab('alerts');
+            // TODO: Implement symbol filtering in alerts
+            event.stopPropagation();
+        }
+        
         // WebSocket connection for real-time updates
         let ws;
         function connectWebSocket() {

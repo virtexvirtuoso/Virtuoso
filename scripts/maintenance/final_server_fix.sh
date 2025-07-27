@@ -1,0 +1,128 @@
+#!/bin/bash
+
+echo "🔧 Final server fix for Virtuoso on 45.77.40.77"
+echo "=============================================="
+
+# Run all fixes on remote server
+ssh linuxuser@45.77.40.77 'bash -s' << 'ENDSSH'
+cd /home/linuxuser/trading/Virtuoso_ccxt
+
+echo "1. Killing ALL Python processes on port 8003..."
+# Find and kill any process using port 8003
+for pid in $(lsof -ti :8003); do
+    echo "   Killing process $pid"
+    kill -9 $pid 2>/dev/null || true
+done
+
+# Also kill by name
+pkill -9 -f "python.*web_server" 2>/dev/null || true
+pkill -9 -f "uvicorn" 2>/dev/null || true
+
+sleep 3
+
+echo "2. Verifying port is free..."
+if lsof -i :8003 >/dev/null 2>&1; then
+    echo "   ❌ Port 8003 still in use!"
+    lsof -i :8003
+else
+    echo "   ✅ Port 8003 is free"
+fi
+
+echo "3. Starting server with correct environment..."
+if [ -f venv311/bin/python ]; then
+    echo "   Using venv311 Python"
+    source venv311/bin/activate
+    
+    # Start server in background
+    nohup python src/web_server.py > web_server.log 2>&1 &
+    SERVER_PID=$!
+    echo "   Server started with PID: $SERVER_PID"
+    
+    # Wait for server to start
+    echo "4. Waiting for server startup..."
+    for i in {1..10}; do
+        if curl -s http://localhost:8003/health >/dev/null 2>&1; then
+            echo "   ✅ Server is responding!"
+            break
+        fi
+        echo "   Waiting... ($i/10)"
+        sleep 2
+    done
+    
+    # Show logs
+    echo "5. Server logs:"
+    tail -30 web_server.log | grep -E "(Started|Listening|ERROR|WARNING|INFO|uvicorn.error|routes)"
+    
+    # Verify process is still running
+    if ps -p $SERVER_PID > /dev/null; then
+        echo "   ✅ Server process is running"
+    else
+        echo "   ❌ Server process died. Full logs:"
+        tail -100 web_server.log
+    fi
+else
+    echo "   ❌ Virtual environment not found!"
+    ls -la | grep venv
+fi
+ENDSSH
+
+echo ""
+echo "6. Testing endpoints from local machine..."
+sleep 3
+
+# Test function
+test_endpoint() {
+    local url=$1
+    local desc=$2
+    echo -n "   $desc: "
+    
+    response=$(curl -s -o /dev/null -w "%{http_code}" "$url" --max-time 5)
+    if [ "$response" = "200" ]; then
+        echo "✅ OK ($response)"
+    else
+        echo "❌ Failed ($response)"
+    fi
+}
+
+# Test all routes
+echo "   Testing dashboard routes:"
+test_endpoint "http://45.77.40.77:8003/dashboard" "Main Dashboard"
+test_endpoint "http://45.77.40.77:8003/dashboard/desktop" "Desktop Route"
+test_endpoint "http://45.77.40.77:8003/dashboard/v10" "V10 Route"
+test_endpoint "http://45.77.40.77:8003/dashboard/mobile" "Mobile Route"
+
+echo ""
+echo "   Testing API endpoints:"
+test_endpoint "http://45.77.40.77:8003/health" "Health Check"
+test_endpoint "http://45.77.40.77:8003/api/dashboard/overview" "Dashboard API"
+
+# Test Market Overview API with timing
+echo ""
+echo "7. Testing Market Overview API performance:"
+start_time=$(date +%s.%N)
+response=$(curl -s -o /dev/null -w "%{http_code}" "http://45.77.40.77:8003/api/market/overview" --max-time 30)
+end_time=$(date +%s.%N)
+duration=$(echo "$end_time - $start_time" | bc)
+
+if [ "$response" = "200" ]; then
+    echo "   ✅ Market Overview API: OK (took ${duration}s)"
+    if (( $(echo "$duration > 5" | bc -l) )); then
+        echo "   ⚠️  API is slow. This might be due to:"
+        echo "      - Multiple exchange API calls"
+        echo "      - First-time data loading"
+        echo "      - Consider implementing caching"
+    fi
+else
+    echo "   ❌ Market Overview API: Failed ($response)"
+fi
+
+echo ""
+echo "✅ Server fix completed!"
+echo ""
+echo "Dashboard URLs:"
+echo "  Desktop: http://45.77.40.77:8003/dashboard"
+echo "  Mobile:  http://45.77.40.77:8003/dashboard/mobile"
+echo "  V10:     http://45.77.40.77:8003/dashboard/v10"
+echo ""
+echo "To monitor logs:"
+echo "  ssh linuxuser@45.77.40.77 'tail -f /home/linuxuser/trading/Virtuoso_ccxt/web_server.log'"

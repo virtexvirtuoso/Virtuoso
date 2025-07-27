@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Virtuoso Dashboard - Select Version</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0c1a2b;
+            color: #e4e6eb;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 800px;
+            width: 100%;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+        
+        .logo {
+            font-size: 48px;
+            font-weight: 700;
+            color: #ffbf00;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+        
+        .subtitle {
+            font-size: 18px;
+            color: #b0b3b8;
+        }
+        
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .dashboard-card {
+            background: #1c2333;
+            border: 1px solid #2d3748;
+            border-radius: 12px;
+            padding: 30px;
+            text-decoration: none;
+            color: inherit;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .dashboard-card:hover {
+            border-color: #ffbf00;
+            transform: translateY(-2px);
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3);
+        }
+        
+        .recommended {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: #ffbf00;
+            color: #0c1a2b;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        
+        .card-icon {
+            font-size: 48px;
+            margin-bottom: 20px;
+        }
+        
+        .card-title {
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 10px;
+        }
+        
+        .card-description {
+            font-size: 14px;
+            color: #b0b3b8;
+            line-height: 1.6;
+            margin-bottom: 20px;
+        }
+        
+        .card-features {
+            font-size: 12px;
+            color: #76d275;
+        }
+        
+        .auto-redirect {
+            text-align: center;
+            color: #b0b3b8;
+            font-size: 14px;
+        }
+        
+        .auto-redirect a {
+            color: #ffbf00;
+            text-decoration: none;
+        }
+        
+        .auto-redirect a:hover {
+            text-decoration: underline;
+        }
+        
+        @media (max-width: 768px) {
+            .logo {
+                font-size: 36px;
+            }
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="logo">
+                <span>⚡</span>
+                <span>VIRTUOSO</span>
+            </div>
+            <p class="subtitle">Select Your Dashboard Experience</p>
+        </div>
+        
+        <div class="dashboard-grid">
+            <!-- Mobile Dashboard -->
+            <a href="/dashboard/mobile" class="dashboard-card" id="mobileCard">
+                <div class="recommended" id="mobileRecommended" style="display: none;">RECOMMENDED</div>
+                <div class="card-icon">📱</div>
+                <h3 class="card-title">Mobile Dashboard</h3>
+                <p class="card-description">
+                    Optimized for mobile devices with touch-friendly interface and streamlined data display.
+                </p>
+                <p class="card-features">
+                    ✓ Confluence Scores ✓ Live Signals ✓ ₿ Beta Analysis ✓ Alpha Opportunities ✓ Alerts
+                </p>
+            </a>
+            
+            <!-- Desktop Dashboard -->
+            <a href="/dashboard/desktop" class="dashboard-card" id="desktopCard">
+                <div class="recommended" id="desktopRecommended" style="display: none;">RECOMMENDED</div>
+                <div class="card-icon">🖥️</div>
+                <h3 class="card-title">Desktop Dashboard</h3>
+                <p class="card-description">
+                    Full-featured dashboard with comprehensive data visualization and multi-panel layout.
+                </p>
+                <p class="card-features">
+                    ✓ Multi-Chart View ✓ Detailed Analytics ✓ Real-time Updates ✓ Advanced Filters
+                </p>
+            </a>
+            
+            <!-- Signal Matrix Dashboard -->
+            <a href="/dashboard/v10" class="dashboard-card">
+                <div class="card-icon">📊</div>
+                <h3 class="card-title">Signal Matrix</h3>
+                <p class="card-description">
+                    Advanced signal confluence matrix for experienced traders with heatmap visualization.
+                </p>
+                <p class="card-features">
+                    ✓ Confluence Matrix ✓ Component Breakdown ✓ Heatmaps ✓ Correlation Analysis
+                </p>
+            </a>
+            
+            <!-- Classic Dashboard -->
+            <a href="/dashboard/v1" class="dashboard-card">
+                <div class="card-icon">📈</div>
+                <h3 class="card-title">Classic Dashboard</h3>
+                <p class="card-description">
+                    Original dashboard design with familiar layout and traditional data presentation.
+                </p>
+                <p class="card-features">
+                    ✓ Simple Interface ✓ Core Metrics ✓ Basic Charts ✓ Lightweight
+                </p>
+            </a>
+        </div>
+        
+        <div class="auto-redirect" id="autoRedirect" style="display: none;">
+            <p>Auto-redirecting to <span id="redirectTarget"></span> in <span id="countdown">5</span> seconds...</p>
+            <p><a href="#" onclick="cancelRedirect(); return false;">Stay on this page</a></p>
+        </div>
+    </div>
+    
+    <script>
+        // Check if user has a saved preference
+        const savedDashboard = localStorage.getItem('preferredDashboard');
+        
+        // Detect if mobile device
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) 
+                        || window.innerWidth < 768;
+        
+        // Show recommended badge
+        if (isMobile) {
+            document.getElementById('mobileRecommended').style.display = 'block';
+        } else {
+            document.getElementById('desktopRecommended').style.display = 'block';
+        }
+        
+        // Auto-redirect logic
+        let redirectTimer;
+        let countdownInterval;
+        let redirectUrl;
+        let redirectName;
+        
+        if (savedDashboard) {
+            // Use saved preference
+            redirectUrl = savedDashboard;
+            redirectName = getRedirectName(savedDashboard);
+        } else if (isMobile) {
+            // Default to mobile for mobile devices
+            redirectUrl = '/dashboard/mobile';
+            redirectName = 'Mobile Dashboard';
+        }
+        
+        function getRedirectName(url) {
+            const names = {
+                '/dashboard/mobile': 'Mobile Dashboard',
+                '/dashboard/desktop': 'Desktop Dashboard',
+                '/dashboard/v10': 'Signal Matrix',
+                '/dashboard/v1': 'Classic Dashboard'
+            };
+            return names[url] || url;
+        }
+        
+        if (redirectUrl) {
+            document.getElementById('autoRedirect').style.display = 'block';
+            document.getElementById('redirectTarget').textContent = redirectName;
+            
+            let countdown = 5;
+            countdownInterval = setInterval(() => {
+                countdown--;
+                document.getElementById('countdown').textContent = countdown;
+                if (countdown <= 0) {
+                    clearInterval(countdownInterval);
+                    window.location.href = redirectUrl;
+                }
+            }, 1000);
+        }
+        
+        function cancelRedirect() {
+            if (countdownInterval) clearInterval(countdownInterval);
+            if (redirectTimer) clearTimeout(redirectTimer);
+            document.getElementById('autoRedirect').style.display = 'none';
+        }
+        
+        // Save preference when clicking a dashboard
+        document.querySelectorAll('.dashboard-card').forEach(card => {
+            card.addEventListener('click', function(e) {
+                e.preventDefault();
+                localStorage.setItem('preferredDashboard', this.getAttribute('href'));
+                window.location.href = this.getAttribute('href');
+            });
+        });
+    </script>
+</body>
+</html>
