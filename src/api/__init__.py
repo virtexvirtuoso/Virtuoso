@@ -1,7 +1,7 @@
 """API initialization and route registration module."""
 
 from fastapi import FastAPI
-from .routes import signals, market, system, trading, dashboard, alpha, liquidation, correlation, bitcoin_beta, manipulation, top_symbols, whale_activity, sentiment
+from .routes import signals, market, system, trading, dashboard, alpha, liquidation, correlation, bitcoin_beta, manipulation, top_symbols, whale_activity, sentiment, admin
 
 def init_api_routes(app: FastAPI):
     """Initialize all API routes for the application."""
@@ -97,6 +97,13 @@ def init_api_routes(app: FastAPI):
         sentiment.router,
         prefix=f"{api_prefix}/sentiment",
         tags=["sentiment"]
+    )
+    
+    # Include admin dashboard routes at /admin
+    app.include_router(
+        admin.router,
+        prefix="/admin",
+        tags=["admin"]
     )
     
     # Log registered routes

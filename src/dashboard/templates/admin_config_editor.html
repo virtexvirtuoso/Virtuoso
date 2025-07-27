@@ -1,0 +1,1635 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Config Editor - Virtuoso Admin</title>
+    
+    <!-- CodeMirror CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/dracula.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/lint/lint.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/fold/foldgutter.min.css">
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            color: #fff;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .editor-container {
+            display: flex;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.3);
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: 280px;
+            background: rgba(0, 0, 0, 0.5);
+            border-right: 1px solid rgba(255, 165, 0, 0.2);
+            display: flex;
+            flex-direction: column;
+            transition: width 0.3s ease;
+        }
+
+        .sidebar.collapsed {
+            width: 60px;
+        }
+
+        .sidebar-header {
+            padding: 1.5rem;
+            border-bottom: 1px solid rgba(255, 165, 0, 0.2);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .sidebar.collapsed .sidebar-header {
+            padding: 1rem;
+        }
+
+        .sidebar-title {
+            color: #ffa500;
+            font-size: 1.2rem;
+            font-weight: 600;
+            white-space: nowrap;
+            overflow: hidden;
+        }
+
+        .sidebar.collapsed .sidebar-title {
+            display: none;
+        }
+
+        .toggle-sidebar {
+            background: none;
+            border: none;
+            color: #ffa500;
+            cursor: pointer;
+            font-size: 1.2rem;
+            padding: 0.5rem;
+            border-radius: 4px;
+            transition: all 0.3s ease;
+        }
+
+        .toggle-sidebar:hover {
+            background: rgba(255, 165, 0, 0.1);
+        }
+
+        .file-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1rem;
+        }
+
+        .sidebar.collapsed .file-list {
+            padding: 0.5rem;
+        }
+
+        .file-item {
+            padding: 0.8rem 1rem;
+            margin-bottom: 0.5rem;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            position: relative;
+        }
+
+        .file-item:hover {
+            background: rgba(255, 165, 0, 0.1);
+            transform: translateX(5px);
+        }
+
+        .file-item.active {
+            background: rgba(255, 165, 0, 0.2);
+            border-left: 3px solid #ffa500;
+        }
+
+        .file-icon {
+            font-size: 1.2rem;
+            color: #ffa500;
+        }
+
+        .file-info {
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .sidebar.collapsed .file-info {
+            display: none;
+        }
+
+        .file-name {
+            font-weight: 600;
+            color: #fff;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .file-meta {
+            font-size: 0.8rem;
+            color: #888;
+            margin-top: 0.2rem;
+        }
+
+        .file-status {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #4CAF50;
+        }
+
+        .file-status.modified {
+            background: #ff9800;
+        }
+
+        /* Main Editor Area */
+        .editor-main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .editor-header {
+            background: rgba(0, 0, 0, 0.3);
+            border-bottom: 1px solid rgba(255, 165, 0, 0.2);
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .editor-title {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .current-file {
+            color: #ffa500;
+            font-size: 1.2rem;
+            font-weight: 600;
+        }
+
+        .edit-status {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.3rem 0.8rem;
+            background: rgba(76, 175, 80, 0.2);
+            color: #4CAF50;
+            border-radius: 15px;
+            font-size: 0.85rem;
+        }
+
+        .edit-status.modified {
+            background: rgba(255, 152, 0, 0.2);
+            color: #ff9800;
+        }
+
+        .editor-actions {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        .action-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #fff;
+            padding: 0.6rem 1.2rem;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 0.9rem;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .action-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: translateY(-1px);
+        }
+
+        .action-btn.primary {
+            background: linear-gradient(45deg, #ffa500, #ff8c00);
+            border-color: transparent;
+        }
+
+        .action-btn.primary:hover {
+            box-shadow: 0 10px 25px rgba(255, 165, 0, 0.3);
+        }
+
+        .action-btn.danger {
+            background: rgba(244, 67, 54, 0.2);
+            border-color: #f44336;
+            color: #f44336;
+        }
+
+        .action-btn.danger:hover {
+            background: rgba(244, 67, 54, 0.3);
+        }
+
+        .action-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* Editor Tabs */
+        .editor-tabs {
+            background: rgba(0, 0, 0, 0.2);
+            display: flex;
+            gap: 1px;
+            overflow-x: auto;
+            border-bottom: 1px solid rgba(255, 165, 0, 0.2);
+        }
+
+        .editor-tab {
+            padding: 0.8rem 1.5rem;
+            background: rgba(255, 255, 255, 0.05);
+            border: none;
+            color: #ccc;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            white-space: nowrap;
+            position: relative;
+            font-size: 0.9rem;
+        }
+
+        .editor-tab:hover {
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+        }
+
+        .editor-tab.active {
+            background: rgba(255, 165, 0, 0.2);
+            color: #ffa500;
+            border-bottom: 2px solid #ffa500;
+        }
+
+        .tab-close {
+            margin-left: 0.5rem;
+            opacity: 0.5;
+            cursor: pointer;
+        }
+
+        .tab-close:hover {
+            opacity: 1;
+        }
+
+        /* Editor Content Area */
+        .editor-content {
+            flex: 1;
+            display: flex;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .editor-pane {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .editor-toolbar {
+            background: rgba(0, 0, 0, 0.2);
+            padding: 0.5rem 1rem;
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+            border-bottom: 1px solid rgba(255, 165, 0, 0.1);
+        }
+
+        .toolbar-group {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+            padding-right: 1rem;
+            border-right: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .toolbar-group:last-child {
+            border-right: none;
+        }
+
+        .toolbar-btn {
+            background: none;
+            border: none;
+            color: #ccc;
+            cursor: pointer;
+            padding: 0.4rem;
+            border-radius: 4px;
+            transition: all 0.3s ease;
+            font-size: 1.1rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 32px;
+            height: 32px;
+        }
+
+        .toolbar-btn:hover {
+            background: rgba(255, 165, 0, 0.2);
+            color: #ffa500;
+        }
+
+        .toolbar-btn.active {
+            background: rgba(255, 165, 0, 0.3);
+            color: #ffa500;
+        }
+
+        .toolbar-btn:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+
+        .search-box {
+            display: flex;
+            align-items: center;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+            padding: 0.3rem 0.8rem;
+            gap: 0.5rem;
+        }
+
+        .search-input {
+            background: none;
+            border: none;
+            color: #fff;
+            outline: none;
+            font-size: 0.9rem;
+            width: 150px;
+        }
+
+        .search-input::placeholder {
+            color: #666;
+        }
+
+        /* CodeMirror Customization */
+        .CodeMirror {
+            height: 100%;
+            font-size: 14px;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+        }
+
+        .CodeMirror-gutters {
+            background: rgba(0, 0, 0, 0.3);
+            border-right: 1px solid rgba(255, 165, 0, 0.2);
+        }
+
+        .CodeMirror-linenumber {
+            color: #666;
+        }
+
+        .cm-s-dracula .CodeMirror-cursor {
+            border-left: 2px solid #ffa500;
+        }
+
+        /* Split View */
+        .split-view {
+            display: flex;
+            height: 100%;
+        }
+
+        .split-pane {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+
+        .split-divider {
+            width: 4px;
+            background: rgba(255, 165, 0, 0.2);
+            cursor: col-resize;
+            position: relative;
+        }
+
+        .split-divider:hover {
+            background: rgba(255, 165, 0, 0.4);
+        }
+
+        .split-divider::after {
+            content: '⋮';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #ffa500;
+            font-size: 1.2rem;
+        }
+
+        /* Preview Pane */
+        .preview-pane {
+            background: rgba(0, 0, 0, 0.2);
+            padding: 1.5rem;
+            overflow-y: auto;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+        }
+
+        .preview-title {
+            color: #ffa500;
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid rgba(255, 165, 0, 0.2);
+        }
+
+        .preview-content {
+            white-space: pre-wrap;
+            line-height: 1.6;
+        }
+
+        .preview-content .key {
+            color: #66d9ef;
+        }
+
+        .preview-content .value {
+            color: #a6e22e;
+        }
+
+        .preview-content .comment {
+            color: #75715e;
+            font-style: italic;
+        }
+
+        /* Validation Panel */
+        .validation-panel {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            max-height: 200px;
+            background: rgba(0, 0, 0, 0.8);
+            border-top: 1px solid rgba(255, 165, 0, 0.2);
+            display: none;
+            overflow-y: auto;
+        }
+
+        .validation-panel.show {
+            display: block;
+        }
+
+        .validation-header {
+            padding: 0.5rem 1rem;
+            background: rgba(244, 67, 54, 0.2);
+            border-bottom: 1px solid rgba(244, 67, 54, 0.3);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .validation-title {
+            color: #f44336;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .validation-close {
+            background: none;
+            border: none;
+            color: #f44336;
+            cursor: pointer;
+            font-size: 1.2rem;
+        }
+
+        .validation-errors {
+            padding: 1rem;
+        }
+
+        .validation-error {
+            padding: 0.5rem 1rem;
+            margin-bottom: 0.5rem;
+            background: rgba(244, 67, 54, 0.1);
+            border-left: 3px solid #f44336;
+            border-radius: 4px;
+            font-size: 0.9rem;
+            cursor: pointer;
+        }
+
+        .validation-error:hover {
+            background: rgba(244, 67, 54, 0.2);
+        }
+
+        .error-line {
+            color: #888;
+            font-size: 0.85rem;
+        }
+
+        .error-message {
+            color: #fff;
+            margin-top: 0.3rem;
+        }
+
+        /* History Panel */
+        .history-panel {
+            position: absolute;
+            top: 0;
+            right: -400px;
+            width: 400px;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            border-left: 1px solid rgba(255, 165, 0, 0.2);
+            transition: right 0.3s ease;
+            overflow-y: auto;
+        }
+
+        .history-panel.show {
+            right: 0;
+        }
+
+        .history-header {
+            padding: 1.5rem;
+            background: rgba(0, 0, 0, 0.5);
+            border-bottom: 1px solid rgba(255, 165, 0, 0.2);
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        .history-title {
+            color: #ffa500;
+            font-size: 1.2rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+
+        .history-list {
+            padding: 1rem;
+        }
+
+        .history-item {
+            padding: 1rem;
+            margin-bottom: 0.8rem;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .history-item:hover {
+            background: rgba(255, 165, 0, 0.1);
+        }
+
+        .history-time {
+            color: #ffa500;
+            font-size: 0.9rem;
+            font-weight: 600;
+        }
+
+        .history-action {
+            color: #ccc;
+            font-size: 0.85rem;
+            margin-top: 0.3rem;
+        }
+
+        /* Status Bar */
+        .status-bar {
+            background: rgba(0, 0, 0, 0.5);
+            border-top: 1px solid rgba(255, 165, 0, 0.2);
+            padding: 0.5rem 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.85rem;
+        }
+
+        .status-left {
+            display: flex;
+            gap: 2rem;
+            align-items: center;
+        }
+
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: #888;
+        }
+
+        .status-item.active {
+            color: #ffa500;
+        }
+
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #4CAF50;
+        }
+
+        .status-indicator.error {
+            background: #f44336;
+        }
+
+        .status-indicator.warning {
+            background: #ff9800;
+        }
+
+        /* Tooltips */
+        .tooltip {
+            position: relative;
+        }
+
+        .tooltip::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.9);
+            color: #fff;
+            padding: 0.5rem 0.8rem;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            white-space: nowrap;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s;
+            margin-bottom: 5px;
+        }
+
+        .tooltip:hover::after {
+            opacity: 1;
+        }
+
+        /* Loading State */
+        .loading-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .loading-spinner {
+            width: 50px;
+            height: 50px;
+            border: 3px solid rgba(255, 165, 0, 0.3);
+            border-top-color: #ffa500;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Responsive Design */
+        @media (max-width: 1200px) {
+            .split-view {
+                flex-direction: column;
+            }
+
+            .split-divider {
+                width: 100%;
+                height: 4px;
+                cursor: row-resize;
+            }
+
+            .history-panel {
+                width: 100%;
+                right: -100%;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .sidebar {
+                position: absolute;
+                z-index: 100;
+                left: -280px;
+                transition: left 0.3s ease;
+            }
+
+            .sidebar.show {
+                left: 0;
+            }
+
+            .editor-header {
+                padding: 0.8rem 1rem;
+            }
+
+            .editor-actions {
+                gap: 0.5rem;
+            }
+
+            .action-btn {
+                padding: 0.5rem 0.8rem;
+                font-size: 0.85rem;
+            }
+
+            .toolbar-group {
+                padding-right: 0.5rem;
+            }
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 165, 0, 0.3);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 165, 0, 0.5);
+        }
+    </style>
+</head>
+<body>
+    <div class="editor-container">
+        <!-- Sidebar -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <h2 class="sidebar-title">Config Files</h2>
+                <button class="toggle-sidebar" onclick="toggleSidebar()">☰</button>
+            </div>
+            <div class="file-list" id="fileList">
+                <!-- File items will be loaded here -->
+            </div>
+        </aside>
+
+        <!-- Main Editor Area -->
+        <main class="editor-main">
+            <!-- Editor Header -->
+            <header class="editor-header">
+                <div class="editor-title">
+                    <h1 class="current-file" id="currentFileName">Select a file to edit</h1>
+                    <span class="edit-status" id="editStatus">
+                        <span class="status-dot"></span>
+                        Saved
+                    </span>
+                </div>
+                <div class="editor-actions">
+                    <button class="action-btn" onclick="showHistory()" title="Version History">
+                        <span>🕒</span> History
+                    </button>
+                    <button class="action-btn" onclick="reloadFile()" title="Reload File">
+                        <span>🔄</span> Reload
+                    </button>
+                    <button class="action-btn danger" onclick="discardChanges()" id="discardBtn" disabled>
+                        <span>✕</span> Discard
+                    </button>
+                    <button class="action-btn primary" onclick="saveFile()" id="saveBtn" disabled>
+                        <span>💾</span> Save
+                    </button>
+                </div>
+            </header>
+
+            <!-- Editor Tabs -->
+            <div class="editor-tabs" id="editorTabs">
+                <!-- Tabs will be dynamically added here -->
+            </div>
+
+            <!-- Editor Content -->
+            <div class="editor-content">
+                <div class="split-view">
+                    <!-- Code Editor Pane -->
+                    <div class="split-pane">
+                        <div class="editor-toolbar">
+                            <div class="toolbar-group">
+                                <button class="toolbar-btn tooltip" data-tooltip="Undo (Ctrl+Z)" onclick="undo()" id="undoBtn">
+                                    ↶
+                                </button>
+                                <button class="toolbar-btn tooltip" data-tooltip="Redo (Ctrl+Y)" onclick="redo()" id="redoBtn">
+                                    ↷
+                                </button>
+                            </div>
+                            <div class="toolbar-group">
+                                <button class="toolbar-btn tooltip" data-tooltip="Find (Ctrl+F)" onclick="toggleSearch()">
+                                    🔍
+                                </button>
+                                <button class="toolbar-btn tooltip" data-tooltip="Replace (Ctrl+H)" onclick="toggleReplace()">
+                                    🔄
+                                </button>
+                            </div>
+                            <div class="toolbar-group">
+                                <button class="toolbar-btn tooltip" data-tooltip="Format Code" onclick="formatCode()">
+                                    ✨
+                                </button>
+                                <button class="toolbar-btn tooltip" data-tooltip="Validate YAML" onclick="validateYAML()">
+                                    ✓
+                                </button>
+                            </div>
+                            <div class="toolbar-group">
+                                <button class="toolbar-btn tooltip" data-tooltip="Toggle Preview" onclick="togglePreview()" id="previewBtn">
+                                    👁️
+                                </button>
+                                <button class="toolbar-btn tooltip" data-tooltip="Toggle Diff View" onclick="toggleDiff()">
+                                    ⟷
+                                </button>
+                            </div>
+                            <div class="toolbar-group search-box" id="searchBox" style="display: none;">
+                                <span>🔍</span>
+                                <input type="text" class="search-input" placeholder="Search..." id="searchInput">
+                                <button class="toolbar-btn" onclick="findNext()">→</button>
+                                <button class="toolbar-btn" onclick="findPrev()">←</button>
+                                <button class="toolbar-btn" onclick="closeSearch()">✕</button>
+                            </div>
+                        </div>
+                        <div id="editor" style="flex: 1;"></div>
+                    </div>
+
+                    <!-- Split Divider -->
+                    <div class="split-divider" id="splitDivider" style="display: none;"></div>
+
+                    <!-- Preview Pane -->
+                    <div class="split-pane" id="previewPane" style="display: none;">
+                        <div class="preview-pane">
+                            <h3 class="preview-title">YAML Preview</h3>
+                            <div class="preview-content" id="previewContent">
+                                <!-- Preview content will be rendered here -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Validation Panel -->
+                <div class="validation-panel" id="validationPanel">
+                    <div class="validation-header">
+                        <div class="validation-title">
+                            <span>⚠️</span>
+                            YAML Validation Errors
+                        </div>
+                        <button class="validation-close" onclick="closeValidation()">✕</button>
+                    </div>
+                    <div class="validation-errors" id="validationErrors">
+                        <!-- Validation errors will be displayed here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Status Bar -->
+            <footer class="status-bar">
+                <div class="status-left">
+                    <div class="status-item">
+                        <span class="status-indicator" id="syntaxIndicator"></span>
+                        <span id="syntaxStatus">YAML</span>
+                    </div>
+                    <div class="status-item" id="cursorPosition">
+                        Ln 1, Col 1
+                    </div>
+                    <div class="status-item" id="fileSize">
+                        0 KB
+                    </div>
+                </div>
+                <div class="status-right">
+                    <div class="status-item" id="lastSaved">
+                        Never saved
+                    </div>
+                </div>
+            </footer>
+        </main>
+
+        <!-- History Panel -->
+        <aside class="history-panel" id="historyPanel">
+            <div class="history-header">
+                <h3 class="history-title">Version History</h3>
+                <button class="action-btn" onclick="closeHistory()">Close</button>
+            </div>
+            <div class="history-list" id="historyList">
+                <!-- History items will be loaded here -->
+            </div>
+        </aside>
+    </div>
+
+    <!-- CodeMirror JS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/yaml/yaml.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/edit/closebrackets.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/edit/matchbrackets.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/selection/active-line.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/search/searchcursor.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/search/search.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/dialog/dialog.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/fold/foldcode.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/fold/foldgutter.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/fold/indent-fold.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/js-yaml/4.1.0/js-yaml.min.js"></script>
+
+    <script>
+        // Global variables
+        let editor;
+        let currentFile = '';
+        let originalContent = '';
+        let adminToken = localStorage.getItem('admin_token');
+        let openTabs = new Map();
+        let fileContents = new Map();
+        let isModified = false;
+        let searchVisible = false;
+        let previewVisible = false;
+        let historyVisible = false;
+
+        // Initialize CodeMirror
+        function initEditor() {
+            editor = CodeMirror(document.getElementById('editor'), {
+                mode: 'yaml',
+                theme: 'dracula',
+                lineNumbers: true,
+                lineWrapping: false,
+                autoCloseBrackets: true,
+                matchBrackets: true,
+                styleActiveLine: true,
+                foldGutter: true,
+                gutters: ["CodeMirror-linenumbers", "CodeMirror-foldgutter"],
+                extraKeys: {
+                    "Ctrl-S": saveFile,
+                    "Cmd-S": saveFile,
+                    "Ctrl-Z": undo,
+                    "Cmd-Z": undo,
+                    "Ctrl-Y": redo,
+                    "Cmd-Shift-Z": redo,
+                    "Ctrl-F": toggleSearch,
+                    "Cmd-F": toggleSearch,
+                    "Tab": function(cm) {
+                        cm.replaceSelection("  ", "end");
+                    }
+                }
+            });
+
+            // Track changes
+            editor.on('change', function(cm, change) {
+                if (currentFile) {
+                    const content = cm.getValue();
+                    isModified = content !== originalContent;
+                    updateEditStatus();
+                    updateButtons();
+                    
+                    // Live validation
+                    if (isModified) {
+                        clearTimeout(window.validationTimeout);
+                        window.validationTimeout = setTimeout(() => {
+                            validateYAML(true);
+                        }, 500);
+                    }
+                }
+            });
+
+            // Update cursor position
+            editor.on('cursorActivity', function(cm) {
+                const cursor = cm.getCursor();
+                document.getElementById('cursorPosition').textContent = 
+                    `Ln ${cursor.line + 1}, Col ${cursor.ch + 1}`;
+            });
+        }
+
+        // API request helper
+        async function apiRequest(url, options = {}) {
+            const headers = {
+                'Authorization': `Bearer ${adminToken}`,
+                ...options.headers
+            };
+
+            const response = await fetch(url, {
+                ...options,
+                headers
+            });
+
+            if (response.status === 401) {
+                localStorage.removeItem('admin_token');
+                window.location.href = '/admin/login';
+                return;
+            }
+
+            return response;
+        }
+
+        // Load config files
+        async function loadConfigFiles() {
+            try {
+                const response = await apiRequest('/admin/config/files');
+                const data = await response.json();
+
+                const container = document.getElementById('fileList');
+                container.innerHTML = '';
+
+                data.config_files.forEach(file => {
+                    const fileElement = document.createElement('div');
+                    fileElement.className = 'file-item';
+                    fileElement.onclick = () => openFile(file.name);
+                    
+                    const isActive = file.name === currentFile;
+                    if (isActive) {
+                        fileElement.classList.add('active');
+                    }
+
+                    const isModified = openTabs.has(file.name) && 
+                        fileContents.get(file.name) !== originalContent;
+                    
+                    fileElement.innerHTML = `
+                        <span class="file-icon">📄</span>
+                        <div class="file-info">
+                            <div class="file-name">${file.name}</div>
+                            <div class="file-meta">${(file.size / 1024).toFixed(1)} KB</div>
+                        </div>
+                        ${isModified ? '<span class="file-status modified"></span>' : ''}
+                    `;
+                    
+                    container.appendChild(fileElement);
+                });
+            } catch (error) {
+                console.error('Error loading config files:', error);
+            }
+        }
+
+        // Open file
+        async function openFile(filename) {
+            if (currentFile === filename) return;
+
+            if (isModified) {
+                const confirm = window.confirm('You have unsaved changes. Do you want to save them?');
+                if (confirm) {
+                    await saveFile();
+                }
+            }
+
+            try {
+                const response = await apiRequest(`/admin/config/file/${filename}`);
+                const data = await response.json();
+
+                currentFile = filename;
+                originalContent = data.content;
+                editor.setValue(data.content);
+                editor.clearHistory();
+
+                document.getElementById('currentFileName').textContent = filename;
+                document.getElementById('fileSize').textContent = 
+                    `${(data.size / 1024).toFixed(1)} KB`;
+
+                if (data.modified) {
+                    const modifiedDate = new Date(data.modified);
+                    document.getElementById('lastSaved').textContent = 
+                        `Last saved: ${modifiedDate.toLocaleString()}`;
+                }
+
+                isModified = false;
+                updateEditStatus();
+                updateButtons();
+                addTab(filename);
+                loadConfigFiles(); // Refresh file list
+                
+                // Initial validation
+                validateYAML(true);
+
+            } catch (error) {
+                console.error('Error opening file:', error);
+                alert('Error loading configuration file');
+            }
+        }
+
+        // Save file
+        async function saveFile() {
+            if (!currentFile || !isModified) return;
+
+            try {
+                const content = editor.getValue();
+                
+                // Validate before saving
+                try {
+                    jsyaml.load(content);
+                } catch (e) {
+                    const confirm = window.confirm(
+                        'The YAML has syntax errors. Do you want to save anyway?'
+                    );
+                    if (!confirm) return;
+                }
+
+                const formData = new FormData();
+                formData.append('content', content);
+
+                const response = await apiRequest(
+                    `/admin/config/file/${currentFile}`,
+                    {
+                        method: 'POST',
+                        body: formData
+                    }
+                );
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    originalContent = content;
+                    isModified = false;
+                    updateEditStatus();
+                    updateButtons();
+                    loadConfigFiles();
+                    
+                    // Update last saved time
+                    document.getElementById('lastSaved').textContent = 
+                        `Last saved: ${new Date().toLocaleString()}`;
+                    
+                    // Show success message
+                    showNotification('Configuration saved successfully!', 'success');
+                } else {
+                    showNotification(`Error: ${data.detail}`, 'error');
+                }
+            } catch (error) {
+                console.error('Error saving file:', error);
+                showNotification('Error saving configuration', 'error');
+            }
+        }
+
+        // Reload file
+        async function reloadFile() {
+            if (!currentFile) return;
+            
+            if (isModified) {
+                const confirm = window.confirm(
+                    'You have unsaved changes. Are you sure you want to reload?'
+                );
+                if (!confirm) return;
+            }
+
+            await openFile(currentFile);
+        }
+
+        // Discard changes
+        function discardChanges() {
+            if (!currentFile || !isModified) return;
+            
+            const confirm = window.confirm(
+                'Are you sure you want to discard all changes?'
+            );
+            if (!confirm) return;
+
+            editor.setValue(originalContent);
+            isModified = false;
+            updateEditStatus();
+            updateButtons();
+        }
+
+        // Update edit status
+        function updateEditStatus() {
+            const statusElement = document.getElementById('editStatus');
+            const statusDot = statusElement.querySelector('.status-dot');
+            
+            if (isModified) {
+                statusElement.classList.add('modified');
+                statusElement.innerHTML = '<span class="status-dot"></span> Modified';
+                statusDot.style.background = '#ff9800';
+            } else {
+                statusElement.classList.remove('modified');
+                statusElement.innerHTML = '<span class="status-dot"></span> Saved';
+                statusDot.style.background = '#4CAF50';
+            }
+        }
+
+        // Update buttons
+        function updateButtons() {
+            document.getElementById('saveBtn').disabled = !isModified;
+            document.getElementById('discardBtn').disabled = !isModified;
+            document.getElementById('undoBtn').disabled = !editor.historySize().undo;
+            document.getElementById('redoBtn').disabled = !editor.historySize().redo;
+        }
+
+        // Editor actions
+        function undo() {
+            editor.undo();
+        }
+
+        function redo() {
+            editor.redo();
+        }
+
+        // Format code
+        function formatCode() {
+            const content = editor.getValue();
+            try {
+                const parsed = jsyaml.load(content);
+                const formatted = jsyaml.dump(parsed, {
+                    indent: 2,
+                    lineWidth: 80,
+                    noRefs: true
+                });
+                editor.setValue(formatted);
+            } catch (e) {
+                showNotification('Cannot format: Invalid YAML syntax', 'error');
+            }
+        }
+
+        // Validate YAML
+        function validateYAML(silent = false) {
+            const content = editor.getValue();
+            const validationPanel = document.getElementById('validationPanel');
+            const validationErrors = document.getElementById('validationErrors');
+            const syntaxIndicator = document.getElementById('syntaxIndicator');
+            const syntaxStatus = document.getElementById('syntaxStatus');
+
+            try {
+                jsyaml.load(content);
+                validationPanel.classList.remove('show');
+                syntaxIndicator.style.background = '#4CAF50';
+                syntaxIndicator.classList.remove('error');
+                syntaxStatus.textContent = 'Valid YAML';
+                
+                if (!silent) {
+                    showNotification('YAML is valid!', 'success');
+                }
+            } catch (e) {
+                syntaxIndicator.style.background = '#f44336';
+                syntaxIndicator.classList.add('error');
+                syntaxStatus.textContent = 'Invalid YAML';
+                
+                if (!silent) {
+                    validationPanel.classList.add('show');
+                    validationErrors.innerHTML = `
+                        <div class="validation-error" onclick="goToError(${e.mark?.line || 0})">
+                            <div class="error-line">Line ${e.mark?.line || 'unknown'}</div>
+                            <div class="error-message">${e.message}</div>
+                        </div>
+                    `;
+                }
+            }
+        }
+
+        // Go to error line
+        function goToError(line) {
+            if (line > 0) {
+                editor.setCursor(line - 1, 0);
+                editor.focus();
+            }
+        }
+
+        // Close validation panel
+        function closeValidation() {
+            document.getElementById('validationPanel').classList.remove('show');
+        }
+
+        // Toggle search
+        function toggleSearch() {
+            const searchBox = document.getElementById('searchBox');
+            searchVisible = !searchVisible;
+            searchBox.style.display = searchVisible ? 'flex' : 'none';
+            
+            if (searchVisible) {
+                document.getElementById('searchInput').focus();
+            }
+        }
+
+        // Close search
+        function closeSearch() {
+            searchVisible = false;
+            document.getElementById('searchBox').style.display = 'none';
+        }
+
+        // Search functionality
+        function findNext() {
+            const query = document.getElementById('searchInput').value;
+            if (query) {
+                editor.execCommand('findNext');
+            }
+        }
+
+        function findPrev() {
+            const query = document.getElementById('searchInput').value;
+            if (query) {
+                editor.execCommand('findPrev');
+            }
+        }
+
+        // Toggle preview
+        function togglePreview() {
+            previewVisible = !previewVisible;
+            const previewPane = document.getElementById('previewPane');
+            const splitDivider = document.getElementById('splitDivider');
+            const previewBtn = document.getElementById('previewBtn');
+            
+            if (previewVisible) {
+                previewPane.style.display = 'block';
+                splitDivider.style.display = 'block';
+                previewBtn.classList.add('active');
+                updatePreview();
+            } else {
+                previewPane.style.display = 'none';
+                splitDivider.style.display = 'none';
+                previewBtn.classList.remove('active');
+            }
+        }
+
+        // Update preview
+        function updatePreview() {
+            if (!previewVisible) return;
+            
+            const content = editor.getValue();
+            const previewContent = document.getElementById('previewContent');
+            
+            try {
+                const parsed = jsyaml.load(content);
+                previewContent.innerHTML = renderYAMLTree(parsed);
+            } catch (e) {
+                previewContent.innerHTML = `<div style="color: #f44336;">Invalid YAML: ${e.message}</div>`;
+            }
+        }
+
+        // Render YAML tree
+        function renderYAMLTree(obj, indent = 0) {
+            let html = '';
+            const spacing = '  '.repeat(indent);
+            
+            for (const [key, value] of Object.entries(obj)) {
+                if (typeof value === 'object' && value !== null) {
+                    html += `${spacing}<span class="key">${key}:</span>\n`;
+                    html += renderYAMLTree(value, indent + 1);
+                } else {
+                    html += `${spacing}<span class="key">${key}:</span> <span class="value">${value}</span>\n`;
+                }
+            }
+            
+            return html;
+        }
+
+        // Tab management
+        function addTab(filename) {
+            const tabsContainer = document.getElementById('editorTabs');
+            
+            // Remove existing active tabs
+            document.querySelectorAll('.editor-tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            
+            // Check if tab already exists
+            let tab = document.querySelector(`[data-filename="${filename}"]`);
+            
+            if (!tab) {
+                tab = document.createElement('button');
+                tab.className = 'editor-tab';
+                tab.setAttribute('data-filename', filename);
+                tab.innerHTML = `
+                    ${filename}
+                    <span class="tab-close" onclick="closeTab('${filename}', event)">×</span>
+                `;
+                tab.onclick = (e) => {
+                    if (!e.target.classList.contains('tab-close')) {
+                        openFile(filename);
+                    }
+                };
+                tabsContainer.appendChild(tab);
+            }
+            
+            tab.classList.add('active');
+            openTabs.set(filename, true);
+        }
+
+        // Close tab
+        function closeTab(filename, event) {
+            event.stopPropagation();
+            
+            const tab = document.querySelector(`[data-filename="${filename}"]`);
+            if (tab) {
+                tab.remove();
+            }
+            
+            openTabs.delete(filename);
+            fileContents.delete(filename);
+            
+            // If closing current file, switch to another tab
+            if (filename === currentFile) {
+                const remainingTabs = document.querySelectorAll('.editor-tab');
+                if (remainingTabs.length > 0) {
+                    const nextFile = remainingTabs[0].getAttribute('data-filename');
+                    openFile(nextFile);
+                } else {
+                    currentFile = '';
+                    editor.setValue('');
+                    document.getElementById('currentFileName').textContent = 'Select a file to edit';
+                }
+            }
+        }
+
+        // Show/hide history
+        function showHistory() {
+            historyVisible = true;
+            document.getElementById('historyPanel').classList.add('show');
+            loadHistory();
+        }
+
+        function closeHistory() {
+            historyVisible = false;
+            document.getElementById('historyPanel').classList.remove('show');
+        }
+
+        // Load history
+        async function loadHistory() {
+            if (!currentFile) return;
+            
+            try {
+                const response = await apiRequest(
+                    `/admin/config/backups/${currentFile}`
+                );
+                const data = await response.json();
+                
+                const historyList = document.getElementById('historyList');
+                historyList.innerHTML = '';
+                
+                data.backups.forEach(backup => {
+                    const item = document.createElement('div');
+                    item.className = 'history-item';
+                    item.onclick = () => restoreBackup(backup.name);
+                    
+                    const date = new Date(backup.timestamp);
+                    item.innerHTML = `
+                        <div class="history-time">${date.toLocaleString()}</div>
+                        <div class="history-action">Backup: ${backup.name}</div>
+                    `;
+                    
+                    historyList.appendChild(item);
+                });
+            } catch (error) {
+                console.error('Error loading history:', error);
+            }
+        }
+
+        // Restore backup
+        async function restoreBackup(backupName) {
+            const confirm = window.confirm(
+                'Are you sure you want to restore this backup? Current changes will be lost.'
+            );
+            if (!confirm) return;
+            
+            try {
+                const response = await apiRequest(
+                    `/admin/config/restore/${backupName}`,
+                    { method: 'POST' }
+                );
+                
+                if (response.ok) {
+                    showNotification('Backup restored successfully!', 'success');
+                    closeHistory();
+                    await openFile(currentFile);
+                } else {
+                    const data = await response.json();
+                    showNotification(`Error: ${data.detail}`, 'error');
+                }
+            } catch (error) {
+                console.error('Error restoring backup:', error);
+                showNotification('Error restoring backup', 'error');
+            }
+        }
+
+        // Toggle sidebar
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            sidebar.classList.toggle('collapsed');
+        }
+
+        // Show notification
+        function showNotification(message, type = 'info') {
+            // Create notification element
+            const notification = document.createElement('div');
+            notification.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                padding: 1rem 1.5rem;
+                background: ${type === 'success' ? '#4CAF50' : type === 'error' ? '#f44336' : '#2196F3'};
+                color: white;
+                border-radius: 8px;
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+                z-index: 1000;
+                animation: slideIn 0.3s ease;
+            `;
+            notification.textContent = message;
+            
+            document.body.appendChild(notification);
+            
+            // Remove after 3 seconds
+            setTimeout(() => {
+                notification.style.animation = 'slideOut 0.3s ease';
+                setTimeout(() => notification.remove(), 300);
+            }, 3000);
+        }
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                if (searchVisible) closeSearch();
+                if (historyVisible) closeHistory();
+                closeValidation();
+            }
+        });
+
+        // Search input handler
+        document.getElementById('searchInput').addEventListener('input', function(e) {
+            const query = e.target.value;
+            if (query) {
+                editor.execCommand('find');
+            }
+        });
+
+        // Split pane resizing
+        let isResizing = false;
+        const splitDivider = document.getElementById('splitDivider');
+        
+        splitDivider.addEventListener('mousedown', (e) => {
+            isResizing = true;
+            document.body.style.cursor = 'col-resize';
+        });
+        
+        document.addEventListener('mousemove', (e) => {
+            if (!isResizing) return;
+            
+            const container = document.querySelector('.split-view');
+            const containerRect = container.getBoundingClientRect();
+            const percentage = ((e.clientX - containerRect.left) / containerRect.width) * 100;
+            
+            if (percentage > 20 && percentage < 80) {
+                const panes = document.querySelectorAll('.split-pane');
+                panes[0].style.flex = `0 0 ${percentage}%`;
+                panes[1].style.flex = `0 0 ${100 - percentage}%`;
+            }
+        });
+        
+        document.addEventListener('mouseup', () => {
+            isResizing = false;
+            document.body.style.cursor = 'default';
+        });
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            // Check auth
+            const token = localStorage.getItem('admin_token');
+            if (!token) {
+                window.location.href = '/admin/login';
+                return;
+            }
+            
+            adminToken = token;
+            
+            // Initialize editor
+            initEditor();
+            
+            // Load files
+            loadConfigFiles();
+            
+            // Update preview on content change
+            editor.on('change', () => {
+                if (previewVisible) {
+                    updatePreview();
+                }
+            });
+        });
+
+        // Add animations
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes slideIn {
+                from {
+                    transform: translateX(100%);
+                    opacity: 0;
+                }
+                to {
+                    transform: translateX(0);
+                    opacity: 1;
+                }
+            }
+            
+            @keyframes slideOut {
+                from {
+                    transform: translateX(0);
+                    opacity: 1;
+                }
+                to {
+                    transform: translateX(100%);
+                    opacity: 0;
+                }
+            }
+        `;
+        document.head.appendChild(style);
+    </script>
+</body>
+</html>

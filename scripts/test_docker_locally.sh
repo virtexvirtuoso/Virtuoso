@@ -87,7 +87,7 @@ echo ""
 echo -e "${GREEN}🛠️  Useful commands:${NC}"
 echo "  - View logs: docker-compose logs -f app"
 echo "  - Stop all: docker-compose down"
-echo "  - Shell access: docker exec -it virtuoso-trading bash"
+echo "  - Shell access: docker exec -it virtuoso bash"
 echo "  - Restore original .env: mv .env.backup .env"
 echo ""
 

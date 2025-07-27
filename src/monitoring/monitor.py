@@ -4287,9 +4287,31 @@ class MarketMonitor:
                         
                         self.logger.debug(f"Fetched {len(ohlcv)} {tf_name} candles for {symbol}")
                     else:
-                        self.logger.error(f"Failed to fetch {tf_name} timeframe data for {symbol}")
+                        self.logger.warning(f"No OHLCV data returned for {tf_name} timeframe for {symbol} (API returned empty)")
+                        # Still store an empty placeholder to prevent cache misses
+                        ohlcv_data[tf_name] = {
+                            'data': pd.DataFrame(columns=['open', 'high', 'low', 'close', 'volume']),
+                            'raw': [],
+                            'meta': {
+                                'symbol': symbol,
+                                'timeframe': tf,
+                                'count': 0,
+                                'error': 'Empty API response'
+                            }
+                        }
             except Exception as e:
                 self.logger.error(f"Error fetching {tf_name} timeframe data for {symbol}: {str(e)}")
+                # Store a placeholder for failed fetches to prevent cache inconsistencies
+                ohlcv_data[tf_name] = {
+                    'data': pd.DataFrame(columns=['open', 'high', 'low', 'close', 'volume']),
+                    'raw': [],
+                    'meta': {
+                        'symbol': symbol,
+                        'timeframe': tf,
+                        'count': 0,
+                        'error': str(e)
+                    }
+                }
         
         # Log success or failure
         if ohlcv_data:
@@ -4359,8 +4381,19 @@ class MarketMonitor:
                 df = ohlcv_data['processed'][timeframe].copy()
                 
             # Ensure the dataframe has the expected format
-            if not isinstance(df, pd.DataFrame) or df.empty:
-                self.logger.warning(f"Invalid DataFrame for {symbol} {timeframe}")
+            if not isinstance(df, pd.DataFrame):
+                self.logger.warning(f"Retrieved data for {symbol} {timeframe} is not a DataFrame (type: {type(df)})")
+                return None
+            elif df.empty:
+                # Check if this was due to an API error
+                if timeframe in ohlcv_data['processed'] and 'meta' in ohlcv_data['processed'][timeframe]:
+                    meta = ohlcv_data['processed'][timeframe]['meta']
+                    if 'error' in meta:
+                        self.logger.warning(f"Empty DataFrame for {symbol} {timeframe} due to API error: {meta['error']}")
+                    else:
+                        self.logger.warning(f"Empty DataFrame for {symbol} {timeframe} (no API data available)")
+                else:
+                    self.logger.warning(f"Empty DataFrame for {symbol} {timeframe}")
                 return None
                 
             # Ensure we have a 'timestamp' column for the ReportGenerator

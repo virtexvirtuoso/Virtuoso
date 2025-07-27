@@ -7,10 +7,21 @@
     <meta name="description" content="Virtuoso Trading System - Mobile Login">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Virtuoso">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="application-name" content="Virtuoso">
+    <meta name="theme-color" content="#0a1525">
+    
+    <!-- PWA Manifest for Android -->
+    <link rel="manifest" href="/static/manifest.json">
     
     <!-- Custom Favicon with Amber Trending-Up Icon -->
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICA8IS0tIERhcmsgYmFja2dyb3VuZCBtYXRjaGluZyBkYXNoYm9hcmQgdGhlbWUgLS0+CiAgPHJlY3Qgd2lkdGg9IjI0IiBoZWlnaHQ9IjI0IiByeD0iNCIgZmlsbD0iIzBhMTUyNSIvPgogIAogIDwhLS0gQW1iZXIgdHJlbmRpbmctdXAgaWNvbiAtLT4KICA8cGF0aCBkPSJtMyAxNyA2LTYgNCA0IDgtOCIgc3Ryb2tlPSIjRkZCRjAwIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPgogIDxwYXRoIGQ9Im0yMSA3LTQgNFY3aDR6IiBmaWxsPSIjRkZCRjAwIiBzdHJva2U9IiNGRkJGMDAiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+Cjwvc3ZnPg==">
-    <link rel="apple-touch-icon" sizes="180x180" href="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTgwIiBoZWlnaHQ9IjE4MCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPgogIDxyZWN0IHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgcng9IjQiIGZpbGw9IiMwYTE1MjUiLz4KICA8cGF0aCBkPSJtMyAxNyA2LTYgNCA0IDgtOCIgc3Ryb2tlPSIjRkZCRjAwIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPgogIDxwYXRoIGQ9Im0yMSA3LTQgNFY3aDR6IiBmaWxsPSIjRkZCRjAwIiBzdHJva2U9IiNGRkJGMDAiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+Cjwvc3ZnPg==">
+    
+    <!-- Apple Touch Icons for iOS Home Screen -->
+    <link rel="apple-touch-icon" href="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTgwIiBoZWlnaHQ9IjE4MCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPgogIDxyZWN0IHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgcng9IjQiIGZpbGw9IiMwYTE1MjUiLz4KICA8cGF0aCBkPSJtMyAxNyA2LTYgNCA0IDgtOCIgc3Ryb2tlPSIjRkZCRjAwIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPgogIDxwYXRoIGQ9Im0yMSA3LTQgNFY3aDR6IiBmaWxsPSIjRkZCRjAwIiBzdHJva2U9IiNGRkJGMDAiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+Cjwvc3ZnPg==">
+    <link rel="apple-touch-icon" sizes="152x152" href="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTUyIiBoZWlnaHQ9IjE1MiIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPgogIDxyZWN0IHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgcng9IjQiIGZpbGw9IiMwYTE1MjUiLz4KICA8cGF0aCBkPSJtMyAxNyA2LTYgNCA0IDgtOCIgc3Ryb2tlPSIjRkZCRjAwIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPgogIDxwYXRoIGQ9Im0yMSA3LTQgNFY3aDR6IiBmaWxsPSIjRkZCRjAwIiBzdHJva2U9IiNGRkJGMDAiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+Cjwvc3ZnPg==">
+    <link rel="apple-touch-icon" sizes="180x180" href="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTgwIiBoZWlnaHQ9IjE4MCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPgogIDxyZWN0IHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgcng9IjQiIGZpbGw9IiMwYTE1MjUiLz4KICA8cGF0aCBkPSJtMyAxNyA2LTYgNCA0IDgtOCIgc3Ryb2tlPSIjRkZCRjAwIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPgogIDxwYXRoIGQ9Im0yMSA3LTQgNFY3aDR6IiBmaWxsPSIjRkZCRjAwIiBzdHJva2U9IiNGRkJGMDAiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXB9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+Cjwvc3ZnPg==">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -342,8 +353,8 @@
                 errorMessage.style.display = 'block';
                 console.error('Login error:', error);
                 
-                // For demo purposes - allow any credentials
-                if (username && password) {
+                // Check for specific credentials
+                if (username === 'fern' && password === 'xrpsux') {
                     localStorage.setItem('virtuoso-auth-token', 'demo-token');
                     window.location.href = '/dashboard/mobile';
                 }

@@ -794,7 +794,7 @@ async def health_check():
             "exchange_manager": bool(exchange_manager and await exchange_manager.is_healthy()),
             "portfolio_analyzer": bool(portfolio_analyzer),
             "database_client": bool(database_client and await database_client.is_healthy()),
-            "market_monitor": bool(market_monitor and market_monitor.is_running()),
+            "market_monitor": bool(market_monitor and hasattr(market_monitor, 'running') and market_monitor.running),
             "market_reporter": bool(market_reporter),
             "top_symbols_manager": bool(top_symbols_manager)
         }
@@ -1311,6 +1311,11 @@ async def market_analysis_ui():
         logger.error(f"Error serving market analysis page: {e}")
         # Fallback to static file if interactive report fails
         return FileResponse(TEMPLATE_DIR / "dashboard_market_analysis.html")
+
+@app.get("/learn")
+async def educational_guide():
+    """Serve the educational guide for crypto beginners"""
+    return FileResponse(TEMPLATE_DIR / "educational_guide.html")
 
 @app.get("/market-analysis/data")
 async def market_analysis_data():
