@@ -209,17 +209,32 @@ class ReportManager:
             
             # Call the PDF generator
             try:
-                result_pdf_path = self.pdf_generator.generate_trading_report(
+                result = self.pdf_generator.generate_trading_report(
                     signal_data=signal_data,
                     ohlcv_data=ohlcv_data,
                     output_dir=pdf_path
                 )
-                # Verify the PDF was generated and exists
-                if result_pdf_path and os.path.exists(result_pdf_path[0]) and not os.path.isdir(result_pdf_path[0]):
-                    self._log(f"PDF report generated successfully: {pdf_path}", level=logging.INFO)
-                    return True, result_pdf_path[0], json_path
+                # Handle the return value - now returns (pdf_path, json_path, chart_path)
+                if result:
+                    if len(result) >= 3:
+                        result_pdf_path, result_json_path, chart_path = result[0], result[1], result[2]
+                    else:
+                        # Backward compatibility
+                        result_pdf_path = result[0] if len(result) > 0 else None
+                        result_json_path = result[1] if len(result) > 1 else None
+                        chart_path = None
+                    
+                    # Store chart path in signal_data if available
+                    if chart_path and os.path.exists(chart_path):
+                        signal_data['chart_path'] = chart_path
+                        self._log(f"Chart path stored: {chart_path}", level=logging.INFO)
+                    
+                    # Verify the PDF was generated and exists
+                    if result_pdf_path and os.path.exists(result_pdf_path) and not os.path.isdir(result_pdf_path):
+                        self._log(f"PDF report generated successfully: {pdf_path}", level=logging.INFO)
+                        return True, result_pdf_path, json_path
                 else:
-                    self._log(f"Error generating PDF report: Result path is {result_pdf_path}", level=logging.ERROR)
+                    self._log(f"Error generating PDF report: Result is {result}", level=logging.ERROR)
                     # Try to recover if the path was created as a directory
                     if pdf_path and os.path.exists(pdf_path) and os.path.isdir(pdf_path):
                         self._log(f"PDF path is a directory: {pdf_path}", level=logging.ERROR)

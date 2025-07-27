@@ -11,10 +11,10 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 # Configuration
-INSTALL_DIR="/opt/virtuoso-trading"
+INSTALL_DIR="/opt/virtuoso"
 SERVICE_USER="virtuoso"
 PYTHON_VERSION="3.11"
-REPO_URL="https://github.com/yourusername/virtuoso-trading.git"  # Update this
+REPO_URL="https://github.com/yourusername/virtuoso.git"  # Update this
 
 # Functions
 log_info() {
@@ -148,7 +148,7 @@ main() {
     
     # Step 12: Setup systemd service
     log_info "Creating systemd service..."
-    cat > /etc/systemd/system/virtuoso-trading.service << EOF
+    cat > /etc/systemd/system/virtuoso.service << EOF
 [Unit]
 Description=Virtuoso Trading System
 After=network.target redis.service
@@ -170,7 +170,7 @@ EOF
     
     # Step 13: Setup nginx reverse proxy
     log_info "Configuring Nginx..."
-    cat > /etc/nginx/sites-available/virtuoso-trading << 'EOF'
+    cat > /etc/nginx/sites-available/virtuoso << 'EOF'
 server {
     listen 80;
     server_name _;
@@ -205,13 +205,13 @@ server {
 }
 EOF
     
-    ln -sf /etc/nginx/sites-available/virtuoso-trading /etc/nginx/sites-enabled/
+    ln -sf /etc/nginx/sites-available/virtuoso /etc/nginx/sites-enabled/
     rm -f /etc/nginx/sites-enabled/default
     nginx -t && systemctl restart nginx
     
     # Step 14: Setup log rotation
     log_info "Setting up log rotation..."
-    cat > /etc/logrotate.d/virtuoso-trading << EOF
+    cat > /etc/logrotate.d/virtuoso << EOF
 $INSTALL_DIR/logs/*.log {
     daily
     missingok
@@ -222,7 +222,7 @@ $INSTALL_DIR/logs/*.log {
     create 0640 $SERVICE_USER $SERVICE_USER
     sharedscripts
     postrotate
-        systemctl reload virtuoso-trading >/dev/null 2>&1 || true
+        systemctl reload virtuoso >/dev/null 2>&1 || true
     endscript
 }
 EOF
@@ -233,7 +233,7 @@ EOF
 #!/bin/bash
 if ! curl -f http://localhost:8001/health >/dev/null 2>&1; then
     echo "Virtuoso Trading System is not responding"
-    systemctl restart virtuoso-trading
+    systemctl restart virtuoso
 fi
 EOF
     chmod +x /usr/local/bin/virtuoso-health-check
@@ -244,17 +244,17 @@ EOF
     # Step 16: Enable and start services
     log_info "Enabling and starting services..."
     systemctl daemon-reload
-    systemctl enable virtuoso-trading
-    systemctl start virtuoso-trading
+    systemctl enable virtuoso
+    systemctl start virtuoso
     
     # Step 17: Final checks
     log_info "Running final checks..."
     sleep 5
     
-    if systemctl is-active --quiet virtuoso-trading; then
+    if systemctl is-active --quiet virtuoso; then
         log_info "✅ Virtuoso Trading System is running!"
     else
-        log_error "Service failed to start. Check logs: journalctl -u virtuoso-trading -n 50"
+        log_error "Service failed to start. Check logs: journalctl -u virtuoso -n 50"
         exit 1
     fi
     
@@ -263,7 +263,7 @@ EOF
     echo ""
     echo "📊 Virtuoso Trading System Status:"
     echo "=================================="
-    systemctl status virtuoso-trading --no-pager
+    systemctl status virtuoso --no-pager
     echo ""
     echo "🔗 Access URLs:"
     echo "  - Main App: http://YOUR_SERVER_IP"
@@ -273,11 +273,11 @@ EOF
     echo "📝 Important files:"
     echo "  - Config: $INSTALL_DIR/.env"
     echo "  - Logs: $INSTALL_DIR/logs/"
-    echo "  - Service: systemctl status virtuoso-trading"
+    echo "  - Service: systemctl status virtuoso"
     echo ""
     echo "⚠️  Next steps:"
     echo "  1. Edit $INSTALL_DIR/.env with your credentials"
-    echo "  2. Restart service: systemctl restart virtuoso-trading"
+    echo "  2. Restart service: systemctl restart virtuoso"
     echo "  3. Check logs: tail -f $INSTALL_DIR/logs/virtuoso.log"
     echo "  4. Configure SSL certificate for production"
 }

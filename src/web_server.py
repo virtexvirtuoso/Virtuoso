@@ -75,7 +75,18 @@ async def health_check():
 @app.get("/version")
 async def version():
     """Get application version"""
-    return {"version": "1.0.0", "service": "Virtuoso Trading Dashboard"}
+    return {"version": "1.0.0", "service": "Virtuoso Trading Dashboard", "dashboard_fix": "2025-07-26-15:50"}
+
+@app.get("/test-dashboard-path")
+async def test_dashboard_path():
+    """Test dashboard path resolution"""
+    file_path = TEMPLATE_DIR / "dashboard_desktop_v1.html"
+    return {
+        "template_dir": str(TEMPLATE_DIR),
+        "file_path": str(file_path),
+        "file_exists": file_path.exists(),
+        "project_root": str(PROJECT_ROOT)
+    }
 
 @app.get("/ui")
 async def frontend():
@@ -84,13 +95,31 @@ async def frontend():
 
 @app.get("/dashboard")
 async def dashboard_ui():
-    """Serve the main v10 Signal Confluence Matrix dashboard"""
-    return FileResponse(TEMPLATE_DIR / "dashboard_v10.html")
+    """Serve the dashboard selector page"""
+    # Add debug logging
+    file_path = TEMPLATE_DIR / "dashboard_selector.html"
+    logger.info(f"Dashboard route: serving {file_path}")
+    return FileResponse(file_path)
 
 @app.get("/dashboard/v1")
 async def dashboard_v1_ui():
     """Serve the original dashboard"""
     return FileResponse(TEMPLATE_DIR / "dashboard.html")
+
+@app.get("/dashboard/mobile")
+async def dashboard_mobile_ui():
+    """Serve the mobile dashboard"""
+    return FileResponse(TEMPLATE_DIR / "dashboard_mobile_v1.html")
+
+@app.get("/dashboard/desktop")
+async def dashboard_desktop_ui():
+    """Serve the desktop dashboard"""
+    return FileResponse(TEMPLATE_DIR / "dashboard_desktop_v1.html")
+
+@app.get("/dashboard/v10")
+async def dashboard_v10_ui():
+    """Serve the v10 Signal Confluence Matrix dashboard"""
+    return FileResponse(TEMPLATE_DIR / "dashboard_v10.html")
 
 @app.get("/beta-analysis")
 async def beta_analysis_ui():
@@ -101,6 +130,11 @@ async def beta_analysis_ui():
 async def market_analysis_ui():
     """Serve the Market Analysis dashboard"""
     return FileResponse(TEMPLATE_DIR / "dashboard_market_analysis.html")
+
+@app.get("/learn")
+async def educational_guide():
+    """Serve the educational guide for crypto beginners"""
+    return FileResponse(TEMPLATE_DIR / "educational_guide.html")
 
 @app.get("/api/top-symbols")
 async def get_top_symbols():
@@ -294,6 +328,36 @@ async def get_dashboard_overview():
     except Exception as e:
         logger.error(f"Error getting dashboard overview: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+async def initialize_app_state():
+    """Initialize app state with required components"""
+    try:
+        from src.config.manager import ConfigManager
+        from src.core.exchanges.manager import ExchangeManager
+        
+        logger.info("Initializing app components...")
+        
+        # Initialize config manager
+        config_manager = ConfigManager()
+        
+        # Initialize exchange manager
+        exchange_manager = ExchangeManager(config_manager)
+        await exchange_manager.initialize()
+        
+        # Store in app state
+        app.state.config_manager = config_manager
+        app.state.exchange_manager = exchange_manager
+        
+        logger.info("✅ App components initialized successfully")
+        
+    except Exception as e:
+        logger.error(f"Failed to initialize app components: {e}")
+        # Continue anyway - some endpoints don't need exchange manager
+
+@app.on_event("startup")
+async def startup_event():
+    """Run on app startup"""
+    await initialize_app_state()
 
 def main():
     """Run the web server"""

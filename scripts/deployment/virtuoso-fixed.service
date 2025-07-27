@@ -27,7 +27,7 @@ StartLimitBurst=3
 StartLimitInterval=300
 
 # Resource limits
-MemoryLimit=2G
+MemoryMax=2G
 CPUQuota=80%
 
 # Logging

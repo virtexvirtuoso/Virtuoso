@@ -4,7 +4,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
 setup(
-    name="virtuoso-trading",
+    name="virtuoso",
     version="1.0.0",
     author="Fil0s",
     author_email="your.email@example.com",  # Replace with actual email

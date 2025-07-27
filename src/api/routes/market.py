@@ -349,6 +349,42 @@ async def get_smart_intervals_status(
             }
         )
 
+# Simple in-memory cache
+class SimpleCache:
+    def __init__(self):
+        self.cache = {}
+        self.timestamps = {}
+    
+    def get(self, key: str, ttl_seconds: int = 60) -> Optional[Any]:
+        if key in self.cache:
+            if time.time() - self.timestamps[key] < ttl_seconds:
+                return self.cache[key]
+            else:
+                del self.cache[key]
+                del self.timestamps[key]
+        return None
+    
+    def set(self, key: str, value: Any):
+        self.cache[key] = value
+        self.timestamps[key] = time.time()
+
+market_cache = SimpleCache()
+
+async def fetch_ticker_safe(exchange_manager: ExchangeManager, symbol: str) -> Optional[Dict]:
+    """Safely fetch ticker data with timeout."""
+    try:
+        ticker = await asyncio.wait_for(
+            exchange_manager.fetch_ticker(symbol),
+            timeout=5.0
+        )
+        return ticker
+    except asyncio.TimeoutError:
+        logger.warning(f"Timeout fetching {symbol}")
+        return None
+    except Exception as e:
+        logger.warning(f"Error fetching {symbol}: {e}")
+        return None
+
 @router.get("/overview")
 async def get_market_overview(
     request: Request,
@@ -356,6 +392,13 @@ async def get_market_overview(
 ) -> Dict[str, Any]:
     """Get general market overview with regime analysis using LIVE data."""
     try:
+        # Check cache first
+        cache_key = "market_overview"
+        cached_data = market_cache.get(cache_key, ttl_seconds=30)
+        if cached_data:
+            cached_data["cached"] = True
+            return cached_data
+        
         # Initialize variables
         total_volume = 0
         btc_price = 0
@@ -366,31 +409,29 @@ async def get_market_overview(
         key_symbols = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "ADAUSDT", "XRPUSDT", 
                       "DOGEUSDT", "LINKUSDT", "AVAXUSDT", "DOTUSDT", "MATICUSDT"]
         
-        # Fetch live data for key symbols
-        tickers = {}
-        for symbol in key_symbols:
-            try:
-                ticker = await exchange_manager.fetch_ticker(symbol)
-                if ticker:
-                    tickers[symbol] = ticker
-                    volume = float(ticker.get('quoteVolume', 0))
-                    total_volume += volume
-                    
-                    # Store market data for analysis
-                    market_data.append({
-                        'symbol': symbol,
-                        'price': float(ticker.get('last', 0)),
-                        'change': float(ticker.get('percentage', 0)),
-                        'volume': volume
-                    })
-                    
-                    if symbol == "BTCUSDT":
-                        btc_price = float(ticker.get('last', 0))
-                    elif symbol == "ETHUSDT":
-                        eth_price = float(ticker.get('last', 0))
-            except Exception as e:
-                logger.warning(f"Failed to fetch {symbol}: {e}")
-                continue
+        # Fetch all tickers in parallel with timeout
+        start_time = time.time()
+        tasks = [fetch_ticker_safe(exchange_manager, symbol) for symbol in key_symbols]
+        results = await asyncio.gather(*tasks)
+        fetch_time = time.time() - start_time
+        
+        # Process results
+        for symbol, ticker in zip(key_symbols, results):
+            if ticker:
+                volume = float(ticker.get('quoteVolume', 0))
+                total_volume += volume
+                
+                market_data.append({
+                    'symbol': symbol,
+                    'price': float(ticker.get('last', 0)),
+                    'change': float(ticker.get('percentage', 0)),
+                    'volume': volume
+                })
+                
+                if symbol == "BTCUSDT":
+                    btc_price = float(ticker.get('last', 0))
+                elif symbol == "ETHUSDT":
+                    eth_price = float(ticker.get('last', 0))
         
         # Calculate market breadth (advancing vs declining)
         advancing = len([x for x in market_data if x['change'] > 0])
@@ -484,13 +525,15 @@ async def get_market_movers(
         if not bybit:
             raise HTTPException(status_code=500, detail="Bybit exchange not available")
             
-        # Load markets if not already loaded
-        if not bybit.markets:
-            await bybit.load_markets()
+        # Get markets using the proper method
+        markets_list = await bybit.get_markets()
+        
+        # Convert list to dict for easier access
+        markets = {m['symbol']: m for m in markets_list}
             
         # Filter for linear/perpetual USDT markets
         linear_symbols = []
-        for symbol, market in bybit.markets.items():
+        for symbol, market in markets.items():
             if (market.get('type') == 'swap' and 
                 market.get('linear') and 
                 symbol.endswith('USDT') and

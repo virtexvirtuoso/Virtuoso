@@ -10,7 +10,7 @@ YELLOW='\033[1;33m'
 NC='\033[0m'
 
 # Configuration
-PROJECT_NAME="virtuoso-trading"
+PROJECT_NAME="virtuoso"
 BACKUP_DIR="./backups/deployment_$(date +%Y%m%d_%H%M%S)"
 
 # Functions
@@ -115,7 +115,7 @@ deploy_basic() {
     sleep 10
     
     # Check service health
-    if docker ps | grep -q virtuoso-trading; then
+    if docker ps | grep -q virtuoso; then
         log_info "✅ Services are running!"
     else
         log_error "Services failed to start"
@@ -139,7 +139,7 @@ deploy_full() {
     sleep 20
     
     # Check services
-    services=("virtuoso-trading" "virtuoso-redis" "virtuoso-influxdb")
+    services=("virtuoso" "virtuoso-redis" "virtuoso-influxdb")
     for service in "${services[@]}"; do
         if docker ps | grep -q "$service"; then
             log_info "✅ $service is running"
@@ -159,7 +159,7 @@ show_status() {
     
     # Show logs tail
     log_info "Recent logs from main app:"
-    docker logs virtuoso-trading --tail=10
+    docker logs virtuoso --tail=10
     echo ""
     
     # Show access URLs
@@ -174,11 +174,11 @@ show_status() {
     
     # Show useful commands
     log_info "Useful commands:"
-    echo "  📜 View logs: docker logs -f virtuoso-trading"
+    echo "  📜 View logs: docker logs -f virtuoso"
     echo "  🔄 Restart: $COMPOSE_CMD restart"
     echo "  🛑 Stop: $COMPOSE_CMD down"
     echo "  🧹 Clean: $COMPOSE_CMD down -v"
-    echo "  💻 Shell: docker exec -it virtuoso-trading bash"
+    echo "  💻 Shell: docker exec -it virtuoso bash"
 }
 
 update_deployment() {

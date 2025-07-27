@@ -4,7 +4,7 @@
 # Optimized for performance, reliability, and ease of use
 #
 
-SERVICE_NAME="virtuoso-trading"
+SERVICE_NAME="virtuoso"
 PROJECT_DIR="/home/linuxuser/trading/Virtuoso_ccxt"
 VENV_PATH="$PROJECT_DIR/venv311"
 CONFIG_FILE="$PROJECT_DIR/config/config.yaml"
@@ -329,7 +329,7 @@ setup_monitoring() {
 #!/bin/bash
 # Virtuoso Trading Monitor Script
 
-SERVICE="virtuoso-trading"
+SERVICE="virtuoso"
 WEBHOOK_URL="$SYSTEM_ALERTS_WEBHOOK_URL"
 LAST_ALERT_FILE="/tmp/virtuoso_last_alert"
 
@@ -427,7 +427,7 @@ ReadWritePaths=$PROJECT_DIR
 # Logging
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=virtuoso-trading
+SyslogIdentifier=virtuoso
 
 [Install]
 WantedBy=multi-user.target

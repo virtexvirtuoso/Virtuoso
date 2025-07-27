@@ -332,8 +332,8 @@ def generate_health_dashboard(data: dict, health_status: str) -> str:
     with open(vps_main_py, 'w') as f:
         f.write(content)
     
-    print("🔄 Restarting virtuoso-trading service...")
-    os.system("sudo systemctl restart virtuoso-trading")
+    print("🔄 Restarting virtuoso service...")
+    os.system("sudo systemctl restart virtuoso")
     
     print("✅ Health Dashboard deployment complete!")
     print(f"📊 Access dashboard at: http://45.77.40.77:8003/health?format=html")
@@ -341,7 +341,7 @@ def generate_health_dashboard(data: dict, health_status: str) -> str:
     
     # Check service status
     print("\n🔍 Service Status:")
-    os.system("sudo systemctl status virtuoso-trading --no-pager -l")
+    os.system("sudo systemctl status virtuoso --no-pager -l")
 
 if __name__ == "__main__":
     main()
