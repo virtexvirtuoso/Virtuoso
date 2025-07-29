@@ -1327,20 +1327,35 @@ class EnhancedFormatter:
                     if not isinstance(component_data, dict):
                         continue
                     
-                    # Extract interpretation from component data
-                    interpretation = None
+                    # Extract both enhanced and basic interpretations from component data
+                    enhanced_interpretation = None
+                    basic_interpretation = None
+                    
                     if 'enhanced_interpretation' in component_data:
-                        interpretation = component_data['enhanced_interpretation']
-                    elif 'interpretation' in component_data:
+                        enhanced_interpretation = component_data['enhanced_interpretation']
+                    
+                    if 'interpretation' in component_data:
                         interp = component_data['interpretation']
                         if isinstance(interp, str):
-                            interpretation = interp
+                            basic_interpretation = interp
                         elif isinstance(interp, dict) and 'summary' in interp:
-                            interpretation = interp['summary']
+                            basic_interpretation = interp['summary']
                     elif 'signals' in component_data:
                         signals = component_data['signals']
                         if signals:
-                            interpretation = ", ".join(f"{k}={v}" for k, v in signals.items())
+                            basic_interpretation = ", ".join(f"{k}={v}" for k, v in signals.items())
+                    
+                    # Combine interpretations if both exist
+                    interpretation = None
+                    if enhanced_interpretation and basic_interpretation:
+                        if enhanced_interpretation.strip().lower() != basic_interpretation.strip().lower():
+                            interpretation = f"{enhanced_interpretation} | Basic: {basic_interpretation}"
+                        else:
+                            interpretation = enhanced_interpretation
+                    elif enhanced_interpretation:
+                        interpretation = enhanced_interpretation
+                    elif basic_interpretation:
+                        interpretation = basic_interpretation
                     
                     if interpretation:
                         raw_interpretations.append({
@@ -1401,24 +1416,42 @@ class EnhancedFormatter:
                 if not isinstance(component_data, dict):
                     continue
                 
-                # Try to get enhanced interpretation
-                interpretation = None
+                # Try to get both enhanced and basic interpretations
+                enhanced_interpretation = None
+                basic_interpretation = None
                 
-                # First check for enhanced_interpretation field that might be added
+                # Check for enhanced_interpretation field
                 if 'enhanced_interpretation' in component_data:
-                    interpretation = component_data['enhanced_interpretation']
-                # Then try the interpretation field
-                elif 'interpretation' in component_data:
+                    enhanced_interpretation = component_data['enhanced_interpretation']
+                
+                # Check for basic interpretation field
+                if 'interpretation' in component_data:
                     interp = component_data['interpretation']
                     if isinstance(interp, str):
-                        interpretation = interp
+                        basic_interpretation = interp
                     elif isinstance(interp, dict) and 'summary' in interp:
-                        interpretation = interp['summary']
-                # Finally, build from signals
+                        basic_interpretation = interp['summary']
+                # If no interpretation, build from signals
                 elif 'signals' in component_data:
                     signals = component_data['signals']
                     if signals:
-                        interpretation = ", ".join(f"{k}={v}" for k, v in signals.items())
+                        basic_interpretation = ", ".join(f"{k}={v}" for k, v in signals.items())
+                
+                # Decide which interpretation(s) to show
+                interpretation = None
+                if enhanced_interpretation and basic_interpretation:
+                    # If both exist and are different, show both
+                    if enhanced_interpretation.strip().lower() != basic_interpretation.strip().lower():
+                        interpretation = f"{enhanced_interpretation} | Basic: {basic_interpretation}"
+                    else:
+                        # If they're the same, just use the enhanced one
+                        interpretation = enhanced_interpretation
+                elif enhanced_interpretation:
+                    # Only enhanced available
+                    interpretation = enhanced_interpretation
+                elif basic_interpretation:
+                    # Only basic available
+                    interpretation = basic_interpretation
                 
                 # If we have an interpretation, add it to the section
                 if interpretation:
@@ -1605,18 +1638,23 @@ class EnhancedFormatter:
                     sell_threshold = component_data['sell_threshold']
                     break
         
-        # Generate enhanced interpretations for each component
+        # Generate enhanced interpretations for each component while preserving existing interpretations
         enhanced_results = {}
         for component_name, component_data in results.items():
             if isinstance(component_data, dict):
                 try:
-                    enhanced_interpretation = interpretation_generator.get_component_interpretation(
-                        component_name, component_data
-                    )
-                    # Create a copy of the component data with the enhanced interpretation
-                    enhanced_component = component_data.copy()
-                    enhanced_component['enhanced_interpretation'] = enhanced_interpretation
-                    enhanced_results[component_name] = enhanced_component
+                    # Check if we already have an enhanced interpretation
+                    if 'enhanced_interpretation' not in component_data:
+                        enhanced_interpretation = interpretation_generator.get_component_interpretation(
+                            component_name, component_data
+                        )
+                        # Create a copy of the component data with the enhanced interpretation
+                        enhanced_component = component_data.copy()
+                        enhanced_component['enhanced_interpretation'] = enhanced_interpretation
+                        enhanced_results[component_name] = enhanced_component
+                    else:
+                        # Already has enhanced interpretation, use as is
+                        enhanced_results[component_name] = component_data
                 except Exception:
                     # If there's an error, just use the original component data
                     enhanced_results[component_name] = component_data
@@ -1626,18 +1664,28 @@ class EnhancedFormatter:
         # Add the market interpretations section with enhanced formatting
         market_interpretations = EnhancedFormatter.format_market_interpretations(enhanced_results, table_width, extra_right_borders)
         
-        # Generate cross-component insights
-        cross_insights = interpretation_generator.generate_cross_component_insights(results)
+        # Check if cross-component insights are already in results
+        cross_insights = None
+        if isinstance(results, dict) and 'cross_component_insights' in results:
+            cross_insights = results['cross_component_insights']
+        else:
+            # Generate cross-component insights only if not already present
+            cross_insights = interpretation_generator.generate_cross_component_insights(results)
         
         # Add cross-component insights section if available
         cross_component_section = ""
         if cross_insights:
             cross_component_section = EnhancedFormatter.format_cross_component_insights(cross_insights, table_width, extra_right_borders)
         
-        # Generate actionable insights
-        actionable_insights = interpretation_generator.generate_actionable_insights(
-            results, confluence_score, buy_threshold, sell_threshold
-        )
+        # Check if actionable insights are already in results
+        actionable_insights = None
+        if isinstance(results, dict) and 'actionable_insights' in results:
+            actionable_insights = results['actionable_insights']
+        else:
+            # Generate actionable insights only if not already present
+            actionable_insights = interpretation_generator.generate_actionable_insights(
+                results, confluence_score, buy_threshold, sell_threshold
+            )
         
         # Add actionable insights section if available
         actionable_section = ""

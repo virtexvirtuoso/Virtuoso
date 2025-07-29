@@ -1,38 +1,79 @@
 version: '3.8'
 
 services:
-  app:
+  virtuoso:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: virtuoso-app
-    volumes:
-      - .:/app
-      # Exclude virtual environment folders to avoid conflicts
-      - /app/venv
-      - /app/venv_new
-      - /app/venv_new_py312
-    env_file:
-      - .env
-    ports:
-      - "8000:8000"  # For API/UI if needed
-    command: bash -c "python -m src.main"  # Adjust to your main script
+    image: virtuoso-trading:latest
+    container_name: virtuoso-trading
     restart: unless-stopped
-    
-  # Add services as needed (e.g., database, test)
-  test:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: virtuoso-test
+    ports:
+      - "8003:8003"
     volumes:
-      - .:/app
-      # Exclude virtual environment folders
-      - /app/venv
-      - /app/venv_new
-      - /app/venv_new_py312
+      - ./logs:/app/logs
+      - ./reports:/app/reports
+      - ./data:/app/data
+      - ./config:/app/config:ro
+    environment:
+      - PYTHONUNBUFFERED=1
+      - TZ=UTC
     env_file:
       - .env
-    command: pytest -c config/ci/pytest.ini
+    mem_limit: 4g
+    memswap_limit: 5g
+    cpus: 2
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "10"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - virtuoso-net
+
+  # Optional: Redis for caching
+  redis:
+    image: redis:7-alpine
+    container_name: virtuoso-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    networks:
+      - virtuoso-net
     profiles:
-      - test 
+      - with-redis
+
+  # Optional: PostgreSQL for persistent storage
+  postgres:
+    image: postgres:15-alpine
+    container_name: virtuoso-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=virtuoso
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-virtuoso123}
+      - POSTGRES_DB=virtuoso_trading
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - virtuoso-net
+    profiles:
+      - with-database
+
+networks:
+  virtuoso-net:
+    driver: bridge
+
+volumes:
+  redis-data:
+  postgres-data:

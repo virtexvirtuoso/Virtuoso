@@ -43,9 +43,11 @@ def retry_on_error(
     max_retries: int = 3,
     initial_delay: float = 1.0,
     backoff_factor: float = 2.0,
-    exceptions: tuple = (NetworkError, TimeoutError)
+    exceptions: tuple = (NetworkError, TimeoutError),
+    max_delay: float = 60.0,
+    jitter: bool = True
 ) -> Callable:
-    """Retry decorator for API requests"""
+    """Enhanced retry decorator for API requests with exponential backoff and jitter"""
     def decorator(func: Callable) -> Callable:
         async def wrapper(*args, **kwargs):
             last_error = None
@@ -56,11 +58,32 @@ def retry_on_error(
                     return await func(*args, **kwargs)
                 except exceptions as e:
                     last_error = e
+                    
+                    # Check if we have a retry_after header for rate limits
+                    if isinstance(e, RateLimitError) and hasattr(e, 'retry_after'):
+                        delay = e.retry_after
+                    
                     if attempt < max_retries - 1:
-                        await asyncio.sleep(delay)
+                        # Add jitter to prevent thundering herd
+                        if jitter:
+                            import random
+                            jittered_delay = delay * (0.5 + random.random())
+                        else:
+                            jittered_delay = delay
+                        
+                        # Cap the delay at max_delay
+                        actual_delay = min(jittered_delay, max_delay)
+                        
+                        logger.warning(
+                            f"Attempt {attempt + 1}/{max_retries} failed: {e}. "
+                            f"Retrying in {actual_delay:.2f} seconds..."
+                        )
+                        
+                        await asyncio.sleep(actual_delay)
                         delay *= backoff_factor
                     continue
                     
+            logger.error(f"All {max_retries} retry attempts failed. Last error: {last_error}")
             raise last_error
             
         return wrapper
@@ -151,6 +174,54 @@ class BaseExchange(ABC):
     async def health_check(self) -> bool:
         """Check exchange connection health."""
         pass
+    
+    async def monitor_connection(self) -> None:
+        """Monitor connection health and auto-recover if needed"""
+        current_time = time.time()
+        
+        if current_time - self._last_health_check >= self._health_check_interval:
+            try:
+                is_healthy = await self.health_check()
+                self._is_healthy = is_healthy
+                self._last_health_check = current_time
+                
+                if not is_healthy:
+                    self.logger.warning(f"Exchange {self.exchange_id} health check failed, attempting recovery")
+                    await self.recover_connection()
+                    
+            except Exception as e:
+                self.logger.error(f"Health check error for {self.exchange_id}: {e}")
+                self._is_healthy = False
+                await self.recover_connection()
+    
+    async def recover_connection(self) -> None:
+        """Attempt to recover failed connection"""
+        max_attempts = 3
+        
+        for attempt in range(max_attempts):
+            try:
+                self.logger.info(f"Recovery attempt {attempt + 1}/{max_attempts} for {self.exchange_id}")
+                
+                # Close existing connections
+                await self.close()
+                
+                # Wait before reconnecting
+                await asyncio.sleep(5 * (attempt + 1))
+                
+                # Reinitialize connection
+                await self.init()
+                
+                # Test with simple request
+                if await self.health_check():
+                    self.logger.info(f"Successfully recovered connection to {self.exchange_id}")
+                    self._is_healthy = True
+                    return
+                    
+            except Exception as e:
+                self.logger.error(f"Recovery attempt {attempt + 1} failed: {e}")
+                
+        self.logger.critical(f"Failed to recover connection to {self.exchange_id} after {max_attempts} attempts")
+        self._is_healthy = False
         
     async def init(self) -> None:
         """Initialize exchange connection"""
@@ -206,7 +277,41 @@ class BaseExchange(ABC):
         """Sign request for private endpoints"""
         pass
         
-    @retry_on_error()
+    async def _handle_rate_limit(self) -> None:
+        """Handle rate limiting with adaptive backoff"""
+        async with self._rate_limit_lock:
+            now = time.time()
+            time_since_last = now - self._last_request_time
+            
+            if time_since_last < self._request_interval:
+                sleep_time = self._request_interval - time_since_last
+                await asyncio.sleep(sleep_time)
+            
+            self._last_request_time = time.time()
+    
+    def _handle_api_error(self, response_status: int, response_text: str, url: str) -> None:
+        """Handle API errors based on response status"""
+        if response_status == 429:
+            # Extract retry-after if available
+            try:
+                error_data = json.loads(response_text)
+                retry_after = error_data.get('retry_after', 60)
+            except:
+                retry_after = 60
+            
+            error = RateLimitError(f"Rate limit exceeded: {response_text}")
+            error.retry_after = retry_after
+            raise error
+        elif response_status == 401:
+            raise AuthenticationError(f"Authentication failed: {response_text}")
+        elif response_status >= 500:
+            raise NetworkError(f"Server error {response_status}: {response_text}")
+        elif response_status == 408:
+            raise TimeoutError(f"Request timeout: {response_text}")
+        else:
+            raise ExchangeError(f"HTTP {response_status}: {response_text}")
+    
+    @retry_on_error(exceptions=(NetworkError, TimeoutError, RateLimitError))
     @handle_timeout()
     async def public_request(
         self,
@@ -216,9 +321,12 @@ class BaseExchange(ABC):
         headers: Optional[Dict] = None,
         body: Optional[Dict] = None
     ) -> Dict[str, Any]:
-        """Make public API request"""
+        """Make public API request with comprehensive error handling"""
         if not self.session:
             await self.init()
+        
+        # Apply rate limiting
+        await self._handle_rate_limit()
             
         url = f"{self.api_urls['public']}{path}"
         headers = headers or {}
@@ -232,18 +340,22 @@ class BaseExchange(ABC):
                 headers=headers,
                 json=body if body else None
             ) as response:
+                response_text = await response.text()
+                
                 if response.status != 200:
-                    text = await response.text()
-                    self.logger.error(f"HTTP {response.status} error: {text} for URL: {url}")
-                    raise NetworkError(f"HTTP {response.status}: {text}")
-                    
-                return await response.json()
+                    self.logger.error(f"HTTP {response.status} error: {response_text} for URL: {url}")
+                    self._handle_api_error(response.status, response_text, url)
+                
+                try:
+                    return json.loads(response_text)
+                except json.JSONDecodeError:
+                    raise ExchangeError(f"Invalid JSON response: {response_text}")
                 
         except aiohttp.ClientError as e:
             self.logger.error(f"Network error during public request to {url}: {str(e)}")
             raise NetworkError(f"Network error: {str(e)}")
             
-    @retry_on_error()
+    @retry_on_error(exceptions=(NetworkError, TimeoutError, RateLimitError))
     @handle_timeout()
     async def private_request(
         self,
@@ -253,9 +365,13 @@ class BaseExchange(ABC):
         headers: Optional[Dict] = None,
         body: Optional[Dict] = None
     ) -> Dict[str, Any]:
-        """Make private API request"""
+        """Make private API request with comprehensive error handling"""
         if not self.session:
             await self.init()
+        
+        # Apply rate limiting (more conservative for private endpoints)
+        await self._handle_rate_limit()
+        await asyncio.sleep(self._request_interval * 2)  # Extra delay for private endpoints
             
         url, params, headers, body = self.sign(method, path, params, headers, body)
         
@@ -267,11 +383,16 @@ class BaseExchange(ABC):
                 headers=headers,
                 json=body if body else None
             ) as response:
+                response_text = await response.text()
+                
                 if response.status != 200:
-                    text = await response.text()
-                    raise NetworkError(f"HTTP {response.status}: {text}")
-                    
-                return await response.json()
+                    self.logger.error(f"HTTP {response.status} error in private request: {response_text}")
+                    self._handle_api_error(response.status, response_text, url)
+                
+                try:
+                    return json.loads(response_text)
+                except json.JSONDecodeError:
+                    raise ExchangeError(f"Invalid JSON response: {response_text}")
                 
         except aiohttp.ClientError as e:
             raise NetworkError(f"Network error: {str(e)}")

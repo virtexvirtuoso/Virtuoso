@@ -500,7 +500,7 @@ bitcoin_beta_analysis:
       periods: 336
 confluence:
   thresholds:
-    buy: 69
+    buy: 71
     neutral_buffer: 0
     sell: 35
   weights:

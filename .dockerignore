@@ -1,3 +1,14 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
 # Virtual environments
 venv/
 venv311/
@@ -6,96 +17,80 @@ venv_new_py312/
 env/
 ENV/
 
-# Python cache
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-*.egg-info/
-.eggs/
-
-# Environment files (contains secrets)
-.env
-.env.local
-.env.*.local
-config/.env
-config/*.env
-
-# Git
-.git/
-.gitignore
-.gitattributes
-
 # IDE
 .vscode/
 .idea/
 *.swp
 *.swo
-.cursor/
+*~
+.DS_Store
 
-# Logs and databases
+# Logs
 logs/
 *.log
-*.sqlite
-*.db
+log/
 
-# Test files
-tests/
-test_output/
-pytest.ini
-.pytest_cache/
-.coverage
+# Test coverage
 htmlcov/
-*.test
+.coverage
+.coverage.*
+.pytest_cache/
+.tox/
 
-# Documentation (not needed in container)
+# Git
+.git/
+.gitignore
+
+# Documentation
 docs/
 *.md
-!README.md
+\!README.md
 
-# Backups
-backups/
-*.backup
-*.bak
-
-# Reports and exports (will be mounted as volumes)
-reports/
-exports/
-cache/
-src/exports/
-src/reports/
-src/logs/
-examples/demo/
-**/confluence_visualizations/
-**/market_reports/
-**/bitcoin_beta_reports/
-**/bitcoin_beta_7day_reports/
-**/3d_viz_output/
-**/png_exports/
-**/debug/
-*.png
-*.jpg
-*.jpeg
-*.gif
-*.csv
-*.json
-!package.json
-!requirements.json
-!configuration.json
-!config/*.json
-
-# OS files
-.DS_Store
-Thumbs.db
+# Environment files
+.env.local
+.env.*.local
 
 # Temporary files
-*.tmp
-*.temp
+tmp/
 temp/
+.trash/
 
-# Scripts not needed in container
-scripts/testing/
-scripts/fixes/
-scripts/test_*.py
-scripts/fix_*.py
+# Docker
+Dockerfile
+docker-compose*.yml
+.dockerignore
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.travis.yml
+
+# Data files (if large)
+data/*.csv
+data/*.json
+reports/html/
+
+# Notebooks
+notebooks/
+*.ipynb
+
+# MacOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Linux
+.directory
+.Trash-*
+
+# Node modules (if any)
+node_modules/
+
+# Patches
+patches/
+EOF < /dev/null
