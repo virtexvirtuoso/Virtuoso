@@ -48,6 +48,10 @@ from src.signal_generation.signal_generator import SignalGenerator
 from src.core.validation.service import AsyncValidationService
 from src.core.market.market_data_manager import MarketDataManager
 from src.monitoring.health_monitor import HealthMonitor
+from src.monitoring.bandwidth_monitor import bandwidth_monitor
+
+# Import DI container system
+from src.core.di.registration import bootstrap_container
 
 # Import API routes initialization
 from src.api import init_api_routes
@@ -435,30 +439,28 @@ async def initialize_components():
         logger.warning("⚠️ Continuing without liquidation detection engine")
         liquidation_detector = None
     
-    # Initialize market monitor with all required components (CENTRALIZED)
-    logger.info("Initializing market monitor...")
-    market_monitor = MarketMonitor(
-        logger=logger,
-        metrics_manager=metrics_manager,
-        exchange=primary_exchange,
-        top_symbols_manager=top_symbols_manager,
-        alert_manager=alert_manager,
-        config=config_manager.config,
-        market_reporter=market_reporter
-    )
+    # Initialize market monitor using DI container (PROPER DEPENDENCY INJECTION)
+    logger.info("Initializing market monitor with DI container...")
     
-    # Store important components in market_monitor for use
-    market_monitor.exchange_manager = exchange_manager
-    market_monitor.database_client = database_client
-    market_monitor.portfolio_analyzer = portfolio_analyzer
-    market_monitor.confluence_analyzer = confluence_analyzer
-    market_monitor.alert_manager = alert_manager
-    market_monitor.signal_generator = signal_generator
-    market_monitor.top_symbols_manager = top_symbols_manager
-    market_monitor.market_data_manager = market_data_manager
-    market_monitor.liquidation_detector = liquidation_detector
-    market_monitor.config = config_manager.config
-    logger.info("✅ MarketMonitor initialized")
+    # Bootstrap DI container with config
+    container = bootstrap_container(config_manager.config)
+    
+    # Get MarketMonitor from DI container (automatically resolves all dependencies)
+    market_monitor = await container.get_service(MarketMonitor)
+    
+    # Store important components that DI container may not have handled
+    if hasattr(market_monitor, 'exchange_manager') and not market_monitor.exchange_manager:
+        market_monitor.exchange_manager = exchange_manager
+    if hasattr(market_monitor, 'database_client') and not market_monitor.database_client:
+        market_monitor.database_client = database_client
+    if hasattr(market_monitor, 'portfolio_analyzer') and not market_monitor.portfolio_analyzer:
+        market_monitor.portfolio_analyzer = portfolio_analyzer
+    if hasattr(market_monitor, 'signal_generator') and not market_monitor.signal_generator:
+        market_monitor.signal_generator = signal_generator
+    if hasattr(market_monitor, 'liquidation_detector') and not market_monitor.liquidation_detector:
+        market_monitor.liquidation_detector = liquidation_detector
+    
+    logger.info("✅ MarketMonitor initialized via DI container")
     
     # Initialize alpha opportunity detection (CENTRALIZED)
     alpha_integration = None
@@ -668,6 +670,13 @@ async def root():
                     "symbols": [],
                     "error": None,
                     "details": {}
+                },
+                "bandwidth": {
+                    "status": "inactive",
+                    "error": None,
+                    "incoming": {},
+                    "outgoing": {},
+                    "total": {}
                 }
             }
         }
@@ -756,6 +765,28 @@ async def root():
                 status["components"]["top_symbols"]["error"] = error_msg
         else:
             status["components"]["top_symbols"]["error"] = "Not initialized"
+
+        # Check bandwidth monitor
+        try:
+            logger.debug("Getting bandwidth statistics...")
+            bandwidth_stats = await bandwidth_monitor.get_bandwidth_stats()
+            formatted_stats = bandwidth_monitor.get_formatted_stats(bandwidth_stats)
+            
+            if 'error' in bandwidth_stats:
+                status["components"]["bandwidth"]["status"] = "error"
+                status["components"]["bandwidth"]["error"] = bandwidth_stats['error']
+            else:
+                status["components"]["bandwidth"]["status"] = "active"
+                if 'bandwidth' in formatted_stats:
+                    status["components"]["bandwidth"]["incoming"] = formatted_stats['bandwidth']['incoming']
+                    status["components"]["bandwidth"]["outgoing"] = formatted_stats['bandwidth']['outgoing']
+                    status["components"]["bandwidth"]["total"] = formatted_stats['bandwidth']['total']
+                status["components"]["bandwidth"]["timestamp"] = formatted_stats.get('timestamp')
+                logger.debug(f"Bandwidth stats retrieved successfully: {formatted_stats}")
+        except Exception as e:
+            error_msg = f"Error getting bandwidth stats: {str(e)}"
+            logger.error(error_msg)
+            status["components"]["bandwidth"]["error"] = error_msg
 
         # Check overall status
         has_errors = any(
@@ -2298,6 +2329,7 @@ async def run_application():
         # Simplified monitoring main function
         async def monitoring_main():
             """Simplified monitoring main using already initialized components"""
+            logger.info("🚀 MONITORING_MAIN STARTED")
             display_banner()
             
             shutdown_event = asyncio.Event()
@@ -2314,7 +2346,9 @@ async def run_application():
                     loop.add_signal_handler(sig, signal_handler)
                 
                 # Start monitoring with already initialized components
+                logger.info("🚀 About to call market_monitor.start()...")
                 await market_monitor.start()
+                logger.info("✅ market_monitor.start() completed successfully!")
                 logger.info("Monitoring system running. Press Ctrl+C to stop.")
                 
                 # Wait for shutdown signal or monitor to stop
@@ -2333,8 +2367,10 @@ async def run_application():
                     logger.info("Monitoring cleanup completed")
         
         # Create tasks for both the monitoring system and web server
+        logger.info("🔄 Creating monitoring and web server tasks...")
         monitoring_task = asyncio.create_task(monitoring_main(), name="monitoring_main")
         web_server_task = asyncio.create_task(start_web_server(), name="web_server")
+        logger.info("✅ Tasks created, starting concurrent execution...")
         
         # Run both tasks concurrently
         await asyncio.gather(monitoring_task, web_server_task)

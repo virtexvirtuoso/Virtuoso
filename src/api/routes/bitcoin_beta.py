@@ -11,10 +11,10 @@ async def get_bitcoin_beta_status() -> Dict[str, Any]:
     """Get Bitcoin Beta analysis status and latest metrics."""
     try:
         # Import here to avoid circular imports
-        from src.reports.bitcoin_beta_report import BitcoinBetaReporter
+        from src.reports.bitcoin_beta_report import BitcoinBetaReport
         
         # Initialize reporter
-        reporter = BitcoinBetaReporter()
+        reporter = BitcoinBetaReport()
         
         # Get latest beta analysis
         try:

@@ -123,6 +123,13 @@ def register_analysis_services(container: ServiceContainer) -> ServiceContainer:
             config_service = await container.get_service(IConfigService)
             config_dict = config_service.to_dict() if hasattr(config_service, 'to_dict') else {}
             
+            # Get interpretation service
+            interpretation_service = None
+            try:
+                interpretation_service = await container.get_service(IInterpretationService)
+            except Exception as e:
+                logger.debug(f"InterpretationService not available for ConfluenceAnalyzer: {e}")
+            
             # Ensure required config structure exists
             if 'timeframes' not in config_dict:
                 config_dict['timeframes'] = {
@@ -164,7 +171,7 @@ def register_analysis_services(container: ServiceContainer) -> ServiceContainer:
                     }
                 }
             
-            return ConfluenceAnalyzer(config_dict)
+            return ConfluenceAnalyzer(config_dict, interpretation_service=interpretation_service)
         except Exception as e:
             logger.warning(f"Could not create confluence analyzer: {e}")
             # Return with minimal config as fallback
@@ -402,39 +409,42 @@ def register_monitoring_services(container: ServiceContainer) -> ServiceContaine
     
     container.register_factory(HealthMonitor, create_health_monitor, ServiceLifetime.SINGLETON)
     
-    # Signal Frequency Tracker (singleton) - needs config
-    from ...monitoring.signal_frequency_tracker import SignalFrequencyTracker
-    
-    async def create_signal_frequency_tracker():
-        try:
-            config_service = await container.get_service(IConfigService)
-            config_dict = config_service.to_dict() if hasattr(config_service, 'to_dict') else {}
-            
-            # Ensure signal frequency config exists
-            if 'monitoring' not in config_dict:
-                config_dict['monitoring'] = {}
-            if 'signal_frequency' not in config_dict['monitoring']:
-                config_dict['monitoring']['signal_frequency'] = {
-                    'tracking_window': 3600,  # 1 hour window
-                    'max_signals_per_window': 100,
-                    'cooldown_period': 300  # 5 minutes
-                }
-            
-            return SignalFrequencyTracker(config_dict)
-        except Exception as e:
-            logger.warning(f"Could not create SignalFrequencyTracker: {e}")
-            # Return with minimal config
-            return SignalFrequencyTracker({
-                'monitoring': {
-                    'signal_frequency': {
-                        'tracking_window': 3600,
+    # Signal Frequency Tracker (singleton) - SKIP, class doesn't exist
+    try:
+        from ...monitoring.signal_frequency_tracker import SignalFrequencyTracker
+        
+        async def create_signal_frequency_tracker():
+            try:
+                config_service = await container.get_service(IConfigService)
+                config_dict = config_service.to_dict() if hasattr(config_service, 'to_dict') else {}
+                
+                # Ensure signal frequency config exists
+                if 'monitoring' not in config_dict:
+                    config_dict['monitoring'] = {}
+                if 'signal_frequency' not in config_dict['monitoring']:
+                    config_dict['monitoring']['signal_frequency'] = {
+                        'tracking_window': 3600,  # 1 hour window
                         'max_signals_per_window': 100,
-                        'cooldown_period': 300
+                        'cooldown_period': 300  # 5 minutes
                     }
-                }
-            })
-    
-    container.register_factory(SignalFrequencyTracker, create_signal_frequency_tracker, ServiceLifetime.SINGLETON)
+                
+                return SignalFrequencyTracker(config_dict)
+            except Exception as e:
+                logger.warning(f"Could not create SignalFrequencyTracker: {e}")
+                # Return with minimal config
+                return SignalFrequencyTracker({
+                    'monitoring': {
+                        'signal_frequency': {
+                            'tracking_window': 3600,
+                            'max_signals_per_window': 100,
+                            'cooldown_period': 300
+                        }
+                    }
+                })
+        
+        container.register_factory(SignalFrequencyTracker, create_signal_frequency_tracker, ServiceLifetime.SINGLETON)
+    except ImportError:
+        logger.warning("SignalFrequencyTracker class not found, skipping registration")
     
     logger.info("Monitoring services registered successfully")
     return container

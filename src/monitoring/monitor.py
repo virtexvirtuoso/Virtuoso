@@ -2411,17 +2411,19 @@ class MarketMonitor:
     async def start(self):
         """Start the market monitor."""
         try:
+            self.logger.info("🚀 Starting MarketMonitor...")
+            
             # Check for required components
             if not self.exchange_manager:
-                self.logger.error("No exchange manager available")
+                self.logger.error("❌ No exchange manager available")
                 return
                 
             if not self.top_symbols_manager:
-                self.logger.error("No top symbols manager available")
+                self.logger.error("❌ No top symbols manager available")
                 return
                 
             if not self.market_data_manager:
-                self.logger.error("No market data manager available")
+                self.logger.error("❌ No market data manager available")
                 return
             
             # Get primary exchange from exchange manager if not already set
@@ -2447,12 +2449,13 @@ class MarketMonitor:
             self.logger.info("Updating top symbols...")
             
             # Get symbols directly from top_symbols_manager
+            self.logger.info("🔍 Getting symbols from TopSymbolsManager...")
             self.symbols = await self.top_symbols_manager.get_symbols()
             if not self.symbols:
-                self.logger.warning("No symbols to monitor")
+                self.logger.warning("❌ No symbols to monitor - MONITOR WILL EXIT")
                 return
                 
-            self.logger.info(f"Monitoring symbols: {self.symbols}")
+            self.logger.info(f"✅ Monitoring symbols: {self.symbols}")
             
             # Extract symbol strings from symbol dictionaries for components that need simple strings
             symbol_strings = []
@@ -2473,8 +2476,9 @@ class MarketMonitor:
             self._last_update_time = time.time()
             
             # Start monitoring tasks
-            self.logger.info("Starting monitoring tasks...")
+            self.logger.info("🔄 Starting monitoring tasks...")
             self._monitoring_task = asyncio.create_task(self._run_monitoring_loop())
+            self.logger.info("✅ MONITOR STARTED - Monitoring loop is now running!")
             
             # Start metrics manager if available
             if self.metrics_manager:

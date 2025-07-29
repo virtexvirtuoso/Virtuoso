@@ -61,6 +61,10 @@ class DashboardIntegrationService:
         self._confluence_cache_ttl = 30  # 30 seconds cache
         self._confluence_update_task = None
         
+        # Full confluence analysis cache
+        self._confluence_analysis_cache = {}
+        self._confluence_analysis_cache_ttl = 60  # 60 seconds cache
+        
     async def initialize(self) -> bool:
         """Initialize the service and verify components are available.
         
@@ -155,11 +159,60 @@ class DashboardIntegrationService:
                                 result = await self.monitor.confluence_analyzer.analyze(market_data)
                                 if result and 'confluence_score' in result:
                                     score = float(result['confluence_score'])
+                                    components = result.get('components', {})
+                                    
+                                    # Store the full formatted analysis if available
+                                    formatted_analysis = None
+                                    try:
+                                        from src.core.formatting.formatter import LogFormatter
+                                        results = result.get('results', {})
+                                        weights = result.get('weights', result.get('metadata', {}).get('weights', {}))
+                                        reliability = result.get('reliability', 0.0)
+                                        
+                                        formatted_table = LogFormatter.format_enhanced_confluence_score_table(
+                                            symbol=symbol,
+                                            confluence_score=score,
+                                            components=components,
+                                            results=results,
+                                            weights=weights,
+                                            reliability=reliability
+                                        )
+                                        formatted_analysis = formatted_table
+                                    except Exception as e:
+                                        self.logger.debug(f"Could not format analysis: {e}")
+                                    
                                     self._confluence_cache[symbol] = {
                                         'score': score,
-                                        'timestamp': time.time()
+                                        'components': components,
+                                        'timestamp': time.time(),
+                                        'formatted_analysis': formatted_analysis
                                     }
                                     self.logger.info(f"Updated confluence cache for {symbol}: {score:.2f}")
+                                    
+                                    # Also generate and store full analysis
+                                    try:
+                                        from src.core.formatting.formatter import LogFormatter
+                                        results = result.get('results', {})
+                                        weights = result.get('weights', result.get('metadata', {}).get('weights', {}))
+                                        reliability = result.get('reliability', 0.0)
+                                        
+                                        formatted_table = LogFormatter.format_enhanced_confluence_score_table(
+                                            symbol=symbol,
+                                            confluence_score=score,
+                                            components=components,
+                                            results=results,
+                                            weights=weights,
+                                            reliability=reliability
+                                        )
+                                        
+                                        self._confluence_analysis_cache[symbol] = {
+                                            'analysis': formatted_table,
+                                            'timestamp': time.time(),
+                                            'score': score,
+                                            'components': components
+                                        }
+                                    except Exception as e:
+                                        self.logger.debug(f"Could not generate full analysis for {symbol}: {e}")
                     except Exception as e:
                         self.logger.debug(f"Error updating confluence score for {symbol}: {e}")
                     
@@ -215,12 +268,14 @@ class DashboardIntegrationService:
     
     async def _update_signals(self):
         """Update signals data from the signal generator."""
+        self.logger.info("_update_signals called")
         try:
             signals = []
             
             # Get symbols from monitor
             if hasattr(self.monitor, 'symbols') and self.monitor.symbols:
                 symbols = self.monitor.symbols[:10]  # Limit to top 10
+                self.logger.info(f"Found {len(symbols)} symbols from monitor.symbols")
                 
                 for symbol in symbols:
                     try:
@@ -231,6 +286,12 @@ class DashboardIntegrationService:
                             
                         # Get latest confluence score if available
                         confluence_score = await self._extract_confluence_score(symbol, market_data)
+                        
+                        # Get components from cache if available
+                        components = {}
+                        if symbol in self._confluence_cache:
+                            cache_entry = self._confluence_cache[symbol]
+                            components = cache_entry.get('components', {})
                         
                         # Determine signal strength
                         signal_strength = self._determine_signal_strength(confluence_score)
@@ -244,7 +305,8 @@ class DashboardIntegrationService:
                             'price': market_data.get('ticker', {}).get('last', 0),
                             'change_24h': self._calculate_24h_change(market_data),
                             'volume': market_data.get('ticker', {}).get('volume', 0),
-                            'timestamp': int(time.time() * 1000)
+                            'timestamp': int(time.time() * 1000),
+                            'components': components
                         }
                         
                         signals.append(signal)
@@ -252,8 +314,59 @@ class DashboardIntegrationService:
                     except Exception as e:
                         self.logger.error(f"Error processing signal for {symbol}: {e}")
                         continue
+            else:
+                # Try to get symbols from top_symbols_manager
+                self.logger.warning("No symbols found in monitor.symbols, trying top_symbols_manager")
+                if hasattr(self.monitor, 'top_symbols_manager') and self.monitor.top_symbols_manager:
+                    try:
+                        top_symbols = await self.monitor.top_symbols_manager.get_top_symbols(limit=10)
+                        self.logger.info(f"Got {len(top_symbols)} symbols from top_symbols_manager")
+                        
+                        for symbol_info in top_symbols:
+                            symbol = symbol_info.get('symbol', symbol_info) if isinstance(symbol_info, dict) else symbol_info
+                            try:
+                                # Get market data for symbol
+                                market_data = await self.monitor.market_data_manager.get_market_data(symbol)
+                                if not market_data:
+                                    continue
+                                    
+                                # Get latest confluence score if available
+                                confluence_score = await self._extract_confluence_score(symbol, market_data)
+                                
+                                # Get components from cache if available
+                                components = {}
+                                if symbol in self._confluence_cache:
+                                    cache_entry = self._confluence_cache[symbol]
+                                    components = cache_entry.get('components', {})
+                                
+                                # Determine signal strength
+                                signal_strength = self._determine_signal_strength(confluence_score)
+                                signal_type = self._determine_signal_type(confluence_score)
+                                
+                                signal = {
+                                    'symbol': symbol,
+                                    'score': confluence_score,
+                                    'strength': signal_strength,
+                                    'type': signal_type,
+                                    'price': market_data.get('ticker', {}).get('last', 0),
+                                    'change_24h': self._calculate_24h_change(market_data),
+                                    'volume': market_data.get('ticker', {}).get('volume', 0),
+                                    'timestamp': int(time.time() * 1000),
+                                    'components': components
+                                }
+                                
+                                signals.append(signal)
+                                
+                            except Exception as e:
+                                self.logger.error(f"Error processing signal for {symbol}: {e}")
+                                continue
+                    except Exception as e:
+                        self.logger.error(f"Error getting top symbols: {e}")
+                else:
+                    self.logger.error("No top_symbols_manager available")
             
             self._dashboard_data['signals'] = signals
+            self.logger.info(f"Updated dashboard signals: {len(signals)} total")
             
         except Exception as e:
             self.logger.error(f"Error updating signals: {e}")
@@ -351,6 +464,38 @@ class DashboardIntegrationService:
                     if result and 'confluence_score' in result:
                         score = float(result['confluence_score'])
                         self.logger.info(f"Got confluence score {score} for {symbol} from analyzer")
+                        
+                        # Display comprehensive confluence score table
+                        try:
+                            from src.core.formatting.formatter import LogFormatter
+                            components = result.get('components', {})
+                            results = result.get('results', {})
+                            weights = result.get('weights', result.get('metadata', {}).get('weights', {}))
+                            reliability = result.get('reliability', 0.0)
+                            
+                            formatted_table = LogFormatter.format_enhanced_confluence_score_table(
+                                symbol=symbol,
+                                confluence_score=score,
+                                components=components,
+                                results=results,
+                                weights=weights,
+                                reliability=reliability
+                            )
+                            # Log the formatted table
+                            self.logger.info("\n" + formatted_table)
+                            
+                            # Store the full analysis in cache
+                            self._confluence_analysis_cache[symbol] = {
+                                'analysis': formatted_table,
+                                'timestamp': time.time(),
+                                'score': score,
+                                'components': components
+                            }
+                        except Exception as e:
+                            self.logger.error(f"Error displaying confluence table: {str(e)}")
+                            import traceback
+                            self.logger.debug(traceback.format_exc())
+                        
                         return score
                 except Exception as e:
                     self.logger.debug(f"Could not get confluence score from analyzer: {e}")
@@ -782,6 +927,144 @@ class DashboardIntegrationService:
             return {
                 "symbols": [],
                 "timestamp": datetime.utcnow().isoformat()
+            }
+    
+    async def get_performance_metrics(self) -> Dict[str, Any]:
+        """Get performance metrics for dashboard display."""
+        try:
+            # Basic implementation - can be enhanced based on actual metrics needed
+            import psutil
+            import os
+            
+            # Get CPU and memory usage
+            process = psutil.Process(os.getpid())
+            cpu_percent = process.cpu_percent(interval=0.1)
+            memory_info = process.memory_info()
+            memory_percent = process.memory_percent()
+            
+            # Calculate uptime
+            uptime_seconds = time.time() - process.create_time()
+            hours = int(uptime_seconds // 3600)
+            minutes = int((uptime_seconds % 3600) // 60)
+            uptime_str = f"{hours}h {minutes}m"
+            
+            # Get connection counts
+            active_connections = 0
+            if hasattr(self.monitor, 'websocket_connections'):
+                active_connections = len(self.monitor.websocket_connections)
+            
+            # Calculate API latency (simple average)
+            api_latency = 0
+            if hasattr(self, '_api_latencies'):
+                if self._api_latencies:
+                    api_latency = sum(self._api_latencies) / len(self._api_latencies)
+            
+            return {
+                "cpu_usage": round(cpu_percent, 1),
+                "memory_usage": round(memory_percent, 1),
+                "api_latency": round(api_latency, 0),
+                "active_connections": active_connections,
+                "uptime": uptime_str,
+                "timestamp": datetime.utcnow().isoformat()
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error getting performance metrics: {e}")
+            return {
+                "cpu_usage": 0,
+                "memory_usage": 0,
+                "api_latency": 0,
+                "active_connections": 0,
+                "uptime": "0h 0m",
+                "timestamp": datetime.utcnow().isoformat()
+            }
+    
+    async def get_confluence_analysis(self, symbol: str) -> Dict[str, Any]:
+        """Get the full confluence analysis for a specific symbol.
+        
+        Args:
+            symbol: The trading symbol to get analysis for
+            
+        Returns:
+            Dict containing the full formatted analysis and metadata
+        """
+        try:
+            # Check if we have cached analysis
+            if symbol in self._confluence_analysis_cache:
+                cache_entry = self._confluence_analysis_cache[symbol]
+                cache_age = time.time() - cache_entry['timestamp']
+                
+                # Return cached analysis if fresh enough
+                if cache_age < self._confluence_analysis_cache_ttl:
+                    return {
+                        'status': 'success',
+                        'symbol': symbol,
+                        'analysis': cache_entry['analysis'],
+                        'score': cache_entry['score'],
+                        'components': cache_entry['components'],
+                        'timestamp': cache_entry['timestamp'],
+                        'cache_age': cache_age
+                    }
+            
+            # Try to generate fresh analysis
+            if hasattr(self.monitor, 'market_data_manager') and hasattr(self.monitor, 'confluence_analyzer'):
+                try:
+                    market_data = await self.monitor.market_data_manager.get_market_data(symbol)
+                    if market_data:
+                        result = await self.monitor.confluence_analyzer.analyze(market_data)
+                        if result and 'confluence_score' in result:
+                            from src.core.formatting.formatter import LogFormatter
+                            
+                            score = float(result['confluence_score'])
+                            components = result.get('components', {})
+                            results = result.get('results', {})
+                            weights = result.get('weights', result.get('metadata', {}).get('weights', {}))
+                            reliability = result.get('reliability', 0.0)
+                            
+                            formatted_table = LogFormatter.format_enhanced_confluence_score_table(
+                                symbol=symbol,
+                                confluence_score=score,
+                                components=components,
+                                results=results,
+                                weights=weights,
+                                reliability=reliability
+                            )
+                            
+                            # Update cache
+                            self._confluence_analysis_cache[symbol] = {
+                                'analysis': formatted_table,
+                                'timestamp': time.time(),
+                                'score': score,
+                                'components': components
+                            }
+                            
+                            return {
+                                'status': 'success',
+                                'symbol': symbol,
+                                'analysis': formatted_table,
+                                'score': score,
+                                'components': components,
+                                'timestamp': time.time(),
+                                'cache_age': 0
+                            }
+                except Exception as e:
+                    self.logger.error(f"Error generating confluence analysis for {symbol}: {e}")
+            
+            # No analysis available
+            return {
+                'status': 'error',
+                'symbol': symbol,
+                'error': 'No analysis available',
+                'analysis': None
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error getting confluence analysis for {symbol}: {e}")
+            return {
+                'status': 'error',
+                'symbol': symbol,
+                'error': str(e),
+                'analysis': None
             }
 
 

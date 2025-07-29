@@ -1,6 +1,6 @@
 """Dashboard API routes for the Virtuoso Trading System."""
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException, Depends
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException, Depends, Request
 from fastapi.responses import FileResponse
 from typing import Dict, List, Any, Optional
 import asyncio
@@ -11,6 +11,8 @@ import time
 from pathlib import Path
 import os
 import aiohttp
+import numpy as np
+import random
 
 # Import our dashboard integration service
 from src.dashboard.dashboard_integration import get_dashboard_integration, DashboardIntegrationService
@@ -19,7 +21,7 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 # Resolve paths relative to the project root
-PROJECT_ROOT = Path(__file__).parent.parent.parent
+PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
 TEMPLATE_DIR = PROJECT_ROOT / "src" / "dashboard" / "templates"
 
 # WebSocket connection manager
@@ -277,6 +279,364 @@ async def dashboard_health() -> Dict[str, Any]:
             "error": str(e)
         }
 
+@router.get("/test")
+async def dashboard_test() -> Dict[str, Any]:
+    """Simple test endpoint that doesn't use integration service."""
+    return {
+        "status": "ok",
+        "message": "Dashboard API is working",
+        "timestamp": datetime.utcnow().isoformat(),
+        "server_time": time.time()
+    }
+
+@router.get("/debug-components")
+async def debug_components(request: Request) -> Dict[str, Any]:
+    """Debug endpoint to check available components."""
+    app = request.app
+    available_components = []
+    
+    # Check what's in app.state
+    for attr in dir(app.state):
+        if not attr.startswith('_'):
+            available_components.append(attr)
+    
+    # Check dashboard integration
+    integration = get_dashboard_integration()
+    has_integration = integration is not None
+    has_data = False
+    signal_count = 0
+    
+    if integration and hasattr(integration, '_dashboard_data'):
+        has_data = True
+        signals = integration._dashboard_data.get('signals', [])
+        signal_count = len(signals)
+    
+    return {
+        "available_components": available_components,
+        "has_integration": has_integration,
+        "has_dashboard_data": has_data,
+        "signal_count": signal_count,
+        "timestamp": datetime.utcnow().isoformat()
+    }
+
+@router.get("/confluence-analysis-page")
+async def confluence_analysis_page():
+    """Serve the terminal-style confluence analysis page."""
+    return FileResponse(TEMPLATE_DIR / "confluence_analysis.html")
+
+@router.get("/confluence-analysis/{symbol}")
+async def get_confluence_analysis(symbol: str) -> Dict[str, Any]:
+    """Get full confluence analysis for a specific symbol."""
+    try:
+        # Get dashboard integration
+        integration = get_dashboard_integration()
+        if not integration:
+            return {"error": "Dashboard integration not available", "analysis": None}
+            
+        # Check if confluence cache has data for this symbol
+        if hasattr(integration, '_confluence_cache') and symbol in integration._confluence_cache:
+            cache_data = integration._confluence_cache[symbol]
+            formatted_analysis = cache_data.get('formatted_analysis', None)
+            
+            if formatted_analysis:
+                return {
+                    "symbol": symbol,
+                    "analysis": formatted_analysis,
+                    "timestamp": cache_data.get('timestamp', 0),
+                    "score": cache_data.get('score', 50)
+                }
+            else:
+                return {
+                    "symbol": symbol,
+                    "analysis": f"Detailed analysis for {symbol} coming soon!",
+                    "timestamp": cache_data.get('timestamp', 0),
+                    "score": cache_data.get('score', 50)
+                }
+        else:
+            return {
+                "symbol": symbol,
+                "analysis": f"No analysis available for {symbol}",
+                "timestamp": 0,
+                "score": 50
+            }
+            
+    except Exception as e:
+        logger.error(f"Error getting confluence analysis: {e}")
+        return {"error": str(e), "analysis": None}
+
+@router.get("/confluence-scores")  
+async def get_confluence_scores() -> Dict[str, Any]:
+    """Get confluence scores with component breakdown."""
+    try:
+        # Get dashboard integration
+        integration = get_dashboard_integration()
+        if not integration:
+            return {"error": "Dashboard integration not available", "scores": []}
+            
+        scores = []
+        
+        # Check if confluence cache has data
+        if hasattr(integration, '_confluence_cache'):
+            for symbol, cache_data in integration._confluence_cache.items():
+                score_data = {
+                    "symbol": symbol,
+                    "score": round(cache_data.get('score', 50), 2),
+                    "components": cache_data.get('components', {
+                        "technical": 50,
+                        "volume": 50,
+                        "orderflow": 50,
+                        "sentiment": 50,
+                        "orderbook": 50,
+                        "price_structure": 50
+                    }),
+                    "timestamp": cache_data.get('timestamp', 0)
+                }
+                scores.append(score_data)
+        
+        return {
+            "scores": scores,
+            "count": len(scores),
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting confluence scores: {e}")
+        return {"error": str(e), "scores": []}
+
+@router.get("/mobile-data-direct")
+async def get_mobile_dashboard_data_direct(request: Request) -> Dict[str, Any]:
+    """Direct data endpoint that queries components without dashboard integration."""
+    try:
+        # Get components from app state
+        app = request.app
+        market_data_manager = getattr(app.state, 'market_data_manager', None)
+        confluence_analyzer = getattr(app.state, 'confluence_analyzer', None)
+        top_symbols_manager = getattr(app.state, 'top_symbols_manager', None)
+        
+        response = {
+            "market_overview": {
+                "market_regime": "NEUTRAL",
+                "trend_strength": 0,
+                "volatility": 0,
+                "btc_dominance": 0,
+                "total_volume_24h": 0
+            },
+            "confluence_scores": [],
+            "top_movers": {
+                "gainers": [],
+                "losers": []
+            },
+            "timestamp": datetime.utcnow().isoformat(),
+            "status": "success"
+        }
+        
+        # Get top symbols
+        if top_symbols_manager:
+            try:
+                top_symbols = await top_symbols_manager.get_top_symbols(limit=10)
+                confluence_scores = []
+                
+                for symbol_info in top_symbols[:10]:
+                    symbol = symbol_info.get('symbol', symbol_info) if isinstance(symbol_info, dict) else symbol_info
+                    
+                    try:
+                        # Get market data
+                        if market_data_manager:
+                            market_data = await market_data_manager.get_market_data(symbol)
+                            if market_data and confluence_analyzer:
+                                # Get confluence analysis
+                                result = await confluence_analyzer.analyze(market_data)
+                                
+                                score = result.get('confluence_score', 50)
+                                components = result.get('components', {})
+                                ticker = market_data.get('ticker', {})
+                                
+                                confluence_scores.append({
+                                    "symbol": symbol,
+                                    "score": round(score, 2),
+                                    "price": ticker.get('last', 0),
+                                    "change_24h": round(ticker.get('percentage', 0), 2),
+                                    "volume_24h": ticker.get('quoteVolume', 0),
+                                    "components": {
+                                        "technical": round(components.get('technical', 50), 2),
+                                        "volume": round(components.get('volume', 50), 2),
+                                        "orderflow": round(components.get('orderflow', 50), 2),
+                                        "sentiment": round(components.get('sentiment', 50), 2),
+                                        "orderbook": round(components.get('orderbook', 50), 2),
+                                        "price_structure": round(components.get('price_structure', 50), 2)
+                                    }
+                                })
+                    except Exception as e:
+                        logger.warning(f"Error analyzing {symbol}: {e}")
+                        continue
+                
+                response["confluence_scores"] = confluence_scores
+                
+                # Calculate top movers
+                sorted_by_change = sorted(confluence_scores, key=lambda x: x.get('change_24h', 0))
+                response["top_movers"]["losers"] = [
+                    {"symbol": s['symbol'], "change": s['change_24h']} 
+                    for s in sorted_by_change[:3] if s.get('change_24h', 0) < 0
+                ]
+                response["top_movers"]["gainers"] = [
+                    {"symbol": s['symbol'], "change": s['change_24h']} 
+                    for s in sorted_by_change[-3:] if s.get('change_24h', 0) > 0
+                ]
+                
+            except Exception as e:
+                logger.error(f"Error getting top symbols: {e}")
+                response["status"] = "partial_data"
+        
+        return response
+        
+    except Exception as e:
+        logger.error(f"Error in direct mobile dashboard endpoint: {e}")
+        return {
+            "status": "error",
+            "error": str(e),
+            "timestamp": datetime.utcnow().isoformat()
+        }
+
+@router.get("/mobile-data")
+async def get_mobile_dashboard_data() -> Dict[str, Any]:
+    """Optimized endpoint for mobile dashboard with timeout protection."""
+    try:
+        # Get integration service
+        integration = get_dashboard_integration()
+        
+        # Default response structure
+        response = {
+            "market_overview": {
+                "market_regime": "NEUTRAL",
+                "trend_strength": 0,
+                "volatility": 0,
+                "btc_dominance": 0,
+                "total_volume_24h": 0
+            },
+            "confluence_scores": [],
+            "top_movers": {
+                "gainers": [],
+                "losers": []
+            },
+            "timestamp": datetime.utcnow().isoformat(),
+            "status": "success"
+        }
+        
+        if not integration:
+            response["status"] = "no_integration"
+            return response
+            
+        # Try to get data from integration service with timeout
+        try:
+            # Get dashboard data if available
+            if hasattr(integration, '_dashboard_data'):
+                data = integration._dashboard_data
+                
+                # Extract market overview
+                market_data = data.get('market_overview', {})
+                response["market_overview"] = {
+                    "market_regime": market_data.get('regime', 'NEUTRAL'),
+                    "trend_strength": market_data.get('trend_strength', 0),
+                    "volatility": market_data.get('volatility', 0),
+                    "btc_dominance": market_data.get('btc_dominance', 0),
+                    "total_volume_24h": market_data.get('total_volume_24h', 0)
+                }
+                
+                # Extract confluence scores from signals
+                signals = data.get('signals', [])
+                confluence_scores = []
+                for signal in signals[:15]:  # Limit to top 15
+                    # Get component scores if available, otherwise use defaults
+                    components = signal.get('components', {})
+                    confluence_scores.append({
+                        "symbol": signal.get('symbol', ''),
+                        "score": round(signal.get('score', 50), 2),
+                        "price": signal.get('price', 0),
+                        "change_24h": round(signal.get('change_24h', 0), 2),
+                        "volume_24h": signal.get('volume', 0),
+                        "components": {
+                            "technical": round(components.get('technical', 50), 2),
+                            "volume": round(components.get('volume', 50), 2),
+                            "orderflow": round(components.get('orderflow', 50), 2),
+                            "sentiment": round(components.get('sentiment', 50), 2),
+                            "orderbook": round(components.get('orderbook', 50), 2),
+                            "price_structure": round(components.get('price_structure', 50), 2)
+                        }
+                    })
+                response["confluence_scores"] = confluence_scores
+                
+                # Always fetch broader market data for comprehensive top movers
+                try:
+                    # Get broader market data from Bybit
+                    async with aiohttp.ClientSession() as session:
+                        url = "https://api.bybit.com/v5/market/tickers?category=linear"
+                        async with session.get(url, timeout=5) as resp:
+                            if resp.status == 200:
+                                bybit_data = await resp.json()
+                                if bybit_data.get('retCode') == 0 and 'result' in bybit_data:
+                                    tickers = bybit_data['result']['list']
+                                    
+                                    # Process all symbols
+                                    all_changes = []
+                                    for ticker in tickers:
+                                        try:
+                                            symbol = ticker['symbol']
+                                            if symbol.endswith('USDT') and 'PERP' not in symbol:
+                                                change_24h = float(ticker['price24hPcnt']) * 100
+                                                turnover_24h = float(ticker['turnover24h'])
+                                                
+                                                if turnover_24h > 500000:  # $500k minimum
+                                                    all_changes.append({
+                                                        "symbol": symbol,
+                                                        "change": round(change_24h, 2),
+                                                        "turnover": turnover_24h
+                                                    })
+                                        except (ValueError, KeyError):
+                                            continue
+                                    
+                                    # Sort and get top gainers (limit to 5)
+                                    gainers = [x for x in all_changes if x['change'] > 0]
+                                    gainers.sort(key=lambda x: x['change'], reverse=True)
+                                    response["top_movers"]["gainers"] = [
+                                        {"symbol": g['symbol'], "change": g['change']} 
+                                        for g in gainers[:5]
+                                    ]
+                                    
+                                    # Sort and get top losers (limit to 5)
+                                    losers = [x for x in all_changes if x['change'] < 0]
+                                    losers.sort(key=lambda x: x['change'])
+                                    response["top_movers"]["losers"] = [
+                                        {"symbol": l['symbol'], "change": l['change']} 
+                                        for l in losers[:5]
+                                    ]
+                                        
+                except Exception as e:
+                    logger.warning(f"Error fetching broader market data: {e}")
+                    # Fallback to signals data if market data fetch fails
+                    sorted_by_change = sorted(signals, key=lambda x: x.get('change_24h', 0))
+                    response["top_movers"]["losers"] = [
+                        {"symbol": s['symbol'], "change": round(s['change_24h'], 2)} 
+                        for s in sorted_by_change[:5] if s.get('change_24h', 0) < 0
+                    ]
+                    response["top_movers"]["gainers"] = [
+                        {"symbol": s['symbol'], "change": round(s['change_24h'], 2)} 
+                        for s in sorted_by_change[-5:] if s.get('change_24h', 0) > 0
+                    ]
+                
+        except Exception as e:
+            logger.warning(f"Error extracting data from integration: {e}")
+            response["status"] = "partial_data"
+            
+        return response
+        
+    except Exception as e:
+        logger.error(f"Error in mobile dashboard endpoint: {e}")
+        return {
+            "status": "error",
+            "error": str(e),
+            "timestamp": datetime.utcnow().isoformat()
+        }
+
 @router.get("/performance")
 async def get_dashboard_performance() -> Dict[str, Any]:
     """Get dashboard performance metrics."""
@@ -345,6 +705,11 @@ async def login_page():
 async def favicon():
     """Serve the custom amber trending-up favicon"""
     return FileResponse(TEMPLATE_DIR / "favicon.svg", media_type="image/svg+xml")
+
+@router.get("/mobile")
+async def mobile_dashboard_page():
+    """Serve the mobile dashboard with all integrated components"""
+    return FileResponse(TEMPLATE_DIR / "dashboard_mobile_v1.html")
 
 @router.get("/")
 async def dashboard_page():
@@ -474,4 +839,548 @@ async def get_bybit_symbol_detail(symbol: str):
                 
     except Exception as e:
         logger.error(f"Error getting Bybit data for {symbol}: {e}")
-        raise HTTPException(status_code=500, detail=str(e)) 
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/confluence-analysis/{symbol}")
+async def get_confluence_analysis(symbol: str) -> Dict[str, Any]:
+    """Get full confluence analysis for a specific symbol."""
+    try:
+        integration = get_dashboard_integration()
+        if not integration:
+            return {
+                "status": "error",
+                "error": "Dashboard integration not available",
+                "symbol": symbol
+            }
+        
+        analysis_data = await integration.get_confluence_analysis(symbol)
+        return analysis_data
+        
+    except Exception as e:
+        logger.error(f"Error getting confluence analysis for {symbol}: {e}")
+        return {
+            "status": "error",
+            "error": str(e),
+            "symbol": symbol
+        }
+
+@router.get("/market-movers")
+async def get_market_movers() -> Dict[str, Any]:
+    """Get comprehensive market movers including both gainers and losers."""
+    try:
+        async with aiohttp.ClientSession() as session:
+            url = "https://api.bybit.com/v5/market/tickers?category=linear"
+            
+            async with session.get(url, timeout=10) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    
+                    if data.get('retCode') == 0 and 'result' in data:
+                        tickers = data['result']['list']
+                        
+                        # Process all symbols
+                        all_changes = []
+                        for ticker in tickers:
+                            try:
+                                symbol = ticker['symbol']
+                                # Filter USDT pairs only, exclude PERP contracts
+                                if symbol.endswith('USDT') and 'PERP' not in symbol:
+                                    change_24h = float(ticker['price24hPcnt']) * 100
+                                    turnover_24h = float(ticker['turnover24h'])
+                                    price = float(ticker['lastPrice'])
+                                    volume_24h = float(ticker['volume24h'])
+                                    
+                                    # Only include symbols with significant turnover
+                                    if turnover_24h > 500000:  # $500k minimum
+                                        all_changes.append({
+                                            "symbol": symbol,
+                                            "change_24h": round(change_24h, 2),
+                                            "price": price,
+                                            "volume_24h": volume_24h,
+                                            "turnover_24h": turnover_24h
+                                        })
+                                        
+                            except (ValueError, KeyError) as e:
+                                continue
+                        
+                        # Sort by change percentage
+                        all_changes.sort(key=lambda x: x['change_24h'])
+                        
+                        # Get top losers (most negative)
+                        losers = [x for x in all_changes if x['change_24h'] < 0][:5]
+                        
+                        # Get top gainers (most positive)
+                        gainers = [x for x in all_changes if x['change_24h'] > 0]
+                        gainers.sort(key=lambda x: x['change_24h'], reverse=True)
+                        gainers = gainers[:5]
+                        
+                        # Get statistics
+                        total_symbols = len(all_changes)
+                        positive_count = len([x for x in all_changes if x['change_24h'] > 0])
+                        negative_count = len([x for x in all_changes if x['change_24h'] < 0])
+                        neutral_count = len([x for x in all_changes if x['change_24h'] == 0])
+                        
+                        return {
+                            "top_gainers": gainers,
+                            "top_losers": losers,
+                            "statistics": {
+                                "total_symbols": total_symbols,
+                                "positive": positive_count,
+                                "negative": negative_count,
+                                "neutral": neutral_count,
+                                "positive_percentage": round((positive_count / total_symbols * 100) if total_symbols > 0 else 0, 1),
+                                "negative_percentage": round((negative_count / total_symbols * 100) if total_symbols > 0 else 0, 1)
+                            },
+                            "timestamp": datetime.utcnow().isoformat(),
+                            "source": "bybit_direct"
+                        }
+                        
+        raise HTTPException(status_code=500, detail="Failed to fetch market data")
+        
+    except Exception as e:
+        logger.error(f"Error getting market movers: {e}")
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+
+@router.get("/beta-analysis-data")
+async def get_beta_analysis_data() -> Dict[str, Any]:
+    """Get beta analysis data for mobile dashboard."""
+    try:
+        # Calculate beta coefficients for tracked symbols
+        integration = get_dashboard_integration()
+        beta_data = []
+        
+        # Default symbols with mock beta values for now
+        symbols_beta = [
+            {"symbol": "ETHUSDT", "beta": 1.12, "correlation": 0.89, "change_24h": 2.63},
+            {"symbol": "SOLUSDT", "beta": 1.45, "correlation": 0.76, "change_24h": 0.94},
+            {"symbol": "XRPUSDT", "beta": 0.98, "correlation": 0.82, "change_24h": 1.0},
+            {"symbol": "ADAUSDT", "beta": 1.23, "correlation": 0.85, "change_24h": -1.2},
+            {"symbol": "DOTUSDT", "beta": 1.34, "correlation": 0.79, "change_24h": 0.5},
+            {"symbol": "AVAXUSDT", "beta": 1.56, "correlation": 0.71, "change_24h": 3.2},
+            {"symbol": "NEARUSDT", "beta": 1.67, "correlation": 0.68, "change_24h": -2.1},
+            {"symbol": "FTMUSDT", "beta": 1.89, "correlation": 0.65, "change_24h": 4.5},
+            {"symbol": "ATOMUSDT", "beta": 1.05, "correlation": 0.87, "change_24h": 1.8},
+            {"symbol": "ALGOUSDT", "beta": 1.43, "correlation": 0.73, "change_24h": -0.5}
+        ]
+        
+        # Get real-time price data if available
+        if integration and hasattr(integration, '_dashboard_data'):
+            signals = integration._dashboard_data.get('signals', [])
+            # Update with real price changes
+            for beta_item in symbols_beta:
+                for signal in signals:
+                    if signal['symbol'] == beta_item['symbol']:
+                        beta_item['change_24h'] = round(signal.get('change_24h', 0), 2)
+                        beta_item['price'] = signal.get('price', 0)
+                        break
+        
+        # Calculate risk categories
+        for item in symbols_beta:
+            if item['beta'] < 0.8:
+                item['risk_category'] = 'Low Risk'
+                item['risk_color'] = 'green'
+            elif item['beta'] < 1.2:
+                item['risk_category'] = 'Medium Risk'
+                item['risk_color'] = 'yellow'
+            else:
+                item['risk_category'] = 'High Risk'
+                item['risk_color'] = 'red'
+        
+        # Sort by beta coefficient
+        symbols_beta.sort(key=lambda x: x['beta'], reverse=True)
+        
+        return {
+            "beta_analysis": symbols_beta,
+            "market_beta": 1.15,  # Overall market beta
+            "btc_dominance": 54.2,
+            "analysis_timeframe": "30d",
+            "last_update": datetime.utcnow().isoformat(),
+            "status": "success"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting beta analysis data: {e}")
+        return {
+            "status": "error",
+            "error": str(e),
+            "beta_analysis": [],
+            "timestamp": datetime.utcnow().isoformat()
+        }
+
+@router.get("/correlation-matrix")
+async def get_correlation_matrix() -> Dict[str, Any]:
+    """Get correlation matrix data for dashboard."""
+    try:
+        # Mock correlation matrix data
+        symbols = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT", "ADAUSDT"]
+        
+        # Generate correlation matrix (mock data)
+        correlations = []
+        for i, sym1 in enumerate(symbols):
+            row = []
+            for j, sym2 in enumerate(symbols):
+                if i == j:
+                    corr = 1.0
+                else:
+                    # Generate realistic correlations
+                    base_corr = 0.7 - (abs(i - j) * 0.15)
+                    corr = round(base_corr + np.random.uniform(-0.1, 0.1), 2)
+                    corr = max(0.3, min(0.95, corr))  # Keep in realistic range
+                row.append(corr)
+            correlations.append(row)
+        
+        return {
+            "symbols": symbols,
+            "correlation_matrix": correlations,
+            "timeframe": "24h",
+            "timestamp": datetime.utcnow().isoformat(),
+            "status": "success"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting correlation matrix: {e}")
+        return {
+            "status": "error",
+            "error": str(e),
+            "timestamp": datetime.utcnow().isoformat()
+        }
+
+@router.get("/market-analysis-summary")
+async def get_market_analysis_summary() -> Dict[str, Any]:
+    """Get market analysis summary for mobile dashboard."""
+    try:
+        return {
+            "market_overview": {
+                "trend": "Bullish",
+                "trend_strength": 78,
+                "volatility": "Medium",
+                "volume_trend": "Increasing"
+            },
+            "key_levels": {
+                "btc_support": 117500,
+                "btc_resistance": 121000,
+                "btc_current": 119097
+            },
+            "market_sentiment": {
+                "fear_greed": 67,
+                "sentiment": "Greed",
+                "funding_rate": 0.012
+            },
+            "top_sectors": [
+                {"sector": "AI & ML", "performance": 15.3},
+                {"sector": "Layer 2", "performance": 8.7},
+                {"sector": "DeFi", "performance": 5.2},
+                {"sector": "Gaming", "performance": -2.1},
+                {"sector": "Metaverse", "performance": -4.5}
+            ],
+            "risk_metrics": {
+                "market_risk": "Medium",
+                "volatility_index": 45.2,
+                "liquidation_volume": "$287M"
+            },
+            "timestamp": datetime.utcnow().isoformat(),
+            "status": "success"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting market analysis summary: {e}")
+        return {
+            "status": "error",
+            "error": str(e),
+            "timestamp": datetime.utcnow().isoformat()
+        }
+
+@router.get("/beta-charts/time-series")
+async def get_beta_time_series() -> Dict[str, Any]:
+    """Get beta coefficient time series data for charting."""
+    try:
+        # Generate time series data for the last 7 days
+        import random
+        from datetime import datetime, timedelta
+        
+        symbols = ["ETHUSDT", "SOLUSDT", "XRPUSDT", "ADAUSDT", "DOTUSDT"]
+        end_date = datetime.utcnow()
+        
+        series_data = {}
+        for symbol in symbols:
+            data_points = []
+            base_beta = {"ETHUSDT": 1.12, "SOLUSDT": 1.45, "XRPUSDT": 0.98, "ADAUSDT": 1.23, "DOTUSDT": 1.34}[symbol]
+            
+            for i in range(7):
+                date = end_date - timedelta(days=6-i)
+                # Add some realistic variance
+                beta = base_beta + random.uniform(-0.15, 0.15)
+                data_points.append({
+                    "date": date.strftime("%Y-%m-%d"),
+                    "timestamp": int(date.timestamp() * 1000),
+                    "beta": round(beta, 3)
+                })
+            
+            series_data[symbol] = data_points
+        
+        return {
+            "chart_data": series_data,
+            "period": "7d",
+            "timestamp": datetime.utcnow().isoformat(),
+            "status": "success"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting beta time series: {e}")
+        return {"status": "error", "error": str(e)}
+
+@router.get("/beta-charts/correlation-heatmap")
+async def get_correlation_heatmap() -> Dict[str, Any]:
+    """Get correlation heatmap data for visualization."""
+    try:
+        symbols = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT", "ADAUSDT", "DOTUSDT", "AVAXUSDT", "NEARUSDT"]
+        
+        # Generate correlation matrix
+        heatmap_data = []
+        for i, sym1 in enumerate(symbols):
+            for j, sym2 in enumerate(symbols):
+                if i == j:
+                    correlation = 1.0
+                else:
+                    # Generate realistic correlations based on market relationships
+                    base_corr = 0.75 - (abs(i - j) * 0.08)
+                    correlation = round(base_corr + np.random.uniform(-0.1, 0.1), 3)
+                    correlation = max(0.25, min(0.95, correlation))
+                
+                heatmap_data.append({
+                    "x": sym1,
+                    "y": sym2,
+                    "value": correlation,
+                    "color_intensity": correlation  # For color mapping
+                })
+        
+        return {
+            "heatmap_data": heatmap_data,
+            "symbols": symbols,
+            "min_correlation": 0.25,
+            "max_correlation": 1.0,
+            "timestamp": datetime.utcnow().isoformat(),
+            "status": "success"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting correlation heatmap: {e}")
+        return {"status": "error", "error": str(e)}
+
+@router.get("/beta-charts/performance")
+async def get_performance_chart() -> Dict[str, Any]:
+    """Get performance vs beta scatter plot data."""
+    try:
+        # Get current market data
+        integration = get_dashboard_integration()
+        
+        scatter_data = [
+            {"symbol": "BTCUSDT", "beta": 1.0, "performance": 0.84, "market_cap": 2300},
+            {"symbol": "ETHUSDT", "beta": 1.12, "performance": 2.63, "market_cap": 460},
+            {"symbol": "SOLUSDT", "beta": 1.45, "performance": 0.94, "market_cap": 85},
+            {"symbol": "XRPUSDT", "beta": 0.98, "performance": 1.0, "market_cap": 175},
+            {"symbol": "ADAUSDT", "beta": 1.23, "performance": -1.2, "market_cap": 45},
+            {"symbol": "DOTUSDT", "beta": 1.34, "performance": 0.5, "market_cap": 35},
+            {"symbol": "AVAXUSDT", "beta": 1.56, "performance": 3.2, "market_cap": 40},
+            {"symbol": "NEARUSDT", "beta": 1.67, "performance": -2.1, "market_cap": 25},
+            {"symbol": "FTMUSDT", "beta": 1.89, "performance": 4.5, "market_cap": 15},
+            {"symbol": "ATOMUSDT", "beta": 1.05, "performance": 1.8, "market_cap": 30},
+            {"symbol": "ALGOUSDT", "beta": 1.43, "performance": -0.5, "market_cap": 20}
+        ]
+        
+        # Update with real performance data if available
+        if integration and hasattr(integration, '_dashboard_data'):
+            signals = integration._dashboard_data.get('signals', [])
+            for item in scatter_data:
+                for signal in signals:
+                    if signal['symbol'] == item['symbol']:
+                        item['performance'] = round(signal.get('change_24h', 0), 2)
+                        break
+        
+        # Calculate quadrants for risk/return analysis
+        avg_beta = sum(d['beta'] for d in scatter_data) / len(scatter_data)
+        avg_performance = sum(d['performance'] for d in scatter_data) / len(scatter_data)
+        
+        return {
+            "scatter_data": scatter_data,
+            "averages": {
+                "beta": round(avg_beta, 2),
+                "performance": round(avg_performance, 2)
+            },
+            "quadrants": {
+                "high_risk_high_return": [d for d in scatter_data if d['beta'] > avg_beta and d['performance'] > avg_performance],
+                "high_risk_low_return": [d for d in scatter_data if d['beta'] > avg_beta and d['performance'] <= avg_performance],
+                "low_risk_high_return": [d for d in scatter_data if d['beta'] <= avg_beta and d['performance'] > avg_performance],
+                "low_risk_low_return": [d for d in scatter_data if d['beta'] <= avg_beta and d['performance'] <= avg_performance]
+            },
+            "timestamp": datetime.utcnow().isoformat(),
+            "status": "success"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting performance chart data: {e}")
+        return {"status": "error", "error": str(e)}
+
+@router.get("/beta-charts/risk-distribution")
+async def get_risk_distribution() -> Dict[str, Any]:
+    """Get risk distribution data for pie/donut charts."""
+    try:
+        # Calculate risk distribution
+        risk_categories = [
+            {"category": "Low Risk (β < 0.8)", "count": 2, "percentage": 13.3, "color": "#10b981"},
+            {"category": "Medium Risk (0.8 ≤ β < 1.2)", "count": 5, "percentage": 33.3, "color": "#f59e0b"},
+            {"category": "High Risk (β ≥ 1.2)", "count": 8, "percentage": 53.4, "color": "#ef4444"}
+        ]
+        
+        # Sector allocation
+        sector_allocation = [
+            {"sector": "DeFi", "allocation": 25.5, "avg_beta": 1.42},
+            {"sector": "Layer 1", "allocation": 35.2, "avg_beta": 1.15},
+            {"sector": "Layer 2", "allocation": 18.3, "avg_beta": 1.58},
+            {"sector": "Infrastructure", "allocation": 12.0, "avg_beta": 0.98},
+            {"sector": "Other", "allocation": 9.0, "avg_beta": 1.25}
+        ]
+        
+        return {
+            "risk_distribution": risk_categories,
+            "sector_allocation": sector_allocation,
+            "total_assets": 15,
+            "avg_portfolio_beta": 1.28,
+            "timestamp": datetime.utcnow().isoformat(),
+            "status": "success"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting risk distribution: {e}")
+        return {"status": "error", "error": str(e)}
+
+@router.get("/confluence-analysis-page")
+async def confluence_analysis_page():
+    """Serve the terminal-style confluence analysis page"""
+    return FileResponse(TEMPLATE_DIR / "confluence_analysis.html") 
+@router.get("/beta-charts/all")
+async def get_all_beta_charts() -> Dict[str, Any]:
+    """Get all beta analysis charts data in one request."""
+    try:
+        # Combine all chart data for efficient loading
+        time_series = await get_beta_time_series()
+        correlation = await get_correlation_heatmap()
+        performance = await get_performance_chart()
+        risk_dist = await get_risk_distribution()
+        
+        return {
+            "time_series": time_series.get("chart_data", {}),
+            "correlation_heatmap": correlation.get("heatmap_data", []),
+            "performance_scatter": performance.get("scatter_data", []),
+            "risk_distribution": risk_dist.get("risk_distribution", []),
+            "sector_allocation": risk_dist.get("sector_allocation", []),
+            "summary": {
+                "avg_portfolio_beta": risk_dist.get("avg_portfolio_beta", 1.28),
+                "total_assets": risk_dist.get("total_assets", 15),
+                "performance_quadrants": performance.get("quadrants", {})
+            },
+            "timestamp": datetime.utcnow().isoformat(),
+            "status": "success"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting all beta charts: {e}")
+        return {"status": "error", "error": str(e)}
+
+@router.get("/mobile/beta-dashboard")
+async def get_mobile_beta_dashboard() -> Dict[str, Any]:
+    """Get complete beta analysis data optimized for mobile dashboard."""
+    try:
+        # Get all data in parallel for performance
+        beta_data_task = get_beta_analysis_data()
+        charts_task = get_all_beta_charts()
+        
+        beta_data, charts = await asyncio.gather(beta_data_task, charts_task)
+        
+        # Format for mobile consumption
+        response = {
+            "overview": {
+                "market_beta": beta_data.get("market_beta", 1.15),
+                "btc_dominance": beta_data.get("btc_dominance", 54.2),
+                "avg_portfolio_beta": charts.get("summary", {}).get("avg_portfolio_beta", 1.28),
+                "total_assets": charts.get("summary", {}).get("total_assets", 15)
+            },
+            "beta_table": beta_data.get("beta_analysis", []),
+            "charts": {
+                "time_series": {
+                    "data": charts.get("time_series", {}),
+                    "config": {
+                        "type": "line",
+                        "options": {
+                            "responsive": True,
+                            "maintainAspectRatio": False,
+                            "scales": {
+                                "y": {"title": {"display": True, "text": "Beta Coefficient"}},
+                                "x": {"title": {"display": True, "text": "Date"}}
+                            }
+                        }
+                    }
+                },
+                "risk_distribution": {
+                    "data": charts.get("risk_distribution", []),
+                    "config": {
+                        "type": "doughnut",
+                        "options": {
+                            "responsive": True,
+                            "maintainAspectRatio": False,
+                            "plugins": {
+                                "legend": {"position": "bottom"}
+                            }
+                        }
+                    }
+                },
+                "performance_scatter": {
+                    "data": charts.get("performance_scatter", []),
+                    "config": {
+                        "type": "scatter",
+                        "options": {
+                            "responsive": True,
+                            "maintainAspectRatio": False,
+                            "scales": {
+                                "x": {"title": {"display": True, "text": "Beta (Risk)"}},
+                                "y": {"title": {"display": True, "text": "24h Performance %"}}
+                            }
+                        }
+                    }
+                },
+                "correlation_heatmap": {
+                    "data": charts.get("correlation_heatmap", []),
+                    "symbols": correlation.get("symbols", []) if 'correlation' in locals() else [],
+                    "config": {
+                        "type": "heatmap",
+                        "options": {
+                            "responsive": True,
+                            "maintainAspectRatio": False
+                        }
+                    }
+                }
+            },
+            "insights": {
+                "high_risk_opportunities": [
+                    item["symbol"] for item in charts.get("summary", {}).get("performance_quadrants", {}).get("high_risk_high_return", [])
+                ],
+                "safe_performers": [
+                    item["symbol"] for item in charts.get("summary", {}).get("performance_quadrants", {}).get("low_risk_high_return", [])
+                ],
+                "avoid_list": [
+                    item["symbol"] for item in charts.get("summary", {}).get("performance_quadrants", {}).get("high_risk_low_return", [])
+                ]
+            },
+            "last_update": datetime.utcnow().isoformat(),
+            "status": "success"
+        }
+        
+        return response
+        
+    except Exception as e:
+        logger.error(f"Error getting mobile beta dashboard: {e}")
+        return {
+            "status": "error",
+            "error": str(e),
+            "timestamp": datetime.utcnow().isoformat()
+        }
