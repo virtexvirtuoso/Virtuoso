@@ -7,6 +7,7 @@ import hmac
 import hashlib
 import time
 import os
+import random
 from typing import Dict, Any, List, Optional, Callable, Tuple, ContextManager, Union
 from datetime import datetime
 import aiohttp
@@ -262,6 +263,11 @@ class BybitExchange(BaseExchange):
         }
         self._rate_limit_lock = asyncio.Lock()
         
+        # Initialize connection pooling components
+        self.session = None
+        self.connector = None
+        self.timeout = None
+        
     def _setup_basic_config(self):
         """Setup basic configuration parameters"""
         # Validate required fields
@@ -441,9 +447,9 @@ class BybitExchange(BaseExchange):
             bool: True if initialization successful, False otherwise
         """
         try:
-            # Initialize HTTP session if not exists
-            if not hasattr(self, 'session') or self.session is None:
-                self.session = aiohttp.ClientSession()
+            # Create persistent session with connection pooling
+            if not self.session or self.session.closed:
+                await self._create_session()
             
             # Test connection with server time endpoint
             response = await self._make_request('GET', '/v5/market/time')
@@ -466,6 +472,42 @@ class BybitExchange(BaseExchange):
         except Exception as e:
             self.logger.error(f"Error initializing REST client: {str(e)}", exc_info=True)
             return False
+    
+    async def _create_session(self) -> None:
+        """Create persistent aiohttp session with connection pooling."""
+        try:
+            # Close existing session if any
+            if self.session and not self.session.closed:
+                await self.session.close()
+                
+            # Create TCP connector with connection pooling
+            self.connector = aiohttp.TCPConnector(
+                limit=100,  # Total connection pool limit
+                limit_per_host=30,  # Per-host connection limit
+                ttl_dns_cache=300,  # DNS cache timeout
+                enable_cleanup_closed=True,
+                force_close=False,  # Don't force close to allow keepalive
+                keepalive_timeout=30
+            )
+            
+            # Configure timeouts
+            self.timeout = aiohttp.ClientTimeout(
+                total=30,  # Total timeout
+                connect=10,  # Connection timeout
+                sock_read=20  # Socket read timeout
+            )
+            
+            # Create session with connection pooling
+            self.session = aiohttp.ClientSession(
+                connector=self.connector,
+                timeout=self.timeout
+            )
+            
+            self.logger.info("Created persistent session with connection pooling")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to create session: {str(e)}")
+            raise
             
     async def _test_rest_connection(self) -> bool:
         """Test REST connection by making a simple request."""
@@ -478,6 +520,28 @@ class BybitExchange(BaseExchange):
         except Exception as e:
             self.logger.error(f"REST connection test failed: {str(e)}")
             return False
+    async def _make_request_with_retry(self, method: str, endpoint: str, params: Optional[Dict[str, Any]] = None, max_retries: int = 3) -> Dict[str, Any]:
+        """Make request with retry logic and exponential backoff."""
+        for attempt in range(max_retries):
+            try:
+                return await self._make_request(method, endpoint, params)
+            except (aiohttp.ClientConnectionError, asyncio.TimeoutError) as e:
+                if attempt == max_retries - 1:
+                    self.logger.error(f"Max retries reached for {endpoint}: {str(e)}")
+                    raise
+                
+                # Exponential backoff with jitter
+                wait_time = min(2 ** attempt + random.uniform(0, 1), 10)
+                self.logger.warning(f"Retry {attempt + 1}/{max_retries} for {endpoint} after {wait_time:.1f}s: {str(e)}")
+                await asyncio.sleep(wait_time)
+                
+                # Recreate session if connection was reset
+                if "Cannot write to closing transport" in str(e):
+                    self.logger.info("Recreating session due to connection reset")
+                    await self._create_session()
+        
+        return {}  # Should never reach here
+    
     async def _make_request(self, method: str, endpoint: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Make a request to the Bybit API.
         
@@ -533,17 +597,22 @@ class BybitExchange(BaseExchange):
                           for k, v in params.items()}
             self.logger.debug(f"Making request to {url}")
             self.logger.debug(f"Params: {safe_params}")
-            async with aiohttp.ClientSession() as session:
-                if method.upper() == 'GET':
-                    async with session.get(url, params=params, headers=headers) as response:
-                        return await self._process_response(response, url)
-                elif method.upper() == 'POST':
-                    # For POST requests, send params as JSON in the body
-                    async with session.post(url, json=params, headers=headers) as response:
-                        return await self._process_response(response, url)
-                else:
-                    self.logger.error(f"Unsupported HTTP method: {method}")
-                    return {'retCode': -1, 'retMsg': f'Unsupported method {method}'}
+            
+            # Ensure session exists
+            if not self.session or self.session.closed:
+                await self._create_session()
+            
+            # Use persistent session instead of creating new one
+            if method.upper() == 'GET':
+                async with self.session.get(url, params=params, headers=headers) as response:
+                    return await self._process_response(response, url)
+            elif method.upper() == 'POST':
+                # For POST requests, send params as JSON in the body
+                async with self.session.post(url, json=params, headers=headers) as response:
+                    return await self._process_response(response, url)
+            else:
+                self.logger.error(f"Unsupported HTTP method: {method}")
+                return {'retCode': -1, 'retMsg': f'Unsupported method {method}'}
                     
         except GeneratorExit:
             self.logger.info("Request cancelled due to GeneratorExit")
@@ -712,17 +781,9 @@ class BybitExchange(BaseExchange):
                 enable_cleanup_closed=True
             )
             
-            # Clean up existing session if it exists
-            if hasattr(self, 'session') and self.session:
-                try:
-                    await self.session.close()
-                except:
-                    pass
-                    
-            self.session = aiohttp.ClientSession(
-                timeout=timeout,
-                connector=connector
-            )
+            # Use the persistent session created in _create_session
+            if not self.session or self.session.closed:
+                await self._create_session()
             
             # Connect with enhanced error handling
             try:
@@ -1559,9 +1620,14 @@ class BybitExchange(BaseExchange):
     async def _cleanup(self):
         """Clean up resources."""
         try:
+            # Close session and connector
             if hasattr(self, 'session') and self.session:
                 await self.session.close()
                 self.session = None
+            
+            if hasattr(self, 'connector') and self.connector:
+                await self.connector.close()
+                self.connector = None
             
             if hasattr(self, 'ws') and self.ws:
                 await self.ws.close()

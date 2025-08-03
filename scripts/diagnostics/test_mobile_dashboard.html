@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mobile Dashboard Confluence Score Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .test-section {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .success {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .error {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        .warning {
+            background-color: #fff3cd;
+            color: #856404;
+        }
+        .data-display {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 10px;
+            margin: 10px 0;
+            white-space: pre-wrap;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .score-card {
+            display: inline-block;
+            margin: 5px;
+            padding: 15px;
+            border-radius: 8px;
+            background: #f8f9fa;
+            border: 2px solid #dee2e6;
+            min-width: 150px;
+        }
+        .score-value {
+            font-size: 24px;
+            font-weight: bold;
+            margin: 5px 0;
+        }
+        .score-high { color: #28a745; }
+        .score-medium { color: #ffc107; }
+        .score-low { color: #dc3545; }
+    </style>
+</head>
+<body>
+    <h1>Mobile Dashboard Confluence Score Test</h1>
+    
+    <div class="test-section">
+        <h2>API Endpoint Tests</h2>
+        <button onclick="testEndpoint('/api/dashboard/mobile-data')">Test Mobile Data</button>
+        <button onclick="testEndpoint('/api/dashboard/confluence-scores')">Test Confluence Scores</button>
+        <button onclick="testEndpoint('/api/dashboard/mobile-data-direct')">Test Mobile Direct</button>
+        <button onclick="testEndpoint('/api/top-symbols')">Test Top Symbols</button>
+        <div id="endpoint-results"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Confluence Scores Display</h2>
+        <div id="confluence-display"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Console Log</h2>
+        <div id="console-log" class="data-display"></div>
+    </div>
+
+    <script>
+        // Override console methods to capture logs
+        const consoleLog = document.getElementById('console-log');
+        const originalLog = console.log;
+        const originalError = console.error;
+        const originalWarn = console.warn;
+
+        function logToDiv(message, type = 'log') {
+            const timestamp = new Date().toLocaleTimeString();
+            const color = type === 'error' ? 'red' : type === 'warn' ? 'orange' : 'black';
+            consoleLog.innerHTML += `<span style="color: ${color}">[${timestamp}] ${type.toUpperCase()}: ${message}</span>\n`;
+            consoleLog.scrollTop = consoleLog.scrollHeight;
+        }
+
+        console.log = function(...args) {
+            logToDiv(args.join(' '), 'log');
+            originalLog.apply(console, args);
+        };
+
+        console.error = function(...args) {
+            logToDiv(args.join(' '), 'error');
+            originalError.apply(console, args);
+        };
+
+        console.warn = function(...args) {
+            logToDiv(args.join(' '), 'warn');
+            originalWarn.apply(console, args);
+        };
+
+        // Test API endpoints
+        async function testEndpoint(endpoint) {
+            const resultsDiv = document.getElementById('endpoint-results');
+            console.log(`Testing endpoint: ${endpoint}`);
+            
+            try {
+                const response = await fetch(`http://localhost:8003${endpoint}`);
+                const data = await response.json();
+                
+                const statusClass = response.ok ? 'success' : 'error';
+                resultsDiv.innerHTML += `
+                    <div class="status ${statusClass}">
+                        <strong>${endpoint}</strong>: ${response.status} ${response.statusText}
+                    </div>
+                    <div class="data-display">${JSON.stringify(data, null, 2)}</div>
+                `;
+                
+                // If mobile data, try to display confluence scores
+                if (endpoint === '/api/dashboard/mobile-data' && data.confluence_scores) {
+                    displayConfluenceScores(data.confluence_scores);
+                } else if (endpoint === '/api/dashboard/confluence-scores' && data) {
+                    displayConfluenceScores(data);
+                }
+                
+            } catch (error) {
+                console.error(`Error testing ${endpoint}:`, error);
+                resultsDiv.innerHTML += `
+                    <div class="status error">
+                        <strong>${endpoint}</strong>: ${error.message}
+                    </div>
+                `;
+            }
+        }
+
+        // Display confluence scores
+        function displayConfluenceScores(scores) {
+            const displayDiv = document.getElementById('confluence-display');
+            console.log(`Displaying ${scores.length} confluence scores`);
+            
+            if (!scores || scores.length === 0) {
+                displayDiv.innerHTML = '<div class="status warning">No confluence scores available</div>';
+                return;
+            }
+            
+            let html = '<h3>Confluence Scores</h3><div>';
+            scores.forEach(score => {
+                const scoreValue = score.score || 50;
+                const scoreClass = scoreValue >= 60 ? 'score-high' : 
+                                 scoreValue >= 40 ? 'score-medium' : 'score-low';
+                
+                html += `
+                    <div class="score-card">
+                        <div><strong>${score.symbol}</strong></div>
+                        <div class="score-value ${scoreClass}">${scoreValue.toFixed(2)}</div>
+                        <div style="font-size: 12px;">
+                            Price: $${score.price?.toFixed(2) || 'N/A'}<br>
+                            24h: ${score.change_24h?.toFixed(2) || 0}%
+                        </div>
+                    </div>
+                `;
+            });
+            html += '</div>';
+            displayDiv.innerHTML = html;
+        }
+
+        // Auto-test on load
+        window.onload = async function() {
+            console.log('Mobile Dashboard Test Page Loaded');
+            console.log('Testing all endpoints...');
+            
+            // Test each endpoint with a delay
+            const endpoints = [
+                '/api/dashboard/mobile-data',
+                '/api/dashboard/confluence-scores',
+                '/api/top-symbols'
+            ];
+            
+            for (const endpoint of endpoints) {
+                await testEndpoint(endpoint);
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+        };
+
+        // Monitor for any unhandled errors
+        window.onerror = function(message, source, lineno, colno, error) {
+            console.error(`Unhandled error: ${message} at ${source}:${lineno}:${colno}`);
+            return true;
+        };
+
+        // Monitor for unhandled promise rejections
+        window.addEventListener('unhandledrejection', function(event) {
+            console.error('Unhandled promise rejection:', event.reason);
+        });
+    </script>
+</body>
+</html>

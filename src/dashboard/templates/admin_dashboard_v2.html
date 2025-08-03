@@ -632,6 +632,36 @@
                         </div>
                     </div>
 
+                    <!-- Network Bandwidth -->
+                    <div class="metric-card">
+                        <div class="metric-header">
+                            <span class="metric-title">Network Bandwidth</span>
+                            <span class="notification-badge" id="bandwidthAlert" style="display: none;">!</span>
+                        </div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1rem;">
+                            <div>
+                                <div style="font-size: 0.8rem; color: #888;">↓ Incoming</div>
+                                <div style="font-size: 1.2rem; font-weight: 600; color: #4ecdc4;">
+                                    <span id="bandwidthInRate">0</span>
+                                    <span style="font-size: 0.8rem;">Mbps</span>
+                                </div>
+                                <div style="font-size: 0.8rem; color: #666;" id="bandwidthInTotal">0 GB</div>
+                            </div>
+                            <div>
+                                <div style="font-size: 0.8rem; color: #888;">↑ Outgoing</div>
+                                <div style="font-size: 1.2rem; font-weight: 600; color: #ff6b6b;">
+                                    <span id="bandwidthOutRate">0</span>
+                                    <span style="font-size: 0.8rem;">Mbps</span>
+                                </div>
+                                <div style="font-size: 0.8rem; color: #666;" id="bandwidthOutTotal">0 GB</div>
+                            </div>
+                        </div>
+                        <div style="margin-top: 1rem; padding-top: 0.8rem; border-top: 1px solid rgba(255, 255, 255, 0.1);">
+                            <div style="font-size: 0.8rem; color: #888;">Total Traffic</div>
+                            <div style="font-size: 1.4rem; font-weight: 700; color: #ffa500;" id="bandwidthTotal">0 GB</div>
+                        </div>
+                    </div>
+
                     <!-- Alerts Today -->
                     <div class="metric-card">
                         <div class="metric-header">
@@ -709,7 +739,7 @@
         // Check authentication
         function checkAuth() {
             if (!adminToken) {
-                window.location.href = '/api/dashboard/admin/login';
+                window.location.href = '/admin/login';
                 return false;
             }
             return true;
@@ -717,7 +747,7 @@
 
         // WebSocket connection
         function initWebSocket() {
-            const wsUrl = `ws://${window.location.host}/api/dashboard/admin/ws/admin?token=${adminToken}`;
+            const wsUrl = `ws://${window.location.host}/admin/ws?token=${adminToken}`;
             ws = new WebSocket(wsUrl);
 
             ws.onopen = () => {
@@ -789,6 +819,28 @@
                 const minutes = Math.floor((metrics.system.uptime % 3600) / 60);
                 document.getElementById('uptime').textContent = `${hours}h ${minutes}m`;
             }
+
+            // Bandwidth
+            if (metrics.bandwidth) {
+                const bw = metrics.bandwidth;
+                
+                // Update incoming bandwidth
+                if (bw.incoming) {
+                    document.getElementById('bandwidthInRate').textContent = bw.incoming.rate_mbps;
+                    document.getElementById('bandwidthInTotal').textContent = bw.incoming.total_gb + ' GB';
+                }
+                
+                // Update outgoing bandwidth
+                if (bw.outgoing) {
+                    document.getElementById('bandwidthOutRate').textContent = bw.outgoing.rate_mbps;
+                    document.getElementById('bandwidthOutTotal').textContent = bw.outgoing.total_gb + ' GB';
+                }
+                
+                // Update total bandwidth
+                if (bw.total) {
+                    document.getElementById('bandwidthTotal').textContent = bw.total.gb + ' GB';
+                }
+            }
         }
 
         // Navigation
@@ -846,7 +898,7 @@
         // Load dashboard data
         async function loadDashboardData() {
             try {
-                const response = await fetch('/api/dashboard/admin/monitoring/live-metrics', {
+                const response = await fetch('/admin/monitoring/live-metrics', {
                     headers: {
                         'Authorization': `Bearer ${adminToken}`
                     }
@@ -868,7 +920,7 @@
         // Load optimization suggestions
         async function loadOptimizationSuggestions() {
             try {
-                const response = await fetch('/api/dashboard/admin/optimization/suggestions', {
+                const response = await fetch('/admin/optimization/suggestions', {
                     headers: {
                         'Authorization': `Bearer ${adminToken}`
                     }
@@ -907,7 +959,7 @@
         // Load config files
         async function loadConfigFiles() {
             try {
-                const response = await fetch('/api/dashboard/admin/config/files', {
+                const response = await fetch('/admin/config/files', {
                     headers: {
                         'Authorization': `Bearer ${adminToken}`
                     }
@@ -943,7 +995,7 @@
         // Load config file
         async function loadConfigFile(filename) {
             try {
-                const response = await fetch(`/api/dashboard/admin/config/file/${filename}`, {
+                const response = await fetch(`/admin/config/file/${filename}`, {
                     headers: {
                         'Authorization': `Bearer ${adminToken}`
                     }
@@ -976,7 +1028,7 @@
                 formData.append('filename', currentConfigFile);
                 formData.append('content', content);
                 
-                const response = await fetch('/api/dashboard/admin/config/validate', {
+                const response = await fetch('/admin/config/validate', {
                     method: 'POST',
                     headers: {
                         'Authorization': `Bearer ${adminToken}`
@@ -1025,7 +1077,7 @@
                 const formData = new FormData();
                 formData.append('content', content);
                 
-                const response = await fetch(`/api/dashboard/admin/config/file/${currentConfigFile}`, {
+                const response = await fetch(`/admin/config/file/${currentConfigFile}`, {
                     method: 'POST',
                     headers: {
                         'Authorization': `Bearer ${adminToken}`
@@ -1054,7 +1106,7 @@
         // Test alert
         async function testAlert(type) {
             try {
-                const response = await fetch(`/api/dashboard/admin/alerts/test/${type}`, {
+                const response = await fetch(`/admin/alerts/test/${type}`, {
                     method: 'POST',
                     headers: {
                         'Authorization': `Bearer ${adminToken}`
@@ -1115,7 +1167,7 @@
         async function logout() {
             if (confirm('Are you sure you want to logout?')) {
                 try {
-                    await fetch('/api/dashboard/admin/auth/logout', {
+                    await fetch('/admin/auth/logout', {
                         method: 'POST',
                         headers: {
                             'Authorization': `Bearer ${adminToken}`
@@ -1123,7 +1175,7 @@
                     });
                 } finally {
                     localStorage.removeItem('admin_token');
-                    window.location.href = '/api/dashboard/admin/login';
+                    window.location.href = '/admin/login';
                 }
             }
         }
