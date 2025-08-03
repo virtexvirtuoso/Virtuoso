@@ -404,6 +404,11 @@ async def admin_dashboard_page():
     """Serve the admin dashboard HTML page."""
     return FileResponse(TEMPLATE_DIR / "admin_dashboard.html")
 
+@router.get("/dashboard/v2")
+async def admin_dashboard_v2_page():
+    """Serve the admin dashboard v2 HTML page."""
+    return FileResponse(TEMPLATE_DIR / "admin_dashboard_v2.html")
+
 @router.get("/login")
 async def admin_login_page():
     """Serve the admin login page."""
@@ -413,3 +418,83 @@ async def admin_login_page():
 async def admin_config_editor_page():
     """Serve the optimized config editor page."""
     return FileResponse(TEMPLATE_DIR / "admin_config_editor_optimized.html")
+
+@router.get("/monitoring/live-metrics")
+async def get_admin_monitoring_metrics():
+    """Get live metrics for admin dashboard monitoring"""
+    try:
+        import psutil
+        import time
+        
+        # Import bandwidth monitor
+        from src.monitoring.bandwidth_monitor import bandwidth_monitor
+        
+        # Get system metrics
+        cpu_percent = psutil.cpu_percent(interval=1)
+        memory = psutil.virtual_memory()
+        
+        # Get bandwidth stats
+        try:
+            bandwidth_stats = await bandwidth_monitor.get_bandwidth_stats()
+            formatted_bandwidth = bandwidth_monitor.get_formatted_stats(bandwidth_stats)
+        except Exception as e:
+            logger.error(f"Error getting bandwidth stats: {str(e)}")
+            formatted_bandwidth = None
+        
+        # Get top symbols manager from app state
+        from src.dashboard.dashboard_integration import get_dashboard_integration
+        dashboard_integration = get_dashboard_integration()
+        
+        # Build response
+        metrics = {
+            "system": {
+                "cpu_percent": cpu_percent,
+                "memory_percent": memory.percent,
+                "memory_used": memory.used,
+                "memory_total": memory.total,
+                "uptime": int(time.time() - psutil.boot_time())
+            },
+            "market": {
+                "active_symbols": 0,
+                "symbols": []
+            }
+        }
+        
+        # Get market data if available
+        if dashboard_integration:
+            try:
+                symbols_data = await dashboard_integration.get_top_symbols(limit=5)
+                if symbols_data:
+                    metrics["market"]["active_symbols"] = len(symbols_data)
+                    metrics["market"]["symbols"] = [s.get('symbol', s) for s in symbols_data[:5]]
+            except Exception as e:
+                logger.warning(f"Error getting market data: {str(e)}")
+        
+        # Add bandwidth if available
+        if formatted_bandwidth and 'bandwidth' in formatted_bandwidth:
+            metrics['bandwidth'] = formatted_bandwidth['bandwidth']
+        
+        return metrics
+        
+    except Exception as e:
+        logger.error(f"Error getting admin monitoring metrics: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/monitoring/bandwidth-history")
+async def get_bandwidth_history(limit: int = 60):
+    """Get historical bandwidth data"""
+    try:
+        from src.monitoring.bandwidth_monitor import bandwidth_monitor
+        
+        history = await bandwidth_monitor.get_history(limit=limit)
+        summary = bandwidth_monitor.get_history_summary()
+        
+        return {
+            "history": history,
+            "summary": summary,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting bandwidth history: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))

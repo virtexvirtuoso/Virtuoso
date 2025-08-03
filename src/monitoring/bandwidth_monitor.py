@@ -4,16 +4,20 @@ Bandwidth monitoring integration for Virtuoso Trading System
 import asyncio
 import json
 import subprocess
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 from datetime import datetime
+from collections import deque
 
 class BandwidthMonitor:
-    """Monitor network bandwidth usage"""
+    """Monitor network bandwidth usage with historical tracking"""
     
-    def __init__(self, interface: str = "enp1s0"):
+    def __init__(self, interface: str = "enp1s0", history_size: int = 360):
         self.interface = interface
         self._last_stats = None
         self._last_update = None
+        # Keep 360 samples (6 hours at 1 minute intervals)
+        self.history = deque(maxlen=history_size)
+        self._history_lock = asyncio.Lock()
         
     async def get_bandwidth_stats(self) -> Dict:
         """Get current bandwidth statistics"""
@@ -53,6 +57,15 @@ class BandwidthMonitor:
             # Update last stats
             self._last_stats = current_stats
             self._last_update = current_time
+            
+            # Store in history
+            if rates:
+                async with self._history_lock:
+                    self.history.append({
+                        'timestamp': current_time.isoformat(),
+                        'rx_mbps': rates['rx_rate_mbps'],
+                        'tx_mbps': rates['tx_rate_mbps']
+                    })
             
             # Return formatted stats
             return {
@@ -122,6 +135,47 @@ class BandwidthMonitor:
                 }
             },
             'timestamp': stats['timestamp']
+        }
+    
+    async def get_history(self, limit: Optional[int] = None) -> List[Dict]:
+        """Get historical bandwidth data"""
+        async with self._history_lock:
+            history_list = list(self.history)
+            
+        if limit and limit > 0:
+            return history_list[-limit:]
+        return history_list
+    
+    def get_history_summary(self) -> Dict:
+        """Get summary statistics from history"""
+        if not self.history:
+            return {
+                'samples': 0,
+                'avg_rx_mbps': 0,
+                'avg_tx_mbps': 0,
+                'max_rx_mbps': 0,
+                'max_tx_mbps': 0,
+                'total_rx_gb': 0,
+                'total_tx_gb': 0
+            }
+        
+        history_list = list(self.history)
+        rx_rates = [h['rx_mbps'] for h in history_list]
+        tx_rates = [h['tx_mbps'] for h in history_list]
+        
+        # Calculate totals (assuming 1 minute intervals)
+        total_rx_gb = sum(rx_rates) * 60 / (8 * 1024)  # Convert from Mbps*minutes to GB
+        total_tx_gb = sum(tx_rates) * 60 / (8 * 1024)
+        
+        return {
+            'samples': len(history_list),
+            'avg_rx_mbps': sum(rx_rates) / len(rx_rates),
+            'avg_tx_mbps': sum(tx_rates) / len(tx_rates),
+            'max_rx_mbps': max(rx_rates) if rx_rates else 0,
+            'max_tx_mbps': max(tx_rates) if tx_rates else 0,
+            'total_rx_gb': total_rx_gb,
+            'total_tx_gb': total_tx_gb,
+            'time_span_minutes': len(history_list)
         }
 
 # Global instance

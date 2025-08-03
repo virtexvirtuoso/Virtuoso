@@ -17,6 +17,19 @@ class ExchangeNotInitializedError(RuntimeError):
 class ExchangeManager:
     """Manager class for handling multiple exchange instances"""
     
+    # Operation-specific timeout configurations (in seconds)
+    OPERATION_TIMEOUTS = {
+        'ticker': 10,      # Simple ticker fetch
+        'orderbook': 15,   # Order book data
+        'trades': 15,      # Recent trades
+        'ohlcv': 30,       # OHLCV data (can be large)
+        'markets': 20,     # Market list
+        'risk_limits': 20, # Risk limits data
+        'long_short_ratio': 15,
+        'funding_rate': 10,
+        'default': 15      # Default timeout
+    }
+    
     def __init__(self, config_manager: ConfigManager):
         """Initialize the exchange manager
         
@@ -648,8 +661,9 @@ class ExchangeManager:
                 # Format symbol if needed
                 api_symbol = self._format_symbol_for_exchange(symbol)
                 
-                # Fetch the ticker with timeout
-                async with asyncio.timeout(5):  # 5 second timeout
+                # Fetch the ticker with operation-specific timeout
+                timeout = self.OPERATION_TIMEOUTS.get('ticker', 10)
+                async with asyncio.timeout(timeout):
                     return await exchange.fetch_ticker(api_symbol)
                 
             except asyncio.TimeoutError:
