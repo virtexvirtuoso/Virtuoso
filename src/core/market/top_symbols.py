@@ -833,47 +833,84 @@ class TopSymbolsManager:
                         # Extract price from Bybit ticker data structure
                         ticker = market_data.get('ticker', {})
                         
-                        # Bybit uses 'lastPrice' field for current price
-                        if 'lastPrice' in ticker and ticker['lastPrice']:
-                            price = float(ticker['lastPrice'])
-                        elif 'last' in ticker and ticker['last']:
-                            price = float(ticker['last'])
-                        elif 'close' in ticker and ticker['close']:
-                            price = float(ticker['close'])
-                        elif 'lastPrice' in market_data and market_data['lastPrice']:
-                            price = float(market_data['lastPrice'])
-                        elif 'last' in market_data and market_data['last']:
-                            price = float(market_data['last'])
+                        # Debug logging to see what's in the data
+                        self.logger.debug(f"Market data for {symbol}: keys={list(market_data.keys())}")
+                        if 'price' in market_data:
+                            self.logger.debug(f"Price data for {symbol}: {market_data['price']}")
+                        if ticker:
+                            self.logger.debug(f"Ticker data for {symbol}: keys={list(ticker.keys())}, last_price={ticker.get('last_price')}")
                         
-                        # Bybit uses 'price24hPcnt' field for 24h percentage change
-                        if 'price24hPcnt' in ticker and ticker['price24hPcnt']:
-                            change_24h = float(ticker['price24hPcnt']) * 100
-                        elif 'price24hPcnt' in market_data and market_data['price24hPcnt']:
-                            change_24h = float(market_data['price24hPcnt']) * 100
-                        elif 'percentage' in ticker and ticker['percentage']:
-                            change_24h = float(ticker['percentage'])
-                        elif 'change' in ticker and ticker['change']:
-                            change_24h = float(ticker['change'])
+                        # Try to get price from the price object first
+                        if 'price' in market_data and isinstance(market_data['price'], dict):
+                            if 'last' in market_data['price'] and market_data['price']['last']:
+                                price = float(market_data['price']['last'])
                         
-                        # Bybit uses 'volume24h' field for 24h volume
-                        if 'volume24h' in ticker and ticker['volume24h']:
-                            volume_24h = float(ticker['volume24h'])
-                        elif 'volume24h' in market_data and market_data['volume24h']:
-                            volume_24h = float(market_data['volume24h'])
-                        elif 'baseVolume' in ticker and ticker['baseVolume']:
-                            volume_24h = float(ticker['baseVolume'])
-                        elif 'volume' in ticker and ticker['volume']:
-                            volume_24h = float(ticker['volume'])
+                        # If not found, try multiple fields for current price
+                        if price == 0:
+                            if 'last_price' in ticker and ticker['last_price']:
+                                price = float(ticker['last_price'])
+                            elif 'last' in ticker and ticker['last']:
+                                price = float(ticker['last'])
+                            elif 'lastPrice' in ticker and ticker['lastPrice']:
+                                price = float(ticker['lastPrice'])
+                            elif 'close' in ticker and ticker['close']:
+                                price = float(ticker['close'])
+                            elif 'last' in market_data and market_data['last']:
+                                price = float(market_data['last'])
+                            elif 'lastPrice' in market_data and market_data['lastPrice']:
+                                price = float(market_data['lastPrice'])
                         
-                        # Bybit uses 'turnover24h' field for 24h turnover
-                        if 'turnover24h' in ticker and ticker['turnover24h']:
-                            turnover_24h = float(ticker['turnover24h'])
-                        elif 'turnover24h' in market_data and market_data['turnover24h']:
-                            turnover_24h = float(market_data['turnover24h'])
-                        elif 'quoteVolume' in ticker and ticker['quoteVolume']:
-                            turnover_24h = float(ticker['quoteVolume'])
-                        elif 'turnover' in ticker and ticker['turnover']:
-                            turnover_24h = float(ticker['turnover'])
+                        # Try to get change from the price object first
+                        if 'price' in market_data and isinstance(market_data['price'], dict):
+                            if 'change_24h' in market_data['price'] and market_data['price']['change_24h']:
+                                # Calculate percentage from absolute change
+                                if price > 0:
+                                    change_24h = (float(market_data['price']['change_24h']) / (price - float(market_data['price']['change_24h']))) * 100
+                        
+                        # If not found, try multiple fields for 24h percentage change
+                        if change_24h == 0:
+                            if 'percentage' in ticker and ticker['percentage']:
+                                change_24h = float(ticker['percentage'])
+                            elif 'price24hPcnt' in ticker and ticker['price24hPcnt']:
+                                change_24h = float(ticker['price24hPcnt']) * 100
+                            elif 'price24hPcnt' in market_data and market_data['price24hPcnt']:
+                                change_24h = float(market_data['price24hPcnt']) * 100
+                            elif 'change' in ticker and ticker['change']:
+                                change_24h = float(ticker['change'])
+                        
+                        # Try to get volume from the price object first
+                        if 'price' in market_data and isinstance(market_data['price'], dict):
+                            if 'volume' in market_data['price'] and market_data['price']['volume']:
+                                volume_24h = float(market_data['price']['volume'])
+                        
+                        # If not found, try multiple fields for 24h volume
+                        if volume_24h == 0:
+                            if 'volume_24h' in ticker and ticker['volume_24h']:
+                                volume_24h = float(ticker['volume_24h'])
+                            elif 'baseVolume' in ticker and ticker['baseVolume']:
+                                volume_24h = float(ticker['baseVolume'])
+                            elif 'volume24h' in ticker and ticker['volume24h']:
+                                volume_24h = float(ticker['volume24h'])
+                            elif 'volume24h' in market_data and market_data['volume24h']:
+                                volume_24h = float(market_data['volume24h'])
+                            elif 'volume' in ticker and ticker['volume']:
+                                volume_24h = float(ticker['volume'])
+                        
+                        # Try to get turnover from the price object first
+                        if 'price' in market_data and isinstance(market_data['price'], dict):
+                            if 'turnover' in market_data['price'] and market_data['price']['turnover']:
+                                turnover_24h = float(market_data['price']['turnover'])
+                        
+                        # If not found, try multiple fields for 24h turnover
+                        if turnover_24h == 0:
+                            if 'quoteVolume' in ticker and ticker['quoteVolume']:
+                                turnover_24h = float(ticker['quoteVolume'])
+                            elif 'turnover24h' in ticker and ticker['turnover24h']:
+                                turnover_24h = float(ticker['turnover24h'])
+                            elif 'turnover24h' in market_data and market_data['turnover24h']:
+                                turnover_24h = float(market_data['turnover24h'])
+                            elif 'turnover' in ticker and ticker['turnover']:
+                                turnover_24h = float(ticker['turnover'])
                         
                         symbols_data.append({
                             'symbol': symbol,
