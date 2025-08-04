@@ -176,14 +176,13 @@ class BybitExchange(BaseExchange):
         self.testnet = testnet_env or self.exchange_config.get('testnet', False)
         
         # Initialize rate limits
-        self.rate_limits = {
-            'market_data': {'requests': 120, 'per_second': 1},
-            'ticker': {'requests': 60, 'per_second': 1},
-            'orderbook': {'requests': 60, 'per_second': 1},
-            'trades': {'requests': 60, 'per_second': 1},
-            'kline': {'requests': 60, 'per_second': 1},
-            'long_short_ratio': {'requests': 60, 'per_second': 1},
-            'risk_limits': {'requests': 60, 'per_second': 1}
+        self.rate_limits = self.RATE_LIMITS.copy()
+        
+        # Track rate limit status from response headers
+        self.rate_limit_status = {
+            'remaining': 600,
+            'limit': 600,
+            'reset_timestamp': None
         }
         
         # Initialize rate limit tracking
@@ -479,7 +478,7 @@ class BybitExchange(BaseExchange):
             # Initialize WebSocket if enabled (with timeout)
             if self.exchange_config.get('websocket', {}).get('enabled'):
                 try:
-                    async with asyncio.timeout(10.0):
+                    async with asyncio.timeout(30.0):
                         await self._init_websocket()
                 except asyncio.TimeoutError:
                     self.logger.error("WebSocket initialization timed out")
@@ -675,7 +674,7 @@ class BybitExchange(BaseExchange):
             breaker['state'] = 'open'
             self.logger.warning(f"Circuit breaker opened for {endpoint} after {breaker['failures']} failures")
 
-async def _make_request(self, method: str, endpoint: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    async def _make_request(self, method: str, endpoint: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Make a request to the Bybit API.
         
         Args:
@@ -739,20 +738,20 @@ async def _make_request(self, method: str, endpoint: str, params: Optional[Dict[
             try:
                 if method.upper() == 'GET':
                     # Use timeout context manager for the entire operation
-                    async with asyncio.timeout(10.0):
+                    async with asyncio.timeout(30.0):
                         async with self.session.get(url, params=params, headers=headers) as response:
                             return await self._process_response(response, url)
                 elif method.upper() == 'POST':
                     # For POST requests, send params as JSON in the body
-                    async with asyncio.timeout(10.0):
+                    async with asyncio.timeout(30.0):
                         async with self.session.post(url, json=params, headers=headers) as response:
                             return await self._process_response(response, url)
             except asyncio.TimeoutError:
                 self.logger.error(f"Request timeout after 10s: {endpoint}")
                 return {'retCode': -1, 'retMsg': 'Request timeout'}
-            else:
-                self.logger.error(f"Unsupported HTTP method: {method}")
-                return {'retCode': -1, 'retMsg': f'Unsupported method {method}'}
+            except Exception as e:
+                self.logger.error(f"Error during request: {str(e)}")
+                return {'retCode': -1, 'retMsg': str(e)}
                     
         except GeneratorExit:
             self.logger.info("Request cancelled due to GeneratorExit")
@@ -870,7 +869,7 @@ async def _make_request(self, method: str, endpoint: str, params: Optional[Dict[
         # Return error response after all retries
         return {'retCode': -1, 'retMsg': f'Request failed after {max_retries} attempts: {str(last_error)}'}
 
-async def _process_response(self, response, url):
+    async def _process_response(self, response, url):
         """Process HTTP response and return result with proper logging.
         
         Args:
@@ -880,6 +879,20 @@ async def _process_response(self, response, url):
         Returns:
             Processed API response
         """
+        # Extract rate limit headers from response
+        try:
+            self.rate_limit_status['remaining'] = int(response.headers.get('X-Bapi-Limit-Status', 600))
+            self.rate_limit_status['limit'] = int(response.headers.get('X-Bapi-Limit', 600))
+            reset_time = response.headers.get('X-Bapi-Limit-Reset-Timestamp')
+            if reset_time:
+                self.rate_limit_status['reset_timestamp'] = int(reset_time) / 1000  # Convert ms to seconds
+            
+            # Log rate limit status if getting low
+            if self.rate_limit_status['remaining'] < 100:
+                self.logger.warning(f"Rate limit warning: {self.rate_limit_status['remaining']}/{self.rate_limit_status['limit']} remaining")
+        except Exception as e:
+            self.logger.debug(f"Could not parse rate limit headers: {e}")
+        
         if response.status != 200:
             error_text = await response.text()
             self.logger.error(f"HTTP {response.status} error for {url}: {error_text}")
@@ -2277,64 +2290,53 @@ async def _process_response(self, response, url):
             self.logger.debug(f"Raw message: {message}")
 
     async def _check_rate_limit(self, endpoint: str, category: str = 'linear') -> None:
-        """Check rate limit for endpoint and category."""
+        """Check rate limit using sliding window approach matching Bybit's limits."""
         async with self._rate_limit_lock:
             now = time.time()
             
-            # Check composite market_data limit first if applicable
-            if endpoint == 'market_data':
-                market_data_bucket = self._rate_limit_buckets.setdefault('market_data', [])
-                market_data_limit = self.RATE_LIMITS['endpoints']['market_data']
-                
-                # Clean expired timestamps
-                market_data_bucket[:] = [ts for ts in market_data_bucket if ts > now - market_data_limit['per_second']]
-                
-                # Check market_data limit
-                if len(market_data_bucket) >= market_data_limit['requests']:
-                    wait_time = market_data_bucket[0] + market_data_limit['per_second'] - now
-                    if wait_time > 0:
-                        self.logger.debug(f"Market data composite rate limit hit, waiting {wait_time:.2f}s")
-                        await asyncio.sleep(wait_time)
-                        await self._check_rate_limit(endpoint, category)
-                        return
-                
-                market_data_bucket.append(now)
-                return
+            # Use global rate limit bucket (600 requests per 5 seconds)
+            global_bucket = self._rate_limit_buckets.setdefault('global', [])
+            window_start = now - 5.0  # 5-second sliding window
             
-            # Check category limit first
-            category_bucket = self._rate_limit_buckets.setdefault(f'category_{category}', [])
-            category_limit = self.RATE_LIMITS['category'][category]
+            # Clean expired timestamps (older than 5 seconds)
+            global_bucket[:] = [ts for ts in global_bucket if ts > window_start]
             
-            # Clean expired timestamps
-            category_bucket[:] = [ts for ts in category_bucket if ts > now - category_limit['per_second']]
-            
-            # Check category limit
-            if len(category_bucket) >= category_limit['requests']:
-                wait_time = category_bucket[0] + category_limit['per_second'] - now
+            # Check if we've hit the global limit
+            if len(global_bucket) >= 600:
+                # Calculate wait time until oldest request expires
+                wait_time = global_bucket[0] + 5.0 - now
                 if wait_time > 0:
-                    self.logger.debug(f"Category {category} rate limit hit, waiting {wait_time:.2f}s")
+                    self.logger.warning(f"Global rate limit reached (600/5s), waiting {wait_time:.2f}s")
                     await asyncio.sleep(wait_time)
-                    await self._check_rate_limit(endpoint, category)  # Recursive check
+                    # Recursive check after waiting
+                    await self._check_rate_limit(endpoint, category)
                     return
             
-            # Check endpoint limit
+            # Also check endpoint-specific limits for internal throttling
             endpoint_bucket = self._rate_limit_buckets.setdefault(endpoint, [])
-            endpoint_limit = self.RATE_LIMITS['endpoints'][endpoint]
+            endpoint_limit = self.RATE_LIMITS['endpoints'].get(endpoint, {'requests': 100, 'per_second': 1})
             
-            # Clean expired timestamps
-            endpoint_bucket[:] = [ts for ts in endpoint_bucket if ts > now - endpoint_limit['per_second']]
+            # Clean expired timestamps for endpoint
+            endpoint_window = now - endpoint_limit['per_second']
+            endpoint_bucket[:] = [ts for ts in endpoint_bucket if ts > endpoint_window]
             
             # Check endpoint limit
             if len(endpoint_bucket) >= endpoint_limit['requests']:
                 wait_time = endpoint_bucket[0] + endpoint_limit['per_second'] - now
                 if wait_time > 0:
-                    self.logger.debug(f"Endpoint {endpoint} rate limit hit, waiting {wait_time:.2f}s")
+                    self.logger.debug(f"Endpoint {endpoint} rate limit, waiting {wait_time:.2f}s")
                     await asyncio.sleep(wait_time)
                     await self._check_rate_limit(endpoint, category)
                     return
             
-            # Update buckets
-            category_bucket.append(now)
+            # Check dynamic rate limit from headers
+            if hasattr(self, 'rate_limit_status') and self.rate_limit_status['remaining'] < 50:
+                self.logger.warning(f"Low rate limit remaining: {self.rate_limit_status['remaining']}")
+                # Add small delay to be conservative
+                await asyncio.sleep(0.1)
+            
+            # Record the request timestamp
+            global_bucket.append(now)
             endpoint_bucket.append(now)
 
     def _ensure_sentiment_structure(self, market_data: Dict[str, Any], symbol: str) -> None:
@@ -2984,6 +2986,33 @@ async def _process_response(self, response, url):
             # Return default structure instead of empty dict
             return self._get_default_market_data(symbol)
 
+    def get_rate_limit_status(self) -> Dict[str, Any]:
+        """Get current rate limit status.
+        
+        Returns:
+            Dict with rate limit information
+        """
+        status = {
+            'remaining': self.rate_limit_status.get('remaining', 600),
+            'limit': self.rate_limit_status.get('limit', 600),
+            'reset_timestamp': self.rate_limit_status.get('reset_timestamp'),
+            'percentage_used': 0
+        }
+        
+        if status['limit'] > 0:
+            status['percentage_used'] = ((status['limit'] - status['remaining']) / status['limit']) * 100
+        
+        # Add global bucket info
+        global_bucket = self._rate_limit_buckets.get('global', [])
+        now = time.time()
+        window_start = now - 5.0
+        active_requests = len([ts for ts in global_bucket if ts > window_start])
+        
+        status['active_requests_5s'] = active_requests
+        status['capacity_5s'] = 600 - active_requests
+        
+        return status
+    
     async def _fetch_with_rate_limit(self, endpoint: str, fetch_func: Callable, *args, **kwargs) -> Any:
         """Execute fetch function with rate limiting."""
         await self._check_rate_limit(endpoint)
