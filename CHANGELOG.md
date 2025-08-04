@@ -18,6 +18,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Result: 100% elimination of timeout errors (from 204 errors/10min to 0)
   - Affected PIDs: 100526 → 103090 → 106231 → 109133 (final stable PID)
 
+- **📊 Bybit Rate Limit Compliance** - Fixed incorrect rate limiting implementation
+  - Corrected rate limits from 120/second to Bybit's actual 600 requests per 5-second window
+  - Implemented sliding window rate limiting algorithm for accurate tracking
+  - Added response header tracking (`X-Bapi-Limit-Status`, `X-Bapi-Limit`, `X-Bapi-Limit-Reset-Timestamp`)
+  - Fixed missing `rate_limit_status` initialization causing debug errors
+  - Result: Proper compliance with Bybit's rate limits and reduced API errors
+
 ### Added
 - **🔄 Retry Logic Implementation** - Robust error handling for API requests
   - New method `_make_request_with_retry` with 3 max attempts
@@ -26,12 +33,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Applied to all major API methods (ticker, orderbook, trades, OHLCV, funding, OI)
   - Comprehensive logging of retry attempts and failures
 
+- **📈 Rate Limit Monitoring** - Real-time API capacity tracking
+  - New `get_rate_limit_status()` method for monitoring current limits
+  - Dynamic rate limit awareness with proactive throttling
+  - Warning logs when remaining requests drop below 100
+  - Sliding window tracking shows active requests in 5-second window
+
 ### Changed
 - **⏱️ Timeout Configuration Optimization**
   - Request timeout: 15s → 10s (lines 687, 692 in bybit.py)
   - Connection timeout: 10s → 15s (line 572 in bybit.py)
   - Total timeout: 30s → 35s to accommodate connection timeout
   - Result: Faster failure detection with better connection reliability
+
+- **🔌 Connection Pool Optimization** - Enhanced concurrent request handling
+  - Increased total connection limit to 300 (from 150)
+  - Increased per-host limit to 100 (from 40)
+  - Disabled force close for better connection reuse
+  - Extended keepalive timeout from 30s to 60s
+  - Result: Better handling of burst traffic and reduced connection overhead
 
 ### Documentation
 - **📚 Comprehensive Fix Documentation** - Complete documentation package
