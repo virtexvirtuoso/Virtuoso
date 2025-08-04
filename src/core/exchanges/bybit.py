@@ -23,6 +23,7 @@ from dotenv import load_dotenv
 import numpy as np
 import re
 from collections import defaultdict
+from src.core.base_component import BaseComponent
 
 # Load environment variables from .env file
 load_dotenv()
@@ -268,6 +269,61 @@ class BybitExchange(BaseExchange):
         self.connector = None
         self.timeout = None
         
+
+    async def initialize(self) -> bool:
+        """Initialize exchange connection and verify API credentials.
+        
+        Returns:
+            bool: True if initialization successful, False otherwise
+        """
+        try:
+            self.logger.info(f"Initializing {self.exchange_id} exchange...")
+            
+            # Initialize session if not already done
+            if not hasattr(self, 'session') or self.session is None:
+                self.session = aiohttp.ClientSession(
+                    connector=aiohttp.TCPConnector(
+                        limit=100,
+                        ttl_dns_cache=300,
+                        ssl=False
+                    ),
+                    timeout=aiohttp.ClientTimeout(
+                        total=30,
+                        connect=5,
+                        sock_read=25
+                    )
+                )
+            
+            # Initialize pybit client for authenticated endpoints
+            if self.api_key and self.api_secret:
+                try:
+                    self.pybit_client = HTTP(
+                        testnet=self.testnet,
+                        api_key=self.api_key,
+                        api_secret=self.api_secret
+                    )
+                    self.logger.info("Pybit client initialized for authenticated endpoints")
+                except Exception as e:
+                    self.logger.error(f"Failed to initialize pybit client: {e}")
+                    self.pybit_client = None
+            
+            # Test connection with a simple API call
+            test_result = await self.health_check()
+            
+            if test_result:
+                self.logger.info(f"✅ {self.exchange_id} exchange initialized successfully")
+                self.initialized = True
+                return True
+            else:
+                self.logger.error(f"❌ {self.exchange_id} exchange health check failed")
+                self.initialized = False
+                return False
+                
+        except Exception as e:
+            self.logger.error(f"Failed to initialize {self.exchange_id}: {str(e)}")
+            self.initialized = False
+            return False
+    
     def _setup_basic_config(self):
         """Setup basic configuration parameters"""
         # Validate required fields
@@ -407,30 +463,41 @@ class BybitExchange(BaseExchange):
             self.logger.error(f"WebSocket initialization failed: {str(e)}")
             return False
     
-    async def initialize(self) -> bool:
-        """Initialize the exchange connection."""
+    async def _do_initialize(self) -> bool:
+        """Perform Bybit-specific initialization."""
         try:
-            self.logger.info("Initializing Bybit exchange...")
-            
             if not self._validate_config(self.exchange_config):
                 self.logger.error("Invalid configuration")
                 return False
             
-            # Initialize REST client
+            # Initialize REST client with timeout
             self.logger.info("Initializing REST client...")
-            await self._init_rest_client()
+            rest_success = await self._init_rest_client_with_timeout()
+            if not rest_success:
+                return False
             
-            # Initialize WebSocket if enabled
+            # Initialize WebSocket if enabled (with timeout)
             if self.exchange_config.get('websocket', {}).get('enabled'):
-                await self._init_websocket()
-                
-            # Mark as initialized
-            self.initialized = True
-            self.logger.info("Bybit exchange initialized successfully")
+                try:
+                    async with asyncio.timeout(10.0):
+                        await self._init_websocket()
+                except asyncio.TimeoutError:
+                    self.logger.error("WebSocket initialization timed out")
+                    # Continue without WebSocket
+            
             return True
             
         except Exception as e:
-            self.logger.error(f"Failed to initialize Bybit exchange: {str(e)}")
+            self.logger.error(f"Initialization error: {str(e)}")
+            return False
+    
+    async def _init_rest_client_with_timeout(self) -> bool:
+        """Initialize REST client with proper timeout."""
+        try:
+            async with asyncio.timeout(10.0):
+                return await self._init_rest_client()
+        except asyncio.TimeoutError:
+            self.logger.error("REST client initialization timed out")
             return False
 
     def set_market_type(self, market_type: str) -> None:
@@ -441,7 +508,7 @@ class BybitExchange(BaseExchange):
         self.logger.info(f"Market type set to: {market_type}")
 
     async def _init_rest_client(self) -> bool:
-        """Initialize REST client for API requests.
+        """Initialize REST client for API requests with timeout.
         
         Returns:
             bool: True if initialization successful, False otherwise
@@ -451,10 +518,19 @@ class BybitExchange(BaseExchange):
             if not self.session or self.session.closed:
                 await self._create_session()
             
-            # Test connection with server time endpoint
-            response = await self._make_request('GET', '/v5/market/time')
-            if not response or 'retCode' not in response:
-                self.logger.error("Failed to connect to REST API")
+            # Test connection with server time endpoint (with shorter timeout)
+            try:
+                response = await asyncio.wait_for(
+                    self._make_request('GET', '/v5/market/time'),
+                    timeout=5.0  # 5 second timeout for connection test
+                )
+                if not response or 'retCode' not in response:
+                    self.logger.error("Failed to connect to REST API")
+                    return False
+            except asyncio.TimeoutError:
+                self.logger.error("Connection test timed out after 5s")
+                # Try to recreate session
+                await self._create_session()
                 return False
             
             if response['retCode'] != 0:
@@ -482,19 +558,21 @@ class BybitExchange(BaseExchange):
                 
             # Create TCP connector with connection pooling
             self.connector = aiohttp.TCPConnector(
-                limit=100,  # Total connection pool limit
-                limit_per_host=30,  # Per-host connection limit
+                limit=150,  # Increased total connection pool limit
+                limit_per_host=40,  # Increased per-host connection limit
                 ttl_dns_cache=300,  # DNS cache timeout
                 enable_cleanup_closed=True,
                 force_close=False,  # Don't force close to allow keepalive
                 keepalive_timeout=30
+                # Note: limit_per_host_queue removed for compatibility
             )
             
-            # Configure timeouts
+            # Configure timeouts with more aggressive settings to prevent hanging
             self.timeout = aiohttp.ClientTimeout(
-                total=30,  # Total timeout
-                connect=10,  # Connection timeout
-                sock_read=20  # Socket read timeout
+                total=10,  # Further reduced total timeout
+                connect=3,  # Aggressive connection timeout
+                sock_read=7,  # Reduced socket read timeout
+                sock_connect=3  # Aggressive socket connection timeout
             )
             
             # Create session with connection pooling
@@ -522,6 +600,7 @@ class BybitExchange(BaseExchange):
             return False
     async def _make_request_with_retry(self, method: str, endpoint: str, params: Optional[Dict[str, Any]] = None, max_retries: int = 3) -> Dict[str, Any]:
         """Make request with retry logic and exponential backoff."""
+        await self._throttle_request()
         for attempt in range(max_retries):
             try:
                 return await self._make_request(method, endpoint, params)
@@ -542,7 +621,61 @@ class BybitExchange(BaseExchange):
         
         return {}  # Should never reach here
     
-    async def _make_request(self, method: str, endpoint: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    
+    def _init_circuit_breakers(self):
+        """Initialize circuit breakers for each endpoint"""
+        self.circuit_breakers = {}
+        self.circuit_breaker_config = {
+            'failure_threshold': 5,  # Open circuit after 5 failures
+            'recovery_timeout': 60,  # Try again after 60 seconds
+            'expected_exception': asyncio.TimeoutError
+        }
+    
+    def _check_circuit_breaker(self, endpoint: str) -> bool:
+        """Check if circuit breaker is open for endpoint"""
+        if endpoint not in self.circuit_breakers:
+            self.circuit_breakers[endpoint] = {
+                'failures': 0,
+                'last_failure': None,
+                'state': 'closed'  # closed, open, half-open
+            }
+        
+        breaker = self.circuit_breakers[endpoint]
+        
+        # If circuit is open, check if we should try half-open
+        if breaker['state'] == 'open':
+            if breaker['last_failure'] and                (asyncio.get_event_loop().time() - breaker['last_failure']) > self.circuit_breaker_config['recovery_timeout']:
+                breaker['state'] = 'half-open'
+                self.logger.info(f"Circuit breaker for {endpoint} moved to half-open state")
+            else:
+                return False  # Circuit still open
+        
+        return True  # Circuit closed or half-open
+    
+    def _record_circuit_breaker_success(self, endpoint: str):
+        """Record successful request"""
+        if endpoint in self.circuit_breakers:
+            self.circuit_breakers[endpoint]['failures'] = 0
+            self.circuit_breakers[endpoint]['state'] = 'closed'
+    
+    def _record_circuit_breaker_failure(self, endpoint: str):
+        """Record failed request"""
+        if endpoint not in self.circuit_breakers:
+            self.circuit_breakers[endpoint] = {
+                'failures': 0,
+                'last_failure': None,
+                'state': 'closed'
+            }
+        
+        breaker = self.circuit_breakers[endpoint]
+        breaker['failures'] += 1
+        breaker['last_failure'] = asyncio.get_event_loop().time()
+        
+        if breaker['failures'] >= self.circuit_breaker_config['failure_threshold']:
+            breaker['state'] = 'open'
+            self.logger.warning(f"Circuit breaker opened for {endpoint} after {breaker['failures']} failures")
+
+async def _make_request(self, method: str, endpoint: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Make a request to the Bybit API.
         
         Args:
@@ -602,14 +735,21 @@ class BybitExchange(BaseExchange):
             if not self.session or self.session.closed:
                 await self._create_session()
             
-            # Use persistent session instead of creating new one
-            if method.upper() == 'GET':
-                async with self.session.get(url, params=params, headers=headers) as response:
-                    return await self._process_response(response, url)
-            elif method.upper() == 'POST':
-                # For POST requests, send params as JSON in the body
-                async with self.session.post(url, json=params, headers=headers) as response:
-                    return await self._process_response(response, url)
+            # Use persistent session with explicit timeout
+            try:
+                if method.upper() == 'GET':
+                    # Use timeout context manager for the entire operation
+                    async with asyncio.timeout(10.0):
+                        async with self.session.get(url, params=params, headers=headers) as response:
+                            return await self._process_response(response, url)
+                elif method.upper() == 'POST':
+                    # For POST requests, send params as JSON in the body
+                    async with asyncio.timeout(10.0):
+                        async with self.session.post(url, json=params, headers=headers) as response:
+                            return await self._process_response(response, url)
+            except asyncio.TimeoutError:
+                self.logger.error(f"Request timeout after 10s: {endpoint}")
+                return {'retCode': -1, 'retMsg': 'Request timeout'}
             else:
                 self.logger.error(f"Unsupported HTTP method: {method}")
                 return {'retCode': -1, 'retMsg': f'Unsupported method {method}'}
@@ -699,7 +839,38 @@ class BybitExchange(BaseExchange):
         except Exception as e:
             return f"Error summarizing response: {str(e)}"
 
-    async def _process_response(self, response, url):
+    
+    async def _make_request_with_retry(self, method: str, endpoint: str, params: dict = None, max_retries: int = 3) -> dict:
+        """Make request with retry logic and exponential backoff"""
+        last_error = None
+        base_delay = 1.0  # Start with 1 second
+        
+        for attempt in range(max_retries):
+            try:
+                result = await self._make_request(method, endpoint, params)
+                
+                # Check if we got a rate limit error
+                if result.get('retCode') == 10006:  # Rate limit error
+                    delay = base_delay * (2 ** attempt)  # Exponential backoff
+                    self.logger.warning(f"Rate limit hit, waiting {delay}s before retry (attempt {attempt + 1}/{max_retries})")
+                    await asyncio.sleep(delay)
+                    continue
+                    
+                return result
+                
+            except Exception as e:
+                last_error = e
+                if attempt < max_retries - 1:
+                    delay = base_delay * (2 ** attempt)
+                    self.logger.warning(f"Request failed, retrying in {delay}s (attempt {attempt + 1}/{max_retries}): {str(e)}")
+                    await asyncio.sleep(delay)
+                else:
+                    self.logger.error(f"Request failed after {max_retries} attempts: {str(e)}")
+        
+        # Return error response after all retries
+        return {'retCode': -1, 'retMsg': f'Request failed after {max_retries} attempts: {str(last_error)}'}
+
+async def _process_response(self, response, url):
         """Process HTTP response and return result with proper logging.
         
         Args:
@@ -3775,7 +3946,7 @@ class BybitExchange(BaseExchange):
             self.logger.debug(f"Fetching OHLCV for {original_symbol} (API symbol: {api_symbol}, category: {category}, timeframe: {tf})")
             
             # Make the API request
-            response = await self._make_request(
+            response = await self._make_request_with_retry(
                 'GET', 
                 '/v5/market/kline',
                 params={
@@ -3861,7 +4032,7 @@ class BybitExchange(BaseExchange):
         request_params.update(params)
         
         try:
-            response = await self._make_request('GET', '/v5/market/recent-trade', request_params)
+            response = await self._make_request_with_retry('GET', '/v5/market/recent-trade', request_params)
             
             # Verify the response has the expected structure
             if not response or 'result' not in response:
@@ -3900,7 +4071,7 @@ class BybitExchange(BaseExchange):
             
             self.logger.debug(f"Fetching order book for {symbol} (API symbol: {api_symbol}, category: {category})")
             
-            response = await self._make_request('GET', '/v5/market/orderbook', {
+            response = await self._make_request_with_retry('GET', '/v5/market/orderbook', {
                 'category': category,
                 'symbol': api_symbol,
                 'limit': min(limit, 200)  # Max 200 per Bybit API docs
