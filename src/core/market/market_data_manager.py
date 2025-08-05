@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+from datetime import datetime
 import time
 from typing import Dict, List, Any, Callable, Optional
 import pandas as pd
@@ -12,6 +13,7 @@ from src.core.exchanges.websocket_manager import WebSocketManager
 from src.core.market.smart_intervals import SmartIntervalsManager, MarketActivity
 
 logger = logging.getLogger(__name__)
+
 
 class MarketDataManager:
     """
@@ -519,6 +521,31 @@ class MarketDataManager:
                             'timestamp': int(time.time() * 1000),
                             'history': history_list
                         }
+                        
+                        # Also store in sentiment-compatible format
+                        if symbol in self.data_cache:
+                            sentiment_oi = {
+                                'value': float(current_oi),
+                                'change_24h': float(current_oi - previous_oi) if previous_oi else 0.0,
+                                'timestamp': int(market_data['open_interest'].get('timestamp', time.time() * 1000))
+                            }
+                            # Merge sentiment OI with existing structure
+                            if 'open_interest' not in self.data_cache[symbol]:
+                                self.data_cache[symbol]['open_interest'] = {
+                                    'current': 0.0,
+                                    'previous': 0.0,
+                                    'timestamp': 0,
+                                    'history': []
+                                }
+                            
+                            # Update with sentiment values while preserving structure
+                            oi_data = self.data_cache[symbol]['open_interest']
+                            oi_data['previous'] = oi_data.get('current', 0.0)
+                            oi_data['current'] = float(current_oi)
+                            oi_data['timestamp'] = sentiment_oi['timestamp']
+                            oi_data['value'] = sentiment_oi['value']  # Keep for compatibility
+                            oi_data['change_24h'] = sentiment_oi['change_24h']
+                            self.logger.debug(f"Stored sentiment OI for {symbol}: value={sentiment_oi['value']}, change={sentiment_oi['change_24h']}")
                         
                         # ADDED: Create direct reference to history for easier access
                         market_data['open_interest_history'] = history_list
@@ -1692,9 +1719,70 @@ class MarketDataManager:
         if 'long_short_ratio' in self.data_cache[symbol]:
             sentiment['long_short_ratio'] = self.data_cache[symbol]['long_short_ratio']
         # Add other possible sentiment fields as needed (e.g., funding_rate, liquidations)
-        for key in ['funding_rate', 'liquidations', 'market_mood', 'risk', 'open_interest']:
+        for key in ['funding_rate', 'liquidations', 'market_mood', 'risk']:
             if key in self.data_cache[symbol]:
                 sentiment[key] = self.data_cache[symbol][key]
+        
+        # Special handling for open_interest to ensure correct structure
+        if 'open_interest' in self.data_cache[symbol]:
+            oi_data = self.data_cache[symbol]['open_interest']
+            
+            # Check if we have the full OI structure with history
+            if isinstance(oi_data, dict) and 'current' in oi_data:
+                # We have the full structure from market data
+                sentiment['open_interest'] = {
+                    'value': float(oi_data.get('current', 0)),
+                    'change_24h': float(oi_data.get('current', 0)) - float(oi_data.get('previous', 0)),
+                    'timestamp': int(oi_data.get('timestamp', time.time() * 1000))
+                }
+            elif isinstance(oi_data, dict) and 'value' in oi_data:
+                # Already in sentiment format
+                sentiment['open_interest'] = oi_data
+            else:
+                # Try to get from market_data['open_interest'] if available
+                if 'open_interest' in market_data and market_data['open_interest']:
+                    md_oi = market_data['open_interest']
+                    if isinstance(md_oi, dict) and 'current' in md_oi:
+                        sentiment['open_interest'] = {
+                            'value': float(md_oi.get('current', 0)),
+                            'change_24h': float(md_oi.get('current', 0)) - float(md_oi.get('previous', 0)),
+                            'timestamp': int(md_oi.get('timestamp', time.time() * 1000))
+                        }
+                    else:
+                        # Last resort - check if we have OI history
+                        oi_history = self.get_open_interest_data(symbol)
+                        if oi_history and isinstance(oi_history, dict):
+                            if 'current' in oi_history:
+                                sentiment['open_interest'] = {
+                                    'value': float(oi_history.get('current', 0)),
+                                    'change_24h': float(oi_history.get('current', 0)) - float(oi_history.get('previous', 0)),
+                                    'timestamp': int(oi_history.get('timestamp', time.time() * 1000))
+                                }
+                            elif 'history' in oi_history and oi_history['history']:
+                                # Extract from history
+                                latest = oi_history['history'][0]
+                                previous = oi_history['history'][1] if len(oi_history['history']) > 1 else latest
+                                sentiment['open_interest'] = {
+                                    'value': float(latest.get('value', 0)),
+                                    'change_24h': float(latest.get('value', 0)) - float(previous.get('value', 0)),
+                                    'timestamp': int(latest.get('timestamp', time.time() * 1000))
+                                }
+                            else:
+                                # No valid OI data found
+                                self.logger.warning(f"No valid OI data found for {symbol}")
+                                sentiment['open_interest'] = {
+                                    'value': 0.0,
+                                    'change_24h': 0.0,
+                                    'timestamp': int(time.time() * 1000)
+                                }
+                else:
+                    # No OI data available
+                    self.logger.debug(f"No open interest data in cache for {symbol}")
+                    sentiment['open_interest'] = {
+                        'value': 0.0,
+                        'change_24h': 0.0,
+                        'timestamp': int(time.time() * 1000)
+                    }
         # Log the sentiment dict for debugging
         self.logger.info(f"get_market_data: Sentiment dict keys: {list(sentiment.keys())}")
         if 'long_short_ratio' in sentiment:
@@ -1866,6 +1954,15 @@ class MarketDataManager:
             timestamp: Timestamp for the update
         """
         try:
+            # Validate inputs
+            if not isinstance(value, (int, float)):
+                self.logger.warning(f"Invalid OI value type for {symbol}: {type(value)}")
+                return
+            
+            if value < 0:
+                self.logger.warning(f"Negative OI value for {symbol}: {value}")
+                return
+        
             # Ensure symbol exists in cache
             if symbol not in self.data_cache:
                 self.data_cache[symbol] = {}
@@ -1882,7 +1979,18 @@ class MarketDataManager:
             oi_data = self.data_cache[symbol]['open_interest']
             
             # Update current and previous values
-            if oi_data['current'] != value:
+            # Handle both old and new structure formats
+            current_value = oi_data.get('current', oi_data.get('value', 0.0))
+            
+            if current_value != value:
+                # Ensure we have the correct structure
+                if 'current' not in oi_data:
+                    # Convert from sentiment structure to history structure
+                    oi_data['current'] = oi_data.get('value', 0.0)
+                    oi_data['previous'] = oi_data.get('current', 0.0)
+                    if 'history' not in oi_data:
+                        oi_data['history'] = []
+                
                 oi_data['previous'] = oi_data['current']
                 oi_data['current'] = value
                 oi_data['timestamp'] = timestamp
@@ -1945,6 +2053,31 @@ class MarketDataManager:
         except Exception as e:
             self.logger.error(f"Error updating open interest history: {str(e)}")
             self.logger.debug(traceback.format_exc()) 
+
+    def _validate_market_data(self, data: Dict[str, Any], symbol: str) -> bool:
+        """Validate market data before processing.
+        
+        Returns:
+            bool: True if data is valid, False otherwise
+        """
+        if not data:
+            self.logger.warning(f"No market data for {symbol}")
+            return False
+            
+        # Check for required fields
+        required_fields = ['ticker', 'timestamp']
+        for field in required_fields:
+            if field not in data:
+                self.logger.warning(f"Missing required field '{field}' for {symbol}")
+                return False
+        
+        # Validate ticker data
+        ticker = data.get('ticker', {})
+        if not ticker or ticker.get('last_price', 0) <= 0:
+            self.logger.warning(f"Invalid ticker data for {symbol}")
+            return False
+            
+        return True
 
     def get_open_interest_data(self, symbol: str) -> Dict[str, Any]:
         """Get open interest data for a symbol.

@@ -1,0 +1,27 @@
+# Timeout configuration fix for high-latency environments
+# This configuration increases timeouts to handle 180ms+ latency from Singapore to Bybit
+
+exchanges:
+  bybit:
+    # Increase connection timeouts
+    connection_config:
+      total_timeout: 60        # was 30
+      connect_timeout: 20      # was 10
+      socket_read_timeout: 30  # was 20
+      
+    # Connection pool settings
+    connection_pool:
+      limit: 150              # total connections
+      limit_per_host: 40      # per-host limit
+      keepalive_timeout: 30
+      
+    # Retry configuration
+    retry_config:
+      max_retries: 3
+      retry_delay: 1.0
+      exponential_backoff: true
+      
+    # Rate limiting (to prevent 429 errors)
+    rate_limits:
+      requests_per_second: 10    # reduced from 20
+      requests_per_minute: 600   # reduced from 1200
