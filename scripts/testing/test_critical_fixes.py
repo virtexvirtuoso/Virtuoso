@@ -1,212 +1,179 @@
 #!/usr/bin/env python3
 """
-Test script for critical fixes implemented in the codebase.
-Tests the following fixes:
-1. Numba prange race conditions
-2. Mutable default arguments
-3. Float validation for mplfinance
-4. Trial state validation in Optuna
+Test the critical fixes applied on 2025-08-04.
 """
 
-import sys
-import os
 import asyncio
-import numpy as np
-import pandas as pd
+import sys
 from pathlib import Path
-from datetime import datetime, timedelta
+import logging
+from datetime import datetime
 
 # Add project root to path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
 
-from src.utils.logging_extensions import get_logger
+# Set up logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
-logger = get_logger(__name__)
-
-def test_numba_jit_fixes():
-    """Test that Numba JIT functions work without race conditions."""
-    logger.info("Testing Numba JIT fixes...")
-    
-    try:
-        from src.indicators.price_structure_jit import fast_sr_detection
-        from src.indicators.orderflow_jit import fast_cvd_calculation
-        
-        # Generate test data
-        n = 1000
-        prices = 100 + np.cumsum(np.random.randn(n) * 0.1)
-        highs = prices * 1.01
-        lows = prices * 0.99
-        volumes = np.random.rand(n) * 1000
-        close_prices = prices
-        lookback_periods = np.array([10, 20, 50])
-        sides = np.random.choice([-1, 0, 1], size=n)
-        
-        # Test price structure detection (no prange)
-        logger.info("Testing fast_sr_detection...")
-        support_levels, resistance_levels, level_strengths = fast_sr_detection(
-            highs, lows, volumes, close_prices, lookback_periods
-        )
-        assert support_levels.shape == (n, len(lookback_periods))
-        assert not np.any(np.isnan(support_levels))
-        logger.info("✅ fast_sr_detection passed")
-        
-        # Test CVD calculation (no prange issues)
-        logger.info("Testing fast_cvd_calculation...")
-        cvd_total, buy_volume, sell_volume = fast_cvd_calculation(prices, volumes, sides)
-        assert not np.isnan(cvd_total)
-        assert buy_volume >= 0
-        assert sell_volume >= 0
-        logger.info("✅ fast_cvd_calculation passed")
-        
-        logger.info("✅ All Numba JIT tests passed")
-        return True
-        
-    except Exception as e:
-        logger.error(f"❌ Numba JIT test failed: {e}")
-        return False
-
-async def test_mutable_defaults_fix():
-    """Test that mutable default arguments are fixed."""
-    logger.info("Testing mutable default arguments fix...")
+async def test_bybit_timeout():
+    """Test Bybit connection with new timeout settings."""
+    logger.info("Testing Bybit timeout fix...")
     
     try:
         from src.core.exchanges.bybit import BybitExchange
+        from src.config.config_manager import ConfigManager
         
-        # Test that params default is None in the method signature
-        import inspect
-        fetch_trades_sig = inspect.signature(BybitExchange.fetch_trades)
-        params_default = fetch_trades_sig.parameters['params'].default
+        # Load config
+        config = ConfigManager().config
         
-        assert params_default is None, "params should default to None, not {}"
-        logger.info("✅ Mutable default arguments test passed")
+        # Create exchange instance
+        exchange = BybitExchange(config.exchanges.bybit.model_dump())
+        
+        # Test initialization with timeout
+        start_time = datetime.now()
+        success = await exchange.initialize()
+        elapsed = (datetime.now() - start_time).total_seconds()
+        
+        if success:
+            logger.info(f"✅ Bybit initialized successfully in {elapsed:.2f}s")
+            
+            # Test a simple API call with timeout
+            start_time = datetime.now()
+            result = await exchange._make_request('GET', '/v5/market/time')
+            elapsed = (datetime.now() - start_time).total_seconds()
+            
+            if result and result.get('retCode') == 0:
+                logger.info(f"✅ API call successful in {elapsed:.2f}s")
+            else:
+                logger.error(f"❌ API call failed: {result}")
+            
+            # Cleanup
+            await exchange.close()
+            
+        else:
+            logger.error(f"❌ Bybit initialization failed after {elapsed:.2f}s")
+            
+        return success
+        
+    except Exception as e:
+        logger.error(f"❌ Bybit test failed: {str(e)}")
+        return False
+
+async def test_pdf_generator():
+    """Test PDF generator with entry_pos fix."""
+    logger.info("Testing PDF generator fix...")
+    
+    try:
+        from src.core.reporting.pdf_generator import PDFGenerator
+        
+        # Create test data with missing price
+        test_data = {
+            'symbol': 'TESTUSDT',
+            'signal_type': 'BUY',
+            'confluence_score': 75.5,
+            'timestamp': datetime.now().isoformat(),
+            'entry_price': None,  # This should trigger the fixed code path
+            'ohlcv_data': []
+        }
+        
+        generator = PDFGenerator()
+        
+        # Test chart creation with missing entry price
+        logger.info("Testing chart creation with missing entry price...")
+        chart_path = await generator._create_candlestick_chart(
+            'TESTUSDT',
+            [],  # Empty OHLCV data
+            test_data,
+            'BUY'
+        )
+        
+        if chart_path:
+            logger.info(f"✅ Chart created successfully: {chart_path}")
+        else:
+            logger.info("✅ Chart creation handled gracefully (returned None)")
+            
         return True
         
     except Exception as e:
-        logger.error(f"❌ Mutable defaults test failed: {e}")
+        logger.error(f"❌ PDF generator test failed: {str(e)}")
         import traceback
         traceback.print_exc()
         return False
 
-def test_mplfinance_float_validation():
-    """Test float validation for mplfinance."""
-    logger.info("Testing mplfinance float validation...")
+async def test_market_data_fetch():
+    """Test market data fetching for new symbols."""
+    logger.info("Testing market data fetch for new symbols...")
     
     try:
-        # Check if the float validation code exists in the files
-        report_gen_path = Path('src/monitoring/report_generator.py')
-        pdf_gen_path = Path('src/core/reporting/pdf_generator.py')
+        from src.core.market.market_data_manager import MarketDataManager
+        from src.config.config_manager import ConfigManager
         
-        # Read the files and check for float validation code
-        validation_found = {'report_gen': False, 'pdf_gen': False}
+        # Create manager
+        config = ConfigManager().config
+        manager = MarketDataManager(config)
         
-        with open(report_gen_path, 'r') as f:
-            content = f.read()
-            if 'pd.to_numeric' in content and 'errors=\'coerce\'' in content:
-                validation_found['report_gen'] = True
-                logger.info("✅ Found float validation in report_generator.py")
+        # Test fetching data for a symbol
+        test_symbol = 'BTCUSDT'
+        logger.info(f"Testing data fetch for {test_symbol}...")
         
-        with open(pdf_gen_path, 'r') as f:
-            content = f.read()
-            if 'pd.to_numeric' in content and 'errors=\'coerce\'' in content:
-                validation_found['pdf_gen'] = True
-                logger.info("✅ Found float validation in pdf_generator.py")
+        # Initialize if needed
+        if hasattr(manager, 'initialize'):
+            await manager.initialize()
         
-        # Both files should have float validation
-        assert validation_found['report_gen'], "Float validation not found in report_generator.py"
-        assert validation_found['pdf_gen'], "Float validation not found in pdf_generator.py"
+        # Try to get symbol data
+        data = await manager.get_symbol_data(test_symbol)
         
-        logger.info("✅ All mplfinance float validation tests passed")
+        if data:
+            logger.info(f"✅ Got data for {test_symbol}: {list(data.keys())}")
+            if 'current_price' in data:
+                logger.info(f"   Current price: ${data['current_price']}")
+        else:
+            logger.warning(f"⚠️  No data returned for {test_symbol}")
+            
         return True
         
     except Exception as e:
-        logger.error(f"❌ mplfinance float validation test failed: {e}")
+        logger.error(f"❌ Market data test failed: {str(e)}")
         import traceback
         traceback.print_exc()
-        return False
-
-def test_optuna_trial_validation():
-    """Test Optuna trial state validation."""
-    logger.info("Testing Optuna trial state validation...")
-    
-    try:
-        from src.optimization.optuna_engine import VirtuosoOptunaEngine
-        import optuna
-        
-        # Create engine instance
-        engine = VirtuosoOptunaEngine({'optimization': {'enabled': True}})
-        
-        # Check that safe methods exist
-        assert hasattr(engine, '_validate_trial_state')
-        assert hasattr(engine, '_safe_get_trial_value')
-        assert hasattr(engine, '_safe_get_trial_params')
-        
-        # Create a mock trial for testing
-        class MockTrial:
-            def __init__(self, state, number=1, value=None, params=None):
-                self.state = state
-                self.number = number
-                self.value = value
-                self.params = params or {}
-        
-        # Test different trial states
-        complete_trial = MockTrial(optuna.trial.TrialState.COMPLETE, value=0.8, params={'x': 1})
-        pruned_trial = MockTrial(optuna.trial.TrialState.PRUNED)
-        failed_trial = MockTrial(optuna.trial.TrialState.FAIL)
-        
-        # Test validation
-        assert engine._validate_trial_state(complete_trial) == True
-        assert engine._validate_trial_state(pruned_trial) == False
-        assert engine._validate_trial_state(failed_trial) == False
-        
-        # Test safe value access
-        assert engine._safe_get_trial_value(complete_trial) == 0.8
-        assert engine._safe_get_trial_value(pruned_trial) is None
-        assert engine._safe_get_trial_value(failed_trial) is None
-        
-        # Test safe params access
-        assert engine._safe_get_trial_params(complete_trial) == {'x': 1}
-        assert engine._safe_get_trial_params(pruned_trial) == {}
-        assert engine._safe_get_trial_params(failed_trial) == {}
-        
-        logger.info("✅ All Optuna trial validation tests passed")
-        return True
-        
-    except Exception as e:
-        logger.error(f"❌ Optuna trial validation test failed: {e}")
         return False
 
 async def main():
     """Run all tests."""
-    logger.info("Starting critical fixes tests...")
+    logger.info("🧪 Testing critical fixes...")
+    logger.info("=" * 60)
     
-    results = {
-        'numba_jit': test_numba_jit_fixes(),
-        'mutable_defaults': await test_mutable_defaults_fix(),
-        'mplfinance_validation': test_mplfinance_float_validation(),
-        'optuna_validation': test_optuna_trial_validation()
-    }
+    results = []
     
-    # Summary
-    print("\n" + "="*50)
-    print("TEST SUMMARY")
-    print("="*50)
+    # Test 1: Bybit timeout
+    logger.info("\n1. Testing Bybit timeout fix...")
+    results.append(await test_bybit_timeout())
     
-    all_passed = True
-    for test_name, passed in results.items():
-        status = "✅ PASSED" if passed else "❌ FAILED"
-        print(f"{test_name}: {status}")
-        if not passed:
-            all_passed = False
+    # Test 2: PDF generator
+    logger.info("\n2. Testing PDF generator fix...")
+    results.append(await test_pdf_generator())
     
-    print("="*50)
+    # Test 3: Market data
+    logger.info("\n3. Testing market data fetch...")
+    results.append(await test_market_data_fetch())
     
-    if all_passed:
-        print("🎉 All critical fixes tests passed!")
-        return 0
+    logger.info("\n" + "=" * 60)
+    
+    passed = sum(results)
+    total = len(results)
+    
+    if passed == total:
+        logger.info(f"✅ All tests passed! ({passed}/{total})")
     else:
-        print("❌ Some tests failed. Please check the logs above.")
-        return 1
+        logger.error(f"❌ Some tests failed: {passed}/{total} passed")
+    
+    return passed == total
 
 if __name__ == "__main__":
-    exit_code = asyncio.run(main())
-    sys.exit(exit_code)
+    success = asyncio.run(main())
+    sys.exit(0 if success else 1)

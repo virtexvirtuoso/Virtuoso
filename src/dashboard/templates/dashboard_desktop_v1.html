@@ -2217,6 +2217,50 @@
                 document.getElementById('sidebar').classList.remove('open');
             }
         }, 250));
+
+// Fetch and display connection pool stats
+async function updatePoolStats() {
+    try {
+        const response = await fetch('/api/pool-stats?duration=5');
+        const data = await response.json();
+        
+        if (data.success && data.current_stats) {
+            let html = '<div class="pool-stats">';
+            
+            for (const [name, stats] of Object.entries(data.current_stats)) {
+                const utilClass = stats.pool_utilization > 80 ? 'danger' : 
+                                 stats.pool_utilization > 60 ? 'warning' : 'success';
+                
+                html += `
+                    <div class="mb-3">
+                        <h6>${name}</h6>
+                        <div class="progress mb-1" style="height: 20px;">
+                            <div class="progress-bar bg-${utilClass}" 
+                                 style="width: ${stats.pool_utilization}%">
+                                ${stats.pool_utilization}% utilized
+                            </div>
+                        </div>
+                        <small class="text-muted">
+                            Active: ${stats.active_connections}/${stats.total_connections} | 
+                            Idle: ${stats.idle_connections} | 
+                            Pending: ${stats.pending_connections} | 
+                            RPS: ${stats.requests_per_second}
+                        </small>
+                    </div>
+                `;
+            }
+            
+            html += '</div>';
+            document.getElementById('poolStatsContainer').innerHTML = html;
+        }
+    } catch (error) {
+        console.error('Error fetching pool stats:', error);
+    }
+}
+
+// Update pool stats every 30 seconds
+setInterval(updatePoolStats, 30000);
+updatePoolStats(); // Initial load
     </script>
 </body>
 </html>

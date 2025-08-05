@@ -334,6 +334,7 @@ async def initialize_app_state():
     try:
         from src.config.manager import ConfigManager
         from src.core.exchanges.manager import ExchangeManager
+from src.core.monitoring.connection_pool_monitor import get_monitor
         
         logger.info("Initializing app components...")
         

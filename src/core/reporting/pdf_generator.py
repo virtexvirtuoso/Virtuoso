@@ -1495,6 +1495,7 @@ class ReportGenerator:
 
 
                 # Add labels with improved styling
+                entry_pos = None  # Initialize to prevent undefined variable error
                 if entry_price is not None:
                     # Calculate normalized position for entry price
                     entry_pos = (entry_price - y_min) / (y_max - y_min)
@@ -1518,7 +1519,10 @@ class ReportGenerator:
                         ax1_x_pos = getattr(position, 'x0', 0)
                         ax1_y_pos = getattr(position, 'y0', 0)
                 
-                ax1.annotate(
+                if entry_pos is not None:
+
+                
+                    ax1.annotate(
                         f"Entry: ${self._format_number(entry_price)}",
                     xy=(1.01, entry_pos),
                     xycoords=("axes fraction", "axes fraction"),
@@ -4743,6 +4747,7 @@ class ReportGenerator:
                     ax1.legend(handles=legend_elements, loc='upper left', fontsize=9, framealpha=0.7, facecolor='#0c1a2b')
 
                 # Add labels with improved styling
+                entry_pos = None  # Initialize to prevent undefined variable error
                 if entry_price is not None:
                     # Calculate normalized position for entry price
                     entry_pos = (entry_price - y_min) / (y_max - y_min)
@@ -4766,7 +4771,10 @@ class ReportGenerator:
                         ax1_x_pos = getattr(position, 'x0', 0)
                         ax1_y_pos = getattr(position, 'y0', 0)
                         
-                    ax1.annotate(
+                    if entry_pos is not None:
+
+                        
+                        ax1.annotate(
                         f"Entry: ${self._format_number(entry_price)}",
                         xy=(1.01, entry_pos),
                         xycoords=("axes fraction", "axes fraction"),

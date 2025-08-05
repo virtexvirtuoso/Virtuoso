@@ -2437,10 +2437,50 @@ class MarketMonitor:
                 self.exchange_id = self.exchange.exchange_id
                 
             self.logger.debug(f"Exchange instance retrieved: {bool(self.exchange)}")
-            self.logger.debug("Initializing exchange...")
             
-            # Initialize exchange
-            await self.exchange.initialize()
+            # Check initialization state if exchange supports it
+            if hasattr(self.exchange, 'initialization_state'):
+                from src.core.base_component import InitializationState
+                
+                current_state = self.exchange.initialization_state
+                self.logger.debug(f"Exchange initialization state: {current_state.value}")
+                
+                if current_state == InitializationState.COMPLETED:
+                    self.logger.debug("Exchange already initialized, skipping re-initialization")
+                elif current_state == InitializationState.IN_PROGRESS:
+                    self.logger.warning("Exchange initialization in progress, waiting...")
+                    # Wait up to 30 seconds for initialization to complete
+                    for _ in range(30):
+                        await asyncio.sleep(1)
+                        if self.exchange.initialization_state == InitializationState.COMPLETED:
+                            break
+                    else:
+                        self.logger.error("Exchange initialization did not complete in time")
+                        return
+                else:
+                    # Initialize exchange
+                    self.logger.debug("Initializing exchange...")
+                    init_success = await self.exchange.initialize(timeout=30.0)
+                    if not init_success:
+                        self.logger.error("Failed to initialize exchange")
+                        return
+            else:
+                # Fallback for components not using BaseComponent yet
+                if hasattr(self.exchange, 'initialized') and self.exchange.initialized:
+                    self.logger.debug("Exchange already initialized (legacy check)")
+                else:
+                    self.logger.debug("Initializing exchange (legacy)...")
+                    try:
+                        init_success = await asyncio.wait_for(
+                            self.exchange.initialize(),
+                            timeout=30.0
+                        )
+                        if not init_success:
+                            self.logger.error("Failed to initialize exchange")
+                            return
+                    except asyncio.TimeoutError:
+                        self.logger.error("Exchange initialization timed out after 30s")
+                        return
             
             self.logger.debug("Setting exchange in TopSymbolsManager...")
             self.top_symbols_manager.set_exchange(self.exchange)
