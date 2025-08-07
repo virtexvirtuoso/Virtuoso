@@ -70,6 +70,10 @@ from src.core.market.market_data_manager import MarketDataManager
 from src.monitoring.health_monitor import HealthMonitor
 from src.monitoring.bandwidth_monitor import bandwidth_monitor
 
+# Import resilience components
+from src.core.resilience import wrap_exchange_manager
+from src.core.resilience.patches import patch_dashboard_integration_resilience, patch_api_routes_resilience
+
 # Import DI container system
 from src.core.di.registration import bootstrap_container
 
@@ -104,6 +108,17 @@ logger = logging.getLogger(__name__)
 logger.info("🚀 Starting Virtuoso Trading System with enhanced logging")
 logger.info("🔍 DEBUG MODE ENABLED - Detailed logging active")
 logger.debug("Debug logging enabled with color support")
+
+# Easter Egg - Catholic blessing (activate with GLORY_TO_GOD=true environment variable)
+try:
+    from src.core.easter_egg import DivineProvidence, initialize_with_blessing, LATIN_BLESSINGS
+    if os.getenv('GLORY_TO_GOD') == 'true':
+        initialize_with_blessing()
+        inspiration = DivineProvidence.get_daily_inspiration()
+        logger.info(f"✝️ {inspiration}")
+        logger.debug(f"🕊️ {LATIN_BLESSINGS['startup']}")
+except:
+    pass  # Silent if not present
 
 # Global variables for application components
 config_manager = None
@@ -2627,12 +2642,13 @@ async def start_web_server():
         logger.error("Config manager not initialized. Cannot start web server.")
         raise RuntimeError("Config manager not initialized")
     
-    # Get web server configuration from config manager
+    # Get API configuration from config manager (use 'api' section for main FastAPI server)
+    api_config = config_manager.config.get('api', {})
     web_config = config_manager.config.get('web_server', {})
     
-    # Get host and port from config with fallbacks
-    host = web_config.get('host', '0.0.0.0')
-    port = web_config.get('port', 8000)
+    # Get host and port from API config with fallbacks to web_server config
+    host = api_config.get('host', web_config.get('host', '0.0.0.0'))
+    port = api_config.get('port', web_config.get('port', 8003))
     log_level = web_config.get('log_level', 'info')
     access_log = web_config.get('access_log', True)
     reload = web_config.get('reload', False)
@@ -2775,13 +2791,44 @@ async def run_application():
                     loop.add_signal_handler(sig, signal_handler)
                 
                 # Start monitoring with already initialized components
-                logger.info("🚀 About to call market_monitor.start()...")
-                await market_monitor.start()
-                logger.info("✅ market_monitor.start() completed successfully!")
+                logger.info("🚀 Starting market_monitor in background task...")
+                
+                # Wrapper to handle monitoring failures gracefully
+                async def resilient_monitor_start():
+                    retries = 0
+                    max_retries = 3
+                    while retries < max_retries:
+                        try:
+                            await market_monitor.start()
+                            break  # Success
+                        except Exception as e:
+                            retries += 1
+                            logger.error(f"Monitor start attempt {retries} failed: {e}")
+                            if retries < max_retries:
+                                logger.info(f"Retrying monitor start in 30 seconds...")
+                                await asyncio.sleep(30)
+                            else:
+                                logger.error("Monitor failed to start after all retries")
+                                # Don't crash - let web server continue
+                                return
+                
+                # Create a background task for resilient monitor start
+                monitor_task = asyncio.create_task(resilient_monitor_start())
+                logger.info("✅ market_monitor background task created with retry logic!")
                 logger.info("Monitoring system running. Press Ctrl+C to stop.")
                 
                 # Wait for shutdown signal or monitor to stop
-                while not shutdown_event.is_set() and market_monitor.running:
+                while not shutdown_event.is_set():
+                    # Check if monitor task is done
+                    if monitor_task.done():
+                        # Monitor task completed, check if it failed
+                        try:
+                            await monitor_task  # This will raise if task failed
+                        except Exception as e:
+                            logger.error(f"Monitor task failed: {e}")
+                            break
+                    if not market_monitor.running:
+                        break
                     await asyncio.sleep(1)  # Check every second
                         
             except asyncio.CancelledError:
@@ -2801,8 +2848,20 @@ async def run_application():
         web_server_task = asyncio.create_task(start_web_server(), name="web_server")
         logger.info("✅ Tasks created, starting concurrent execution...")
         
-        # Run both tasks concurrently
-        await asyncio.gather(monitoring_task, web_server_task)
+        # Run both tasks concurrently with error handling
+        try:
+            # Use return_exceptions=True to prevent one task failure from stopping the other
+            results = await asyncio.gather(monitoring_task, web_server_task, return_exceptions=True)
+            
+            # Check results for exceptions
+            for i, result in enumerate(results):
+                if isinstance(result, Exception):
+                    task_name = "monitoring" if i == 0 else "web_server"
+                    logger.error(f"{task_name} task failed with exception: {result}")
+                    # Don't propagate - let the other service continue
+        except Exception as e:
+            logger.error(f"Critical error in gather: {e}")
+            # Both tasks failed critically
         
     except KeyboardInterrupt:
         logger.info("Shutdown signal received")

@@ -6,7 +6,7 @@ system:
   environment: development
   log_level: DEBUG
   reports_dir: ./reports
-  version: 1.0.0
+  version: 1.0.0  # AMDG - Ad Majorem Dei Gloriam
 signal_tracking:
   enabled: false
   api_url: http://localhost:8001/api/signal-tracking
@@ -202,70 +202,70 @@ analysis:
         update_interval: 100
       manipulation_detection:
         enabled: true
-        detection_window: 10  # seconds to analyze for patterns
-        confidence_threshold: 0.7  # minimum confidence to trigger alert
+        detection_window: 10
+        confidence_threshold: 0.7
         history:
-          max_snapshots: 100  # number of orderbook snapshots to retain
-          snapshot_interval_ms: 100  # milliseconds between snapshots
-          trade_history_size: 50  # number of recent trades to track
+          max_snapshots: 100
+          snapshot_interval_ms: 100
+          trade_history_size: 50
         spoofing:
           enabled: true
-          volatility_threshold: 2.0  # standard deviation multiplier
-          min_order_size_usd: 50000  # minimum size to consider for spoofing
-          execution_ratio_threshold: 0.1  # orders executed vs placed
-          flip_frequency_window: 3  # seconds to check for bid/ask flipping
-          max_flip_count: 5  # maximum flips before flagging
-          volume_delta_threshold: 3.0  # multiplier of average delta
-          consecutive_reversals: 2  # number of rapid reversals to flag
+          volatility_threshold: 2.0
+          min_order_size_usd: 50000
+          execution_ratio_threshold: 0.1
+          flip_frequency_window: 3
+          max_flip_count: 5
+          volume_delta_threshold: 3.0
+          consecutive_reversals: 2
         layering:
           enabled: true
-          price_gap_threshold: 0.001  # 0.1% of mid price
-          max_price_gap: 0.005  # 0.5% maximum gap between layers
-          size_uniformity_threshold: 0.1  # 10% standard deviation tolerance
-          min_layers: 3  # minimum stacked orders to consider layering
-          max_layers: 10  # maximum layers to analyze
-          same_size_tolerance: 0.05  # 5% tolerance for "same" size
-          price_increment_regularity: 0.8  # correlation threshold
+          price_gap_threshold: 0.001
+          max_price_gap: 0.005
+          size_uniformity_threshold: 0.1
+          min_layers: 3
+          max_layers: 10
+          same_size_tolerance: 0.05
+          price_increment_regularity: 0.8
         alerts:
           severity_levels:
-            low: 0.5  # 50% confidence
-            medium: 0.7  # 70% confidence
-            high: 0.85  # 85% confidence
-            critical: 0.95  # 95% confidence
+            low: 0.5
+            medium: 0.7
+            high: 0.85
+            critical: 0.95
           cooldown:
-            spoofing: 300  # 5 minutes
-            layering: 600  # 10 minutes
-            general: 180  # 3 minutes
+            spoofing: 300
+            layering: 600
+            general: 180
         integration:
-          manipulation_weight: 0.08  # component weight in overall orderbook score
+          manipulation_weight: 0.08
           reduce_confluence_confidence: true
           confidence_multiplier:
             low: 0.98
             medium: 0.95
-            high: 0.90
-            critical: 0.80
+            high: 0.9
+            critical: 0.8
         wash_trading:
           enabled: true
-          time_window_ms: 1000  # window to detect self-trades
-          price_tolerance: 0.0001  # 0.01% price match tolerance
-          size_match_tolerance: 0.001  # 0.1% size match tolerance
-          min_suspicious_trades: 3  # minimum trades to flag pattern
-          pattern_correlation_threshold: 0.9  # trade pattern correlation
+          time_window_ms: 1000
+          price_tolerance: 0.0001
+          size_match_tolerance: 0.001
+          min_suspicious_trades: 3
+          pattern_correlation_threshold: 0.9
         fake_liquidity:
           enabled: true
-          withdrawal_threshold: 0.3  # 30% sudden liquidity removal
-          phantom_lifetime_ms: 5000  # orders that disappear within 5 seconds
-          phantom_ratio_threshold: 0.3  # 30% of orders are phantoms
+          withdrawal_threshold: 0.3
+          phantom_lifetime_ms: 5000
+          phantom_ratio_threshold: 0.3
         iceberg:
           enabled: true
-          refill_threshold: 0.8  # 80% size recovery indicates refill
-          min_refills: 2  # minimum refills to flag as iceberg
-          tracking_window_minutes: 5  # how long to track candidates
+          refill_threshold: 0.8
+          min_refills: 2
+          tracking_window_minutes: 5
         trade_correlation:
           enabled: true
-          window_ms: 5000  # correlation analysis window
-          price_tolerance: 0.0001  # 0.01% price matching tolerance
-          min_correlation_score: 0.7  # minimum score for high confidence
+          window_ms: 5000
+          price_tolerance: 0.0001
+          min_correlation_score: 0.7
     orderflow:
       cvd:
         price_direction_threshold: 0.01
@@ -513,16 +513,16 @@ confluence:
       sentiment: 0.07
     sub_components:
       orderbook:
-        absorption_exhaustion: 0.08  # Reduced from 0.1
-        depth: 0.20  # Kept at 0.2
-        dom_momentum: 0.05  # Kept at 0.05
-        imbalance: 0.18  # Reduced from 0.25
-        liquidity: 0.14  # Increased from 0.1
-        mpi: 0.11  # Reduced from 0.2
-        obps: 0.08  # Increased from 0.05
-        spread: 0.05  # Kept at 0.05
-        manipulation: 0.08  # New component
-        di: 0.03  # Added missing DI component
+        absorption_exhaustion: 0.08
+        depth: 0.2
+        dom_momentum: 0.05
+        imbalance: 0.18
+        liquidity: 0.14
+        mpi: 0.11
+        obps: 0.08
+        spread: 0.05
+        manipulation: 0.08
+        di: 0.03
       orderflow:
         cvd: 0.25
         imbalance: 0.15
@@ -1141,13 +1141,45 @@ web_server:
   access_log: true
   auto_fallback: true
   fallback_ports:
-  - 8001
   - 8002
   - 8080
   - 3000
   - 5000
   host: 0.0.0.0
   log_level: info
-  port: 8003
+  port: 8001
   reload: false
   timeout_keep_alive: 5
+api:
+  port: 8003
+  host: 0.0.0.0
+
+# Cache Configuration for Phase 2 - Indicator Caching
+caching:
+  enabled: true
+  backend: memcached  # Options: memcached, redis
+  memcached:
+    host: 127.0.0.1
+    port: 11211
+  redis:
+    host: 127.0.0.1
+    port: 6379
+  indicators:
+    enabled: true
+    ttl:
+      technical: 30      # 30 seconds for RSI, MACD, ATR, etc.
+      orderbook: 2       # 2 seconds for orderbook-based indicators
+      orderflow: 5       # 5 seconds for orderflow indicators
+      volume: 60         # 1 minute for volume indicators
+      sentiment: 300     # 5 minutes for sentiment indicators
+      structure: 300     # 5 minutes for price structure patterns
+      confluence: 15     # 15 seconds for confluence scores
+    warmup:
+      enabled: true
+      symbols: ['BTCUSDT', 'ETHUSDT', 'SOLUSDT']
+      timeframes: ['1m', '5m', '15m', '1h']
+      on_startup: true
+    metrics:
+      track_hit_rate: true
+      track_time_saved: true
+      track_access_patterns: true
