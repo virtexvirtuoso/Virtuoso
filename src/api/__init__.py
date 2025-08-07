@@ -1,7 +1,7 @@
 """API initialization and route registration module."""
 
 from fastapi import FastAPI
-from .routes import signals, market, system, trading, dashboard, alpha, liquidation, correlation, bitcoin_beta, manipulation, top_symbols, whale_activity, sentiment, admin
+from .routes import signals, market, system, trading, dashboard, alpha, liquidation, correlation, bitcoin_beta, manipulation, top_symbols, whale_activity, sentiment, admin, cache
 
 def init_api_routes(app: FastAPI):
     """Initialize all API routes for the application."""
@@ -106,7 +106,21 @@ def init_api_routes(app: FastAPI):
         tags=["admin"]
     )
     
+    # Include cache monitoring routes
+    app.include_router(
+
+    # Health and resilience monitoring
+    try:
+        from .routes import health
+        app.include_router(health.router, prefix="/api/health", tags=["health"])
+    except ImportError:
+        logger.warning("Health routes not available")
+        cache.router,
+        prefix=f"{api_prefix}",
+        tags=["cache"]
+    )
+    
     # Log registered routes
     import logging
     logger = logging.getLogger(__name__)
-    logger.info("API routes initialized")
+    logger.info("API routes initialized with cache monitoring")

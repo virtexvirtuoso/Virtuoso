@@ -1,0 +1,17 @@
+[Unit]
+Description=Virtuoso Trading Web Dashboard
+After=network.target virtuoso.service
+Requires=virtuoso.service
+
+[Service]
+Type=simple
+User=linuxuser
+Group=linuxuser
+WorkingDirectory=/home/linuxuser/trading/Virtuoso_ccxt
+Environment="PATH=/home/linuxuser/trading/Virtuoso_ccxt/venv311/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+ExecStart=/home/linuxuser/trading/Virtuoso_ccxt/venv311/bin/uvicorn src.web_server:app --host 0.0.0.0 --port 8001
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -24,6 +24,8 @@ from src.core.market.market_data_manager import MarketDataManager
 from src.signal_generation.signal_generator import SignalGenerator
 from src.core.market.top_symbols import TopSymbolsManager
 
+
+from src.core.resilience.fallback_provider import get_fallback_provider
 logger = logging.getLogger(__name__)
 
 
@@ -242,6 +244,46 @@ class DashboardIntegrationService:
                     break
     
     async def _update_dashboard_data(self):
+        """Update dashboard data with fallback support."""
+        try:
+            # Original update logic
+            await self._update_dashboard_data_original()
+        except Exception as e:
+            self.logger.error(f"Dashboard update failed: {e}, using fallback")
+            
+            # Use fallback data
+            try:
+                fallback = get_fallback_provider()
+                
+                self._dashboard_data = {
+                    'signals': (await fallback.get_signals_fallback())['signals'],
+                    'alerts': [],
+                    'alpha_opportunities': [],
+                    'system_status': {
+                        'status': 'degraded',
+                        'message': 'External services unavailable - showing cached data',
+                        'timestamp': time.time()
+                    },
+                    'market_overview': await fallback.get_market_overview_fallback()
+                }
+                
+                self.logger.info("Dashboard using fallback data")
+            except Exception as fallback_error:
+                self.logger.error(f"Fallback also failed: {fallback_error}")
+                # Provide minimal data
+                self._dashboard_data = {
+                    'signals': [],
+                    'alerts': [],
+                    'alpha_opportunities': [],
+                    'system_status': {
+                        'status': 'error',
+                        'message': 'System unavailable',
+                        'timestamp': time.time()
+                    },
+                    'market_overview': {}
+                }
+    
+    async def _update_dashboard_data_original(self):
         """Update all dashboard data from the monitoring system."""
         try:
             current_time = time.time()

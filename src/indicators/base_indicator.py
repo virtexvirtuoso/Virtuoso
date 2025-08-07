@@ -141,6 +141,21 @@ class BaseIndicator(ABC):
         self.config = config or {}
         self.logger = logger or Logger(__name__)
         
+        # Initialize caching support
+        self.enable_caching = config.get('caching', {}).get('indicators', {}).get('enabled', True)
+        if self.enable_caching:
+            try:
+                from src.core.cache.indicator_cache import get_indicator_cache
+                self.cache = get_indicator_cache()
+                self.logger.debug("Indicator caching enabled")
+            except Exception as e:
+                self.logger.warning(f"Failed to initialize indicator cache: {e}")
+                self.enable_caching = False
+                self.cache = None
+        else:
+            self.cache = None
+            self.logger.debug("Indicator caching disabled")
+        
         # Timeframe config from root level
         self.TIMEFRAME_CONFIG = {}
         for tf_name, tf_config in config['timeframes'].items():
@@ -310,6 +325,31 @@ class BaseIndicator(ABC):
             Dict with keys: 'score', 'components', 'signals', 'metadata'
         """
         pass
+    
+    async def calculate_cached(self, market_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Calculate with caching support - wrapper for calculate method."""
+        if not self.enable_caching or not self.cache:
+            return await self.calculate(market_data)
+        
+        # Extract symbol from market data
+        symbol = market_data.get('symbol', 'unknown')
+        
+        # Create cache key for full calculation
+        indicator_type = self.__class__.__name__.replace('Indicators', '').lower()
+        
+        async def compute():
+            return await self.calculate(market_data)
+        
+        # Use the cache with appropriate TTL
+        result = await self.cache.get_indicator(
+            indicator_type=indicator_type,
+            symbol=symbol,
+            component='full',
+            params={'timestamp': market_data.get('timestamp', 0)},
+            compute_func=compute
+        )
+        
+        return result
         
     async def calculate_score(self, market_data: Dict[str, Any]) -> float:
         """Calculate main indicator score.

@@ -14,11 +14,16 @@ import aiohttp
 import numpy as np
 import random
 
-# Import our dashboard integration service
-from src.dashboard.dashboard_integration import get_dashboard_integration, DashboardIntegrationService
-
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+# Import our dashboard integration service - Phase 2 with Memcached
+try:
+    from src.dashboard.dashboard_proxy_phase2 import get_dashboard_integration
+    logger.info("✅ Using Phase 2 dashboard integration with Memcached")
+except ImportError:
+    from src.dashboard.dashboard_proxy import get_dashboard_integration
+    logger.info("📦 Using Phase 1 dashboard integration")
 
 # Resolve paths relative to the project root
 PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
@@ -61,30 +66,56 @@ connection_manager = ConnectionManager()
 
 @router.get("/overview")
 async def get_dashboard_overview() -> Dict[str, Any]:
-    """Get comprehensive dashboard overview with aggregated data."""
+    """Get comprehensive dashboard overview with real-time data from Memcached."""
     try:
+        # Check Memcached for real-time status
+        symbol_count = 0
+        try:
+            from pymemcache.client.base import Client
+            import json
+            
+            mc_client = Client(('127.0.0.1', 11211))
+            
+            # Check if we have symbols data
+            symbols_data = mc_client.get(b'virtuoso:symbols')
+            if symbols_data:
+                data = json.loads(symbols_data.decode('utf-8'))
+                symbol_count = len(data.get('symbols', []))
+                logger.info(f"Memcached has {symbol_count} symbols with confluence scores")
+            
+            mc_client.close()
+        except Exception as mc_error:
+            logger.debug(f"Memcached check: {mc_error}")
+        
         # Get dashboard integration service
         integration = get_dashboard_integration()
         if not integration:
             logger.warning("Dashboard integration service not available")
             return {
-                "status": "error",
-                "message": "Dashboard integration service not available",
+                "status": "initializing" if symbol_count > 0 else "error",
+                "message": "System initializing..." if symbol_count > 0 else "Dashboard integration service not available",
                 "timestamp": datetime.utcnow().isoformat(),
                 "signals": {"total": 0, "strong": 0, "medium": 0, "weak": 0},
                 "alerts": {"total": 0, "critical": 0, "warning": 0},
                 "alpha_opportunities": {"total": 0, "high_confidence": 0, "medium_confidence": 0},
                 "system_status": {
-                    "monitoring": "inactive",
-                    "data_feed": "disconnected", 
-                    "alerts": "disabled",
-                    "websocket": "disconnected",
-                    "last_update": 0
+                    "monitoring": "active" if symbol_count > 0 else "inactive",
+                    "data_feed": "connected" if symbol_count > 0 else "disconnected", 
+                    "alerts": "enabled" if symbol_count > 0 else "disabled",
+                    "websocket": "connected" if symbol_count > 0 else "disconnected",
+                    "last_update": time.time() if symbol_count > 0 else 0,
+                    "symbols_tracked": symbol_count
                 }
             }
 
         # Get dashboard overview from integration service
         overview_data = await integration.get_dashboard_overview()
+        
+        # Enhance with Memcached data if available
+        if symbol_count > 0:
+            overview_data['system_status']['symbols_tracked'] = symbol_count
+            overview_data['system_status']['cache_status'] = 'memcached_active'
+        
         return overview_data
 
     except Exception as e:
@@ -109,7 +140,7 @@ async def get_dashboard_signals() -> List[Dict[str, Any]]:
 @router.get("/alerts/recent")
 async def get_recent_alerts(
     limit: int = 50,
-    integration: DashboardIntegrationService = Depends(get_dashboard_integration)
+    integration = Depends(get_dashboard_integration)
 ) -> List[Dict[str, Any]]:
     """Get recent alerts from the monitoring system."""
     try:
@@ -122,7 +153,7 @@ async def get_recent_alerts(
 @router.get("/alerts")
 async def get_alerts(
     limit: int = 50,
-    integration: DashboardIntegrationService = Depends(get_dashboard_integration)
+    integration = Depends(get_dashboard_integration)
 ) -> List[Dict[str, Any]]:
     """Get alerts from the monitoring system (alias for /alerts/recent)."""
     try:
@@ -264,11 +295,17 @@ async def dashboard_health() -> Dict[str, Any]:
     try:
         integration = get_dashboard_integration()
         
+        # Check if we have Phase 2 with cache performance
+        cache_info = {}
+        if hasattr(integration, 'get_cache_performance'):
+            cache_info = await integration.get_cache_performance()
+        
         return {
             "status": "healthy",
             "timestamp": datetime.utcnow().isoformat(),
             "integration_available": integration is not None,
-            "active_websocket_connections": len(connection_manager.active_connections)
+            "active_websocket_connections": len(connection_manager.active_connections),
+            "cache_performance": cache_info
         }
 
     except Exception as e:
@@ -278,6 +315,34 @@ async def dashboard_health() -> Dict[str, Any]:
             "timestamp": datetime.utcnow().isoformat(),
             "error": str(e)
         }
+
+@router.get("/cache-stats")
+async def get_cache_stats() -> Dict[str, Any]:
+    """Get Phase 2 cache statistics and performance metrics."""
+    try:
+        integration = get_dashboard_integration()
+        
+        # Check if Phase 2 is available
+        if not hasattr(integration, 'get_cache_performance'):
+            return {
+                "status": "phase1",
+                "message": "Phase 1 cache active (no Memcached stats available)",
+                "timestamp": datetime.utcnow().isoformat()
+            }
+        
+        # Get Phase 2 cache performance
+        cache_performance = await integration.get_cache_performance()
+        
+        return {
+            "status": "phase2",
+            "message": "Phase 2 Memcached cache active",
+            "performance": cache_performance,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting cache stats: {e}")
+        raise HTTPException(status_code=500, detail=f"Error getting cache stats: {str(e)}")
 
 @router.get("/test")
 async def dashboard_test() -> Dict[str, Any]:
@@ -522,8 +587,133 @@ async def get_mobile_dashboard_data() -> Dict[str, Any]:
             "status": "success"
         }
         
+        # Try to get data from main service first
+        try:
+            async with aiohttp.ClientSession() as session:
+                # Get signals from main service
+                async with session.get("http://localhost:8003/api/dashboard/signals", timeout=2) as resp:
+                    if resp.status == 200:
+                        signals = await resp.json()
+                        if signals and isinstance(signals, list) and len(signals) > 0:
+                            logger.info(f"Using {len(signals)} signals from main service")
+                            response["status"] = "main_service"
+                            
+                            # Process signals for mobile format
+                            confluence_scores = []
+                            for signal in signals[:15]:
+                                confluence_scores.append({
+                                    "symbol": signal.get('symbol', ''),
+                                    "score": round(signal.get('score', 50), 2),
+                                    "price": signal.get('price', 0),
+                                    "change_24h": round(signal.get('change_24h', 0), 2),
+                                    "volume_24h": signal.get('volume', 0),
+                                    "components": signal.get('components', {
+                                        "technical": 50,
+                                        "volume": 50,
+                                        "orderflow": 50,
+                                        "sentiment": 50,
+                                        "orderbook": 50,
+                                        "price_structure": 50
+                                    })
+                                })
+                            response["confluence_scores"] = confluence_scores
+                            
+                            # Calculate top movers from signals
+                            sorted_signals = sorted(signals, key=lambda x: x.get('change_24h', 0))
+                            gainers = [s for s in sorted_signals if s.get('change_24h', 0) > 0][-5:]
+                            losers = [s for s in sorted_signals if s.get('change_24h', 0) < 0][:5]
+                            
+                            if gainers:
+                                response["top_movers"]["gainers"] = [
+                                    {
+                                        "symbol": g['symbol'],
+                                        "change": round(g['change_24h'], 2),
+                                        "price": g.get('price', 0),
+                                        "volume_24h": g.get('volume', 0),
+                                        "display_symbol": g['symbol'].replace('USDT', '')
+                                    } for g in reversed(gainers)
+                                ]
+                            
+                            if losers:
+                                response["top_movers"]["losers"] = [
+                                    {
+                                        "symbol": l['symbol'],
+                                        "change": round(l['change_24h'], 2),
+                                        "price": l.get('price', 0),
+                                        "volume_24h": l.get('volume', 0),
+                                        "display_symbol": l['symbol'].replace('USDT', '')
+                                    } for l in losers
+                                ]
+                            
+                            # If we got good data from main service, return it
+                            if response["confluence_scores"]:
+                                return response
+                                
+        except Exception as e:
+            logger.debug(f"Could not fetch from main service: {e}")
+        
         if not integration:
             response["status"] = "no_integration"
+            # Still try to get market data directly
+            try:
+                async with aiohttp.ClientSession() as session:
+                    url = "https://api.bybit.com/v5/market/tickers?category=linear"
+                    async with session.get(url, timeout=5) as resp:
+                        if resp.status == 200:
+                            bybit_data = await resp.json()
+                            if bybit_data.get('retCode') == 0 and 'result' in bybit_data:
+                                tickers = bybit_data['result']['list']
+                                
+                                # Process all symbols
+                                all_changes = []
+                                for ticker in tickers:
+                                    try:
+                                        symbol = ticker['symbol']
+                                        if symbol.endswith('USDT') and 'PERP' not in symbol:
+                                            change_24h = float(ticker['price24hPcnt']) * 100
+                                            turnover_24h = float(ticker['turnover24h'])
+                                            
+                                            if turnover_24h > 500000:  # $500k minimum
+                                                all_changes.append({
+                                                    "symbol": symbol,
+                                                    "change": round(change_24h, 2),
+                                                    "turnover": turnover_24h,
+                                                    "price": float(ticker.get('lastPrice', 0)),
+                                                    "volume_24h": float(ticker.get('volume24h', 0))
+                                                })
+                                    except (ValueError, KeyError):
+                                        continue
+                                
+                                # Sort and get top gainers
+                                gainers = [x for x in all_changes if x['change'] > 0]
+                                gainers.sort(key=lambda x: x['change'], reverse=True)
+                                response["top_movers"]["gainers"] = [
+                                    {
+                                        "symbol": g['symbol'], 
+                                        "change": g['change'],
+                                        "price": g['price'],
+                                        "volume_24h": g['volume_24h'],
+                                        "display_symbol": g['symbol'].replace('1000', '').replace('USDT', '')
+                                    } 
+                                    for g in gainers[:5]
+                                ]
+                                
+                                # Sort and get top losers
+                                losers = [x for x in all_changes if x['change'] < 0]
+                                losers.sort(key=lambda x: x['change'])
+                                response["top_movers"]["losers"] = [
+                                    {
+                                        "symbol": l['symbol'], 
+                                        "change": l['change'],
+                                        "price": l['price'],
+                                        "volume_24h": l['volume_24h'],
+                                        "display_symbol": l['symbol'].replace('1000', '').replace('USDT', '')
+                                    } 
+                                    for l in losers[:5]
+                                ]
+            except Exception as e:
+                logger.warning(f"Error fetching market data without integration: {e}")
+            
             return response
             
         # Try to get data from integration service with timeout
@@ -598,7 +788,13 @@ async def get_mobile_dashboard_data() -> Dict[str, Any]:
                                     gainers = [x for x in all_changes if x['change'] > 0]
                                     gainers.sort(key=lambda x: x['change'], reverse=True)
                                     response["top_movers"]["gainers"] = [
-                                        {"symbol": g['symbol'], "change": g['change']} 
+                                        {
+                                            "symbol": g['symbol'], 
+                                            "change": g['change'],
+                                            "price": float(next((t['lastPrice'] for t in tickers if t['symbol'] == g['symbol']), 0)),
+                                            "volume_24h": float(next((t['volume24h'] for t in tickers if t['symbol'] == g['symbol']), 0)),
+                                            "display_symbol": g['symbol'].replace('1000', '').replace('USDT', '')
+                                        } 
                                         for g in gainers[:5]
                                     ]
                                     
@@ -606,7 +802,13 @@ async def get_mobile_dashboard_data() -> Dict[str, Any]:
                                     losers = [x for x in all_changes if x['change'] < 0]
                                     losers.sort(key=lambda x: x['change'])
                                     response["top_movers"]["losers"] = [
-                                        {"symbol": l['symbol'], "change": l['change']} 
+                                        {
+                                            "symbol": l['symbol'], 
+                                            "change": l['change'],
+                                            "price": float(next((t['lastPrice'] for t in tickers if t['symbol'] == l['symbol']), 0)),
+                                            "volume_24h": float(next((t['volume24h'] for t in tickers if t['symbol'] == l['symbol']), 0)),
+                                            "display_symbol": l['symbol'].replace('1000', '').replace('USDT', '')
+                                        } 
                                         for l in losers[:5]
                                     ]
                                         
@@ -669,29 +871,56 @@ async def get_dashboard_performance() -> Dict[str, Any]:
 
 @router.get("/symbols")
 async def get_dashboard_symbols() -> Dict[str, Any]:
-    """Get symbols data for dashboard ticker and matrix."""
+    """Get symbols data with real confluence scores from Memcached."""
     try:
+        # First try Memcached for real-time data
+        try:
+            from pymemcache.client.base import Client
+            import json
+            
+            # Connect to Memcached
+            mc_client = Client(('127.0.0.1', 11211))
+            
+            # Get symbols from Memcached
+            symbols_data = mc_client.get(b'virtuoso:symbols')
+            mc_client.close()
+            
+            if symbols_data:
+                data = json.loads(symbols_data.decode('utf-8'))
+                logger.info(f"Retrieved {len(data.get('symbols', []))} symbols from Memcached")
+                return data
+            
+            logger.warning("No symbols in Memcached, checking integration service")
+        except Exception as mc_error:
+            logger.warning(f"Memcached not available: {mc_error}")
+        
+        # Fallback to integration service
         integration = get_dashboard_integration()
         if integration:
             symbols_data = await integration.get_symbols_data()
             return symbols_data
         
-        # Fallback symbols data
+        # Last resort fallback
+        logger.warning("Using fallback symbols data")
         return {
+            "status": "fallback",
             "symbols": [
-                {"symbol": "BTCUSDT", "change_24h": 2.45},
-                {"symbol": "ETHUSDT", "change_24h": -1.23},
-                {"symbol": "ADAUSDT", "change_24h": 0.87},
-                {"symbol": "SOLUSDT", "change_24h": 3.21},
-                {"symbol": "DOTUSDT", "change_24h": -0.56}
+                {"symbol": "BTCUSDT", "confluence_score": 50, "change_24h": 2.45},
+                {"symbol": "ETHUSDT", "confluence_score": 50, "change_24h": -1.23},
+                {"symbol": "ADAUSDT", "confluence_score": 50, "change_24h": 0.87},
+                {"symbol": "SOLUSDT", "confluence_score": 50, "change_24h": 3.21},
+                {"symbol": "DOTUSDT", "confluence_score": 50, "change_24h": -0.56}
             ],
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.utcnow().isoformat(),
+            "message": "Waiting for live data from trading system"
         }
         
     except Exception as e:
         logger.error(f"Error getting dashboard symbols: {e}")
         return {
+            "status": "error",
             "symbols": [],
+            "error": str(e),
             "timestamp": datetime.utcnow().isoformat()
         }
 
