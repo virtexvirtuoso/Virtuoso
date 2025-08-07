@@ -8,6 +8,7 @@ import time
 import logging
 import asyncio
 from src.core.analysis.confluence import ConfluenceAnalyzer
+from src.core.cache.unified_cache import get_cache
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -37,7 +38,7 @@ async def get_ticker(
     exchange_id: str = Query("bybit", description="Exchange to use for ticker data"),
     exchange_manager: ExchangeManager = Depends(get_exchange_manager)
 ) -> Dict[str, Any]:
-    """Get ticker data for a specific symbol from an exchange"""
+    """Get ticker data for a specific symbol from an exchange (with caching)"""
     try:
         # Enhanced symbol validation
         if not symbol or symbol.upper() in ['UNKNOWN', 'NULL', 'UNDEFINED', 'NONE', '', 'INVALID', 'ERROR']:
@@ -58,8 +59,19 @@ async def get_ticker(
         # Log the request for debugging
         logger.debug(f"Fetching ticker data for {clean_symbol} from {exchange_id}")
         
-        # Get market data from the specified exchange
-        market_data = await exchange_manager.get_market_data(clean_symbol, exchange_id)
+        # Use unified cache for ticker data
+        cache = get_cache()
+        
+        # Define compute function for cache miss
+        async def compute_ticker():
+            return await exchange_manager.get_market_data(clean_symbol, exchange_id)
+        
+        # Get market data with caching (5 second TTL for tickers)
+        market_data = await cache.get_ticker(
+            exchange=exchange_id,
+            symbol=clean_symbol,
+            compute_func=compute_ticker
+        )
         
         # Validate response structure
         if not market_data:
@@ -650,9 +662,22 @@ async def get_orderbook(
     limit: int = Query(50, ge=1, le=500),
     exchange_manager: ExchangeManager = Depends(get_exchange_manager)
 ) -> OrderBook:
-    """Get orderbook data for a symbol from a specific exchange"""
+    """Get orderbook data for a symbol from a specific exchange (with caching)"""
     try:
-        data = await exchange_manager.get_orderbook(symbol, exchange_id, limit)
+        # Use unified cache for orderbook data
+        cache = get_cache()
+        
+        # Define compute function for cache miss
+        async def compute_orderbook():
+            return await exchange_manager.get_orderbook(symbol, exchange_id, limit)
+        
+        # Get orderbook with caching (2 second TTL for orderbooks)
+        data = await cache.get_orderbook(
+            exchange=exchange_id,
+            symbol=symbol,
+            limit=limit,
+            compute_func=compute_orderbook
+        )
         return OrderBook(**data)
     except KeyError:
         raise HTTPException(status_code=404, detail=f"Exchange {exchange_id} not found")

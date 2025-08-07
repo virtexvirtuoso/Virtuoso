@@ -1,6 +1,7 @@
 """Standalone web server for the Virtuoso Trading Dashboard."""
 
 import os
+import re
 import sys
 import logging
 from pathlib import Path
@@ -34,6 +35,7 @@ TEMPLATE_DIR = PROJECT_ROOT / "src" / "dashboard" / "templates"
 from src.dashboard.dashboard_integration import DashboardIntegrationService, get_dashboard_integration
 
 # Import API routes
+from src.dashboard.dashboard_proxy import get_dashboard_integration
 from src.api import init_api_routes
 
 # Create FastAPI app
@@ -100,6 +102,20 @@ async def dashboard_ui():
     file_path = TEMPLATE_DIR / "dashboard_selector.html"
     logger.info(f"Dashboard route: serving {file_path}")
     return FileResponse(file_path)
+
+@app.get("/resilience-monitor")
+async def resilience_monitor():
+    """Serve the resilience monitoring dashboard"""
+    file_path = TEMPLATE_DIR / "resilience_monitor.html"
+    if file_path.exists():
+        return FileResponse(file_path)
+    else:
+        # Try alternative path
+        alt_path = TEMPLATE_DIR_ALT / "resilience_monitor.html"
+        if alt_path.exists():
+            return FileResponse(alt_path)
+        else:
+            raise HTTPException(status_code=404, detail="Resilience monitor not found")
 
 @app.get("/dashboard/v1")
 async def dashboard_v1_ui():
@@ -359,6 +375,15 @@ from src.core.monitoring.connection_pool_monitor import get_monitor
 async def startup_event():
     """Run on app startup"""
     await initialize_app_state()
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Cleanup on shutdown"""
+    integration = get_dashboard_integration()
+    if integration:
+        await integration.close()
+    logger.info("Dashboard proxy closed")
 
 def main():
     """Run the web server"""
