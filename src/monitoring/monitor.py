@@ -3710,6 +3710,25 @@ class MarketMonitor:
                     ltf_ohlcv = self.get_ohlcv_for_report(symbol, 'ltf')    # For daily VWAP (lower timeframe)
                     htf_ohlcv = self.get_ohlcv_for_report(symbol, 'htf')    # For weekly VWAP (higher timeframe)
                     
+                    # If no cached data, try to fetch fresh OHLCV data
+                    if ltf_ohlcv is None:
+                        self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}][REPORT] No cached OHLCV data, fetching fresh data for {symbol}")
+                        try:
+                            # Fetch market data which includes OHLCV data and updates the cache
+                            market_data = await self.fetch_market_data(symbol, force_refresh=True)
+                            if market_data and 'ohlcv' in market_data:
+                                # Try to get the data again after caching
+                                ltf_ohlcv = self.get_ohlcv_for_report(symbol, 'ltf')
+                                htf_ohlcv = self.get_ohlcv_for_report(symbol, 'htf')
+                                if ltf_ohlcv is not None:
+                                    self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}][REPORT] Successfully fetched fresh OHLCV data for {symbol}")
+                                else:
+                                    self.logger.warning(f"[TXN:{transaction_id}][SIG:{signal_id}][REPORT] Failed to get OHLCV data after fetching for {symbol}")
+                            else:
+                                self.logger.warning(f"[TXN:{transaction_id}][SIG:{signal_id}][REPORT] Failed to fetch market data for {symbol}")
+                        except Exception as fetch_error:
+                            self.logger.error(f"[TXN:{transaction_id}][SIG:{signal_id}][REPORT] Error fetching OHLCV data: {str(fetch_error)}")
+                    
                     # Use ltf timeframe as the primary OHLCV dataset
                     ohlcv_data = ltf_ohlcv
                     
@@ -6669,7 +6688,8 @@ class MarketMonitor:
                 'bid_percentage': bid_percentage,
                 'ask_percentage': ask_percentage,
                 'whale_bid_orders': len(whale_bids),
-                'whale_ask_orders': len(whale_asks)
+                'whale_ask_orders': len(whale_asks),
+                'current_price': current_price
             }
             
             # ENHANCEMENT: Analyze trades data to complement orderbook analysis

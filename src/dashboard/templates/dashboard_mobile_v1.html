@@ -743,6 +743,9 @@
                             <span style="color: var(--text-secondary); font-size: 12px;"> vs </span>
                             <span id="avgVolatility" style="color: var(--text-secondary);">0%</span>
                         </div>
+                        <div style="font-size: 10px; margin-top: 2px;">
+                            <span id="volatilityDescriptor" style="font-weight: 600; text-transform: uppercase;">-</span>
+                        </div>
                     </div>
                     
                     <!-- BTC Dominance -->
@@ -750,6 +753,37 @@
                         <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 4px;">BTC DOMINANCE</div>
                         <div id="btcDominance" style="font-size: 16px; font-weight: 700; color: var(--accent-warning);">
                             0%
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Improved Market Breadth -->
+                <div class="breadth-visual" style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-light);">
+                    <div class="breadth-title" style="font-size: 11px; color: var(--text-secondary); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;">Market Sentiment <span class="live-indicator" style="display: inline-block; width: 6px; height: 6px; background: var(--accent-positive); border-radius: 50%; margin-left: 6px; animation: pulse 2s infinite;"></span></div>
+                    <div class="breadth-main" style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
+                        <div class="market-icon" id="marketIcon" style="width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; transition: all 0.3s ease; background: rgba(76, 175, 80, 0.2); color: var(--accent-positive);">
+                            <i data-lucide="trending-up" style="width: 24px; height: 24px;"></i>
+                        </div>
+                        <div class="breadth-details" style="flex: 1;">
+                            <div class="breadth-label" id="marketLabel" style="font-size: 14px; font-weight: 600; margin-bottom: 4px;">Loading...</div>
+                            <div class="breadth-bar-container" style="height: 24px; background: #0a1018; border-radius: 12px; overflow: hidden; position: relative; margin-bottom: 6px;">
+                                <div class="breadth-bar-fill" style="height: 100%; display: flex; align-items: center; transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);">
+                                    <div class="bull-section" id="bullSection" style="background: var(--accent-positive); height: 100%; display: flex; align-items: center; justify-content: center; color: white; font-size: 11px; font-weight: 700; transition: width 0.5s ease; width: 50%;">50%</div>
+                                    <div class="bear-section" id="bearSection" style="background: var(--accent-negative); height: 100%; display: flex; align-items: center; justify-content: center; color: white; font-size: 11px; font-weight: 700; transition: width 0.5s ease; width: 50%;">50%</div>
+                                </div>
+                            </div>
+                            <div class="breadth-stats" style="display: flex; justify-content: space-between; font-size: 12px; color: var(--text-muted);">
+                                <span class="stat-item" style="display: flex; align-items: center; gap: 4px;">
+                                    <i data-lucide="arrow-up" style="width: 12px; height: 12px; color: var(--accent-positive);"></i>
+                                    <span class="stat-value" id="upCount" style="font-weight: 600; color: var(--text-primary);">0</span>
+                                    <span>rising</span>
+                                </span>
+                                <span class="stat-item" style="display: flex; align-items: center; gap: 4px;">
+                                    <i data-lucide="arrow-down" style="width: 12px; height: 12px; color: var(--accent-negative);"></i>
+                                    <span class="stat-value" id="downCount" style="font-weight: 600; color: var(--text-primary);">0</span>
+                                    <span>falling</span>
+                                </span>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -915,6 +949,26 @@
                     <div class="overview-metric">
                         <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 4px;">VOLATILITY RATIO</div>
                         <div id="volatilityRatio" style="font-size: 20px; font-weight: 700; color: var(--text-primary);">--</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Beta Performance Chart -->
+            <div class="mobile-card">
+                <div class="card-header">
+                    <h2 class="card-title">Beta Performance</h2>
+                    <select id="betaChartPeriod" style="background: var(--bg-secondary); border: 1px solid var(--border-light); border-radius: 6px; padding: 6px 12px; color: var(--text-primary); font-size: 12px;" onchange="updateBetaChart()">
+                        <option value="24h">24 Hours</option>
+                        <option value="7d" selected>7 Days</option>
+                        <option value="30d">30 Days</option>
+                    </select>
+                </div>
+                <div style="position: relative; width: 100%; height: 200px; padding: 12px;">
+                    <canvas id="betaChart" style="width: 100%; height: 100%;"></canvas>
+                </div>
+                <div style="display: flex; flex-wrap: wrap; gap: 8px; padding: 12px; padding-top: 0;">
+                    <div id="betaChartLegend" style="display: flex; flex-wrap: wrap; gap: 12px; font-size: 11px;">
+                        <!-- Legend items will be added here -->
                     </div>
                 </div>
             </div>
@@ -1170,15 +1224,59 @@
             pullToRefresh.style.transform = '';
         }, { passive: true });
 
+        // Market breadth update function
+        function updateMarketBreadth(upCount, downCount) {
+            const total = upCount + downCount;
+            if (total === 0) return;
+            
+            const bullPercent = Math.round((upCount / total) * 100);
+            const bearPercent = 100 - bullPercent;
+            
+            // Update visual elements
+            document.getElementById('bullSection').style.width = bullPercent + '%';
+            document.getElementById('bullSection').textContent = bullPercent + '%';
+            document.getElementById('bearSection').style.width = bearPercent + '%';
+            document.getElementById('bearSection').textContent = bearPercent + '%';
+            document.getElementById('upCount').textContent = upCount;
+            document.getElementById('downCount').textContent = downCount;
+            
+            // Update icon and label based on sentiment
+            const iconContainer = document.getElementById('marketIcon');
+            const label = document.getElementById('marketLabel');
+            
+            if (bullPercent > 60) {
+                iconContainer.className = 'market-icon bullish';
+                iconContainer.innerHTML = '<i data-lucide="trending-up" style="width: 24px; height: 24px;"></i>';
+                iconContainer.style.background = 'rgba(76, 175, 80, 0.2)';
+                iconContainer.style.color = 'var(--accent-positive)';
+                label.textContent = 'Bulls Leading';
+            } else if (bullPercent < 40) {
+                iconContainer.className = 'market-icon bearish';
+                iconContainer.innerHTML = '<i data-lucide="trending-down" style="width: 24px; height: 24px;"></i>';
+                iconContainer.style.background = 'rgba(244, 67, 54, 0.2)';
+                iconContainer.style.color = 'var(--accent-negative)';
+                label.textContent = 'Bears Leading';
+            } else {
+                iconContainer.className = 'market-icon neutral';
+                iconContainer.innerHTML = '<i data-lucide="minus" style="width: 24px; height: 24px;"></i>';
+                iconContainer.style.background = 'rgba(255, 191, 0, 0.1)';
+                iconContainer.style.color = 'var(--text-primary)';
+                label.textContent = 'Market Balanced';
+            }
+            
+            // Re-initialize Lucide icons for the new elements
+            lucide.createIcons();
+        }
+
         // Data loading functions
         async function loadDashboardData() {
             try {
                 // Load summary, symbols, market overview, and movers data
                 const [summaryResponse, symbolsResponse, marketResponse, mobileDataResponse] = await Promise.all([
-                    fetch('/api/dashboard/overview'),
-                    fetch('/api/dashboard/symbols'),
-                    fetch('/api/market/overview'),
-                    fetch('/api/dashboard/mobile-data')
+                    fetch('/api/dashboard-cached/overview'),
+                    fetch('/api/dashboard-cached/symbols'),
+                    fetch('/api/dashboard-cached/market-overview'),
+                    fetch('/api/dashboard-cached/mobile-data')
                 ]);
                 
                 const summaryData = await summaryResponse.json();
@@ -1206,7 +1304,7 @@
         async function loadSignalsData() {
             try {
                 // Fetch from dashboard signals endpoint which provides real signal data
-                const response = await fetch('/api/dashboard/signals');
+                const response = await fetch('/api/dashboard-cached/signals');
                 const data = await response.json();
                 updateSignals(data);
             } catch (error) {
@@ -1219,7 +1317,7 @@
 
         async function loadAlphaData() {
             try {
-                const response = await fetch('/api/alpha/opportunities');
+                const response = await fetch('/api/dashboard-cached/opportunities');
                 const data = await response.json();
                 updateAlpha(data);
             } catch (error) {
@@ -1229,7 +1327,7 @@
 
         async function loadAlertsData() {
             try {
-                const response = await fetch('/api/dashboard/alerts');
+                const response = await fetch('/api/dashboard-cached/alerts');
                 const data = await response.json();
                 updateAlerts(data);
             } catch (error) {
@@ -1239,26 +1337,59 @@
         
         async function loadBetaData() {
             try {
-                // Use our new mobile beta dashboard endpoint
-                const response = await fetch('/api/dashboard/mobile/beta-dashboard');
+                // Use the real-time bitcoin beta endpoint
+                const response = await fetch('/api/bitcoin-beta/realtime');
                 const data = await response.json();
                 
-                if (data.status === 'success') {
+                if (data.status === 'success' && data.overview && data.symbols) {
                     // Update overview with real data
                     updateBetaOverview({
-                        beta_coefficient: data.overview.market_beta,
-                        correlation: 0.85, // Average correlation
-                        market_regime: data.overview.market_beta > 1.2 ? 'high_volatility' : 'normal',
-                        volatility_ratio: data.overview.avg_portfolio_beta
+                        beta_coefficient: data.overview.market_beta || 1.0,
+                        correlation: data.overview.avg_correlation || 0.5,
+                        market_regime: data.overview.market_regime || 'NEUTRAL',
+                        volatility_ratio: data.overview.market_beta || 1.0
                     });
                     
-                    // Update beta symbols table
-                    updateBetaSymbols({ symbols: data.beta_table });
+                    // Transform symbols data for display
+                    const betaSymbols = data.symbols.map(sym => ({
+                        symbol: sym.symbol.replace('USDT', ''),
+                        price: sym.last_price || 0,
+                        change_24h: sym.change_24h || 0,
+                        beta: sym.beta_30d || 1.0,
+                        correlation: sym.correlation_30d || 0.5,
+                        volume_24h: sym.volume_24h || 0,
+                        risk_category: sym.risk_category?.category || 'Market Neutral',
+                        risk_color: sym.risk_category?.color || '#6B7280',
+                        alpha: sym.alpha_30d || 0,
+                        r_squared: sym.r_squared_30d || 0
+                    }));
                     
-                    // Store chart data for potential chart rendering
-                    window.betaChartData = data.charts;
+                    // Update beta symbols table
+                    updateBetaSymbols({ symbols: betaSymbols });
+                    
+                    // Store data for charts
+                    window.betaData = data;
+                    
+                    // Initialize and update chart
+                    if (document.getElementById('betaChart')) {
+                        initBetaChart();
+                    }
+                } else if (data.status === 'error') {
+                    // Try fallback endpoint if available
+                    const fallbackResponse = await fetch('/api/dashboard/mobile/beta-dashboard');
+                    const fallbackData = await fallbackResponse.json();
+                    
+                    if (fallbackData.status === 'success') {
+                        updateBetaOverview({
+                            beta_coefficient: fallbackData.overview.market_beta,
+                            correlation: 0.85,
+                            market_regime: fallbackData.overview.market_beta > 1.2 ? 'high_volatility' : 'normal',
+                            volatility_ratio: fallbackData.overview.avg_portfolio_beta
+                        });
+                        updateBetaSymbols({ symbols: fallbackData.beta_table });
+                    }
                 } else {
-                    throw new Error('Failed to load beta data');
+                    throw new Error('Invalid data format');
                 }
             } catch (error) {
                 console.error('Error loading beta data:', error);
@@ -1292,14 +1423,18 @@
             // Update market regime
             const regime = document.getElementById('betaMarketRegime');
             if (regime) {
-                const marketRegime = data.market_regime || 'neutral';
-                regime.textContent = marketRegime.toUpperCase();
+                const marketRegime = (data.market_regime || 'NEUTRAL').toUpperCase();
+                // Format display text
+                const displayText = marketRegime.replace(/_/g, ' ');
+                regime.textContent = displayText;
+                
                 const regimeColors = {
-                    'bullish': 'rgba(76, 175, 80, 0.2)',
-                    'bearish': 'rgba(244, 67, 54, 0.2)',
-                    'neutral': 'rgba(255, 191, 0, 0.2)'
+                    'RISK_ON': 'rgba(76, 175, 80, 0.2)',
+                    'RISK_OFF': 'rgba(244, 67, 54, 0.2)',
+                    'NEUTRAL': 'rgba(255, 191, 0, 0.2)',
+                    'CORRELATED_CRASH': 'rgba(239, 68, 68, 0.3)'
                 };
-                regime.style.background = regimeColors[marketRegime] || regimeColors.neutral;
+                regime.style.background = regimeColors[marketRegime] || regimeColors.NEUTRAL;
             }
             
             // Update volatility ratio
@@ -1401,6 +1536,211 @@
         function viewSymbolBeta(symbol) {
             // Could expand to show detailed beta analysis for the symbol
             console.log('View beta details for:', symbol);
+        }
+        
+        // Beta Chart Functions
+        let betaChartData = null;
+        let betaChartCanvas = null;
+        let betaChartCtx = null;
+        
+        function initBetaChart() {
+            betaChartCanvas = document.getElementById('betaChart');
+            if (betaChartCanvas) {
+                betaChartCtx = betaChartCanvas.getContext('2d');
+                updateBetaChart();
+            }
+        }
+        
+        async function fetchBetaHistory(symbol, period = '7d') {
+            try {
+                // Try to fetch real historical data first
+                const cleanSymbol = symbol.includes('USDT') ? symbol : symbol + 'USDT';
+                const response = await fetch(`/api/bitcoin-beta/history/${cleanSymbol}`);
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.history && data.history.length > 0) {
+                        return data.history;
+                    }
+                }
+                
+                // Fallback to generating mock data if no real data available
+                const points = period === '24h' ? 24 : period === '7d' ? 168 : 720;
+                const interval = period === '24h' ? 1 : period === '7d' ? 1 : 1;
+                
+                const history = [];
+                const now = Date.now();
+                
+                // Use actual beta from currentBetaSymbols if available
+                const symbolData = currentBetaSymbols.find(s => s.symbol === symbol);
+                let baseBeta = symbolData ? symbolData.beta : (1.0 + Math.random() * 0.5);
+                
+                for (let i = points; i >= 0; i--) {
+                    const timestamp = now - (i * interval * 3600000);
+                    const variation = (Math.random() - 0.5) * 0.05; // Smaller variations
+                    baseBeta = Math.max(0.5, Math.min(2.5, baseBeta + variation));
+                    history.push({
+                        timestamp: timestamp,
+                        beta: baseBeta,
+                        correlation: symbolData ? symbolData.correlation : (0.5 + Math.random() * 0.4)
+                    });
+                }
+                
+                return history;
+            } catch (error) {
+                console.error('Error fetching beta history:', error);
+                return [];
+            }
+        }
+        
+        async function updateBetaChart() {
+            if (!betaChartCanvas || !betaChartCtx) {
+                initBetaChart();
+                return;
+            }
+            
+            const period = document.getElementById('betaChartPeriod')?.value || '7d';
+            
+            // Get top 5 symbols by beta
+            const topSymbols = currentBetaSymbols
+                .sort((a, b) => b.beta - a.beta)
+                .slice(0, 5);
+            
+            // Fetch history for each symbol
+            const chartData = {};
+            const colors = ['#FF6B35', '#4ECDC4', '#FFE66D', '#8B5CF6', '#06B6D4'];
+            
+            for (let i = 0; i < topSymbols.length; i++) {
+                const symbol = topSymbols[i];
+                const history = await fetchBetaHistory(symbol.symbol, period);
+                chartData[symbol.symbol] = {
+                    data: history,
+                    color: colors[i],
+                    beta: symbol.beta
+                };
+            }
+            
+            // Also add Bitcoin as reference
+            const btcHistory = await fetchBetaHistory('BTC', period);
+            chartData['BTC'] = {
+                data: btcHistory.map(h => ({ ...h, beta: 1.0 })), // BTC always has beta of 1
+                color: '#FF9500',
+                beta: 1.0
+            };
+            
+            renderBetaChart(chartData, period);
+        }
+        
+        function renderBetaChart(data, period) {
+            if (!betaChartCtx) return;
+            
+            const rect = betaChartCanvas.getBoundingClientRect();
+            const dpr = window.devicePixelRatio || 1;
+            
+            // Set canvas size
+            betaChartCanvas.width = rect.width * dpr;
+            betaChartCanvas.height = rect.height * dpr;
+            betaChartCtx.scale(dpr, dpr);
+            
+            const width = rect.width;
+            const height = rect.height;
+            
+            // Clear canvas
+            betaChartCtx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--bg-secondary');
+            betaChartCtx.fillRect(0, 0, width, height);
+            
+            const margin = { top: 20, right: 20, bottom: 30, left: 40 };
+            const chartWidth = width - margin.left - margin.right;
+            const chartHeight = height - margin.top - margin.bottom;
+            
+            // Find data bounds
+            let minBeta = Infinity;
+            let maxBeta = -Infinity;
+            let minTime = Infinity;
+            let maxTime = -Infinity;
+            
+            Object.values(data).forEach(series => {
+                series.data.forEach(point => {
+                    minBeta = Math.min(minBeta, point.beta);
+                    maxBeta = Math.max(maxBeta, point.beta);
+                    minTime = Math.min(minTime, point.timestamp);
+                    maxTime = Math.max(maxTime, point.timestamp);
+                });
+            });
+            
+            // Add padding to beta range
+            const betaRange = maxBeta - minBeta;
+            minBeta -= betaRange * 0.1;
+            maxBeta += betaRange * 0.1;
+            
+            // Draw grid lines
+            betaChartCtx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+            betaChartCtx.lineWidth = 1;
+            
+            // Horizontal grid lines
+            for (let i = 0; i <= 5; i++) {
+                const y = margin.top + (chartHeight * i / 5);
+                betaChartCtx.beginPath();
+                betaChartCtx.moveTo(margin.left, y);
+                betaChartCtx.lineTo(margin.left + chartWidth, y);
+                betaChartCtx.stroke();
+                
+                // Beta labels
+                const betaValue = maxBeta - (maxBeta - minBeta) * i / 5;
+                betaChartCtx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+                betaChartCtx.font = '10px Inter, system-ui, sans-serif';
+                betaChartCtx.textAlign = 'right';
+                betaChartCtx.fillText(betaValue.toFixed(2), margin.left - 5, y + 3);
+            }
+            
+            // Draw beta = 1.0 reference line (market beta)
+            const marketBetaY = margin.top + chartHeight * (maxBeta - 1.0) / (maxBeta - minBeta);
+            betaChartCtx.strokeStyle = 'rgba(255, 149, 0, 0.3)';
+            betaChartCtx.setLineDash([5, 5]);
+            betaChartCtx.beginPath();
+            betaChartCtx.moveTo(margin.left, marketBetaY);
+            betaChartCtx.lineTo(margin.left + chartWidth, marketBetaY);
+            betaChartCtx.stroke();
+            betaChartCtx.setLineDash([]);
+            
+            // Draw lines for each symbol
+            Object.entries(data).forEach(([symbol, series]) => {
+                if (series.data.length === 0) return;
+                
+                betaChartCtx.strokeStyle = series.color;
+                betaChartCtx.lineWidth = symbol === 'BTC' ? 2 : 1.5;
+                betaChartCtx.globalAlpha = symbol === 'BTC' ? 0.6 : 0.8;
+                
+                betaChartCtx.beginPath();
+                series.data.forEach((point, i) => {
+                    const x = margin.left + chartWidth * (point.timestamp - minTime) / (maxTime - minTime);
+                    const y = margin.top + chartHeight * (maxBeta - point.beta) / (maxBeta - minBeta);
+                    
+                    if (i === 0) {
+                        betaChartCtx.moveTo(x, y);
+                    } else {
+                        betaChartCtx.lineTo(x, y);
+                    }
+                });
+                betaChartCtx.stroke();
+                betaChartCtx.globalAlpha = 1;
+            });
+            
+            // Update legend
+            const legendEl = document.getElementById('betaChartLegend');
+            if (legendEl) {
+                legendEl.innerHTML = '';
+                Object.entries(data).forEach(([symbol, series]) => {
+                    const currentBeta = series.data[series.data.length - 1]?.beta || series.beta;
+                    legendEl.innerHTML += `
+                        <div style="display: flex; align-items: center; gap: 4px;">
+                            <div style="width: 12px; height: 2px; background: ${series.color};"></div>
+                            <span style="color: var(--text-secondary);">${symbol}</span>
+                            <span style="color: ${series.color}; font-weight: 600;">${currentBeta.toFixed(2)}</span>
+                        </div>
+                    `;
+                });
+            }
         }
         
         function viewConfluenceAnalysis(symbol) {
@@ -1546,6 +1886,16 @@
             const regimeElement = document.getElementById('marketRegime');
             regimeElement.textContent = regime;
             
+            // Market Breadth - Updated with visual display
+            if (data.market_breadth) {
+                const breadth = data.market_breadth;
+                // Use the new updateMarketBreadth function
+                updateMarketBreadth(
+                    breadth.up || breadth.up_count || 0,
+                    breadth.down || breadth.down_count || 0
+                );
+            }
+            
             // Update regime colors
             if (regime === 'BULLISH') {
                 regimeElement.style.background = 'rgba(76, 175, 80, 0.2)';
@@ -1578,6 +1928,37 @@
             const avgVol = parseFloat(data.avg_volatility || data.volatility_average || 0);
             document.getElementById('currentVolatility').textContent = currentVol.toFixed(1) + '%';
             document.getElementById('avgVolatility').textContent = avgVol.toFixed(1) + '%';
+            
+            // Volatility descriptor
+            const descriptorElement = document.getElementById('volatilityDescriptor');
+            let descriptor = '';
+            let descriptorColor = '';
+            
+            if (currentVol < 3) {
+                descriptor = 'Very Low';
+                descriptorColor = 'var(--accent-positive)';
+            } else if (currentVol < 5) {
+                descriptor = 'Low';
+                descriptorColor = 'var(--accent-positive)';
+            } else if (currentVol < 10) {
+                descriptor = 'Normal';
+                descriptorColor = 'var(--text-primary)';
+            } else if (currentVol < 15) {
+                descriptor = 'Elevated';
+                descriptorColor = '#FFA500';
+            } else if (currentVol < 20) {
+                descriptor = 'High';
+                descriptorColor = 'var(--accent-negative)';
+            } else if (currentVol < 30) {
+                descriptor = 'Very High';
+                descriptorColor = 'var(--accent-negative)';
+            } else {
+                descriptor = 'Extreme';
+                descriptorColor = '#FF0000';
+            }
+            
+            descriptorElement.textContent = descriptor;
+            descriptorElement.style.color = descriptorColor;
             
             // Color current volatility based on comparison
             const volElement = document.getElementById('currentVolatility');
@@ -2151,10 +2532,9 @@
         }
         
         function viewDetailedAnalysis(symbol) {
-            // Navigate to detailed analysis page or show modal
+            // Navigate to detailed analysis page
             console.log('View detailed analysis for:', symbol);
-            // TODO: Implement detailed analysis view
-            alert(`Detailed analysis for ${symbol} coming soon!`);
+            window.location.href = `/api/dashboard/confluence-analysis-page?symbol=${symbol}`;
             event.stopPropagation();
         }
         
@@ -2198,7 +2578,7 @@
             } else if (data.type === 'price_update' || data.type === 'ticker') {
                 // Update symbols if on dashboard tab
                 if (document.getElementById('dashboardTab').classList.contains('active')) {
-                    fetch('/api/dashboard/symbols')
+                    fetch('/api/dashboard-cached/symbols')
                         .then(response => response.json())
                         .then(data => updateSymbols(data))
                         .catch(error => console.error('Error updating symbols:', error));
@@ -2428,5 +2808,8 @@
             }
         }
     </script>
+
+        <!-- Cache Status Indicator removed -->
+        
 </body>
 </html>

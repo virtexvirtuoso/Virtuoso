@@ -1729,7 +1729,7 @@
         // Fetch real dashboard data
         async function fetchDashboardData() {
             try {
-                const response = await fetch(`${API_BASE_URL}/api/dashboard/overview`);
+                const response = await fetch(`${API_BASE_URL}/api/dashboard-cached/overview`);
 
                 if (!response.ok) {
                     throw new Error(`API returned ${response.status}`);
@@ -1790,7 +1790,7 @@
         async function fetchAlphaData() {
             try {
                 // Get alpha opportunities
-                const opportunities_res = await fetch(`${API_BASE_URL}/api/alpha/opportunities`);
+                const opportunities_res = await fetch(`${API_BASE_URL}/api/dashboard-cached/opportunities`);
                 if(!opportunities_res.ok) throw new Error('Failed to fetch alpha opportunities');
                 const opportunities = await opportunities_res.json();
 
@@ -1890,7 +1890,7 @@
         // Fetch market analysis data
         async function fetchMarketData() {
             try {
-                const marketOverview_res = await fetch(`${API_BASE_URL}/api/market/overview`);
+                const marketOverview_res = await fetch(`${API_BASE_URL}/api/cache/cache/overview`);
                 if(!marketOverview_res.ok) throw new Error('Failed to fetch market overview');
                 const marketOverview = await marketOverview_res.json();
 
@@ -1917,7 +1917,7 @@
             try {
                 const signalsData = await fetchWithFallback(`${API_BASE_URL}/api/signals/signals/latest?limit=10`, []);
 
-                const alertsData = await fetchWithFallback(`${API_BASE_URL}/api/dashboard/alerts/recent?limit=10`, []);
+                const alertsData = await fetchWithFallback(`${API_BASE_URL}/api/dashboard-cached/alerts/recent?limit=10`, []);
 
                 const signalsAndAlerts = {
                     signals: signalsData,
@@ -3491,5 +3491,8 @@
             alert(`Opening detailed analysis for ${asset}\n\nThis would show comprehensive technical analysis, fundamentals, and risk metrics.`);
         }
     </script>
+
+        <!-- Cache Status Indicator removed -->
+        
 </body>
 </html>

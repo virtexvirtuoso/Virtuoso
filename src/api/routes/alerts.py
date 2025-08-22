@@ -5,10 +5,25 @@ import time
 import logging
 from pydantic import BaseModel, Field
 
-from ..models.alerts import (
-    AlertResponse, AlertSummary, AlertFilter, AlertLevel,
-    AlertType, AlertStats, RecentAlert
-)
+try:
+    from ..models.alerts import (
+        AlertResponse, AlertSummary, AlertFilter, AlertLevel,
+        AlertType, AlertStats, RecentAlert
+    )
+except ImportError:
+    # Fallback if models not available
+    AlertResponse = AlertSummary = AlertFilter = AlertLevel = None
+    AlertType = AlertStats = RecentAlert = None
+
+# Import alert persistence
+try:
+    from src.monitoring.alert_persistence import AlertPersistence, AlertStatus
+except ImportError:
+    try:
+        from monitoring.alert_persistence import AlertPersistence, AlertStatus
+    except ImportError:
+        AlertPersistence = None
+        AlertStatus = None
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -340,4 +355,123 @@ async def acknowledge_alert(
         raise
     except Exception as e:
         logger.error(f"Error acknowledging alert: {e}")
-        raise HTTPException(status_code=500, detail=f"Error acknowledging alert: {str(e)}") 
+        raise HTTPException(status_code=500, detail=f"Error acknowledging alert: {str(e)}")
+
+# Alert persistence endpoints
+alert_persistence = None
+
+def get_persistence():
+    """Dependency to get alert persistence instance"""
+    global alert_persistence
+    if not alert_persistence and AlertPersistence:
+        alert_persistence = AlertPersistence("data/alerts.db")
+    return alert_persistence
+
+@router.get("/persisted/list")
+async def get_persisted_alerts(
+    symbol: Optional[str] = Query(None),
+    alert_type: Optional[str] = Query(None),
+    status: Optional[str] = Query(None),
+    hours: int = Query(24),
+    limit: int = Query(100),
+    offset: int = Query(0)
+):
+    """Get persisted alerts from database"""
+    try:
+        persistence = get_persistence()
+        if not persistence:
+            raise HTTPException(status_code=503, detail="Alert persistence not available")
+        
+        end_time = datetime.utcnow().timestamp()
+        start_time = end_time - (hours * 3600)
+        
+        alerts = await persistence.get_alerts(
+            symbol=symbol,
+            alert_type=alert_type,
+            status=status,
+            start_time=start_time,
+            end_time=end_time,
+            limit=limit,
+            offset=offset
+        )
+        
+        return {
+            'success': True,
+            'count': len(alerts),
+            'alerts': [
+                {
+                    'alert_id': a.alert_id,
+                    'type': a.alert_type,
+                    'symbol': a.symbol,
+                    'timestamp': a.timestamp,
+                    'title': a.title,
+                    'message': a.message,
+                    'data': a.data,
+                    'status': a.status,
+                    'priority': a.priority
+                } for a in alerts
+            ]
+        }
+    except Exception as e:
+        logger.error(f"Error getting persisted alerts: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/persisted/{alert_id}")
+async def get_persisted_alert(alert_id: str):
+    """Get specific persisted alert by ID"""
+    try:
+        persistence = get_persistence()
+        if not persistence:
+            raise HTTPException(status_code=503, detail="Alert persistence not available")
+        
+        alert = await persistence.get_alert(alert_id)
+        if not alert:
+            raise HTTPException(status_code=404, detail=f"Alert {alert_id} not found")
+        
+        return {
+            'success': True,
+            'alert': {
+                'alert_id': alert.alert_id,
+                'type': alert.alert_type,
+                'symbol': alert.symbol,
+                'timestamp': alert.timestamp,
+                'title': alert.title,
+                'message': alert.message,
+                'data': alert.data,
+                'status': alert.status,
+                'webhook_sent': alert.webhook_sent,
+                'created_at': alert.created_at,
+                'priority': alert.priority,
+                'tags': alert.tags
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting persisted alert: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/persisted/stats")
+async def get_persisted_stats(hours: int = Query(24)):
+    """Get statistics from persisted alerts"""
+    try:
+        persistence = get_persistence()
+        if not persistence:
+            raise HTTPException(status_code=503, detail="Alert persistence not available")
+        
+        end_time = datetime.utcnow().timestamp()
+        start_time = end_time - (hours * 3600) if hours else None
+        
+        stats = await persistence.get_alert_statistics(
+            start_time=start_time,
+            end_time=end_time
+        )
+        
+        return {
+            'success': True,
+            'period_hours': hours,
+            'statistics': stats
+        }
+    except Exception as e:
+        logger.error(f"Error getting persisted stats: {e}")
+        raise HTTPException(status_code=500, detail=str(e)) 

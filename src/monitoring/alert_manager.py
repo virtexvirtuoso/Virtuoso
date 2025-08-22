@@ -98,6 +98,20 @@ except ImportError:
         class InterpretationManager:
             def process_interpretations(self, *args, **kwargs):
                 return None
+
+# Import our enhanced alert formatter
+try:
+    from src.monitoring.alert_formatter import AlertFormatter
+except ImportError:
+    try:
+        from monitoring.alert_formatter import AlertFormatter
+    except ImportError:
+        # Create dummy class if not available
+        class AlertFormatter:
+            def format_whale_alert(self, *args, **kwargs):
+                return {}
+            def format_signal_alert(self, *args, **kwargs):
+                return {}
             def get_formatted_interpretation(self, *args, **kwargs):
                 return ""
 
@@ -112,6 +126,18 @@ except ImportError:
         from database.alert_storage import AlertStorage
     except ImportError:
         AlertStorage = None
+
+# Import alert persistence
+try:
+    from src.monitoring.alert_persistence import AlertPersistence, Alert, AlertType, AlertStatus
+except ImportError:
+    try:
+        from monitoring.alert_persistence import AlertPersistence, Alert, AlertType, AlertStatus
+    except ImportError:
+        AlertPersistence = None
+        Alert = None
+        AlertType = None
+        AlertStatus = None
 
 logger = getLogger(__name__)
 
@@ -138,7 +164,10 @@ class AlertManager:
         self.sell_threshold = 40.0
         
         # Alert tracking (no longer used for deduplication)
-        self._last_alert_times = {}  # Symbol -> timestamp mapping for all alerts 
+        self._last_alert_times = {}  # Symbol -> timestamp mapping for all alerts
+        
+        # Initialize enhanced alert formatter
+        self.alert_formatter = AlertFormatter() 
         self._deduplication_window = 0  # Deduplication disabled (was 5 seconds)
         self._alert_hashes = {}  # Hash -> timestamp mapping for content tracking
         self._last_liquidation_alert = {}  # Dictionary to track last liquidation alerts by symbol
@@ -220,6 +249,18 @@ class AlertManager:
             except Exception as e:
                 self.logger.error(f"Failed to initialize alert storage: {e}")
                 self.alert_storage = None
+        
+        # Initialize new alert persistence system
+        self.alert_persistence = None
+        if AlertPersistence:
+            try:
+                # Use a dedicated database for alerts
+                alerts_db_path = config.get('monitoring', {}).get('alerts', {}).get('db_path', 'data/alerts.db')
+                self.alert_persistence = AlertPersistence(alerts_db_path, logger=self.logger)
+                self.logger.info(f"Alert persistence system initialized at {alerts_db_path}")
+            except Exception as e:
+                self.logger.error(f"Failed to initialize alert persistence: {e}")
+                self.alert_persistence = None
         self.allowed_file_types = config.get('monitoring', {}).get('alerts', {}).get('allowed_file_types', ['.pdf', '.png', '.jpg', '.jpeg'])
         
         # Delivery tracking
@@ -259,14 +300,14 @@ class AlertManager:
             if 'discord_webhook_url' in alert_config and alert_config['discord_webhook_url']:
                 self.discord_webhook_url = alert_config['discord_webhook_url'].strip()
                 if self.discord_webhook_url:
-                        self.logger.debug(f" Webhook URL from direct config: {self.discord_webhook_url[:20]}...{self.discord_webhook_url[-10:]}")
+                        pass  # logger.debug(f" Webhook URL from direct config: {self.discord_webhook_url[:20]}...{self.discord_webhook_url[-10:]}")  # Disabled verbose config dump
                 else:
                     self.logger.debug(" Discord webhook URL from direct config is empty after stripping")
             # Then check nested discord > webhook_url path (old format)
             elif 'discord' in alert_config and 'webhook_url' in alert_config['discord'] and alert_config['discord']['webhook_url']:
                 self.discord_webhook_url = alert_config['discord']['webhook_url'].strip()
                 if self.discord_webhook_url:
-                        self.logger.debug(f" Webhook URL from nested config: {self.discord_webhook_url[:20]}...{self.discord_webhook_url[-10:]}")
+                        pass  # logger.debug(f" Webhook URL from nested config: {self.discord_webhook_url[:20]}...{self.discord_webhook_url[-10:]}")  # Disabled verbose config dump
                 else:
                     self.logger.debug(" Discord webhook URL from nested config is empty after stripping")
             # Try to get from environment variable (fallback for empty config values)
@@ -302,7 +343,7 @@ class AlertManager:
                     # Direct value from config
                     self.system_webhook_url = system_webhook_raw or ''
                     if self.system_webhook_url:
-                        self.logger.debug(f" System webhook URL from config: {self.system_webhook_url[:20]}...{self.system_webhook_url[-10:]}")
+                        pass  # logger.debug(f" System webhook URL from config: {self.system_webhook_url[:20]}...{self.system_webhook_url[-10:]}")  # Disabled verbose config dump
                     else:
                         self.logger.debug(" System webhook URL from config is None or empty")
             else:
@@ -344,6 +385,18 @@ class AlertManager:
                 if 'threshold' in alert_config['liquidation']:
                     self.liquidation_threshold = alert_config['liquidation']['threshold']
                     self.logger.debug(f" Loaded liquidation threshold from config: ${self.liquidation_threshold:,}")
+                    
+            # Load whale activity configuration
+            if 'whale_activity' in alert_config:
+                if 'alert_threshold_usd' in alert_config['whale_activity']:
+                    self.whale_activity_threshold = alert_config['whale_activity']['alert_threshold_usd']
+                    self.logger.debug(f" Loaded whale activity alert threshold from config: ${self.whale_activity_threshold:,}")
+                else:
+                    self.whale_activity_threshold = 0  # Default: allow all whale alerts
+                if 'cooldown' in alert_config['whale_activity']:
+                    self.whale_activity_cooldown = alert_config['whale_activity']['cooldown']
+            else:
+                self.whale_activity_threshold = 0  # Default: allow all whale alerts
         
         # Discord webhook retry configuration
         monitoring_config = self.config.get('monitoring', {})
@@ -743,6 +796,18 @@ class AlertManager:
                 # Debug logging for extracted values
                 self.logger.debug(f"Extracted symbol: '{symbol}', subtype: '{subtype}'")
                 
+                # Check USD value threshold (filter out alerts below threshold)
+                if hasattr(self, 'whale_activity_threshold') and self.whale_activity_threshold > 0:
+                    # Get USD value from details
+                    activity_data = details.get('data', {})
+                    net_usd_value = abs(activity_data.get('net_usd_value', 0))
+                    
+                    if net_usd_value < self.whale_activity_threshold:
+                        self.logger.debug(f"Whale activity alert filtered out: ${net_usd_value:,.0f} < ${self.whale_activity_threshold:,.0f} threshold for {symbol}")
+                        return
+                    else:
+                        self.logger.debug(f"Whale activity alert passed threshold: ${net_usd_value:,.0f} >= ${self.whale_activity_threshold:,.0f} for {symbol}")
+                
                 # Check symbol-specific cooldown
                 if throttle and (current_time - self._last_whale_activity_alert.get(f"{symbol}:{subtype}", 0) < self.whale_activity_cooldown):
                     self.logger.debug(f"Whale activity alert ({subtype}) throttled for {symbol}")
@@ -792,18 +857,26 @@ class AlertManager:
                     trade_imbalance = activity_data.get('trade_imbalance', 0)
                     trade_confirmation = activity_data.get('trade_confirmation', False)
                     
-                    # Price calculation
-                    bid_usd = activity_data.get('whale_bid_usd', 0)
-                    ask_usd = activity_data.get('whale_ask_usd', 0)
-                    bid_volume = activity_data.get('whale_bid_volume', 0)
-                    ask_volume = activity_data.get('whale_ask_volume', 0)
+                    # Get current price from activity data
+                    current_price = activity_data.get('current_price', 0)
+                    # Additional fallback for price
+                    if current_price == 0:
+                        current_price = details.get('price', 0)
+                    if current_price == 0 and 'market_data' in details:
+                        current_price = details['market_data'].get('price', 0)
                     
-                    current_price = 0
-                    if bid_volume > 0 or ask_volume > 0:
-                        total_volume = bid_volume + ask_volume
-                        total_usd = bid_usd + ask_usd
-                        if total_volume > 0:
-                            current_price = total_usd / total_volume
+                    # Fallback: calculate from bid/ask if not provided
+                    if current_price == 0:
+                        bid_usd = activity_data.get('whale_bid_usd', 0)
+                        ask_usd = activity_data.get('whale_ask_usd', 0)
+                        bid_volume = activity_data.get('whale_bid_volume', 0)
+                        ask_volume = activity_data.get('whale_ask_volume', 0)
+                        
+                        if bid_volume > 0 or ask_volume > 0:
+                            total_volume = bid_volume + ask_volume
+                            total_usd = bid_usd + ask_usd
+                            if total_volume > 0:
+                                current_price = total_usd / total_volume
                     
                     # Generate unique alert ID
                     import time as time_module
@@ -843,7 +916,8 @@ class AlertManager:
                         description = (
                             f"🚨🚨🚨 **MANIPULATION ALERT** 🚨🚨🚨\n\n"
                             f"{emoji} **{signal_strength} Whale {subtype.capitalize()}** {strength_emoji}\n"
-                            f"**{symbol}** - ${abs(net_usd_value):,.0f} | {whale_trades_count} trades | {volume_multiple}\n\n"
+                            f"**{symbol}** - ${abs(net_usd_value):,.0f} | {whale_trades_count} trades | {volume_multiple}\n"
+                            f"Current price: **${current_price:,.2f}**\n\n"
                             f"⚠️ **DANGER: {signal_context}** ⚠️\n"
                             f"**What this means:**\n{interpretation}\n\n"
                             f"**Recent Whale Activity:**\n{trades_details}\n\n"
@@ -852,7 +926,8 @@ class AlertManager:
                     else:
                         description = (
                             f"{emoji} **{signal_strength} Whale {subtype.capitalize()}** {strength_emoji}\n\n"
-                            f"**{symbol}** - ${abs(net_usd_value):,.0f} | {whale_trades_count} trades | {volume_multiple}\n\n"
+                            f"**{symbol}** - ${abs(net_usd_value):,.0f} | {whale_trades_count} trades | {volume_multiple}\n"
+                            f"Current price: **${current_price:,.2f}**\n\n"
                             f"**What this means:**\n{interpretation}\n\n"
                             f"**Recent Whale Activity:**\n{trades_details}\n\n"
                             f"**Large Orders on Book:**\n{orders_details}"
@@ -860,7 +935,6 @@ class AlertManager:
                     
                     # Create Discord embed
                     embed = DiscordEmbed(
-                        title="Virtuoso Signals APP",
                         description=description,
                         color=color
                     )
@@ -891,13 +965,54 @@ class AlertManager:
                     response = webhook.execute()
                     
                     # Check response status
+                    webhook_sent = False
+                    webhook_response = None
                     if response and hasattr(response, 'status_code') and 200 <= response.status_code < 300:
                         self.logger.info(f"Sent enhanced whale activity Discord alert for {symbol} ({subtype}) - {signal_strength}")
                         self._alert_stats['sent'] = int(self._alert_stats.get('sent', 0)) + 1
-                        return
+                        webhook_sent = True
+                        webhook_response = f"Status: {response.status_code}"
                     else:
                         self.logger.warning(f"Failed to send whale activity Discord alert: {response}")
-                        # Continue with standard alert as fallback
+                        webhook_response = f"Failed: {response}"
+                    
+                    # Persist alert to database
+                    if self.alert_persistence and Alert and AlertType and AlertStatus:
+                        try:
+                            alert_obj = Alert(
+                                alert_id=alert_id,
+                                alert_type=AlertType.WHALE.value,
+                                symbol=symbol,
+                                timestamp=time.time(),
+                                title=f"Whale {subtype.capitalize()} Alert - {symbol}",
+                                message=description,
+                                data={
+                                    'net_usd_value': net_usd_value,
+                                    'whale_trades_count': whale_trades_count,
+                                    'whale_buy_volume': whale_buy_volume,
+                                    'whale_sell_volume': whale_sell_volume,
+                                    'signal_strength': signal_strength,
+                                    'current_price': current_price,
+                                    'volume_multiple': volume_multiple,
+                                    'interpretation': interpretation,
+                                    'subtype': subtype,
+                                    'trades_details': trades_details,
+                                    'orders_details': orders_details
+                                },
+                                status=AlertStatus.SENT.value if webhook_sent else AlertStatus.FAILED.value,
+                                webhook_sent=webhook_sent,
+                                webhook_response=webhook_response,
+                                priority='high' if signal_strength == 'EXECUTING' else 'normal',
+                                tags=[subtype, signal_strength, symbol]
+                            )
+                            asyncio.create_task(self.alert_persistence.save_alert(alert_obj))
+                            self.logger.debug(f"Alert {alert_id} queued for persistence")
+                        except Exception as e:
+                            self.logger.error(f"Failed to persist whale alert {alert_id}: {e}")
+                    
+                    if webhook_sent:
+                        return
+                    # Continue with standard alert as fallback
             
             # Create alert
             alert = {
@@ -959,10 +1074,78 @@ class AlertManager:
             await self._process_alert(alert)
             self.logger.debug("Alert processing completed")
             
+            # Cache signal for dashboard display
+            await self._cache_signal_for_dashboard(message, details)
+            
         except Exception as e:
             self.logger.error(f"Error sending alert: {str(e)}")
             self.logger.error(traceback.format_exc())
             self._alert_stats['errors'] = int(self._alert_stats['errors']) + 1
+    
+    async def _cache_signal_for_dashboard(self, message: str, details: Optional[Dict[str, Any]]) -> None:
+        """Cache signal for dashboard display when alerts are sent"""
+        try:
+            # Only cache trading signals
+            if not details or details.get('type') not in ['confluence', 'signal', 'whale_activity', 'large_aggressive_order', 'market_condition']:
+                return
+                
+            # Import memcache client
+            try:
+                from pymemcache.client.base import Client
+                from pymemcache import serde
+            except ImportError:
+                self.logger.debug("pymemcache not available for signal caching")
+                return
+            
+            cache = Client(('localhost', 11211), serde=serde.pickle_serde)
+            
+            # Get existing signals
+            existing = cache.get('analysis:signals')
+            if not existing or not isinstance(existing, dict):
+                existing = {'signals': [], 'count': 0, 'timestamp': int(time.time()), 'source': 'alert_manager'}
+            
+            # Create signal from alert
+            symbol = details.get('symbol', 'UNKNOWN')
+            score = details.get('confluence_score', details.get('score', 50))
+            
+            # Determine direction based on score or message content
+            direction = 'neutral'
+            if score > 60 or 'buy' in message.lower() or 'bullish' in message.lower():
+                direction = 'buy'
+            elif score < 40 or 'sell' in message.lower() or 'bearish' in message.lower():
+                direction = 'sell'
+            
+            signal = {
+                'symbol': symbol,
+                'type': details.get('type', 'alert'),
+                'direction': direction,
+                'score': score,
+                'timestamp': time.time(),
+                'message': message[:200] if len(message) > 200 else message,
+                'strength': 'strong' if abs(score - 50) > 20 else 'medium',
+                'price': details.get('price', details.get('current_price', 0)),
+                'volume': details.get('volume', details.get('volume_24h', 0)),
+                'components': details.get('components', {})
+            }
+            
+            # Add to signals list (keep last 50)
+            existing['signals'].insert(0, signal)
+            existing['signals'] = existing['signals'][:50]
+            existing['count'] = len(existing['signals'])
+            existing['timestamp'] = int(time.time())
+            
+            # Store in cache with 5 minute TTL
+            cache.set('analysis:signals', existing, expire=300)
+            
+            # Also store individual signal for this symbol
+            cache.set(f'signal:{symbol}', signal, expire=300)
+            
+            cache.close()
+            
+            self.logger.debug(f"Cached signal for {symbol} in dashboard signals (score: {score}, direction: {direction})")
+            
+        except Exception as e:
+            self.logger.debug(f"Failed to cache signal for dashboard: {e}")
     
     def _mark_alert_sent_to_discord(self, alert_id: str, response: Any = None) -> None:
         """Mark an alert as successfully sent to Discord in the database.
@@ -4159,7 +4342,7 @@ class AlertManager:
             self.logger.error(traceback.format_exc())
 
     async def _send_whale_activity_discord_alert(self, alert: Dict[str, Any], alert_id: str) -> None:
-        """Send whale activity alert with proper three-column table format.
+        """Send whale activity alert with improved formatting.
         
         Args:
             alert: Alert data containing whale activity information
@@ -4168,62 +4351,53 @@ class AlertManager:
         try:
             details = alert.get('details', {})
             whale_data = details.get('data', {})
-            symbol = details.get('symbol', 'Unknown')
-            subtype = details.get('subtype', 'activity')  # 'accumulation' or 'distribution'
             
-            # Extract whale activity data
-            whale_bid_orders = whale_data.get('whale_bid_orders', 0)
-            whale_ask_orders = whale_data.get('whale_ask_orders', 0)
-            bid_usd = whale_data.get('whale_bid_usd', 0)
-            ask_usd = whale_data.get('whale_ask_usd', 0)
-            imbalance = whale_data.get('imbalance', 0)
-            net_usd_value = whale_data.get('net_usd_value', 0)
+            # Prepare data for formatter
+            formatter_data = {
+                'symbol': details.get('symbol', 'Unknown'),
+                'subtype': details.get('subtype', 'activity'),
+                'whale_trades': whale_data.get('whale_trades', []),
+                'large_orders': whale_data.get('large_orders', []),
+                'net_usd_value': whale_data.get('net_usd_value', 0),
+                'current_price': whale_data.get('current_price', details.get('price', 0)),
+                'signal_strength': whale_data.get('signal_strength', 'UNKNOWN'),
+                'alert_id': alert_id,
+                'whale_bid_orders': whale_data.get('whale_bid_orders', 0),
+                'whale_ask_orders': whale_data.get('whale_ask_orders', 0),
+                'bid_usd': whale_data.get('whale_bid_usd', 0),
+                'ask_usd': whale_data.get('whale_ask_usd', 0),
+                'imbalance': whale_data.get('imbalance', 0)
+            }
             
-            # Determine alert type and color
-            if subtype == 'accumulation':
-                title = f"🐋📈 Whale Accumulation: {symbol}"
-                color = 0x00FF00  # Green
-                description = f"Large whale accumulation detected worth ${abs(net_usd_value):,.2f}"
-            elif subtype == 'distribution':
-                title = f"🐋📉 Whale Distribution: {symbol}"
-                color = 0xFF0000  # Red  
-                description = f"Large whale distribution detected worth ${abs(net_usd_value):,.2f}"
-            else:
-                title = f"🐋 Whale Activity: {symbol}"
-                color = 0x3498db  # Blue
-                description = f"Significant whale activity detected"
+            # Use the improved formatter
+            embed_data = self.alert_formatter.format_whale_alert(formatter_data)
             
-            # Create Discord embed
+            # Create Discord embed from formatted data
             embed = DiscordEmbed(
-                title=title,
-                description=description,
-                color=color
+                title=embed_data.get('title', 'Whale Activity Alert'),
+                description=embed_data.get('description', ''),
+                color=embed_data.get('color', 0x3498db)
             )
             
             # Add timestamp
-            embed.set_timestamp()
+            if 'timestamp' in embed_data:
+                embed.set_timestamp(embed_data['timestamp'])
+            else:
+                embed.set_timestamp()
             
-            # Add the three-column table as inline fields (matching your Discord image format)
-            embed.add_embed_field(
-                name="Bid Orders",
-                value=f"{whale_bid_orders} orders\\n${bid_usd:,.2f}",
-                inline=True
-            )
-            
-            embed.add_embed_field(
-                name="Ask Orders", 
-                value=f"{whale_ask_orders} orders\\n${ask_usd:,.2f}",
-                inline=True
-            )
-            
-            embed.add_embed_field(
-                name="Imbalance",
-                value=f"{imbalance:.1%}",
-                inline=True
-            )
+            # Add fields from formatter
+            for field in embed_data.get('fields', []):
+                embed.add_embed_field(
+                    name=field['name'],
+                    value=field['value'],
+                    inline=field.get('inline', True)
+                )
             
             # Add footer
-            embed.set_footer(text="Virtuoso Signals APP")
+            if 'footer' in embed_data:
+                embed.set_footer(text=embed_data['footer'].get('text', ''))
+            else:
+                embed.set_footer(text="")
             
             # Send Discord webhook
             webhook = DiscordWebhook(url=self.discord_webhook_url)

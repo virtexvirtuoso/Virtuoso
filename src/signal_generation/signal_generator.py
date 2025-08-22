@@ -76,10 +76,10 @@ class SignalGenerator:
             'neutral_buffer': float(threshold_config.get('neutral_buffer', 5))
         }
         
-        self.logger.debug(f"Loaded signal thresholds from config: {self.thresholds}")
+        # self.logger.debug(f"Loaded signal thresholds from config: {self.thresholds}")  # Disabled verbose config dump
         
         # Debug initialization
-        self.logger.debug(f"Initializing SignalGenerator with config: {config}")
+        self.logger.debug("Initializing SignalGenerator")  # Removed verbose config dump
         
         # Initialize components using the new unified weight structure
         self.confluence_weights = config.get('confluence', {}).get('weights', {}).get('components', {})
@@ -93,7 +93,7 @@ class SignalGenerator:
         self.price_structure_indicators = PriceStructureIndicators(config)
         self.sentiment_indicators = SentimentIndicators(config)
         
-        logger.debug(f"Initialized SignalGenerator with config: {config}")
+        # logger.debug(f"Initialized SignalGenerator with config: {config}")  # Disabled verbose config dump
         
         # Initialize processor to None - will be lazy loaded
         self._processor = None

@@ -137,6 +137,16 @@ async def dashboard_v10_ui():
     """Serve the v10 Signal Confluence Matrix dashboard"""
     return FileResponse(TEMPLATE_DIR / "dashboard_v10.html")
 
+@app.get("/dashboard/phase1")
+async def dashboard_phase1_ui():
+    """Serve the Phase 1 Direct Pipeline dashboard"""
+    return FileResponse(TEMPLATE_DIR / "dashboard_phase1.html")
+
+@app.get("/dashboard/phase2")
+async def dashboard_phase2_ui():
+    """Serve the Phase 2 Cache-Based dashboard"""
+    return FileResponse(TEMPLATE_DIR / "dashboard_phase2_cache.html")
+
 @app.get("/beta-analysis")
 async def beta_analysis_ui():
     """Serve the Beta Analysis dashboard"""
@@ -306,51 +316,310 @@ async def get_market_report():
         logger.error(f"Error generating market report: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/api/dashboard/overview")
-async def get_dashboard_overview():
-    """Get dashboard overview data"""
+# REMOVED: @app.get("/api/dashboard/overview") - conflicts with dashboard.py router
+# The dashboard.py router provides the real implementation with live data
+
+@app.get("/api/confluence/breakdown/{symbol}")
+async def get_confluence_breakdown(symbol: str):
+    """Get detailed confluence breakdown for a symbol"""
     try:
-        # Try to get real data from integration service
-        integration = get_dashboard_integration()
-        if integration:
-            return await integration.get_dashboard_overview()
+        import aiomcache
+        import json
         
-        # Fallback to mock data
-        return {
-            "status": "success",
-            "timestamp": int(time.time() * 1000),
-            "signals": {
-                "total": 12,
-                "strong": 4,
-                "medium": 5,
-                "weak": 3
-            },
-            "alerts": {
-                "total": 3,
-                "critical": 1,
-                "warning": 2
-            },
-            "alpha_opportunities": {
-                "total": 2,
-                "high_confidence": 1,
-                "medium_confidence": 1
-            },
-            "system_status": {
-                "monitoring": "active",
-                "data_feed": "connected",
-                "alerts": "enabled"
+        client = aiomcache.Client('localhost', 11211, pool_size=2)
+        
+        # Try to get full breakdown
+        data = await client.get(f'confluence:breakdown:{symbol}'.encode())
+        
+        if data:
+            breakdown = json.loads(data.decode())
+            await client.close()
+            return {
+                'status': 'success',
+                'data': breakdown
             }
-        }
+        
+        await client.close()
+        raise HTTPException(status_code=404, detail=f"No confluence data for {symbol}")
+        
     except Exception as e:
-        logger.error(f"Error getting dashboard overview: {str(e)}")
+        logger.error(f"Error getting confluence breakdown: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/confluence/latest")
+async def get_latest_confluence():
+    """Get the latest confluence breakdown available"""
+    try:
+        import aiomcache
+        import json
+        
+        client = aiomcache.Client('localhost', 11211, pool_size=2)
+        
+        # Get latest breakdown
+        data = await client.get(b'dashboard:latest_breakdown')
+        
+        if data:
+            breakdown = json.loads(data.decode())
+            await client.close()
+            return {
+                'status': 'success',
+                'data': breakdown
+            }
+        
+        await client.close()
+        return {
+            'status': 'error',
+            'message': 'No confluence data available'
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting latest confluence: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# COMMENTED OUT: Conflicts with dashboard.py router route at /api/dashboard/confluence-analysis/{symbol}
+# @app.get("/api/dashboard/confluence-analysis/{symbol}")
+# async def get_confluence_analysis_terminal(symbol: str):
+    """Get terminal-formatted confluence analysis for a symbol"""
+    try:
+        import aiomcache
+        import json
+        
+        logger.info(f"Getting confluence analysis for {symbol}")
+        
+        # Create fresh client
+        client = aiomcache.Client('localhost', 11211, pool_size=1)
+        
+        # Get detailed breakdown
+        cache_key = f'confluence:breakdown:{symbol}'
+        logger.info(f"Looking for cache key: {cache_key}")
+        
+        try:
+            data = await client.get(cache_key.encode())
+        except Exception as cache_error:
+            logger.warning(f"Cache error for {symbol}: {cache_error}")
+            await client.close()
+            return {
+                'analysis': f'Cache error for {symbol}: {str(cache_error)}',
+                'symbol': symbol,
+                'timestamp': int(time.time()),
+                'score': 50
+            }
+        
+        if not data:
+            logger.warning(f"No cache data found for {cache_key}")
+            await client.close()
+            return {
+                'analysis': f'No confluence analysis found for {symbol}',
+                'symbol': symbol,
+                'timestamp': int(time.time()),
+                'score': 50
+            }
+        
+        try:
+            breakdown = json.loads(data.decode())
+            logger.info(f"Successfully loaded breakdown for {symbol}: score={breakdown.get('overall_score')}")
+        except json.JSONDecodeError as e:
+            logger.error(f"JSON decode error for {symbol}: {e}")
+            await client.close()
+            return {
+                'analysis': f'Data format error for {symbol}',
+                'symbol': symbol,
+                'timestamp': int(time.time()),
+                'score': 50
+            }
+        
+        await client.close()
+        
+        # Format analysis
+        try:
+            terminal_text = format_simple_analysis(breakdown)
+            logger.info(f"Successfully formatted analysis for {symbol}")
+        except Exception as format_error:
+            logger.error(f"Format error for {symbol}: {format_error}")
+            terminal_text = f"Raw analysis for {symbol}:\nScore: {breakdown.get('overall_score', 'N/A')}\nSentiment: {breakdown.get('sentiment', 'N/A')}\nComponents: {len(breakdown.get('components', {}))}"
+        
+        return {
+            'analysis': terminal_text,
+            'symbol': symbol,
+            'timestamp': breakdown.get('timestamp', int(time.time())),
+            'score': breakdown.get('overall_score', 50)
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting confluence analysis for {symbol}: {e}")
+        return {
+            'analysis': f'Error: {str(e)}',
+            'symbol': symbol,
+            'timestamp': int(time.time()),
+            'score': 50
+        }
+
+# COMMENTED OUT: Conflicts with dashboard.py router route at /api/dashboard/confluence-analysis-page
+# @app.get("/api/dashboard/confluence-analysis-page")
+# async def confluence_analysis_page(symbol: str = "BTCUSDT"):
+    """Serve the confluence analysis page"""
+    try:
+        from fastapi.responses import HTMLResponse
+        
+        # Read the template
+        template_path = "src/dashboard/templates/confluence_analysis.html"
+        with open(template_path, 'r') as f:
+            html_content = f.read()
+        
+        return HTMLResponse(content=html_content)
+        
+    except Exception as e:
+        logger.error(f"Error serving confluence analysis page: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+def format_simple_analysis(breakdown: dict) -> str:
+    """Simple analysis format to avoid formatting errors"""
+    symbol = breakdown.get('symbol', 'UNKNOWN')
+    score = breakdown.get('overall_score', 0)
+    sentiment = breakdown.get('sentiment', 'NEUTRAL')
+    reliability = breakdown.get('reliability', 0)
+    components = breakdown.get('components', {})
+    interpretations = breakdown.get('interpretations', {})
+    
+    output = []
+    output.append(f"=== {symbol} CONFLUENCE ANALYSIS ===")
+    output.append(f"Overall Score: {score:.2f} ({sentiment})")
+    output.append(f"Reliability: {reliability}%")
+    output.append("")
+    
+    if components:
+        output.append("Component Breakdown:")
+        for comp_name, comp_data in components.items():
+            comp_score = comp_data.get('score', 0)
+            comp_impact = comp_data.get('impact', 0)
+            output.append(f"  {comp_name.title()}: {comp_score:.2f} ({comp_impact:.1f}% impact)")
+        output.append("")
+    
+    if interpretations:
+        output.append("Market Interpretations:")
+        for comp_name, interp in interpretations.items():
+            output.append(f"  {comp_name.title()}: {interp[:100]}...")
+        output.append("")
+    
+    return '\n'.join(output)
+
+def format_confluence_terminal(breakdown: dict) -> str:
+    """Format confluence breakdown as terminal output"""
+    symbol = breakdown.get('symbol', 'UNKNOWN')
+    score = breakdown.get('overall_score', 0)
+    sentiment = breakdown.get('sentiment', 'NEUTRAL')
+    reliability = breakdown.get('reliability', 0)
+    components = breakdown.get('components', {})
+    sub_components = breakdown.get('sub_components', {})
+    interpretations = breakdown.get('interpretations', {})
+    
+    # Build terminal output
+    output = []
+    
+    # Header
+    output.append(f"╔══ {symbol} CONFLUENCE ANALYSIS ══╗")
+    output.append("════════════════════════════════════════")
+    output.append(f"Overall Score: {score:.2f} ({sentiment})")
+    output.append(f"Reliability: {reliability}% ({'HIGH' if reliability >= 80 else 'MEDIUM' if reliability >= 60 else 'LOW'})")
+    output.append("")
+    
+    # Component breakdown table
+    if components:
+        output.append("Component Breakdown")
+        output.append("╔═════════════════╦═══════╦════════╦════════════════════════════════╗")
+        output.append("║ Component       ║ Score ║ Impact ║ Gauge                          ║")
+        output.append("╠═════════════════╬═══════╬════════╬════════════════════════════════╣")
+        
+        for comp_name, comp_data in components.items():
+            comp_score = comp_data.get('score', 0)
+            comp_impact = comp_data.get('impact', 0)
+            
+            # Create gauge (30 chars)
+            gauge_chars = int((comp_score / 100) * 30)
+            if comp_score >= 70:
+                gauge = "█" * gauge_chars + "·" * (30 - gauge_chars)
+            elif comp_score >= 50:
+                gauge = "▓" * gauge_chars + "·" * (30 - gauge_chars)
+            else:
+                gauge = "░" * gauge_chars + "·" * (30 - gauge_chars)
+            
+            comp_display = comp_name.replace('_', ' ').title()[:15]
+            output.append(f"║ {comp_display:<15} ║ {comp_score:5.2f} ║ {comp_impact:6.1f} ║ {gauge} ║")
+        
+        output.append("╚═════════════════╩═══════╩════════╩════════════════════════════════╝")
+        output.append("")
+    
+    # Sub-components table
+    if sub_components:
+        output.append("Top Influential Individual Components")
+        output.append("╔═════════════════╦═══════════╦════════╦═══════╦══════════════════════╗")
+        output.append("║ Component       ║ Parent    ║  Score ║ Trend ║ Gauge                ║")
+        output.append("╠═════════════════╬═══════════╬════════╬═══════╬══════════════════════╣")
+        
+        # Sort by score
+        sorted_subs = sorted(sub_components.items(), key=lambda x: x[1].get('score', 0), reverse=True)[:5]
+        
+        for sub_name, sub_data in sorted_subs:
+            sub_score = sub_data.get('score', 0)
+            parent = sub_data.get('parent', '').replace('_', ' ').title()
+            trend = sub_data.get('trend', '→')
+            
+            # Create gauge (20 chars)
+            gauge_chars = int((sub_score / 100) * 20)
+            gauge = "█" * gauge_chars + "·" * (20 - gauge_chars)
+            
+            sub_display = sub_name.replace('_', ' ')[:15]
+            output.append(f"║ {sub_display:<15} ║ {parent:<9} ║ {sub_score:6.2f} ║   {trend}   ║ {gauge} ║")
+        
+        output.append("╚═════════════════╩═══════════╩════════╩═══════╩══════════════════════╝")
+        output.append("")
+    
+    # Market interpretations
+    if interpretations:
+        output.append("Market Interpretations")
+        output.append("╔═════════════════╦═════════════════════════════════════════════════════════╗")
+        output.append("║ Component       ║ Interpretation                                          ║")
+        output.append("╠═════════════════╬═════════════════════════════════════════════════════════╣")
+        
+        for interp_name, interp_text in interpretations.items():
+            comp_display = interp_name.replace('_', ' ').title()[:15]
+            
+            # Wrap text to fit in table (57 chars)
+            words = interp_text.split()
+            lines = []
+            current_line = []
+            current_length = 0
+            
+            for word in words:
+                if current_length + len(word) + 1 <= 57:
+                    current_line.append(word)
+                    current_length += len(word) + 1
+                else:
+                    if current_line:
+                        lines.append(' '.join(current_line))
+                    current_line = [word]
+                    current_length = len(word)
+            
+            if current_line:
+                lines.append(' '.join(current_line))
+            
+            # Output first line with component name
+            if lines:
+                output.append(f"║ {comp_display:<15} ║ {lines[0]:<55} ║")
+                # Output continuation lines
+                for line in lines[1:]:
+                    output.append(f"║                 ║ {line:<55} ║")
+        
+        output.append("╚═════════════════╩═════════════════════════════════════════════════════════╝")
+    
+    return '\n'.join(output)
 
 async def initialize_app_state():
     """Initialize app state with required components"""
     try:
         from src.config.manager import ConfigManager
         from src.core.exchanges.manager import ExchangeManager
-from src.core.monitoring.connection_pool_monitor import get_monitor
+        from src.core.monitoring.connection_pool_monitor import get_monitor
         
         logger.info("Initializing app components...")
         

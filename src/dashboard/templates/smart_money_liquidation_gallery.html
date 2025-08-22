@@ -1,0 +1,800 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Smart Money Liquidation – Visual Gallery</title>
+    <style>
+        :root {
+            --bg-body: #070b12;
+            --bg-panel: #0c121c;
+            --border-light: #1b2433;
+            --text-primary: #e6edf3;
+            --text-secondary: #9aa7b8;
+            --accent-primary: #42a5f5;
+            --accent-positive: #4caf50;
+            --accent-warning: #ff9900;
+            --accent-negative: #f44336;
+            --content-padding: 16px;
+            --card-gap: 16px;
+        }
+
+        body {
+            margin: 0;
+            background: var(--bg-body);
+            color: var(--text-primary);
+            font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        .container {
+            max-width: 1280px;
+            margin: 16px auto;
+            padding: var(--content-padding);
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+            gap: 16px;
+        }
+
+        .panel {
+            background: var(--bg-panel);
+            border: 1px solid var(--border-light);
+            border-radius: 16px;
+            padding: 16px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            transform: translate3d(0, 0, 0);
+            contain: layout style paint;
+        }
+
+        .panel h2 {
+            font-size: 16px;
+            margin: 0 0 12px 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            color: var(--text-primary);
+        }
+
+        .badge {
+            font-size: 11px;
+            padding: 4px 8px;
+            border-radius: 10px;
+            background: rgba(255, 153, 0, 0.18);
+            color: var(--accent-warning);
+            border: 1px solid var(--border-light);
+        }
+
+        .pill {
+            font-size: 12px;
+            padding: 6px 10px;
+            border-radius: 999px;
+            border: 1px solid var(--border-light);
+            color: var(--text-secondary);
+            background: rgba(255,255,255,0.02);
+            margin: 0 8px 8px 0;
+            display: inline-block;
+        }
+        .pill.positive { background: rgba(76, 175, 80, 0.12); color: var(--accent-positive); }
+        .pill.warning  { background: rgba(255, 153, 0, 0.12); color: var(--accent-warning); }
+        .pill.negative { background: rgba(244, 67, 54, 0.12); color: var(--accent-negative); }
+
+        /* Variant 1: Original heat bar + rows */
+        .heatmap { display: grid; grid-template-columns: repeat(20, 1fr); gap: 2px; height: 36px; border-radius: 8px; overflow: hidden; background: #0a1018; border: 1px solid var(--border-light); position: relative; }
+        .heatcell { height: 100%; opacity: 0.85; }
+        .price-marker { position: absolute; top: -6px; width: 2px; height: 48px; background: var(--accent-primary); box-shadow: 0 0 8px var(--accent-primary); }
+        .legend { display: flex; justify-content: space-between; align-items: center; color: var(--text-secondary); font-size: 11px; margin-top: 6px; }
+        .list { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+        .row { display: grid; grid-template-columns: 72px 1fr 64px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border-light); }
+        .row:last-child { border-bottom: none; }
+        .sym { font-size: 14px; font-weight: 700; color: var(--text-primary); }
+        .meta { display: flex; gap: 10px; flex-wrap: wrap; color: var(--text-secondary); font-size: 12px; }
+        .score { text-align: right; font-weight: 700; padding: 6px 8px; border-radius: 10px; font-size: 13px; }
+        .score.high   { background: rgba(76, 175, 80, 0.18); color: var(--accent-positive); }
+        .score.medium { background: rgba(255, 153, 0, 0.18); color: var(--accent-warning); }
+        .score.low    { background: rgba(244, 67, 54, 0, 0.18); color: var(--accent-negative); }
+
+        /* Variant 2: Dual-pressure bars */
+        .pressure { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; align-items: end; margin: 8px 0 4px 0; }
+        .bar { position: relative; height: 56px; border-radius: 10px; border: 1px solid var(--border-light); overflow: hidden; background: #0a1018; }
+        .bar .fill { position: absolute; bottom: 0; width: 100%; background: linear-gradient(180deg, rgba(66,165,245,0.15), rgba(66,165,245,0.35)); }
+        .bar .label { position: absolute; top: 6px; left: 8px; font-size: 12px; color: var(--text-secondary); }
+        .kpis { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+
+        /* Variant 3: Matrix grid */
+        .matrix { position: relative; display: grid; grid-template-columns: repeat(10, 1fr); gap: 3px; background: #0a1018; border: 1px solid var(--border-light); padding: 6px; border-radius: 8px; }
+        .cell { width: 100%; padding-top: 100%; border-radius: 3px; opacity: 0.9; }
+        .matrix .price-marker { top: -4px; height: calc(100% + 8px); }
+
+        /* Variant 4: Radial gauges */
+        .gauges { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+        .gauge { display: grid; place-items: center; }
+        .dial { width: 120px; height: 120px; border-radius: 50%; display: grid; place-items: center; background: conic-gradient(var(--accent-primary) 0deg, var(--accent-primary) 0deg, #0a1018 0deg); border: 1px solid var(--border-light); position: relative; }
+        .dial::after { content: ""; width: 86px; height: 86px; border-radius: 50%; background: var(--bg-panel); border: 1px solid var(--border-light); }
+        .dial-label { position: absolute; text-align: center; font-size: 12px; color: var(--text-secondary); transform: translateY(40px); }
+        .dial-value { position: absolute; font-size: 18px; font-weight: 700; }
+
+        /* Variant 5: Canvas sparkline */
+        .sparkline-wrap { background: #0a1018; border: 1px solid var(--border-light); border-radius: 8px; padding: 8px; }
+        .mini-list { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-top: 10px; }
+        .mini-list .item { display: contents; }
+        .mini-list .name { color: var(--text-primary); font-weight: 600; font-size: 13px; }
+        .mini-list .prob { font-size: 13px; padding: 4px 6px; border-radius: 8px; }
+
+        /* Advanced Visualizations */
+        .depth-chart { height: 180px; background: #0a1018; border: 1px solid var(--border-light); border-radius: 8px; position: relative; overflow: hidden; }
+        .depth-side { position: absolute; top: 0; height: 100%; width: 50%; }
+        .depth-left { left: 0; background: linear-gradient(90deg, transparent, rgba(244,67,54,0.15)); }
+        .depth-right { right: 0; background: linear-gradient(-90deg, transparent, rgba(76,175,80,0.15)); }
+        .depth-line { position: absolute; height: 2px; background: currentColor; border-radius: 1px; }
+        .price-axis { position: absolute; left: 50%; top: 0; width: 1px; height: 100%; background: var(--accent-primary); opacity: 0.6; }
+        
+        .candlestick-wrap { height: 160px; background: #0a1018; border: 1px solid var(--border-light); border-radius: 8px; position: relative; }
+        .candle { position: absolute; width: 8px; border-radius: 1px; }
+        .candle.bull { background: var(--accent-positive); }
+        .candle.bear { background: var(--accent-negative); }
+        .wick { position: absolute; width: 1px; background: currentColor; left: 50%; transform: translateX(-50%); }
+        
+        .radar-wrap { display: grid; place-items: center; height: 200px; }
+        .radar-svg { width: 180px; height: 180px; }
+        .radar-grid { fill: none; stroke: var(--border-light); stroke-width: 1; }
+        .radar-area { fill: rgba(66,165,245,0.2); stroke: var(--accent-primary); stroke-width: 2; }
+        .radar-point { fill: var(--accent-primary); r: 3; }
+        
+        .network-wrap { height: 200px; background: #0a1018; border: 1px solid var(--border-light); border-radius: 8px; position: relative; overflow: hidden; }
+        .node { position: absolute; width: 24px; height: 24px; border-radius: 50%; border: 2px solid; display: grid; place-items: center; font-size: 10px; font-weight: 700; }
+        .edge { position: absolute; height: 2px; background: linear-gradient(90deg, transparent, var(--accent-primary), transparent); transform-origin: left center; }
+        
+        .bubble-matrix { height: 200px; background: #0a1018; border: 1px solid var(--border-light); border-radius: 8px; position: relative; overflow: hidden; }
+        .bubble { position: absolute; border-radius: 50%; border: 1px solid var(--border-light); display: grid; place-items: center; font-size: 11px; font-weight: 600; transform: translate(-50%, -50%); cursor: pointer; transition: transform 0.2s; }
+        .bubble:hover { transform: translate(-50%, -50%) scale(1.1); }
+        
+        .timeline-wrap { height: 120px; background: #0a1018; border: 1px solid var(--border-light); border-radius: 8px; position: relative; }
+        .timeline-bar { position: absolute; height: 20px; border-radius: 10px; display: flex; align-items: center; padding: 0 8px; font-size: 11px; }
+        .timeline-axis { position: absolute; bottom: 10px; left: 0; right: 0; height: 1px; background: var(--border-light); }
+        .timeline-tick { position: absolute; bottom: 5px; width: 1px; height: 10px; background: var(--border-light); }
+        
+        /* Interactive controls */
+        .controls { display: flex; gap: 8px; margin-bottom: 8px; }
+        .btn { padding: 6px 12px; border: 1px solid var(--border-light); border-radius: 8px; background: rgba(255,255,255,0.02); color: var(--text-secondary); font-size: 12px; cursor: pointer; transition: all 0.2s; }
+        .btn:hover { background: rgba(255,255,255,0.05); color: var(--text-primary); }
+        .btn.active { background: var(--accent-primary); color: white; border-color: var(--accent-primary); }
+        
+        /* Tooltips */
+        .tooltip { position: absolute; background: var(--bg-panel); border: 1px solid var(--border-light); border-radius: 8px; padding: 8px; font-size: 12px; pointer-events: none; z-index: 1000; opacity: 0; transition: opacity 0.2s; }
+        .tooltip.show { opacity: 1; }
+        
+        /* Minor helpers */
+        .sub { color: var(--text-secondary); font-size: 12px; margin-top: 6px; }
+        .row-compact { display: flex; gap: 8px; align-items: center; }
+        .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+    </style>
+    <!-- Demo gallery for UI exploration only. Integrate with live data services for production. -->
+    </head>
+<body>
+    <div class="container">
+        <h1 style="font-size:18px; margin: 0 0 12px 2px; color: var(--text-primary);">Smart Money Liquidation – 11 Visualization Options <span class="badge">DEMO</span></h1>
+        <div class="grid">
+            <!-- Variant 1 -->
+            <div class="panel" id="v1">
+                <h2>
+                    <span>Variant 1 · Heat Bar + Top Rows</span>
+                    <span class="badge">LIVE</span>
+                </h2>
+                <div id="badgesRow1"></div>
+                <div class="heatmap" id="heatmap1">
+                    <div class="price-marker" id="priceMarker1" style="left: 50%"></div>
+                </div>
+                <div class="legend">
+                    <span>Liquidation cluster intensity</span>
+                    <span id="clusterNote1">Clusters near current price</span>
+                </div>
+                <div class="list" id="rows1"></div>
+            </div>
+
+            <!-- Variant 2 -->
+            <div class="panel" id="v2">
+                <h2>
+                    <span>Variant 2 · Dual Pressure Bars</span>
+                    <span class="badge">LIVE</span>
+                </h2>
+                <div class="pressure">
+                    <div class="bar"><div class="fill" id="longFill" style="height:0%"></div><div class="label">Long Squeeze Risk</div></div>
+                    <div class="bar"><div class="fill" id="shortFill" style="height:0%"></div><div class="label">Short Squeeze Risk</div></div>
+                </div>
+                <div class="kpis" id="kpis2"></div>
+                <div class="sub">Split clusters by side of price marker; bar height ∝ cluster mass</div>
+            </div>
+
+            <!-- Variant 3 -->
+            <div class="panel" id="v3">
+                <h2>
+                    <span>Variant 3 · Matrix Heat Grid</span>
+                    <span class="badge">LIVE</span>
+                </h2>
+                <div class="matrix" id="matrix3">
+                    <div class="price-marker" id="priceMarker3" style="left: 50%"></div>
+                </div>
+                <div class="sub">10×4 grid, color by intensity, marker at current price</div>
+            </div>
+
+            <!-- Variant 4 -->
+            <div class="panel" id="v4">
+                <h2>
+                    <span>Variant 4 · Radial Gauges</span>
+                    <span class="badge">LIVE</span>
+                </h2>
+                <div class="gauges">
+                    <div class="gauge">
+                        <div class="dial" id="dialCrowd"><span class="dial-value" id="valCrowd">0%</span></div>
+                        <div class="dial-label">Crowding</div>
+                    </div>
+                    <div class="gauge">
+                        <div class="dial" id="dialSqueeze"><span class="dial-value" id="valSqueeze">0%</span></div>
+                        <div class="dial-label">Squeeze Probability</div>
+                    </div>
+                </div>
+                <div class="kpis" id="kpis4" style="margin-top:12px"></div>
+            </div>
+
+            <!-- Variant 5 -->
+            <div class="panel" id="v5">
+                <h2>
+                    <span>Variant 5 · Sparkline + Compact List</span>
+                    <span class="badge">LIVE</span>
+                </h2>
+                <div class="sparkline-wrap"><canvas id="spark5" width="600" height="120" style="width:100%; height:120px;"></canvas></div>
+                <div class="mini-list" id="list5"></div>
+            </div>
+
+            <!-- Variant 6 -->
+            <div class="panel" id="v6">
+                <h2>
+                    <span>Variant 6 · 3D Liquidation Depth</span>
+                    <span class="badge">LIVE</span>
+                </h2>
+                <div class="controls">
+                    <div class="btn active" data-timeframe="1h">1H</div>
+                    <div class="btn" data-timeframe="4h">4H</div>
+                    <div class="btn" data-timeframe="1d">1D</div>
+                </div>
+                <div class="depth-chart" id="depthChart">
+                    <div class="depth-side depth-left" id="depthLeft"></div>
+                    <div class="depth-side depth-right" id="depthRight"></div>
+                    <div class="price-axis"></div>
+                </div>
+                <div class="sub">Order book style: Short liquidations (left) vs Long liquidations (right)</div>
+            </div>
+
+            <!-- Variant 7 -->
+            <div class="panel" id="v7">
+                <h2>
+                    <span>Variant 7 · Price Action Context</span>
+                    <span class="badge">LIVE</span>
+                </h2>
+                <div class="controls">
+                    <div class="btn active" data-view="candles">Candles</div>
+                    <div class="btn" data-view="heatmap">Heat Overlay</div>
+                </div>
+                <div class="candlestick-wrap" id="candlestickChart"></div>
+                <div class="sub">Recent price action with liquidation heat overlay and key levels</div>
+            </div>
+
+            <!-- Variant 8 -->
+            <div class="panel" id="v8">
+                <h2>
+                    <span>Variant 8 · Multi-Timeframe Radar</span>
+                    <span class="badge">LIVE</span>
+                </h2>
+                <div class="radar-wrap">
+                    <svg class="radar-svg" id="radarChart" viewBox="0 0 180 180">
+                        <!-- Grid lines and labels will be generated -->
+                    </svg>
+                </div>
+                <div class="kpis" id="kpis8"></div>
+                <div class="sub">Risk assessment across 1H/4H/1D timeframes</div>
+            </div>
+
+            <!-- Variant 9 -->
+            <div class="panel" id="v9">
+                <h2>
+                    <span>Variant 9 · Liquidation Flow Network</span>
+                    <span class="badge">LIVE</span>
+                </h2>
+                <div class="controls">
+                    <div class="btn active" data-flow="cascade">Cascade</div>
+                    <div class="btn" data-flow="recovery">Recovery</div>
+                </div>
+                <div class="network-wrap" id="networkChart"></div>
+                <div class="sub">Interconnected liquidation cascade effects between price levels</div>
+            </div>
+
+            <!-- Variant 10 -->
+            <div class="panel" id="v10">
+                <h2>
+                    <span>Variant 10 · Interactive Bubble Matrix</span>
+                    <span class="badge">LIVE</span>
+                </h2>
+                <div class="controls">
+                    <div class="btn active" data-metric="volume">Volume</div>
+                    <div class="btn" data-metric="oi">Open Interest</div>
+                    <div class="btn" data-metric="funding">Funding</div>
+                </div>
+                <div class="bubble-matrix" id="bubbleMatrix"></div>
+                <div class="sub">Size = Volume, Color = Risk, Position = Price Level (hover for details)</div>
+            </div>
+
+            <!-- Variant 11 -->
+            <div class="panel" id="v11">
+                <h2>
+                    <span>Variant 11 · Temporal Risk Timeline</span>
+                    <span class="badge">LIVE</span>
+                </h2>
+                <div class="timeline-wrap" id="timelineChart">
+                    <div class="timeline-axis"></div>
+                </div>
+                <div class="sub">Risk progression over time with predicted squeeze windows</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tooltip for interactive elements -->
+    <div class="tooltip" id="tooltip"></div>
+
+    <script>
+        function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+        function lerp(a, b, t) { return a + (b - a) * t; }
+        function heatColor(intensity) {
+            const t = clamp(intensity, 0, 1);
+            const h = lerp(40, 0, t); // yellow -> red
+            const s = 95;
+            const l = lerp(30, 50, t);
+            return `hsl(${h}deg ${s}% ${l}%)`;
+        }
+
+        const demo = {
+            squeezeRisk: 'High',
+            crowding: 78,
+            divergence: 'Short Build',
+            pricePct: 0.56, // 0..1 across heatmap
+            heat: Array.from({ length: 20 }, (_, i) => {
+                const x = i / 19;
+                const hump1 = Math.exp(-Math.pow((x - 0.55) / 0.08, 2));
+                const hump2 = 0.7 * Math.exp(-Math.pow((x - 0.28) / 0.06, 2));
+                return clamp(hump1 + hump2, 0, 1);
+            }),
+            rows: [
+                { sym: 'BTCUSDT', oi1h: '+2.3%', px1h: '-0.8%', fundZ: '+2.1σ', ls: '62/38', density: 84, p: 78 },
+                { sym: 'ETHUSDT', oi1h: '+1.7%', px1h: '-0.5%', fundZ: '+1.6σ', ls: '58/42', density: 71, p: 72 },
+                { sym: 'SOLUSDT', oi1h: '+2.9%', px1h: '-1.3%', fundZ: '+2.4σ', ls: '65/35', density: 88, p: 81 },
+            ]
+        };
+
+        function renderVariant1() {
+            const badges = [
+                { text: `Squeeze Risk: ${demo.squeezeRisk}`, cls: demo.squeezeRisk === 'High' ? 'negative' : demo.squeezeRisk === 'Medium' ? 'warning' : 'positive' },
+                { text: `Crowding: ${demo.crowding}`, cls: demo.crowding >= 70 ? 'warning' : 'positive' },
+                { text: `Divergence: ${demo.divergence}`, cls: demo.divergence.includes('Short') ? 'negative' : 'positive' },
+            ];
+            const badgesRow = document.getElementById('badgesRow1');
+            badgesRow.innerHTML = badges.map(b => `<span class="pill ${b.cls}">${b.text}</span>`).join('');
+
+            const heatmap = document.getElementById('heatmap1');
+            const cells = demo.heat.map(v => `<div class="heatcell" style="background:${heatColor(v)}; opacity:${0.25 + 0.7 * v}"></div>`).join('');
+            heatmap.insertAdjacentHTML('afterbegin', cells);
+            const marker = document.getElementById('priceMarker1');
+            marker.style.left = `${clamp(demo.pricePct, 0, 1) * 100}%`;
+            document.getElementById('clusterNote1').textContent = demo.pricePct > 0.45 && demo.pricePct < 0.65 ? 'Clusters near current price' : 'Clusters offset from price';
+
+            const rows = document.getElementById('rows1');
+            rows.innerHTML = demo.rows.map(r => {
+                const cls = r.p >= 75 ? 'high' : r.p >= 55 ? 'medium' : 'low';
+                return `
+                    <div class="row">
+                        <div class="sym">${r.sym}</div>
+                        <div class="meta">
+                            <span>OI Δ 1h: ${r.oi1h}</span>
+                            <span>Price Δ 1h: ${r.px1h}</span>
+                            <span>Funding z: ${r.fundZ}</span>
+                            <span>L/S: ${r.ls}</span>
+                            <span>Cluster: ${r.density}</span>
+                        </div>
+                        <div class="score ${cls}">${r.p}%</div>
+                    </div>`;
+            }).join('');
+        }
+
+        function renderVariant2() {
+            const splitIndex = Math.floor(clamp(demo.pricePct, 0, 1) * (demo.heat.length - 1));
+            const leftMass = demo.heat.slice(0, splitIndex + 1).reduce((a, b) => a + b, 0) / Math.max(1, splitIndex + 1);
+            const rightMass = demo.heat.slice(splitIndex).reduce((a, b) => a + b, 0) / Math.max(1, demo.heat.length - splitIndex);
+            const longFill = document.getElementById('longFill');
+            const shortFill = document.getElementById('shortFill');
+            longFill.style.height = `${Math.round(clamp(rightMass, 0, 1) * 100)}%`;
+            shortFill.style.height = `${Math.round(clamp(leftMass, 0, 1) * 100)}%`;
+
+            const kpis = [
+                { name: 'Left Mass (short risk)', val: Math.round(leftMass * 100), cls: 'negative' },
+                { name: 'Right Mass (long risk)', val: Math.round(rightMass * 100), cls: 'warning' },
+                { name: 'Crowding', val: demo.crowding, cls: demo.crowding >= 70 ? 'warning' : 'positive' },
+            ];
+            const k = document.getElementById('kpis2');
+            k.innerHTML = kpis.map(x => `<span class="pill ${x.cls}">${x.name}: ${x.val}%</span>`).join('') +
+                demo.rows.map(r => {
+                    const color = r.p >= 75 ? 'var(--accent-positive)' : r.p >= 55 ? 'var(--accent-warning)' : 'var(--accent-negative)';
+                    return `<span class="pill" style="border-color:${color}; color:${color}">${r.sym} · P=${r.p}%</span>`;
+                }).join('');
+        }
+
+        function renderVariant3() {
+            const m = document.getElementById('matrix3');
+            const marker = document.getElementById('priceMarker3');
+            marker.style.left = `${clamp(demo.pricePct, 0, 1) * 100}%`;
+            const expanded = [];
+            // Expand to 40 cells by interpolating between points
+            for (let i = 0; i < 40; i++) {
+                const t = i / 39;
+                const pos = t * (demo.heat.length - 1);
+                const i0 = Math.floor(pos);
+                const i1 = Math.min(demo.heat.length - 1, i0 + 1);
+                const v = lerp(demo.heat[i0], demo.heat[i1], pos - i0);
+                expanded.push(v);
+            }
+            m.insertAdjacentHTML('afterbegin', expanded.map(v => `<div class="cell" style="background:${heatColor(v)}; opacity:${0.3 + 0.6 * v}"></div>`).join(''));
+        }
+
+        function renderVariant4() {
+            const dial = (el, pct, colorVar) => {
+                const deg = clamp(pct, 0, 100) * 3.6;
+                el.style.background = `conic-gradient(var(${colorVar}) ${deg}deg, #0a1018 ${deg}deg)`;
+            };
+            const crowdPct = clamp(demo.crowding, 0, 100);
+            const squeezePct = Math.round((demo.rows.reduce((a, r) => a + r.p, 0) / (demo.rows.length * 100)) * 100);
+            const dialCrowd = document.getElementById('dialCrowd');
+            const dialSqueeze = document.getElementById('dialSqueeze');
+            dial(dialCrowd, crowdPct, '--accent-primary');
+            dial(dialSqueeze, squeezePct, '--accent-warning');
+            document.getElementById('valCrowd').textContent = `${crowdPct}%`;
+            document.getElementById('valSqueeze').textContent = `${squeezePct}%`;
+
+            const info = [
+                { name: 'Divergence', val: demo.divergence, cls: demo.divergence.includes('Short') ? 'negative' : 'positive' },
+                { name: 'Price Position', val: `${Math.round(demo.pricePct * 100)}%`, cls: 'warning' },
+            ];
+            document.getElementById('kpis4').innerHTML = info.map(x => `<span class="pill ${x.cls}">${x.name}: ${x.val}</span>`).join('');
+        }
+
+        function renderVariant5() {
+            const canvas = document.getElementById('spark5');
+            const ctx = canvas.getContext('2d');
+            const W = canvas.width, H = canvas.height;
+            ctx.clearRect(0, 0, W, H);
+            // Build a smooth series from heat
+            const n = 120;
+            const series = [];
+            for (let i = 0; i < n; i++) {
+                const t = i / (n - 1);
+                const pos = t * (demo.heat.length - 1);
+                const i0 = Math.floor(pos);
+                const i1 = Math.min(demo.heat.length - 1, i0 + 1);
+                const v = lerp(demo.heat[i0], demo.heat[i1], pos - i0);
+                series.push(v);
+            }
+            const minV = Math.min(...series), maxV = Math.max(...series);
+            const scale = v => lerp(H - 10, 10, (v - minV) / (maxV - minV + 1e-6));
+            // Grid baseline
+            ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+            ctx.beginPath();
+            for (let y of [H * 0.25, H * 0.5, H * 0.75]) { ctx.moveTo(0, y); ctx.lineTo(W, y); }
+            ctx.stroke();
+            // Area
+            ctx.beginPath();
+            ctx.moveTo(0, H);
+            for (let i = 0; i < n; i++) {
+                const x = (i / (n - 1)) * W;
+                const y = scale(series[i]);
+                ctx.lineTo(x, y);
+            }
+            ctx.lineTo(W, H);
+            ctx.closePath();
+            ctx.fillStyle = 'rgba(66,165,245,0.25)';
+            ctx.fill();
+            // Line
+            ctx.beginPath();
+            for (let i = 0; i < n; i++) {
+                const x = (i / (n - 1)) * W;
+                const y = scale(series[i]);
+                if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+            }
+            ctx.strokeStyle = 'rgba(66,165,245,0.9)';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            const list = document.getElementById('list5');
+            list.innerHTML = demo.rows.map(r => {
+                const color = r.p >= 75 ? 'rgba(76,175,80,0.18)' : r.p >= 55 ? 'rgba(255,153,0,0.18)' : 'rgba(244,67,54,0.18)';
+                return `
+                    <div class="item">
+                        <div class="name">${r.sym} <span class="sub" style="margin-left:6px">OI ${r.oi1h} · Px ${r.px1h} · F ${r.fundZ}</span></div>
+                        <div class="prob" style="background:${color}">${r.p}%</div>
+                    </div>`;
+            }).join('');
+        }
+
+        function renderVariant6() {
+            // 3D Liquidation Depth Chart
+            const depthLeft = document.getElementById('depthLeft');
+            const depthRight = document.getElementById('depthRight');
+            
+            // Generate liquidation levels (simulated order book style)
+            const levels = 15;
+            const leftLevels = Array.from({length: levels}, (_, i) => ({
+                price: 1 - (i + 1) * 0.02,
+                volume: Math.random() * 0.8 + 0.1,
+                color: heatColor(Math.random() * 0.7 + 0.3)
+            }));
+            const rightLevels = Array.from({length: levels}, (_, i) => ({
+                price: 1 + (i + 1) * 0.02,
+                volume: Math.random() * 0.8 + 0.1,
+                color: heatColor(Math.random() * 0.7 + 0.3)
+            }));
+            
+            depthLeft.innerHTML = leftLevels.map((level, i) => 
+                `<div class="depth-line" style="bottom: ${i * 12}px; width: ${level.volume * 100}%; color: ${level.color}; right: 0;"></div>`
+            ).join('');
+            
+            depthRight.innerHTML = rightLevels.map((level, i) => 
+                `<div class="depth-line" style="bottom: ${i * 12}px; width: ${level.volume * 100}%; color: ${level.color}; left: 0;"></div>`
+            ).join('');
+        }
+
+        function renderVariant7() {
+            // Price Action with Liquidation Overlay
+            const chart = document.getElementById('candlestickChart');
+            const candles = 20;
+            let price = 50000;
+            const candleData = [];
+            
+            for (let i = 0; i < candles; i++) {
+                const change = (Math.random() - 0.5) * 1000;
+                const open = price;
+                const close = price + change;
+                const high = Math.max(open, close) + Math.random() * 300;
+                const low = Math.min(open, close) - Math.random() * 300;
+                candleData.push({ open, high, low, close });
+                price = close;
+            }
+            
+            const maxPrice = Math.max(...candleData.map(c => c.high));
+            const minPrice = Math.min(...candleData.map(c => c.low));
+            const priceRange = maxPrice - minPrice;
+            
+            chart.innerHTML = candleData.map((candle, i) => {
+                const x = (i / (candles - 1)) * 100;
+                const bodyTop = ((maxPrice - Math.max(candle.open, candle.close)) / priceRange) * 100;
+                const bodyHeight = (Math.abs(candle.close - candle.open) / priceRange) * 100;
+                const wickTop = ((maxPrice - candle.high) / priceRange) * 100;
+                const wickHeight = ((candle.high - candle.low) / priceRange) * 100;
+                const isBull = candle.close > candle.open;
+                
+                return `
+                    <div class="candle ${isBull ? 'bull' : 'bear'}" 
+                         style="left: ${x}%; top: ${bodyTop}%; height: ${bodyHeight}%;">
+                        <div class="wick" style="top: ${wickTop - bodyTop}%; height: ${wickHeight}%; color: ${isBull ? 'var(--accent-positive)' : 'var(--accent-negative)'}"></div>
+                    </div>`;
+            }).join('');
+        }
+
+        function renderVariant8() {
+            // Multi-Timeframe Radar Chart
+            const svg = document.getElementById('radarChart');
+            const center = 90;
+            const radius = 70;
+            const axes = ['Funding Risk', 'OI Divergence', 'Volume Spike', 'Price Momentum', 'Liquidation Density', 'Crowding'];
+            const data = {
+                '1h': [0.8, 0.6, 0.9, 0.4, 0.7, 0.8],
+                '4h': [0.6, 0.8, 0.7, 0.6, 0.5, 0.9],
+                '1d': [0.4, 0.9, 0.3, 0.8, 0.6, 0.7]
+            };
+            
+            // Create grid
+            let gridHTML = '';
+            for (let i = 1; i <= 5; i++) {
+                const r = (radius * i) / 5;
+                gridHTML += `<circle class="radar-grid" cx="${center}" cy="${center}" r="${r}"/>`;
+            }
+            
+            // Create axes
+            axes.forEach((axis, i) => {
+                const angle = (i * 2 * Math.PI) / axes.length - Math.PI / 2;
+                const x = center + Math.cos(angle) * radius;
+                const y = center + Math.sin(angle) * radius;
+                gridHTML += `<line class="radar-grid" x1="${center}" y1="${center}" x2="${x}" y2="${y}"/>`;
+                gridHTML += `<text x="${x + Math.cos(angle) * 15}" y="${y + Math.sin(angle) * 15}" fill="var(--text-secondary)" font-size="10" text-anchor="middle">${axis}</text>`;
+            });
+            
+            // Create data areas
+            Object.entries(data).forEach(([timeframe, values], idx) => {
+                const points = values.map((value, i) => {
+                    const angle = (i * 2 * Math.PI) / axes.length - Math.PI / 2;
+                    const r = (radius * value);
+                    const x = center + Math.cos(angle) * r;
+                    const y = center + Math.sin(angle) * r;
+                    return `${x},${y}`;
+                }).join(' ');
+                
+                const colors = ['rgba(66,165,245,0.3)', 'rgba(255,153,0,0.3)', 'rgba(76,175,80,0.3)'];
+                gridHTML += `<polygon points="${points}" fill="${colors[idx]}" stroke="var(--accent-primary)" stroke-width="1" opacity="0.7"/>`;
+            });
+            
+            svg.innerHTML = gridHTML;
+            
+            const kpis8 = document.getElementById('kpis8');
+            kpis8.innerHTML = Object.entries(data).map(([tf, values]) => {
+                const avg = Math.round((values.reduce((a, b) => a + b) / values.length) * 100);
+                const color = avg >= 70 ? 'negative' : avg >= 50 ? 'warning' : 'positive';
+                return `<span class="pill ${color}">${tf.toUpperCase()}: ${avg}%</span>`;
+            }).join('');
+        }
+
+        function renderVariant9() {
+            // Liquidation Flow Network
+            const network = document.getElementById('networkChart');
+            const nodes = [
+                { id: 'BTC', x: 30, y: 50, risk: 0.8, size: 24 },
+                { id: 'ETH', x: 70, y: 30, risk: 0.6, size: 20 },
+                { id: 'SOL', x: 70, y: 70, risk: 0.9, size: 18 },
+                { id: 'ADA', x: 50, y: 20, risk: 0.4, size: 16 },
+                { id: 'DOT', x: 50, y: 80, risk: 0.7, size: 16 }
+            ];
+            
+            const edges = [
+                { from: 0, to: 1, strength: 0.8 },
+                { from: 0, to: 2, strength: 0.6 },
+                { from: 1, to: 3, strength: 0.4 },
+                { from: 2, to: 4, strength: 0.7 },
+                { from: 0, to: 4, strength: 0.5 }
+            ];
+            
+            let networkHTML = '';
+            
+            // Draw edges
+            edges.forEach(edge => {
+                const from = nodes[edge.from];
+                const to = nodes[edge.to];
+                const length = Math.sqrt(Math.pow(to.x - from.x, 2) + Math.pow(to.y - from.y, 2));
+                const angle = Math.atan2(to.y - from.y, to.x - from.x) * 180 / Math.PI;
+                
+                networkHTML += `<div class="edge" style="left: ${from.x}%; top: ${from.y}%; width: ${length * 2}px; transform: rotate(${angle}deg); opacity: ${edge.strength};"></div>`;
+            });
+            
+            // Draw nodes
+            nodes.forEach(node => {
+                const color = node.risk >= 0.7 ? 'var(--accent-negative)' : node.risk >= 0.5 ? 'var(--accent-warning)' : 'var(--accent-positive)';
+                networkHTML += `<div class="node" style="left: ${node.x}%; top: ${node.y}%; width: ${node.size}px; height: ${node.size}px; border-color: ${color}; color: ${color};">${node.id}</div>`;
+            });
+            
+            network.innerHTML = networkHTML;
+        }
+
+        function renderVariant10() {
+            // Interactive Bubble Matrix
+            const matrix = document.getElementById('bubbleMatrix');
+            const symbols = ['BTC', 'ETH', 'SOL', 'ADA', 'DOT', 'AVAX', 'MATIC', 'LINK'];
+            
+            const bubbles = symbols.map(sym => ({
+                symbol: sym,
+                x: Math.random() * 90 + 5,
+                y: Math.random() * 90 + 5,
+                volume: Math.random() * 80 + 20,
+                risk: Math.random(),
+                oi: Math.random() * 100,
+                funding: (Math.random() - 0.5) * 0.1
+            }));
+            
+            matrix.innerHTML = bubbles.map(bubble => {
+                const size = Math.sqrt(bubble.volume / 100) * 40 + 20;
+                const color = heatColor(bubble.risk);
+                return `
+                    <div class="bubble" 
+                         style="left: ${bubble.x}%; top: ${bubble.y}%; width: ${size}px; height: ${size}px; background: ${color};"
+                         data-symbol="${bubble.symbol}"
+                         data-volume="${Math.round(bubble.volume)}M"
+                         data-risk="${Math.round(bubble.risk * 100)}%"
+                         data-oi="${Math.round(bubble.oi)}M"
+                         data-funding="${(bubble.funding * 100).toFixed(3)}%">
+                        ${bubble.symbol}
+                    </div>`;
+            }).join('');
+        }
+
+        function renderVariant11() {
+            // Temporal Risk Timeline
+            const timeline = document.getElementById('timelineChart');
+            const events = [
+                { time: 10, duration: 15, risk: 0.8, label: 'BTC Squeeze' },
+                { time: 30, duration: 10, risk: 0.6, label: 'ETH OI Spike' },
+                { time: 50, duration: 20, risk: 0.9, label: 'SOL Liquidation' },
+                { time: 75, duration: 8, risk: 0.4, label: 'Recovery Zone' }
+            ];
+            
+            let timelineHTML = '<div class="timeline-axis"></div>';
+            
+            // Time ticks
+            for (let i = 0; i <= 10; i++) {
+                const pos = (i / 10) * 100;
+                timelineHTML += `<div class="timeline-tick" style="left: ${pos}%;"></div>`;
+            }
+            
+            // Events
+            events.forEach((event, i) => {
+                const color = event.risk >= 0.7 ? 'var(--accent-negative)' : event.risk >= 0.5 ? 'var(--accent-warning)' : 'var(--accent-positive)';
+                const top = 20 + (i % 3) * 25;
+                timelineHTML += `
+                    <div class="timeline-bar" 
+                         style="left: ${event.time}%; top: ${top}px; width: ${event.duration}%; background: ${color}; opacity: ${event.risk};">
+                        ${event.label}
+                    </div>`;
+            });
+            
+            timeline.innerHTML = timelineHTML;
+        }
+
+        // Interactive features
+        function setupInteractivity() {
+            // Control buttons
+            document.querySelectorAll('.controls .btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const parent = btn.closest('.controls');
+                    parent.querySelectorAll('.btn').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                });
+            });
+            
+            // Bubble tooltips
+            document.querySelectorAll('.bubble').forEach(bubble => {
+                bubble.addEventListener('mouseenter', (e) => {
+                    const tooltip = document.getElementById('tooltip');
+                    const rect = bubble.getBoundingClientRect();
+                    tooltip.innerHTML = `
+                        <strong>${bubble.dataset.symbol}</strong><br>
+                        Volume: ${bubble.dataset.volume}<br>
+                        Risk: ${bubble.dataset.risk}<br>
+                        OI: ${bubble.dataset.oi}<br>
+                        Funding: ${bubble.dataset.funding}
+                    `;
+                    tooltip.style.left = `${rect.right + 10}px`;
+                    tooltip.style.top = `${rect.top}px`;
+                    tooltip.classList.add('show');
+                });
+                
+                bubble.addEventListener('mouseleave', () => {
+                    document.getElementById('tooltip').classList.remove('show');
+                });
+            });
+        }
+
+        function renderAll() {
+            renderVariant1();
+            renderVariant2();
+            renderVariant3();
+            renderVariant4();
+            renderVariant5();
+            renderVariant6();
+            renderVariant7();
+            renderVariant8();
+            renderVariant9();
+            renderVariant10();
+            renderVariant11();
+            setupInteractivity();
+        }
+
+        document.addEventListener('DOMContentLoaded', renderAll);
+    </script>
+</body>
+</html>
+
+
