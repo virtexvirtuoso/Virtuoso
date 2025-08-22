@@ -931,7 +931,7 @@ class InterpretationManager:
             return ComponentType.VOLUME_ANALYSIS
         elif any(term in name_lower for term in ['orderbook', 'spread', 'depth', 'imbalance', 'obps', 'bid', 'ask', 'mpi', 'absorption', 'exhaustion', 'dom']):
             return ComponentType.VOLUME_ANALYSIS  # Orderbook is part of volume analysis
-        elif any(term in name_lower for term in ['orderflow', 'flow', 'aggressor', 'taker', 'open_interest', 'pressure', 'trade_flow', 'liquidity_zones']):
+        elif any(term in name_lower for term in ['orderflow', 'flow', 'aggressor', 'taker', 'open_interest', 'pressure', 'trade_flow', 'smart_money_flow']):
             return ComponentType.VOLUME_ANALYSIS  # Orderflow is part of volume analysis
         elif any(term in name_lower for term in ['price', 'trend', 'support', 'resistance', 'level', 'structure', 'order_block', 'composite', 'fair_value', 'fvg', 'bos', 'choch', 'swing', 'range']):
             return ComponentType.PRICE_ANALYSIS

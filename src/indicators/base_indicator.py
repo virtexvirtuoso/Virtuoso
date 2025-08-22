@@ -267,7 +267,7 @@ class BaseIndicator(ABC):
             # Add initialization logging
             self.logger.debug("\n=== Indicator Initialization ===")
             self.logger.debug(f"Indicator class: {self.__class__.__name__}")
-            self.logger.debug(f"Config: {config}")
+            # self.logger.debug(f"Config: {config}")  # Disabled verbose config dump
             
             # Log validation requirements
             self.logger.debug("\nValidation Requirements:")

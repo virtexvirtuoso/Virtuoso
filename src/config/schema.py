@@ -108,7 +108,7 @@ class OrderflowConfig(BaseModel):
     divergence: Dict[str, Union[float, int, bool]] = Field(...)
     imbalance: Dict[str, Union[float, int, bool]] = Field(...)
     liquidity: Dict[str, Union[float, int]] = Field(...)
-    liquidity_zones: Dict[str, Union[float, int, bool]] = Field(...)
+    smart_money_flow: Dict[str, Union[float, int, bool]] = Field(...)
     min_trades: int = Field(..., ge=1)
     open_interest: Dict[str, float] = Field(...)
     trade_flow: Dict[str, Union[float, int]] = Field(...)

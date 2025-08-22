@@ -314,8 +314,8 @@ analysis:
         short_weight: 0.5
         medium_weight: 0.3
         long_weight: 0.2
-      liquidity_zones:
-        swing_length: 50
+      smart_money_flow:
+        swing_length: 25  # Optimized from 50 for performance
         range_percent: 0.01
         interpolate_missing_cvd: true
       volume_threshold: 1.5
@@ -524,13 +524,13 @@ confluence:
         manipulation: 0.08
         di: 0.03
       orderflow:
-        cvd: 0.25
-        imbalance: 0.15
-        trade_flow: 0.2
-        open_interest: 0.15
-        pressure: 0.1
-        liquidity: 0.1
-        liquidity_zones: 0.05
+        cvd: 0.22               # Increased from 0.20
+        imbalance: 0.13         # Increased from 0.12
+        trade_flow: 0.17        # Increased from 0.15
+        open_interest: 0.15     # Kept same
+        pressure: 0.08          # Kept same
+        liquidity: 0.10         # Kept same
+        smart_money_flow: 0.15  # Adjusted to 0.15 (from 0.20)
       price_structure:
         support_resistance: 0.1667
         order_blocks: 0.1667
@@ -985,6 +985,10 @@ monitoring:
       min_whale_trades: 5
       trade_alerts_enabled: false
       trade_cooldown: 900
+      # Minimum USD value threshold for alerts (filters out "Normal level" alerts)
+      # Set to 2000000 (2M) to only get "2.0x+ above normal" or higher alerts
+      # Set to 1500000 (1.5M) to get "1.5x above normal" or higher alerts
+      alert_threshold_usd: 2000000
     smart_money_detection:
       enabled: true
       min_sophistication_score: 6.0

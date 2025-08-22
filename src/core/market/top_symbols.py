@@ -64,7 +64,7 @@ class TopSymbolsManager:
         self.symbol_ranking = {}
         
         # Debug log the configuration
-        self.logger.debug(f"Initialized with market config: {self.market_config}")
+        # self.logger.debug(f"Initialized with market config: {self.market_config}")  # Disabled verbose config dump
 
     async def get_market_data(self, symbol: str) -> Optional[Dict[str, Any]]:
         """Get market data for a symbol using centralized fetching."""
@@ -536,7 +536,7 @@ class TopSymbolsManager:
             
         except Exception as e:
             logger.error(f"Symbol selection error: {str(e)}")
-            logger.debug(f"Error context - Market data count: {len(market_data)}, Config: {config}")
+            logger.debug(f"Error context - Market data count: {len(market_data)}")  # Removed config dump
             logger.debug(f"Stack trace:\n{traceback.format_exc()}")
             return []
 
@@ -957,3 +957,31 @@ class TopSymbolsManager:
             self.logger.error(f"Error getting top symbols with market data: {str(e)}")
             self.logger.debug(traceback.format_exc())
             return []
+
+
+# SIMPLE OVERRIDE - Place this at the END of top_symbols.py
+
+async def simple_fetch_tickers(exchange):
+    """Simple ticker fetch that actually works"""
+    import aiohttp
+    try:
+        url = "https://api.bybit.com/v5/market/tickers"
+        params = {"category": "linear"}
+        
+        timeout = aiohttp.ClientTimeout(total=30)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.get(url, params=params) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    if data.get('retCode') == 0:
+                        tickers = {}
+                        for item in data.get('result', {}).get('list', [])[:15]:
+                            symbol = item.get('symbol', '').replace('USDT', '/USDT')
+                            tickers[symbol] = {
+                                'last': float(item.get('lastPrice', 0)),
+                                'volume': float(item.get('volume24h', 0))
+                            }
+                        return tickers
+    except Exception as e:
+        print(f"Simple fetch error: {e}")
+    return {}

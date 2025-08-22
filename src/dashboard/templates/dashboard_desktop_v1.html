@@ -1220,6 +1220,71 @@
                     </div>
                 </div>
                 
+                <!-- Alert Center View with Persistence -->
+                <div class="view-content" id="alertsView">
+                    <div class="card full-width">
+                        <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                            <h3 class="card-title">Alert Center</h3>
+                            <div style="display: flex; gap: 12px; align-items: center;">
+                                <select id="alertTimeRange" class="setting-control" style="width: 150px; margin: 0;">
+                                    <option value="1">Last Hour</option>
+                                    <option value="6">Last 6 Hours</option>
+                                    <option value="24" selected>Last 24 Hours</option>
+                                    <option value="48">Last 48 Hours</option>
+                                    <option value="168">Last Week</option>
+                                </select>
+                                <select id="alertTypeFilter" class="setting-control" style="width: 150px; margin: 0;">
+                                    <option value="">All Types</option>
+                                    <option value="whale">Whale Alerts</option>
+                                    <option value="confluence">Confluence</option>
+                                    <option value="liquidation">Liquidations</option>
+                                    <option value="signal">Signals</option>
+                                    <option value="system">System</option>
+                                </select>
+                                <button class="btn btn-primary" onclick="refreshAlerts()" style="padding: 8px 16px;">
+                                    <i data-lucide="refresh-cw" style="width: 16px; height: 16px; margin-right: 4px;"></i>
+                                    Refresh
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <!-- Alert Statistics -->
+                        <div style="padding: 20px; border-bottom: 1px solid var(--border-light);">
+                            <div class="stats-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px;">
+                                <div class="stat-card" style="background: var(--bg-hover); padding: 16px; border-radius: 8px;">
+                                    <div style="color: var(--text-muted); font-size: 12px; margin-bottom: 4px;">Total Alerts</div>
+                                    <div style="font-size: 24px; font-weight: 600;" id="totalAlertsCount">0</div>
+                                </div>
+                                <div class="stat-card" style="background: var(--bg-hover); padding: 16px; border-radius: 8px;">
+                                    <div style="color: var(--text-muted); font-size: 12px; margin-bottom: 4px;">Whale Alerts</div>
+                                    <div style="font-size: 24px; font-weight: 600; color: var(--accent-warning);" id="whaleAlertsCount">0</div>
+                                </div>
+                                <div class="stat-card" style="background: var(--bg-hover); padding: 16px; border-radius: 8px;">
+                                    <div style="color: var(--text-muted); font-size: 12px; margin-bottom: 4px;">High Priority</div>
+                                    <div style="font-size: 24px; font-weight: 600; color: var(--accent-negative);" id="highPriorityCount">0</div>
+                                </div>
+                                <div class="stat-card" style="background: var(--bg-hover); padding: 16px; border-radius: 8px;">
+                                    <div style="color: var(--text-muted); font-size: 12px; margin-bottom: 4px;">Success Rate</div>
+                                    <div style="font-size: 24px; font-weight: 600; color: var(--accent-positive);" id="successRatePercent">0%</div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Alerts List -->
+                        <div id="alertsContent" style="padding: 20px;">
+                            <div class="alerts-container" style="max-height: 600px; overflow-y: auto;">
+                                <div id="alertsList">
+                                    <!-- Alerts will be populated here -->
+                                    <div class="empty-state" style="text-align: center; padding: 60px 20px;">
+                                        <i data-lucide="bell-off" class="empty-icon" style="width: 48px; height: 48px; color: var(--text-muted); margin-bottom: 16px;"></i>
+                                        <div style="color: var(--text-muted); font-size: 16px;">Loading alerts...</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
                 <!-- Additional views can be added here -->
             </main>
         </div>
@@ -1384,6 +1449,9 @@
                 case 'matrix':
                     await loadMatrixData();
                     break;
+                case 'alerts':
+                    await loadAlertsData();
+                    break;
                 // Add other cases as needed
             }
         }
@@ -1392,10 +1460,10 @@
             try {
                 // Load all dashboard data in parallel (matching mobile endpoints)
                 const [summaryResponse, symbolsResponse, marketResponse, moversResponse] = await Promise.all([
-                    fetch('/api/dashboard/overview'),
-                    fetch('/api/dashboard/symbols'),
-                    fetch('/api/market/overview'),
-                    fetch('/api/market/movers')
+                    fetch('/api/dashboard-cached/overview'),
+                    fetch('/api/dashboard-cached/symbols'),
+                    fetch('/api/cache/cache/overview'),
+                    fetch('/api/cache/cache/movers')
                 ]);
                 
                 const summaryData = await summaryResponse.json();
@@ -1416,7 +1484,7 @@
         
         async function loadSignalsData() {
             try {
-                const response = await fetch('/api/dashboard/signals');
+                const response = await fetch('/api/dashboard-cached/signals');
                 const data = await response.json();
                 updateSignalsView(data);
                 updateSignalsBadge(data);
@@ -1427,7 +1495,7 @@
         
         async function loadAlphaData() {
             try {
-                const response = await fetch('/api/alpha/opportunities');
+                const response = await fetch('/api/dashboard-cached/opportunities');
                 const data = await response.json();
                 updateAlphaView(data);
             } catch (error) {
@@ -1437,7 +1505,7 @@
         
         async function loadAlertsData() {
             try {
-                const response = await fetch('/api/dashboard/alerts');
+                const response = await fetch('/api/dashboard-cached/alerts');
                 const data = await response.json();
                 updateAlertsView(data);
                 updateAlertsBadge(data);
@@ -1791,7 +1859,7 @@
                     
                     // Refresh market overview periodically
                     if (!lastMarketUpdate || Date.now() - lastMarketUpdate > 30000) {
-                        fetch('/api/market/overview')
+                        fetch('/api/cache/cache/overview')
                             .then(response => response.json())
                             .then(marketData => updateMarketOverview(marketData))
                             .catch(error => console.error('Error updating market overview:', error));
@@ -2080,6 +2148,188 @@
             document.getElementById('signalsBadge').textContent = signals.length;
         }
         
+        // Alert Center Functions with Persistence
+        async function loadAlertsData() {
+            try {
+                const timeRange = document.getElementById('alertTimeRange').value;
+                const alertType = document.getElementById('alertTypeFilter').value;
+                
+                // Load persisted alerts and statistics in parallel
+                const [alertsResponse, statsResponse] = await Promise.all([
+                    fetch(`/api/alerts/persisted/list?hours=${timeRange}${alertType ? `&alert_type=${alertType}` : ''}&limit=100`),
+                    fetch(`/api/alerts/persisted/stats?hours=${timeRange}`)
+                ]);
+                
+                if (alertsResponse.ok && statsResponse.ok) {
+                    const alertsData = await alertsResponse.json();
+                    const statsData = await statsResponse.json();
+                    
+                    updateAlertsView(alertsData);
+                    updateAlertsStatistics(statsData);
+                }
+            } catch (error) {
+                console.error('Failed to load alerts:', error);
+                document.getElementById('alertsList').innerHTML = `
+                    <div class="empty-state" style="text-align: center; padding: 60px 20px;">
+                        <i data-lucide="alert-triangle" class="empty-icon" style="width: 48px; height: 48px; color: var(--accent-negative); margin-bottom: 16px;"></i>
+                        <div style="color: var(--text-muted); font-size: 16px;">Failed to load alerts</div>
+                    </div>
+                `;
+                lucide.createIcons();
+            }
+        }
+        
+        function updateAlertsView(data) {
+            const container = document.getElementById('alertsList');
+            if (!container) return;
+            
+            const alerts = data.alerts || [];
+            
+            if (alerts.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state" style="text-align: center; padding: 60px 20px;">
+                        <i data-lucide="bell-off" class="empty-icon" style="width: 48px; height: 48px; color: var(--text-muted); margin-bottom: 16px;"></i>
+                        <div style="color: var(--text-muted); font-size: 16px;">No alerts found</div>
+                    </div>
+                `;
+            } else {
+                container.innerHTML = alerts.map(alert => createAlertCard(alert)).join('');
+            }
+            
+            // Update alerts badge
+            document.getElementById('alertsBadge').textContent = alerts.length;
+            
+            setTimeout(() => lucide.createIcons(), 100);
+        }
+        
+        function updateAlertsStatistics(data) {
+            const stats = data.statistics || {};
+            
+            // Update statistics cards
+            document.getElementById('totalAlertsCount').textContent = stats.total_alerts || 0;
+            
+            // Count whale alerts
+            const whaleCount = (stats.by_type && stats.by_type.whale) || 0;
+            document.getElementById('whaleAlertsCount').textContent = whaleCount;
+            
+            // Count high priority alerts (could be based on tags or a specific field)
+            let highPriorityCount = 0;
+            if (stats.by_type) {
+                highPriorityCount = (stats.by_type.whale || 0) + (stats.by_type.liquidation || 0);
+            }
+            document.getElementById('highPriorityCount').textContent = highPriorityCount;
+            
+            // Calculate success rate (webhook sent successfully)
+            const successRate = stats.total_alerts > 0 ? 
+                Math.round((stats.webhook_success || 0) / stats.total_alerts * 100) : 0;
+            document.getElementById('successRatePercent').textContent = successRate + '%';
+        }
+        
+        function createAlertCard(alert) {
+            const timestamp = new Date(alert.timestamp * 1000);
+            const timeAgo = getTimeAgo(timestamp);
+            
+            // Determine alert icon and color based on type
+            let icon = 'bell';
+            let iconColor = '--text-primary';
+            
+            switch(alert.type) {
+                case 'whale':
+                    icon = 'trending-up';
+                    iconColor = '--accent-warning';
+                    break;
+                case 'confluence':
+                    icon = 'git-merge';
+                    iconColor = '--accent-primary';
+                    break;
+                case 'liquidation':
+                    icon = 'alert-triangle';
+                    iconColor = '--accent-negative';
+                    break;
+                case 'signal':
+                    icon = 'activity';
+                    iconColor = '--accent-positive';
+                    break;
+                case 'system':
+                    icon = 'settings';
+                    iconColor = '--text-muted';
+                    break;
+            }
+            
+            // Extract key data from alert
+            const data = alert.data || {};
+            const netValue = data.net_usd_value ? `$${formatNumber(Math.abs(data.net_usd_value))}` : '';
+            const signalStrength = data.signal_strength || '';
+            
+            return `
+                <div class="alert-card" style="background: var(--bg-panel); border: 1px solid var(--border-light); border-radius: 8px; padding: 16px; margin-bottom: 12px; cursor: pointer;" onclick="viewAlertDetails('${alert.alert_id}')">
+                    <div style="display: flex; justify-content: space-between; align-items: start;">
+                        <div style="display: flex; gap: 12px; flex: 1;">
+                            <i data-lucide="${icon}" style="width: 24px; height: 24px; color: var(${iconColor}); flex-shrink: 0; margin-top: 2px;"></i>
+                            <div style="flex: 1;">
+                                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+                                    <span style="font-weight: 600; color: var(--text-primary);">${alert.symbol || alert.type.toUpperCase()}</span>
+                                    ${alert.priority === 'high' ? '<span style="background: var(--accent-negative); color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 600;">HIGH</span>' : ''}
+                                    ${signalStrength ? `<span style="background: var(--bg-hover); color: var(--text-secondary); padding: 2px 6px; border-radius: 4px; font-size: 10px;">${signalStrength}</span>` : ''}
+                                    ${netValue ? `<span style="color: var(--accent-warning); font-weight: 600;">${netValue}</span>` : ''}
+                                </div>
+                                <div style="color: var(--text-muted); font-size: 14px; margin-bottom: 8px;">${alert.title}</div>
+                                <div style="display: flex; align-items: center; gap: 16px; font-size: 12px; color: var(--text-muted);">
+                                    <span>${timeAgo}</span>
+                                    <span>ID: ${alert.alert_id}</span>
+                                    ${alert.status === 'sent' ? '<span style="color: var(--accent-positive);">✓ Sent</span>' : ''}
+                                </div>
+                            </div>
+                        </div>
+                        <i data-lucide="chevron-right" style="width: 20px; height: 20px; color: var(--text-muted);"></i>
+                    </div>
+                </div>
+            `;
+        }
+        
+        async function viewAlertDetails(alertId) {
+            try {
+                const response = await fetch(`/api/alerts/persisted/${alertId}`);
+                if (response.ok) {
+                    const data = await response.json();
+                    const alert = data.alert;
+                    
+                    // Create modal or expand view to show full alert details
+                    console.log('Alert details:', alert);
+                    // You can implement a modal here to show full details
+                    alert(`Alert Details:\n\nID: ${alert.alert_id}\nType: ${alert.type}\nSymbol: ${alert.symbol || 'N/A'}\nMessage: ${alert.message}\n\nFull data logged to console.`);
+                }
+            } catch (error) {
+                console.error('Failed to load alert details:', error);
+            }
+        }
+        
+        function refreshAlerts() {
+            loadAlertsData();
+        }
+        
+        function getTimeAgo(date) {
+            const seconds = Math.floor((new Date() - date) / 1000);
+            
+            if (seconds < 60) return 'just now';
+            if (seconds < 3600) return Math.floor(seconds / 60) + 'm ago';
+            if (seconds < 86400) return Math.floor(seconds / 3600) + 'h ago';
+            if (seconds < 604800) return Math.floor(seconds / 86400) + 'd ago';
+            
+            return date.toLocaleDateString();
+        }
+        
+        // Auto-refresh alerts when on alerts view
+        setInterval(() => {
+            if (currentView === 'alerts') {
+                loadAlertsData();
+            }
+        }, 30000); // Refresh every 30 seconds
+        
+        // Add event listeners for alert filters
+        document.getElementById('alertTimeRange')?.addEventListener('change', loadAlertsData);
+        document.getElementById('alertTypeFilter')?.addEventListener('change', loadAlertsData);
+        
         function updateAlphaView(data) {
             // Implement alpha view update
             console.log('Alpha data:', data);
@@ -2262,5 +2512,8 @@ async function updatePoolStats() {
 setInterval(updatePoolStats, 30000);
 updatePoolStats(); // Initial load
     </script>
+
+        <!-- Cache Status Indicator removed -->
+        
 </body>
 </html>

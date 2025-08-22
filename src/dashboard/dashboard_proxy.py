@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 class DashboardIntegrationProxy:
     """Proxy that fetches dashboard data from the main service."""
     
-    def __init__(self, main_service_url: str = "http://localhost:8003"):
+    def __init__(self, main_service_url: str = "http://localhost:8004"):
         self.main_service_url = main_service_url
         self._session: Optional[aiohttp.ClientSession] = None
         self._cache = {}

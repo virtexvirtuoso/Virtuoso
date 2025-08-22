@@ -1142,18 +1142,18 @@ class InterpretationGenerator(IInterpretationService):
                 
                 message += pattern_desc
         
-        # Add liquidity zones if available
-        liquidity_zones = components.get('liquidity_zones', [])
-        if isinstance(liquidity_zones, list) and len(liquidity_zones) > 0:
-            top_zone = liquidity_zones[0]
+        # Add smart money flow zones if available
+        smart_money_flow = components.get('smart_money_flow', [])
+        if isinstance(smart_money_flow, list) and len(smart_money_flow) > 0:
+            top_zone = smart_money_flow[0]
             if isinstance(top_zone, dict):
                 zone_type = top_zone.get('type', '')
                 zone_distance = safe_float_convert(top_zone.get('distance', 0))
                 
                 if zone_type == 'buy_side' and zone_distance < 0.1:
-                    message += ". Buy-side liquidity zone detected below current price, potential target for price discovery"
+                    message += ". Smart money buy-side flow detected below current price, potential accumulation zone"
                 elif zone_type == 'sell_side' and zone_distance < 0.1:
-                    message += ". Sell-side liquidity zone detected above current price, potential target for price discovery"
+                    message += ". Smart money sell-side flow detected above current price, potential distribution zone"
         
         # Add divergence insights with enhanced implications
         divergences = data.get('divergences', {})

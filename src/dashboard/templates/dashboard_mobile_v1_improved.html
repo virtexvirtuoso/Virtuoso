@@ -1,0 +1,901 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Virtuoso Trading - Mobile Dashboard</title>
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <style>
+        :root {
+            --bg-primary: #0c1a2b;
+            --bg-secondary: #1a2332;
+            --bg-panel: #1a2a3e;
+            --text-primary: #ffbf00;
+            --text-secondary: #b8860b;
+            --text-muted: #9ca3af;
+            --accent-primary: #ffbf00;
+            --accent-secondary: #ff8800;
+            --accent-warning: #ff6b00;
+            --accent-positive: #4caf50;
+            --accent-negative: #f44336;
+            --border-light: #1a2a40;
+            --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.3);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, var(--bg-primary) 0%, #0a1520 100%);
+            color: var(--text-primary);
+            min-height: 100vh;
+            padding-top: env(safe-area-inset-top);
+            padding-bottom: env(safe-area-inset-bottom);
+            -webkit-font-smoothing: antialiased;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        /* Header */
+        .header {
+            background: rgba(26, 35, 50, 0.98);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-bottom: 1px solid var(--border-light);
+            padding: 12px 16px;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        .header-content {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .logo-icon {
+            width: 28px;
+            height: 28px;
+            background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            color: var(--bg-primary);
+            font-size: 16px;
+        }
+
+        .logo-text {
+            font-size: 18px;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--text-primary) 0%, var(--accent-secondary) 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+
+        /* Navigation */
+        .nav {
+            background: var(--bg-panel);
+            padding: 8px;
+            display: flex;
+            gap: 8px;
+            overflow-x: auto;
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+            border-bottom: 1px solid var(--border-light);
+            position: sticky;
+            top: 53px;
+            z-index: 50;
+        }
+
+        .nav::-webkit-scrollbar {
+            display: none;
+        }
+
+        .nav-item {
+            padding: 10px 16px;
+            background: rgba(26, 35, 50, 0.5);
+            border-radius: 10px;
+            white-space: nowrap;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            border: 1px solid transparent;
+            font-size: 13px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .nav-item.active {
+            background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);
+            color: var(--bg-primary);
+            box-shadow: 0 2px 8px rgba(255, 191, 0, 0.3);
+        }
+
+        /* Main Content */
+        .main-content {
+            padding: 16px;
+            padding-bottom: 80px;
+        }
+
+        /* Mobile Card */
+        .mobile-card {
+            background: rgba(26, 35, 50, 0.95);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border-radius: 16px;
+            padding: 16px;
+            margin-bottom: 16px;
+            border: 1px solid var(--border-light);
+            box-shadow: var(--shadow-card);
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+
+        .card-title {
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .card-badge {
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+
+        /* Market Breadth Improved Styles */
+        .breadth-visual {
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid var(--border-light);
+        }
+
+        .breadth-title {
+            font-size: 11px;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .breadth-main {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 8px;
+        }
+
+        .market-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            transition: all 0.3s ease;
+        }
+
+        .market-icon.bullish {
+            background: rgba(76, 175, 80, 0.2);
+            color: var(--accent-positive);
+        }
+
+        .market-icon.bearish {
+            background: rgba(244, 67, 54, 0.2);
+            color: var(--accent-negative);
+        }
+
+        .market-icon.neutral {
+            background: rgba(255, 191, 0, 0.1);
+            color: var(--text-primary);
+        }
+
+        .breadth-details {
+            flex: 1;
+        }
+
+        .breadth-label {
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .breadth-bar-container {
+            height: 24px;
+            background: #0a1018;
+            border-radius: 12px;
+            overflow: hidden;
+            position: relative;
+            margin-bottom: 6px;
+        }
+
+        .breadth-bar-fill {
+            height: 100%;
+            display: flex;
+            align-items: center;
+            transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .bull-section {
+            background: var(--accent-positive);
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 11px;
+            font-weight: 700;
+            transition: width 0.5s ease;
+        }
+
+        .bear-section {
+            background: var(--accent-negative);
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 11px;
+            font-weight: 700;
+            transition: width 0.5s ease;
+        }
+
+        .breadth-stats {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        .stat-item {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .stat-value {
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .live-indicator {
+            display: inline-block;
+            width: 6px;
+            height: 6px;
+            background: var(--accent-positive);
+            border-radius: 50%;
+            margin-left: 6px;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.6; }
+            100% { opacity: 1; }
+        }
+
+        /* Overview Metrics */
+        .overview-metric {
+            background: rgba(12, 26, 43, 0.5);
+            padding: 12px;
+            border-radius: 12px;
+            border: 1px solid var(--border-light);
+        }
+
+        /* Tab Content */
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Loading spinner */
+        .spinner {
+            border: 3px solid rgba(255, 191, 0, 0.1);
+            border-top: 3px solid var(--accent-primary);
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Settings Panel */
+        .settings-panel {
+            position: fixed;
+            bottom: -100%;
+            left: 0;
+            right: 0;
+            background: var(--bg-panel);
+            border-radius: 24px 24px 0 0;
+            padding: 24px;
+            transition: bottom 0.3s ease;
+            z-index: 1000;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.5);
+        }
+
+        .settings-panel.active {
+            bottom: 0;
+        }
+
+        /* Alert List */
+        .alert-item {
+            background: rgba(12, 26, 43, 0.5);
+            border-radius: 12px;
+            padding: 12px;
+            margin-bottom: 12px;
+            border: 1px solid var(--border-light);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            transition: all 0.3s ease;
+        }
+
+        .alert-item.high {
+            border-color: var(--accent-negative);
+        }
+
+        .alert-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+        }
+
+        .alert-content {
+            flex: 1;
+        }
+
+        .alert-title {
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .alert-description {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        .alert-time {
+            font-size: 11px;
+            color: var(--text-muted);
+        }
+
+        /* Pull to Refresh */
+        .pull-to-refresh {
+            position: fixed;
+            top: -60px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 40px;
+            height: 40px;
+            background: var(--bg-panel);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+            z-index: 200;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+        }
+
+        .pull-to-refresh.active {
+            top: 70px;
+        }
+
+        .pull-to-refresh.refreshing {
+            animation: spin 1s linear infinite;
+        }
+
+        /* Signal Cards */
+        .signal-card {
+            background: rgba(12, 26, 43, 0.5);
+            border-radius: 12px;
+            padding: 12px;
+            margin-bottom: 12px;
+            border: 1px solid var(--border-light);
+            transition: all 0.3s ease;
+        }
+
+        .signal-card.strong {
+            border-color: var(--accent-positive);
+            background: rgba(76, 175, 80, 0.05);
+        }
+
+        .signal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .signal-symbol {
+            font-size: 16px;
+            font-weight: 700;
+        }
+
+        .signal-strength {
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 700;
+        }
+
+        /* Alpha Insights */
+        .alpha-card {
+            background: linear-gradient(135deg, rgba(255, 191, 0, 0.1) 0%, rgba(255, 136, 0, 0.05) 100%);
+            border: 1px solid var(--accent-primary);
+            border-radius: 16px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+
+        .alpha-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        .alpha-icon {
+            width: 48px;
+            height: 48px;
+            background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+        }
+
+        .alpha-title {
+            flex: 1;
+        }
+
+        .alpha-name {
+            font-size: 16px;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+
+        .alpha-type {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        .alpha-confidence {
+            text-align: center;
+        }
+
+        .confidence-value {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--accent-positive);
+        }
+
+        .confidence-label {
+            font-size: 11px;
+            color: var(--text-muted);
+        }
+
+        /* Beta Analysis */
+        .beta-chart {
+            background: rgba(12, 26, 43, 0.5);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 16px;
+            height: 200px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid var(--border-light);
+        }
+
+        .beta-stats {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+        }
+
+        .beta-stat {
+            background: rgba(12, 26, 43, 0.5);
+            border-radius: 12px;
+            padding: 12px;
+            text-align: center;
+            border: 1px solid var(--border-light);
+        }
+
+        .beta-value {
+            font-size: 20px;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+
+        .beta-label {
+            font-size: 11px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 375px) {
+            .mobile-card {
+                padding: 12px;
+            }
+            
+            .card-title {
+                font-size: 14px;
+            }
+        }
+
+        /* Safe area adjustments for iOS */
+        @supports (padding: max(0px)) {
+            .header {
+                padding-top: max(12px, env(safe-area-inset-top));
+            }
+            
+            .main-content {
+                padding-bottom: max(80px, env(safe-area-inset-bottom) + 60px);
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <div class="header">
+        <div class="header-content">
+            <div class="logo">
+                <div class="logo-icon">V</div>
+                <div class="logo-text">Virtuoso</div>
+            </div>
+            <div class="header-actions">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <div style="width: 8px; height: 8px; background: var(--accent-positive); border-radius: 50%; animation: pulse 2s infinite;"></div>
+                    <span style="font-size: 12px; color: var(--text-muted);">LIVE</span>
+                </div>
+                <button onclick="toggleSettings()" style="background: none; border: none; color: var(--text-primary); cursor: pointer;">
+                    <i data-lucide="settings" style="width: 20px; height: 20px;"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Navigation -->
+    <nav class="nav">
+        <div class="nav-item active" onclick="switchTab('dashboard')">
+            <i data-lucide="layout-dashboard" style="width: 16px; height: 16px;"></i>
+            <span>Dashboard</span>
+        </div>
+        <div class="nav-item" onclick="switchTab('signals')">
+            <i data-lucide="activity" style="width: 16px; height: 16px;"></i>
+            <span>Signals</span>
+        </div>
+        <div class="nav-item" onclick="switchTab('alpha')">
+            <i data-lucide="sparkles" style="width: 16px; height: 16px;"></i>
+            <span>Alpha</span>
+        </div>
+        <div class="nav-item" onclick="switchTab('alerts')">
+            <i data-lucide="bell" style="width: 16px; height: 16px;"></i>
+            <span>Alerts</span>
+        </div>
+        <div class="nav-item" onclick="switchTab('beta')">
+            <i data-lucide="bitcoin" style="width: 16px; height: 16px;"></i>
+            <span>Bitcoin Beta</span>
+        </div>
+    </nav>
+
+    <!-- Pull to Refresh -->
+    <div id="pullToRefresh" class="pull-to-refresh">
+        <div class="spinner"></div>
+    </div>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <!-- Dashboard Tab -->
+        <div class="tab-content active" id="dashboardTab">
+            <!-- Market Overview -->
+            <div class="mobile-card">
+                <div class="card-header">
+                    <h2 class="card-title">Market Overview</h2>
+                    <span class="card-badge" style="background: rgba(76, 175, 80, 0.2); color: var(--accent-positive);">
+                        LIVE
+                    </span>
+                </div>
+                
+                <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px;">
+                    <!-- Market Regime -->
+                    <div class="overview-metric">
+                        <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 4px;">MARKET REGIME</div>
+                        <div id="marketRegime" style="font-size: 16px; font-weight: 700; padding: 4px 8px; border-radius: 6px; text-align: center; background: rgba(255, 191, 0, 0.1); color: var(--text-primary);">
+                            LOADING...
+                        </div>
+                    </div>
+                    
+                    <!-- Trend Strength -->
+                    <div class="overview-metric">
+                        <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 4px;">TREND STRENGTH</div>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <div id="trendStrength" style="font-size: 18px; font-weight: 700;">0</div>
+                            <div style="flex: 1; height: 8px; background: rgba(255, 255, 255, 0.1); border-radius: 4px; overflow: hidden;">
+                                <div id="trendStrengthBar" style="height: 100%; width: 0%; background: var(--accent-primary); transition: width 0.3s ease;"></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Market Volatility -->
+                    <div class="overview-metric">
+                        <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 4px;">VOLATILITY</div>
+                        <div style="font-size: 14px;">
+                            <span id="currentVolatility" style="font-weight: 700; color: var(--text-primary);">0%</span>
+                            <span style="color: var(--text-secondary); font-size: 12px;"> vs </span>
+                            <span id="avgVolatility" style="color: var(--text-secondary);">0%</span>
+                        </div>
+                    </div>
+                    
+                    <!-- BTC Dominance -->
+                    <div class="overview-metric">
+                        <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 4px;">BTC DOMINANCE</div>
+                        <div id="btcDominance" style="font-size: 16px; font-weight: 700; color: var(--accent-warning);">
+                            0%
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Improved Market Breadth -->
+                <div class="breadth-visual">
+                    <div class="breadth-title">Market Sentiment <span class="live-indicator"></span></div>
+                    <div class="breadth-main">
+                        <div class="market-icon" id="marketIcon">
+                            <i data-lucide="trending-up" style="width: 24px; height: 24px;"></i>
+                        </div>
+                        <div class="breadth-details">
+                            <div class="breadth-label" id="marketLabel">Loading...</div>
+                            <div class="breadth-bar-container">
+                                <div class="breadth-bar-fill" style="display: flex;">
+                                    <div class="bull-section" id="bullSection" style="width: 50%;">50%</div>
+                                    <div class="bear-section" id="bearSection" style="width: 50%;">50%</div>
+                                </div>
+                            </div>
+                            <div class="breadth-stats">
+                                <span class="stat-item">
+                                    <i data-lucide="arrow-up" style="width: 12px; height: 12px; color: var(--accent-positive);"></i>
+                                    <span class="stat-value" id="upCount">0</span>
+                                    <span>rising</span>
+                                </span>
+                                <span class="stat-item">
+                                    <i data-lucide="arrow-down" style="width: 12px; height: 12px; color: var(--accent-negative);"></i>
+                                    <span class="stat-value" id="downCount">0</span>
+                                    <span>falling</span>
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Total Volume -->
+                <div class="overview-metric" style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-light);">
+                    <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 4px;">24H TOTAL VOLUME</div>
+                    <div id="totalVolume" style="font-size: 20px; font-weight: 700; color: var(--text-primary);">
+                        $0
+                    </div>
+                </div>
+            </div>
+
+            <!-- Rest of the dashboard content continues... -->
+        </div>
+
+        <!-- Other tabs remain the same -->
+    </main>
+
+    <script>
+        // Initialize Lucide icons
+        lucide.createIcons();
+        
+        // Market breadth update function
+        function updateMarketBreadth(upCount, downCount) {
+            const total = upCount + downCount;
+            if (total === 0) return;
+            
+            const bullPercent = Math.round((upCount / total) * 100);
+            const bearPercent = 100 - bullPercent;
+            
+            // Update visual elements
+            document.getElementById('bullSection').style.width = bullPercent + '%';
+            document.getElementById('bullSection').textContent = bullPercent + '%';
+            document.getElementById('bearSection').style.width = bearPercent + '%';
+            document.getElementById('bearSection').textContent = bearPercent + '%';
+            document.getElementById('upCount').textContent = upCount;
+            document.getElementById('downCount').textContent = downCount;
+            
+            // Update icon and label based on sentiment
+            const iconContainer = document.getElementById('marketIcon');
+            const label = document.getElementById('marketLabel');
+            
+            if (bullPercent > 60) {
+                iconContainer.className = 'market-icon bullish';
+                iconContainer.innerHTML = '<i data-lucide="trending-up" style="width: 24px; height: 24px;"></i>';
+                label.textContent = 'Bulls Leading';
+            } else if (bullPercent < 40) {
+                iconContainer.className = 'market-icon bearish';
+                iconContainer.innerHTML = '<i data-lucide="trending-down" style="width: 24px; height: 24px;"></i>';
+                label.textContent = 'Bears Leading';
+            } else {
+                iconContainer.className = 'market-icon neutral';
+                iconContainer.innerHTML = '<i data-lucide="minus" style="width: 24px; height: 24px;"></i>';
+                label.textContent = 'Market Balanced';
+            }
+            
+            // Re-initialize Lucide icons for the new elements
+            lucide.createIcons();
+        }
+
+        // Load dashboard data
+        async function loadDashboardData() {
+            try {
+                const response = await fetch('/api/dashboard-cached/mobile-data');
+                const data = await response.json();
+                
+                // Update market overview
+                if (data.market_overview) {
+                    const overview = data.market_overview;
+                    
+                    // Market regime
+                    const regimeEl = document.getElementById('marketRegime');
+                    if (regimeEl && overview.market_regime) {
+                        regimeEl.textContent = overview.market_regime.toUpperCase();
+                        
+                        // Style based on regime
+                        if (overview.market_regime.toLowerCase().includes('bull')) {
+                            regimeEl.style.background = 'rgba(76, 175, 80, 0.2)';
+                            regimeEl.style.color = 'var(--accent-positive)';
+                        } else if (overview.market_regime.toLowerCase().includes('bear')) {
+                            regimeEl.style.background = 'rgba(244, 67, 54, 0.2)';
+                            regimeEl.style.color = 'var(--accent-negative)';
+                        } else {
+                            regimeEl.style.background = 'rgba(255, 191, 0, 0.1)';
+                            regimeEl.style.color = 'var(--text-primary)';
+                        }
+                    }
+                    
+                    // Trend strength
+                    if (overview.trend_strength !== undefined) {
+                        document.getElementById('trendStrength').textContent = overview.trend_strength;
+                        document.getElementById('trendStrengthBar').style.width = overview.trend_strength + '%';
+                    }
+                    
+                    // Volatility
+                    if (overview.current_volatility !== undefined) {
+                        document.getElementById('currentVolatility').textContent = overview.current_volatility.toFixed(1) + '%';
+                    }
+                    if (overview.avg_volatility !== undefined) {
+                        document.getElementById('avgVolatility').textContent = overview.avg_volatility.toFixed(1) + '%';
+                    }
+                    
+                    // BTC Dominance
+                    if (overview.btc_dominance !== undefined) {
+                        document.getElementById('btcDominance').textContent = overview.btc_dominance.toFixed(1) + '%';
+                    }
+                    
+                    // Total Volume
+                    if (overview.total_volume !== undefined) {
+                        const volume = overview.total_volume;
+                        let volumeText;
+                        if (volume >= 1e9) {
+                            volumeText = '$' + (volume / 1e9).toFixed(2) + 'B';
+                        } else if (volume >= 1e6) {
+                            volumeText = '$' + (volume / 1e6).toFixed(2) + 'M';
+                        } else {
+                            volumeText = '$' + volume.toFixed(0);
+                        }
+                        document.getElementById('totalVolume').textContent = volumeText;
+                    }
+                }
+                
+                // Update market breadth with real data
+                if (data.market_breadth) {
+                    updateMarketBreadth(
+                        data.market_breadth.up_count || 0,
+                        data.market_breadth.down_count || 0
+                    );
+                }
+                
+            } catch (error) {
+                console.error('Error loading dashboard data:', error);
+            }
+        }
+
+        // Tab switching
+        function switchTab(tabName) {
+            // Update nav items
+            document.querySelectorAll('.nav-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            event.currentTarget.classList.add('active');
+            
+            // Update content
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.remove('active');
+            });
+            const tab = document.getElementById(tabName + 'Tab');
+            if (tab) {
+                tab.classList.add('active');
+            }
+            
+            // Load tab-specific data
+            loadTabData(tabName);
+        }
+
+        // Load tab data
+        function loadTabData(tabName) {
+            switch(tabName) {
+                case 'dashboard':
+                    loadDashboardData();
+                    break;
+                // Other tabs can be implemented as needed
+            }
+        }
+
+        // Settings toggle
+        function toggleSettings() {
+            // Settings implementation
+            console.log('Settings clicked');
+        }
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            loadDashboardData();
+            
+            // Auto-refresh every 60 seconds
+            setInterval(loadDashboardData, 60000);
+        });
+    </script>
+</body>
+</html>

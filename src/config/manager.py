@@ -193,7 +193,7 @@ class ConfigManager:
             
             # Check required subsections
             section_config = config[section]
-            logger.debug(f"Section {section} config: {section_config}")
+            # logger.debug(f"Section {section} config: {section_config}")  # Disabled verbose config dump
             for subsection in subsections:
                 logger.debug(f"Checking subsection: {subsection} in {section}")
                 if subsection not in section_config:
