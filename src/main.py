@@ -592,10 +592,10 @@ async def lifespan(app: FastAPI):
             top_symbols_manager = components['top_symbols_manager']
             market_reporter = components['market_reporter']
             market_monitor = components['market_monitor']  # Already initialized in initialize_components()
+            market_data_manager = components['market_data_manager']  # Extract this so ContinuousAnalysisManager can use it
             
-            # Start monitoring system
-            logger.info("Starting monitoring system...")
-            await market_monitor.start()
+            # Don't start monitoring system here - it's handled by the monitoring task
+            logger.info("Market monitor initialized (will be started by monitoring task)")
             
             # Real-time liquidation data collection is now integrated into MarketMonitor
             # Liquidation events are automatically processed via WebSocket feeds and fed to the detection engine
@@ -640,13 +640,16 @@ async def lifespan(app: FastAPI):
         
         # Initialize and start continuous analysis
         if confluence_analyzer and market_data_manager:
+            logger.info(f"Initializing ContinuousAnalysisManager with confluence_analyzer={confluence_analyzer is not None} and market_data_manager={market_data_manager is not None}")
             global continuous_analysis_manager
             continuous_analysis_manager = ContinuousAnalysisManager(
                 confluence_analyzer, 
                 market_data_manager
             )
             await continuous_analysis_manager.start()
-            logger.info("Continuous analysis manager started")
+            logger.info("Continuous analysis manager started and will push data to cache")
+        else:
+            logger.warning(f"Cannot start ContinuousAnalysisManager: confluence_analyzer={confluence_analyzer is not None}, market_data_manager={market_data_manager is not None}")
         
         # Initialize worker pool
         init_worker_pool()
@@ -755,6 +758,7 @@ class ContinuousAnalysisManager:
         self.batch_size = 5  # Process 5 symbols at a time
         self.running = False
         self._task = None
+        self._memcache_client = None  # For pushing to unified cache
         
     async def start(self):
         """Start continuous analysis"""
@@ -772,6 +776,15 @@ class ContinuousAnalysisManager:
                 await self._task
             except asyncio.CancelledError:
                 pass
+        
+        # Cleanup memcache client
+        if self._memcache_client:
+            try:
+                await self._memcache_client.close()
+            except:
+                pass
+            self._memcache_client = None
+        
         logger.info("Continuous analysis stopped")
     
     async def _continuous_analysis_loop(self):
@@ -792,6 +805,9 @@ class ContinuousAnalysisManager:
                         
                         # Small delay between batches
                         await asyncio.sleep(0.1)
+                    
+                    # Push aggregated data to cache after all batches
+                    await self._push_to_unified_cache()
                 
                 # Wait before next analysis cycle
                 await asyncio.sleep(self.analysis_interval)
@@ -845,6 +861,24 @@ class ContinuousAnalysisManager:
                 timeout=2.0
             )
             
+            # Enhance analysis with market data fields for cache
+            if analysis and market_data:
+                # Add price and volume data from market_data
+                if 'ohlcv' in market_data and market_data['ohlcv']:
+                    latest = market_data['ohlcv'][-1] if isinstance(market_data['ohlcv'], list) else market_data['ohlcv']
+                    if isinstance(latest, (list, tuple)) and len(latest) >= 6:
+                        analysis['price'] = latest[4]  # Close price
+                        analysis['volume_24h'] = latest[5] if len(latest) > 5 else 0
+                
+                # Calculate price change if possible
+                if 'ohlcv' in market_data and len(market_data['ohlcv']) > 1:
+                    first = market_data['ohlcv'][0] if isinstance(market_data['ohlcv'], list) else market_data['ohlcv']
+                    last = market_data['ohlcv'][-1] if isinstance(market_data['ohlcv'], list) else market_data['ohlcv']
+                    if isinstance(first, (list, tuple)) and isinstance(last, (list, tuple)):
+                        if len(first) >= 5 and len(last) >= 5:
+                            price_change = ((last[4] - first[4]) / first[4]) * 100 if first[4] > 0 else 0
+                            analysis['price_change_24h'] = price_change
+            
             return analysis
             
         except asyncio.TimeoutError:
@@ -870,6 +904,167 @@ class ContinuousAnalysisManager:
             for symbol, data in self.analysis_cache.items()
             if current_time - data['timestamp'] < self.cache_ttl * 2
         }
+    
+    async def _push_to_unified_cache(self):
+        """Push aggregated analysis data to the unified cache system"""
+        try:
+            # Initialize memcache client if needed
+            if not self._memcache_client:
+                import aiomcache
+                self._memcache_client = aiomcache.Client('localhost', 11211, pool_size=2)
+            
+            # Get all fresh analyses
+            analyses = self.get_all_cached_analyses()
+            if not analyses:
+                return
+            
+            # Aggregate market overview data
+            total_symbols = len(analyses)
+            total_volume = 0
+            signals_count = {'strong_buy': 0, 'buy': 0, 'neutral': 0, 'sell': 0, 'strong_sell': 0}
+            top_movers = []
+            
+            for symbol, analysis in analyses.items():
+                if analysis:
+                    # Add to total volume
+                    if 'volume_24h' in analysis:
+                        total_volume += analysis.get('volume_24h', 0)
+                    
+                    # Count signals
+                    signal = analysis.get('signal', 'neutral').lower()
+                    if signal in signals_count:
+                        signals_count[signal] += 1
+                    
+                    # Track top movers
+                    if 'price_change_24h' in analysis:
+                        top_movers.append({
+                            'symbol': symbol,
+                            'change': analysis['price_change_24h'],
+                            'volume': analysis.get('volume_24h', 0)
+                        })
+            
+            # Sort top movers by absolute change
+            top_movers.sort(key=lambda x: abs(x['change']), reverse=True)
+            
+            # Calculate market regime (simple version)
+            bullish = signals_count['strong_buy'] + signals_count['buy']
+            bearish = signals_count['strong_sell'] + signals_count['sell']
+            market_regime = 'BULLISH' if bullish > bearish else 'BEARISH' if bearish > bullish else 'NEUTRAL'
+            
+            # Calculate trend strength (0-100)
+            total_signals = bullish + bearish + signals_count['neutral']
+            if total_signals > 0:
+                if bullish > bearish:
+                    trend_strength = min(100, int((bullish / total_signals) * 100))
+                elif bearish > bullish:
+                    trend_strength = min(100, int((bearish / total_signals) * 100))
+                else:
+                    trend_strength = 50
+            else:
+                trend_strength = 50
+            
+            # Calculate average volatility and average price change
+            avg_change = 0
+            volatility_sum = 0
+            btc_price = 0
+            btc_volume = 0
+            
+            for symbol, analysis in analyses.items():
+                if analysis:
+                    if 'price_change_24h' in analysis:
+                        avg_change += abs(analysis['price_change_24h'])
+                        volatility_sum += abs(analysis['price_change_24h'])
+                    if symbol == 'BTCUSDT' or symbol == 'BTC/USDT':
+                        btc_price = analysis.get('price', 0)
+                        btc_volume = analysis.get('volume_24h', 0)
+            
+            if total_symbols > 0:
+                avg_change = avg_change / total_symbols
+                current_volatility = volatility_sum / total_symbols
+            else:
+                avg_change = 0
+                current_volatility = 0
+            
+            # Calculate BTC dominance (simplified - use BTC volume vs total volume)
+            btc_dominance = 0
+            if total_volume > 0 and btc_volume > 0:
+                btc_dominance = min(100, (btc_volume / total_volume) * 100)
+            else:
+                btc_dominance = 57.6  # Default fallback
+            
+            # Prepare cache data
+            import json
+            
+            # Market overview
+            overview_data = {
+                'total_symbols': total_symbols,
+                'total_volume': total_volume,
+                'total_volume_24h': total_volume,
+                'market_regime': market_regime,
+                'trend_strength': trend_strength,
+                'current_volatility': round(current_volatility, 2),
+                'avg_volatility': 20.0,  # Default baseline
+                'btc_dominance': round(btc_dominance, 1),
+                'average_change_24h': round(avg_change, 2),
+                'timestamp': int(time.time())
+            }
+            
+            # Push to cache
+            await self._memcache_client.set(
+                b'market:overview',
+                json.dumps(overview_data).encode(),
+                exptime=10
+            )
+            
+            # Push signals summary
+            await self._memcache_client.set(
+                b'analysis:signals',
+                json.dumps(signals_count).encode(),
+                exptime=10
+            )
+            
+            # Push market regime
+            await self._memcache_client.set(
+                b'analysis:market_regime',
+                market_regime.encode(),
+                exptime=10
+            )
+            
+            # Push top movers
+            await self._memcache_client.set(
+                b'market:movers',
+                json.dumps({'gainers': top_movers[:5], 'losers': top_movers[-5:]}).encode(),
+                exptime=10
+            )
+            
+            # Push individual symbol data as tickers
+            tickers = {}
+            for symbol, analysis in analyses.items():
+                if analysis:
+                    tickers[symbol] = {
+                        'price': analysis.get('price', 0),
+                        'change_24h': analysis.get('price_change_24h', 0),
+                        'volume_24h': analysis.get('volume_24h', 0),
+                        'signal': analysis.get('signal', 'neutral')
+                    }
+            
+            await self._memcache_client.set(
+                b'market:tickers',
+                json.dumps(tickers).encode(),
+                exptime=10
+            )
+            
+            logger.debug(f"Pushed {total_symbols} symbols to unified cache")
+            
+        except Exception as e:
+            logger.error(f"Error pushing to unified cache: {e}")
+            # Reset client on error
+            if self._memcache_client:
+                try:
+                    await self._memcache_client.close()
+                except:
+                    pass
+                self._memcache_client = None
 
 # Initialize continuous analysis manager
 continuous_analysis_manager = None
@@ -1425,7 +1620,8 @@ async def get_market_data(exchange_manager, symbol: str) -> Dict[str, Any]:
     """Get market data for analysis."""
     try:
         # Get exchange interface
-        exchange = exchange_manager.get_primary_exchange().interface
+        primary = await exchange_manager.get_primary_exchange()
+        exchange = primary.interface if primary else None
 
         # Get timeframe configurations
         timeframes = {
@@ -1982,8 +2178,9 @@ async def get_market_report():
         logger.debug(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Error generating market report: {str(e)}")
 
-@app.get("/api/dashboard/overview")
-async def get_dashboard_overview():
+# COMMENTED OUT: Conflicts with dashboard.py router route at /api/dashboard/overview  
+# @app.get("/api/dashboard/overview")
+# async def get_dashboard_overview():
     """Get dashboard overview data"""
     try:
         # Try to get real data from trading system components
@@ -2114,9 +2311,10 @@ async def debug_state():
         "app_state_attrs": [attr for attr in dir(app.state) if not attr.startswith('_')]
     }
 
-@app.get("/api/dashboard/symbols")
-@limiter.limit("10/minute")
-async def get_dashboard_symbols(request: Request, background_tasks: BackgroundTasks):
+# COMMENTED OUT: Conflicts with dashboard.py router route at /api/dashboard/symbols
+# @app.get("/api/dashboard/symbols")
+# @limiter.limit("10/minute")
+# async def get_dashboard_symbols(request: Request, background_tasks: BackgroundTasks):
     """Get analyzed symbols with confluence scores and prices - OPTIMIZED WITH CACHING"""
     # Check cache first
     cache_key = "dashboard_symbols"
@@ -2555,8 +2753,9 @@ async def get_latest_signals(limit: int = 10):
         logger.error(f"Error getting latest signals: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/api/dashboard/alerts/recent")
-async def get_recent_alerts(limit: int = 10):
+# COMMENTED OUT: Conflicts with dashboard.py router route at /api/dashboard/alerts/recent
+# @app.get("/api/dashboard/alerts/recent")
+# async def get_recent_alerts(limit: int = 10):
     """Get recent dashboard alerts"""
     try:
         alerts = []
@@ -2668,14 +2867,21 @@ async def start_web_server():
                 port=attempt_port,
                 log_level=log_level,
                 access_log=access_log,
-                reload=reload
+                reload=reload,
+                loop="asyncio"
             )
             server = uvicorn.Server(config)
             
             if attempt_port != port:
                 logger.info(f"Primary port {port} unavailable, trying fallback port {attempt_port}")
             
-            await server.serve()
+            try:
+                await server.serve()
+            except asyncio.CancelledError:
+                logger.info("Web server cancelled, shutting down gracefully...")
+                if hasattr(server, 'shutdown'):
+                    await server.shutdown()
+                raise
             return  # Success, exit function
             
         except OSError as e:
@@ -2827,8 +3033,7 @@ async def run_application():
                         except Exception as e:
                             logger.error(f"Monitor task failed: {e}")
                             break
-                    if not market_monitor.running:
-                        break
+                    # Don't check market_monitor.running here - let the monitor task handle its own lifecycle
                     await asyncio.sleep(1)  # Check every second
                         
             except asyncio.CancelledError:
@@ -2837,8 +3042,8 @@ async def run_application():
                 logger.error(f"Error during monitoring: {str(e)}")
                 logger.debug(traceback.format_exc())
             finally:
-                # Use centralized cleanup
-                if shutdown_event.is_set() or (market_monitor and not market_monitor.running):
+                # Use centralized cleanup only on shutdown
+                if shutdown_event.is_set():
                     await cleanup_all_components()
                     logger.info("Monitoring cleanup completed")
         

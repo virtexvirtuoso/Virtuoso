@@ -25,6 +25,23 @@ except ImportError:
     from src.dashboard.dashboard_proxy import get_dashboard_integration
     logger.info("📦 Using Phase 1 dashboard integration")
 
+# Import direct cache adapter for improved performance
+try:
+    from src.api.cache_adapter_direct import cache_adapter as direct_cache
+    USE_DIRECT_CACHE = True
+    logger.info("✅ Direct cache adapter available for regular dashboard")
+except ImportError:
+    USE_DIRECT_CACHE = False
+    logger.info("Direct cache adapter not available")
+
+# Import Phase 1 Direct Market Data service
+try:
+    from src.core.market_data_direct import DirectMarketData
+    logger.info("✅ Direct Market Data service available")
+except ImportError:
+    DirectMarketData = None
+    logger.warning("⚠️ Direct Market Data service not available")
+
 # Resolve paths relative to the project root
 PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
 TEMPLATE_DIR = PROJECT_ROOT / "src" / "dashboard" / "templates"
@@ -68,6 +85,9 @@ connection_manager = ConnectionManager()
 async def get_dashboard_overview() -> Dict[str, Any]:
     """Get comprehensive dashboard overview with real-time data from Memcached."""
     try:
+        # Use direct cache if available for better performance
+        if USE_DIRECT_CACHE:
+            return await direct_cache.get_dashboard_overview()
         # Check Memcached for real-time status
         symbol_count = 0
         try:
@@ -564,20 +584,66 @@ async def get_mobile_dashboard_data_direct(request: Request) -> Dict[str, Any]:
 
 @router.get("/mobile-data")
 async def get_mobile_dashboard_data() -> Dict[str, Any]:
-    """Optimized endpoint for mobile dashboard with timeout protection."""
+    """Optimized endpoint for mobile dashboard with cache integration."""
     try:
-        # Get integration service
+        import aiomcache
+        import json
+        
+        # Get integration if available
         integration = get_dashboard_integration()
         
-        # Default response structure
+        # Fetch actual data from cache
+        cache_client = aiomcache.Client("localhost", 11211)
+        
+        # Get overview and breadth data
+        overview_data = await cache_client.get(b"market:overview")
+        breadth_data = await cache_client.get(b"market:breadth")
+        
+        # Parse market overview with real data
+        market_overview = {
+            "market_regime": "NEUTRAL",
+            "trend_strength": 0,
+            "current_volatility": 0,
+            "avg_volatility": 20,
+            "btc_dominance": 0,
+            "total_volume_24h": 0
+        }
+        
+        if overview_data:
+            overview = json.loads(overview_data.decode())
+            market_overview = {
+                "market_regime": overview.get("market_regime", "NEUTRAL"),
+                "trend_strength": overview.get("trend_strength", 0),
+                "current_volatility": overview.get("current_volatility", overview.get("volatility", 0)),
+                "avg_volatility": overview.get("avg_volatility", 20),
+                "btc_dominance": overview.get("btc_dominance", 0),
+                "total_volume_24h": overview.get("total_volume_24h", overview.get("total_volume", 0)),
+                "volatility": overview.get("current_volatility", overview.get("volatility", 0))  # Add for compatibility
+            }
+        
+        # Parse market breadth
+        market_breadth = {
+            "up_count": 0,
+            "down_count": 0,
+            "breadth_percentage": 50.0,
+            "sentiment": "neutral"
+        }
+        
+        if breadth_data:
+            breadth = json.loads(breadth_data.decode())
+            market_breadth = {
+                "up_count": breadth.get("up_count", 0),
+                "down_count": breadth.get("down_count", 0),
+                "breadth_percentage": breadth.get("breadth_percentage", 50.0),
+                "sentiment": breadth.get("sentiment", "neutral")
+            }
+        
+        await cache_client.close()
+        
+        # Response structure with real cache data
         response = {
-            "market_overview": {
-                "market_regime": "NEUTRAL",
-                "trend_strength": 0,
-                "volatility": 0,
-                "btc_dominance": 0,
-                "total_volume_24h": 0
-            },
+            "market_overview": market_overview,
+            "market_breadth": market_breadth,
             "confluence_scores": [],
             "top_movers": {
                 "gainers": [],
@@ -591,7 +657,7 @@ async def get_mobile_dashboard_data() -> Dict[str, Any]:
         try:
             async with aiohttp.ClientSession() as session:
                 # Get signals from main service
-                async with session.get("http://localhost:8003/api/dashboard/signals", timeout=2) as resp:
+                async with session.get("http://localhost:8004/api/dashboard-cached/signals", timeout=2) as resp:
                     if resp.status == 200:
                         signals = await resp.json()
                         if signals and isinstance(signals, list) and len(signals) > 0:
@@ -722,15 +788,26 @@ async def get_mobile_dashboard_data() -> Dict[str, Any]:
             if hasattr(integration, '_dashboard_data'):
                 data = integration._dashboard_data
                 
-                # Extract market overview
-                market_data = data.get('market_overview', {})
-                response["market_overview"] = {
-                    "market_regime": market_data.get('regime', 'NEUTRAL'),
-                    "trend_strength": market_data.get('trend_strength', 0),
-                    "volatility": market_data.get('volatility', 0),
-                    "btc_dominance": market_data.get('btc_dominance', 0),
-                    "total_volume_24h": market_data.get('total_volume_24h', 0)
-                }
+                # Only override market overview if cache data is not good
+                # Check if we have valid cache data (trend_strength > 0 means cache is working)
+                cache_has_data = (
+                    response["market_overview"].get('trend_strength', 0) > 0 or 
+                    response["market_overview"].get('btc_dominance', 0) > 0
+                )
+                
+                if not cache_has_data:
+                    # No good cache data, try to use integration data
+                    market_data = data.get('market_overview', {})
+                    if market_data:  # Only override if integration has data
+                        response["market_overview"] = {
+                            "market_regime": market_data.get('regime', 'NEUTRAL'),
+                            "trend_strength": market_data.get('trend_strength', 0),
+                            "current_volatility": market_data.get('volatility', 0),
+                            "volatility": market_data.get('volatility', 0),
+                            "avg_volatility": 20,
+                            "btc_dominance": market_data.get('btc_dominance', 0),
+                            "total_volume_24h": market_data.get('total_volume_24h', 0)
+                        }
                 
                 # Extract confluence scores from signals
                 signals = data.get('signals', [])
@@ -843,7 +920,7 @@ async def get_mobile_dashboard_data() -> Dict[str, Any]:
 async def get_dashboard_performance() -> Dict[str, Any]:
     """Get dashboard performance metrics."""
     try:
-        integration = get_dashboard_integration()
+        # Direct data access without cache layer
         if integration:
             performance_data = await integration.get_performance_metrics()
             return performance_data
@@ -895,7 +972,7 @@ async def get_dashboard_symbols() -> Dict[str, Any]:
             logger.warning(f"Memcached not available: {mc_error}")
         
         # Fallback to integration service
-        integration = get_dashboard_integration()
+        # Direct data access without cache layer
         if integration:
             symbols_data = await integration.get_symbols_data()
             return symbols_data
@@ -1070,11 +1147,12 @@ async def get_bybit_symbol_detail(symbol: str):
         logger.error(f"Error getting Bybit data for {symbol}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/confluence-analysis/{symbol}")
-async def get_confluence_analysis(symbol: str) -> Dict[str, Any]:
-    """Get full confluence analysis for a specific symbol."""
+# COMMENTED OUT: Duplicate route already exists at line 412
+# @router.get("/confluence-analysis/{symbol}")
+# async def get_confluence_analysis(symbol: str) -> Dict[str, Any]:
+#     """Get full confluence analysis for a specific symbol."""
     try:
-        integration = get_dashboard_integration()
+        # Direct data access without cache layer
         if not integration:
             return {
                 "status": "error",
@@ -1175,7 +1253,7 @@ async def get_beta_analysis_data() -> Dict[str, Any]:
     """Get beta analysis data for mobile dashboard."""
     try:
         # Calculate beta coefficients for tracked symbols
-        integration = get_dashboard_integration()
+        # Direct data access without cache layer
         beta_data = []
         
         # Default symbols with mock beta values for now
@@ -1401,7 +1479,7 @@ async def get_performance_chart() -> Dict[str, Any]:
     """Get performance vs beta scatter plot data."""
     try:
         # Get current market data
-        integration = get_dashboard_integration()
+        # Direct data access without cache layer
         
         scatter_data = [
             {"symbol": "BTCUSDT", "beta": 1.0, "performance": 0.84, "market_cap": 2300},
@@ -1483,10 +1561,11 @@ async def get_risk_distribution() -> Dict[str, Any]:
         logger.error(f"Error getting risk distribution: {e}")
         return {"status": "error", "error": str(e)}
 
-@router.get("/confluence-analysis-page")
-async def confluence_analysis_page():
-    """Serve the terminal-style confluence analysis page"""
-    return FileResponse(TEMPLATE_DIR / "confluence_analysis.html") 
+# COMMENTED OUT: Duplicate route already exists at line 407
+# @router.get("/confluence-analysis-page")
+# async def confluence_analysis_page():
+#     """Serve the terminal-style confluence analysis page"""
+#     return FileResponse(TEMPLATE_DIR / "confluence_analysis.html") 
 @router.get("/beta-charts/all")
 async def get_all_beta_charts() -> Dict[str, Any]:
     """Get all beta analysis charts data in one request."""
@@ -1612,4 +1691,157 @@ async def get_mobile_beta_dashboard() -> Dict[str, Any]:
             "status": "error",
             "error": str(e),
             "timestamp": datetime.utcnow().isoformat()
+        }
+
+
+# ==================== PHASE 1: DIRECT MARKET DATA ROUTES ====================
+
+@router.get("/market/live")
+async def get_live_market_data(limit: int = 20) -> Dict[str, Any]:
+    """
+    Phase 1 Implementation - Direct market data endpoint
+    Bypasses all complex abstractions and fetches data directly from Bybit
+    
+    Returns:
+        Market data with prices, volumes, and 24h changes
+    """
+    if not DirectMarketData:
+        raise HTTPException(status_code=500, detail="Direct Market Data service not available")
+    
+    try:
+        # Direct fetch - no abstractions, proven to work
+        tickers = await DirectMarketData.fetch_tickers(limit)
+        
+        if not tickers:
+            return {
+                "status": "error",
+                "message": "Unable to fetch market data",
+                "timestamp": int(time.time()),
+                "data": {}
+            }
+        
+        return {
+            "status": "success",
+            "timestamp": int(time.time()),
+            "count": len(tickers),
+            "data": tickers
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in live market data: {e}")
+        return {
+            "status": "error",
+            "message": str(e),
+            "timestamp": int(time.time()),
+            "data": {}
+        }
+
+
+@router.get("/market/dashboard")
+async def get_market_dashboard() -> Dict[str, Any]:
+    """
+    Phase 1 Implementation - Complete dashboard data
+    Provides formatted data specifically for dashboard display
+    
+    Returns:
+        Market overview, top movers, and all ticker data
+    """
+    if not DirectMarketData:
+        raise HTTPException(status_code=500, detail="Direct Market Data service not available")
+    
+    try:
+        # Get comprehensive dashboard data
+        dashboard_data = await DirectMarketData.get_dashboard_data()
+        return dashboard_data
+        
+    except Exception as e:
+        logger.error(f"Error in market dashboard: {e}")
+        return {
+            "status": "error",
+            "message": str(e),
+            "timestamp": int(time.time()),
+            "overview": {},
+            "top_gainers": [],
+            "top_losers": [],
+            "all_tickers": {}
+        }
+
+
+@router.get("/market/ticker/{symbol}")
+async def get_ticker(symbol: str) -> Dict[str, Any]:
+    """
+    Phase 1 Implementation - Single ticker endpoint
+    
+    Args:
+        symbol: Trading pair (e.g., "BTC/USDT")
+    
+    Returns:
+        Single ticker data
+    """
+    if not DirectMarketData:
+        raise HTTPException(status_code=500, detail="Direct Market Data service not available")
+    
+    try:
+        ticker = await DirectMarketData.fetch_single_ticker(symbol)
+        
+        if not ticker:
+            return {
+                "status": "error",
+                "message": f"Unable to fetch data for {symbol}",
+                "timestamp": int(time.time()),
+                "data": {}
+            }
+        
+        return {
+            "status": "success",
+            "timestamp": int(time.time()),
+            "data": ticker
+        }
+        
+    except Exception as e:
+        logger.error(f"Error fetching {symbol}: {e}")
+        return {
+            "status": "error",
+            "message": str(e),
+            "timestamp": int(time.time()),
+            "data": {}
+        }
+
+
+@router.get("/market/health")
+async def market_health_check() -> Dict[str, Any]:
+    """
+    Phase 1 Implementation - Health check for market data service
+    Tests connection to Bybit API
+    """
+    try:
+        # Test with single ticker fetch (faster)
+        start_time = time.time()
+        btc = await DirectMarketData.fetch_single_ticker("BTC/USDT")
+        response_time = (time.time() - start_time) * 1000  # Convert to ms
+        
+        if btc and btc.get('price', 0) > 0:
+            return {
+                "status": "healthy",
+                "service": "Direct Market Data",
+                "response_time_ms": round(response_time, 2),
+                "test_symbol": "BTC/USDT",
+                "test_price": btc.get('price', 0),
+                "timestamp": int(time.time())
+            }
+        else:
+            return {
+                "status": "degraded",
+                "service": "Direct Market Data",
+                "response_time_ms": round(response_time, 2),
+                "message": "API responded but no data",
+                "timestamp": int(time.time())
+            }
+            
+    except Exception as e:
+        return {
+            "status": "unhealthy",
+            "service": "Direct Market Data",
+            "error": str(e),
+            "timestamp": int(time.time())
         }

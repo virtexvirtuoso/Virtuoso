@@ -10,19 +10,28 @@ services:
     restart: unless-stopped
     ports:
       - "8003:8003"
+      - "8001:8001"  # API port
     volumes:
       - ./logs:/app/logs
       - ./reports:/app/reports
       - ./data:/app/data
+      - ./exports:/app/exports
+      - ./cache:/app/cache
       - ./config:/app/config:ro
     environment:
       - PYTHONUNBUFFERED=1
       - TZ=UTC
+      - DOCKER_ENV=true
     env_file:
       - .env
-    mem_limit: 4g
-    memswap_limit: 5g
-    cpus: 2
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
     logging:
       driver: "json-file"
       options:

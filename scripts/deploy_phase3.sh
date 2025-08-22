@@ -1,0 +1,98 @@
+#!/bin/bash
+
+echo "======================================"
+echo "DEPLOYING PHASE 3 - ULTRA-FAST CACHE"
+echo "======================================"
+echo ""
+
+VPS_HOST="45.77.40.77"
+VPS_USER="linuxuser"
+VPS_PATH="/home/linuxuser/trading/Virtuoso_ccxt"
+
+echo "📦 Deploying Phase 3 components..."
+
+# Deploy direct cache manager
+echo "  - Deploying direct_cache.py..."
+scp src/core/direct_cache.py ${VPS_USER}@${VPS_HOST}:${VPS_PATH}/src/core/
+
+# Deploy fast dashboard routes
+echo "  - Deploying dashboard_fast.py..."
+scp src/api/routes/dashboard_fast.py ${VPS_USER}@${VPS_HOST}:${VPS_PATH}/src/api/routes/
+
+# Update API initialization
+echo "  - Updating API initialization..."
+scp src/api/__init__.py ${VPS_USER}@${VPS_HOST}:${VPS_PATH}/src/api/
+
+# Deploy monitoring script
+echo "  - Deploying performance monitor..."
+scp scripts/monitor_performance.py ${VPS_USER}@${VPS_HOST}:${VPS_PATH}/scripts/
+
+echo ""
+echo "🔄 Restarting web server..."
+
+ssh ${VPS_USER}@${VPS_HOST} << 'EOF'
+cd /home/linuxuser/trading/Virtuoso_ccxt
+
+# Kill existing web server
+pkill -f "python.*web_server" || true
+pkill -f "uvicorn" || true
+sleep 3
+
+# Start with Phase 3 support
+export PYTHONPATH=/home/linuxuser/trading/Virtuoso_ccxt
+nohup venv311/bin/python src/web_server.py > logs/web_phase3.log 2>&1 &
+echo "Web server started with PID: $!"
+
+sleep 5
+
+# Check if running
+if pgrep -f "web_server.py" > /dev/null; then
+    echo "✅ Web server running with Phase 3 support"
+else
+    echo "❌ Web server failed to start"
+    tail -n 20 logs/web_phase3.log
+fi
+EOF
+
+echo ""
+echo "⏱️  Testing Phase 3 performance..."
+sleep 3
+
+# Quick performance test
+echo ""
+echo "Testing ultra-fast endpoints:"
+echo ""
+
+for endpoint in overview signals market mobile health; do
+    echo -n "  /api/fast/$endpoint: "
+    response_time=$(curl -s -o /dev/null -w "%{time_total}" http://${VPS_HOST}:8001/api/fast/$endpoint)
+    response_ms=$(echo "$response_time * 1000" | bc 2>/dev/null || echo "N/A")
+    
+    if [ "$response_ms" != "N/A" ]; then
+        # Check if less than 100ms
+        if (( $(echo "$response_ms < 100" | bc -l) )); then
+            echo "✅ ${response_ms}ms"
+        elif (( $(echo "$response_ms < 500" | bc -l) )); then
+            echo "⚠️  ${response_ms}ms"
+        else
+            echo "❌ ${response_ms}ms"
+        fi
+    else
+        echo "❌ Failed"
+    fi
+done
+
+echo ""
+echo "======================================"
+echo "Phase 3 Deployment Complete!"
+echo "======================================"
+echo ""
+echo "🚀 Ultra-fast endpoints available at:"
+echo "   /api/fast/overview - Complete dashboard data"
+echo "   /api/fast/signals - Trading signals"
+echo "   /api/fast/market - Market overview"
+echo "   /api/fast/mobile - Mobile optimized"
+echo "   /api/fast/health - Cache health check"
+echo ""
+echo "📊 Run full benchmark:"
+echo "   python scripts/monitor_performance.py"

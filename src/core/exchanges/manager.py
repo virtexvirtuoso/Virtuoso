@@ -473,9 +473,11 @@ class ExchangeManager:
 
     def get_exchange_name(self) -> str:
         """Get the name of the primary exchange."""
-        exchange = self.get_primary_exchange()
-        if exchange:
-            return exchange.exchange_id  # Bybit exchange has this property
+        # Note: This is a sync method, we'll use the stored primary exchange
+        if self.primary_exchange:
+            if hasattr(self.primary_exchange, 'exchange_id'):
+                return self.primary_exchange.exchange_id
+            return self.primary_exchange.__class__.__name__.lower().replace('exchange', '')
         return "unknown"
 
     async def fetch_market_data(self, symbol: str) -> Dict[str, Any]:
@@ -601,7 +603,7 @@ class ExchangeManager:
             List of OHLCV candles
         """
         try:
-            exchange = self.get_primary_exchange()
+            exchange = await self.get_primary_exchange()
             if not exchange:
                 raise ValueError("No primary exchange configured")
             

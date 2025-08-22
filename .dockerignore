@@ -44,7 +44,7 @@ htmlcov/
 # Documentation
 docs/
 *.md
-\!README.md
+!README.md
 
 # Environment files
 .env.local
@@ -93,4 +93,16 @@ node_modules/
 
 # Patches
 patches/
-EOF < /dev/null
+
+# Backup files
+*.backup
+*.bak
+*~
+
+# Cache directories
+__pycache__/
+.cache/
+*.pyc
+
+# Export files
+exports/

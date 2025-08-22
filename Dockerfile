@@ -7,6 +7,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     g++ \
     git \
     build-essential \
+    pkg-config \
+    libhdf5-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
@@ -14,7 +16,9 @@ WORKDIR /build
 
 # Copy requirements first for better caching
 COPY requirements.txt .
-RUN pip install --user --no-cache-dir -r requirements.txt
+# Install wheel first, then requirements
+RUN pip install --user --no-cache-dir wheel setuptools && \
+    pip install --user --no-cache-dir -r requirements.txt
 
 # Production stage
 FROM python:3.11-slim
@@ -36,8 +40,8 @@ COPY --from=builder /root/.local /home/virtuoso/.local
 # Copy application code
 COPY --chown=virtuoso:virtuoso . .
 
-# Create necessary directories
-RUN mkdir -p logs reports data && \
+# Create necessary directories with proper permissions
+RUN mkdir -p logs reports data exports cache config && \
     chown -R virtuoso:virtuoso /app
 
 # Switch to non-root user
