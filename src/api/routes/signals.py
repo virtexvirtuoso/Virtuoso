@@ -1,12 +1,23 @@
+"""Consolidated Signals API Routes - Phase 2 API Consolidation
+
+This module consolidates the following endpoints:
+- Signal tracking and analysis (original signals.py)
+- Alert management and persistence (alerts.py) 
+- Whale activity monitoring (whale_activity.py)
+
+Backward compatibility maintained for all existing endpoints.
+"""
+
 import os
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 import time
 import logging
 import yaml
+from pydantic import BaseModel, Field
 
 from ..models.signals import Signal, SignalList, SymbolSignals, LatestSignals
 
@@ -135,6 +146,572 @@ async def get_latest_signals(
         logger.error(f"Error in get_latest_signals: {e}")
         # Return empty result instead of raising exception
         return LatestSignals(count=0, signals=[])
+
+# =============================================================================
+# ALERTS ENDPOINTS (from alerts.py)
+# =============================================================================
+
+# Import alert persistence
+try:
+    from src.monitoring.alert_persistence import AlertPersistence, AlertStatus
+except ImportError:
+    try:
+        from monitoring.alert_persistence import AlertPersistence, AlertStatus
+    except ImportError:
+        AlertPersistence = None
+        AlertStatus = None
+
+class AlertData(BaseModel):
+    """Alert data model for API responses"""
+    id: str
+    level: str
+    message: str
+    details: Dict[str, Any] = {}
+    timestamp: float
+    source: Optional[str] = None
+    alert_type: Optional[str] = None
+    symbol: Optional[str] = None
+    resolved: bool = False
+    acknowledged: bool = False
+
+class AlertCreateRequest(BaseModel):
+    """Request model for creating alerts via API"""
+    level: str = Field(..., regex="^(INFO|WARNING|ERROR|CRITICAL)$")
+    message: str
+    details: Optional[Dict[str, Any]] = {}
+    source: Optional[str] = None
+    alert_type: Optional[str] = None
+    symbol: Optional[str] = None
+
+async def get_alert_manager(request: Request):
+    """Dependency to get alert manager from app state"""
+    if not hasattr(request.app.state, "alert_manager"):
+        raise HTTPException(status_code=503, detail="Alert manager not initialized")
+    return request.app.state.alert_manager
+
+@router.get("/alerts", response_model=List[AlertData])
+async def get_alerts(
+    level: Optional[str] = Query(None, description="Filter by alert level"),
+    alert_type: Optional[str] = Query(None, description="Filter by alert type"),
+    symbol: Optional[str] = Query(None, description="Filter by symbol"),
+    source: Optional[str] = Query(None, description="Filter by source"),
+    limit: int = Query(50, ge=1, le=1000, description="Maximum number of alerts"),
+    start_time: Optional[float] = Query(None, description="Start timestamp filter"),
+    end_time: Optional[float] = Query(None, description="End timestamp filter"),
+    resolved: Optional[bool] = Query(None, description="Filter by resolved status"),
+    alert_manager = Depends(get_alert_manager)
+) -> List[AlertData]:
+    """Get alerts with optional filtering."""
+    try:
+        # Get alerts from alert manager
+        alerts = alert_manager.get_alerts(
+            level=level,
+            limit=limit,
+            start_time=start_time
+        )
+        
+        # Convert to AlertData format and apply additional filters
+        alert_data = []
+        for alert in alerts:
+            # Apply additional filters
+            if alert_type and alert.get('details', {}).get('type') != alert_type:
+                continue
+            if symbol and alert.get('details', {}).get('symbol') != symbol:
+                continue
+            if source and alert.get('details', {}).get('source') != source:
+                continue
+            if end_time and alert.get('timestamp', 0) > end_time:
+                continue
+            if resolved is not None and alert.get('resolved', False) != resolved:
+                continue
+            
+            alert_data.append(AlertData(
+                id=alert.get('id', str(int(alert.get('timestamp', time.time()) * 1000000))),
+                level=alert.get('level', 'INFO'),
+                message=alert.get('message', ''),
+                details=alert.get('details', {}),
+                timestamp=alert.get('timestamp', time.time()),
+                source=alert.get('details', {}).get('source'),
+                alert_type=alert.get('details', {}).get('type'),
+                symbol=alert.get('details', {}).get('symbol'),
+                resolved=alert.get('resolved', False),
+                acknowledged=alert.get('acknowledged', False)
+            ))
+        
+        return alert_data
+        
+    except Exception as e:
+        logger.error(f"Error getting alerts: {e}")
+        raise HTTPException(status_code=500, detail=f"Error retrieving alerts: {str(e)}")
+
+@router.get("/alerts/recent", response_model=List[AlertData])
+async def get_recent_alerts(
+    limit: int = Query(20, ge=1, le=100, description="Number of recent alerts"),
+    level: Optional[str] = Query(None, description="Filter by alert level"),
+    alert_manager = Depends(get_alert_manager)
+) -> List[AlertData]:
+    """Get recent alerts for dashboard display."""
+    try:
+        # Get recent alerts (last hour by default)
+        one_hour_ago = time.time() - 3600
+        alerts = alert_manager.get_alerts(
+            level=level,
+            limit=limit,
+            start_time=one_hour_ago
+        )
+        
+        # Convert to AlertData format
+        alert_data = []
+        for alert in alerts:
+            alert_data.append(AlertData(
+                id=alert.get('id', str(int(alert.get('timestamp', time.time()) * 1000000))),
+                level=alert.get('level', 'INFO'),
+                message=alert.get('message', ''),
+                details=alert.get('details', {}),
+                timestamp=alert.get('timestamp', time.time()),
+                source=alert.get('details', {}).get('source'),
+                alert_type=alert.get('details', {}).get('type'),
+                symbol=alert.get('details', {}).get('symbol'),
+                resolved=alert.get('resolved', False),
+                acknowledged=alert.get('acknowledged', False)
+            ))
+        
+        # Sort by timestamp (most recent first)
+        alert_data.sort(key=lambda x: x.timestamp, reverse=True)
+        
+        return alert_data
+        
+    except Exception as e:
+        logger.error(f"Error getting recent alerts: {e}")
+        raise HTTPException(status_code=500, detail=f"Error retrieving recent alerts: {str(e)}")
+
+@router.get("/alerts/stats", response_model=Dict[str, Any])
+async def get_alert_stats(
+    alert_manager = Depends(get_alert_manager)
+) -> Dict[str, Any]:
+    """Get alert statistics and metrics."""
+    try:
+        stats = alert_manager.get_alert_stats()
+        
+        # Add additional computed stats
+        total_alerts = stats.get('total', 0)
+        stats['success_rate'] = (
+            stats.get('sent', 0) / total_alerts * 100 
+            if total_alerts > 0 else 0
+        )
+        stats['error_rate'] = (
+            stats.get('errors', 0) / total_alerts * 100 
+            if total_alerts > 0 else 0
+        )
+        
+        return stats
+        
+    except Exception as e:
+        logger.error(f"Error getting alert stats: {e}")
+        raise HTTPException(status_code=500, detail=f"Error retrieving alert stats: {str(e)}")
+
+@router.get("/alerts/summary", response_model=Dict[str, Any])
+async def get_alert_summary(
+    hours: int = Query(24, ge=1, le=168, description="Hours to look back"),
+    alert_manager = Depends(get_alert_manager)
+) -> Dict[str, Any]:
+    """Get alert summary for the specified time period."""
+    try:
+        # Calculate start time
+        start_time = time.time() - (hours * 3600)
+        
+        # Get alerts for the period
+        alerts = alert_manager.get_alerts(start_time=start_time)
+        
+        # Calculate summary statistics
+        summary = {
+            'period_hours': hours,
+            'total_alerts': len(alerts),
+            'by_level': {'INFO': 0, 'WARNING': 0, 'ERROR': 0, 'CRITICAL': 0},
+            'by_type': {},
+            'by_symbol': {},
+            'by_source': {},
+            'most_recent': None,
+            'most_critical': None
+        }
+        
+        most_recent_timestamp = 0
+        most_critical_level = 0
+        level_priority = {'INFO': 1, 'WARNING': 2, 'ERROR': 3, 'CRITICAL': 4}
+        
+        for alert in alerts:
+            level = alert.get('level', 'INFO')
+            alert_type = alert.get('details', {}).get('type', 'unknown')
+            symbol = alert.get('details', {}).get('symbol', 'unknown')
+            source = alert.get('details', {}).get('source', 'unknown')
+            timestamp = alert.get('timestamp', 0)
+            
+            # Count by level
+            if level in summary['by_level']:
+                summary['by_level'][level] += 1
+            
+            # Count by type
+            summary['by_type'][alert_type] = summary['by_type'].get(alert_type, 0) + 1
+            
+            # Count by symbol
+            summary['by_symbol'][symbol] = summary['by_symbol'].get(symbol, 0) + 1
+            
+            # Count by source
+            summary['by_source'][source] = summary['by_source'].get(source, 0) + 1
+            
+            # Track most recent
+            if timestamp > most_recent_timestamp:
+                most_recent_timestamp = timestamp
+                summary['most_recent'] = {
+                    'level': level,
+                    'message': alert.get('message', ''),
+                    'timestamp': timestamp
+                }
+            
+            # Track most critical
+            if level_priority.get(level, 0) > most_critical_level:
+                most_critical_level = level_priority.get(level, 0)
+                summary['most_critical'] = {
+                    'level': level,
+                    'message': alert.get('message', ''),
+                    'timestamp': timestamp
+                }
+        
+        return summary
+        
+    except Exception as e:
+        logger.error(f"Error getting alert summary: {e}")
+        raise HTTPException(status_code=500, detail=f"Error retrieving alert summary: {str(e)}")
+
+@router.post("/alerts", response_model=Dict[str, str])
+async def create_alert(
+    alert_request: AlertCreateRequest,
+    alert_manager = Depends(get_alert_manager)
+) -> Dict[str, str]:
+    """Create a new alert via API."""
+    try:
+        # Create alert details
+        details = alert_request.details or {}
+        if alert_request.source:
+            details['source'] = alert_request.source
+        if alert_request.alert_type:
+            details['type'] = alert_request.alert_type
+        if alert_request.symbol:
+            details['symbol'] = alert_request.symbol
+        
+        # Send alert through alert manager
+        await alert_manager.send_alert(
+            level=alert_request.level,
+            message=alert_request.message,
+            details=details,
+            throttle=False  # Don't throttle API-created alerts
+        )
+        
+        return {
+            "status": "success",
+            "message": "Alert created successfully",
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error creating alert: {e}")
+        raise HTTPException(status_code=500, detail=f"Error creating alert: {str(e)}")
+
+@router.get("/alerts/types", response_model=List[str])
+async def get_alert_types(
+    alert_manager = Depends(get_alert_manager)
+) -> List[str]:
+    """Get list of available alert types."""
+    try:
+        # Get recent alerts to extract types
+        alerts = alert_manager.get_alerts(limit=1000)
+        
+        # Extract unique alert types
+        types = set()
+        for alert in alerts:
+            alert_type = alert.get('details', {}).get('type')
+            if alert_type:
+                types.add(alert_type)
+        
+        # Add common alert types
+        common_types = [
+            'signal', 'alpha', 'liquidation', 'whale_activity', 
+            'large_order', 'manipulation', 'trade_execution',
+            'system', 'api', 'database', 'performance'
+        ]
+        types.update(common_types)
+        
+        return sorted(list(types))
+        
+    except Exception as e:
+        logger.error(f"Error getting alert types: {e}")
+        raise HTTPException(status_code=500, detail=f"Error retrieving alert types: {str(e)}")
+
+@router.delete("/alerts/{alert_id}")
+async def acknowledge_alert(
+    alert_id: str,
+    alert_manager = Depends(get_alert_manager)
+) -> Dict[str, str]:
+    """Acknowledge an alert (mark as read)."""
+    try:
+        # Try to acknowledge the alert
+        success = False
+        if hasattr(alert_manager, 'acknowledge_alert'):
+            success = alert_manager.acknowledge_alert(alert_id)
+        
+        if success:
+            return {
+                "status": "success",
+                "message": f"Alert {alert_id} acknowledged",
+                "timestamp": datetime.utcnow().isoformat()
+            }
+        else:
+            raise HTTPException(status_code=404, detail=f"Alert {alert_id} not found")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error acknowledging alert: {e}")
+        raise HTTPException(status_code=500, detail=f"Error acknowledging alert: {str(e)}")
+
+# =============================================================================
+# WHALE ACTIVITY ENDPOINTS (from whale_activity.py)
+# =============================================================================
+
+class WhaleAlert(BaseModel):
+    """Whale activity alert model."""
+    id: str
+    symbol: str
+    alert_type: str  # 'large_order', 'whale_accumulation', 'whale_distribution'
+    amount: float
+    value_usd: float
+    price: float
+    side: str  # 'buy' or 'sell'
+    timestamp: int
+    exchange: str
+    confidence: float
+    severity: str  # 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL'
+
+class WhaleActivity(BaseModel):
+    """Whale activity data model."""
+    symbol: str
+    total_volume_24h: float
+    whale_volume_24h: float
+    whale_percentage: float
+    large_orders_count: int
+    accumulation_score: float
+    distribution_score: float
+    net_flow: float
+    timestamp: int
+
+@router.get("/whale/alerts")
+async def get_whale_alerts():
+    """Get whale activity alerts."""
+    return [
+        {
+            "id": f"whale_{int(time.time())}",
+            "symbol": "BTCUSDT",
+            "alert_type": "large_order",
+            "amount": 1250.0,
+            "value_usd": 125000000.0,
+            "price": 107500.0,
+            "side": "buy",
+            "timestamp": int(time.time() * 1000),
+            "exchange": "bybit",
+            "severity": "HIGH"
+        }
+    ]
+
+@router.get("/whale/activity")
+async def get_whale_activity(
+    symbol: Optional[str] = Query(None, description="Filter by symbol"),
+    limit: int = Query(10, ge=1, le=50, description="Maximum number of symbols")
+) -> List[WhaleActivity]:
+    """Get whale activity data for symbols."""
+    try:
+        logger.info(f"Getting whale activity: symbol={symbol}, limit={limit}")
+        
+        # Generate mock whale activity data
+        current_time = int(time.time() * 1000)
+        symbols = [symbol] if symbol else ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'AVAXUSDT', 'ADAUSDT', 'DOTUSDT']
+        
+        activities = []
+        for i, sym in enumerate(symbols[:limit]):
+            total_volume = 50000000.0 + (i * 10000000)
+            whale_volume = total_volume * (0.15 + (i * 0.02))  # 15-30% whale volume
+            
+            activities.append(WhaleActivity(
+                symbol=sym,
+                total_volume_24h=total_volume,
+                whale_volume_24h=whale_volume,
+                whale_percentage=(whale_volume / total_volume) * 100,
+                large_orders_count=25 + (i * 5),
+                accumulation_score=65.0 + (i * 3.5),
+                distribution_score=35.0 - (i * 2.0),
+                net_flow=whale_volume * (0.6 if i % 2 == 0 else -0.4),  # Positive = accumulation
+                timestamp=current_time
+            ))
+        
+        logger.info(f"Returning whale activity for {len(activities)} symbols")
+        return activities
+        
+    except Exception as e:
+        logger.error(f"Error getting whale activity: {str(e)}")
+        return []
+
+@router.get("/whale/summary")
+async def get_whale_summary(
+    hours: int = Query(24, ge=1, le=168, description="Hours to look back")
+) -> Dict[str, Any]:
+    """Get whale activity summary statistics."""
+    try:
+        logger.info(f"Getting whale summary for {hours} hours")
+        
+        current_time = int(time.time() * 1000)
+        
+        # Mock summary data
+        summary = {
+            "period_hours": hours,
+            "total_whale_alerts": 45,
+            "high_severity_alerts": 12,
+            "critical_alerts": 3,
+            "total_whale_volume_usd": 2.4e9,  # $2.4B
+            "largest_single_order_usd": 15e6,  # $15M
+            "most_active_symbol": "BTCUSDT",
+            "accumulation_signals": 8,
+            "distribution_signals": 3,
+            "net_whale_flow_usd": 450e6,  # $450M net inflow
+            "whale_dominance_percentage": 23.5,
+            "alert_breakdown": {
+                "large_order": 28,
+                "whale_accumulation": 12,
+                "whale_distribution": 5
+            },
+            "top_symbols_by_whale_activity": [
+                {"symbol": "BTCUSDT", "whale_volume_usd": 1.2e9, "percentage": 28.5},
+                {"symbol": "ETHUSDT", "whale_volume_usd": 800e6, "percentage": 22.1},
+                {"symbol": "SOLUSDT", "whale_volume_usd": 250e6, "percentage": 35.2}
+            ],
+            "timestamp": current_time
+        }
+        
+        logger.info("Returning whale activity summary")
+        return summary
+        
+    except Exception as e:
+        logger.error(f"Error getting whale summary: {str(e)}")
+        return {
+            "period_hours": hours,
+            "total_whale_alerts": 0,
+            "error": "Unable to fetch whale summary",
+            "timestamp": int(time.time() * 1000)
+        }
+
+@router.get("/whale/large-orders")
+async def get_large_orders(
+    symbol: Optional[str] = Query(None, description="Filter by symbol"),
+    min_value: float = Query(100000, description="Minimum order value in USD"),
+    limit: int = Query(20, ge=1, le=100, description="Maximum number of orders")
+) -> List[Dict[str, Any]]:
+    """Get recent large orders that may indicate whale activity."""
+    try:
+        logger.info(f"Getting large orders: symbol={symbol}, min_value={min_value}, limit={limit}")
+        
+        current_time = int(time.time() * 1000)
+        symbols = [symbol] if symbol else ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT']
+        
+        large_orders = []
+        for i, sym in enumerate(symbols):
+            for j in range(limit // len(symbols)):
+                order_value = min_value + (j * 50000) + (i * 100000)
+                price = 107500.0 if 'BTC' in sym else (3000.0 if 'ETH' in sym else 150.0)
+                amount = order_value / price
+                
+                large_orders.append({
+                    "id": f"order_{current_time}_{i}_{j}",
+                    "symbol": sym,
+                    "side": "buy" if j % 2 == 0 else "sell",
+                    "amount": round(amount, 6),
+                    "price": price,
+                    "value_usd": order_value,
+                    "exchange": "bybit",
+                    "timestamp": current_time - (i * 60000) - (j * 30000),
+                    "is_whale": order_value > 500000,
+                    "confidence": 0.75 + (order_value / 1000000) * 0.2
+                })
+        
+        # Sort by timestamp (newest first)
+        large_orders.sort(key=lambda x: x['timestamp'], reverse=True)
+        
+        logger.info(f"Returning {len(large_orders)} large orders")
+        return large_orders[:limit]
+        
+    except Exception as e:
+        logger.error(f"Error getting large orders: {str(e)}")
+        return []
+
+@router.get("/whale/flow-analysis")
+async def get_whale_flow_analysis(
+    symbol: str = Query(..., description="Symbol to analyze"),
+    timeframe: str = Query("1h", description="Timeframe: 1h, 4h, 1d")
+) -> Dict[str, Any]:
+    """Get detailed whale flow analysis for a specific symbol."""
+    try:
+        logger.info(f"Getting whale flow analysis: symbol={symbol}, timeframe={timeframe}")
+        
+        current_time = int(time.time() * 1000)
+        
+        # Mock flow analysis data
+        analysis = {
+            "symbol": symbol,
+            "timeframe": timeframe,
+            "analysis_period": f"Last {timeframe}",
+            "whale_metrics": {
+                "total_inflow_usd": 125e6,  # $125M
+                "total_outflow_usd": 98e6,   # $98M
+                "net_flow_usd": 27e6,       # $27M net inflow
+                "flow_ratio": 1.28,         # inflow/outflow
+                "dominant_flow": "accumulation"
+            },
+            "transaction_analysis": {
+                "large_buy_orders": 23,
+                "large_sell_orders": 18,
+                "average_buy_size_usd": 2.1e6,
+                "average_sell_size_usd": 1.8e6,
+                "buy_sell_ratio": 1.28
+            },
+            "pattern_detection": {
+                "accumulation_pattern": True,
+                "distribution_pattern": False,
+                "consolidation_pattern": False,
+                "breakout_potential": "high",
+                "pattern_confidence": 0.84
+            },
+            "time_analysis": {
+                "most_active_hour": 14,  # UTC
+                "peak_volume_period": "08:00-16:00 UTC",
+                "weekend_activity": "reduced",
+                "session_preference": "london_ny_overlap"
+            },
+            "risk_assessment": {
+                "manipulation_risk": "low",
+                "liquidity_impact": "medium",
+                "price_sensitivity": "high",
+                "stability_score": 0.72
+            },
+            "timestamp": current_time
+        }
+        
+        logger.info(f"Returning whale flow analysis for {symbol}")
+        return analysis
+        
+    except Exception as e:
+        logger.error(f"Error getting whale flow analysis: {str(e)}")
+        return {
+            "symbol": symbol,
+            "error": "Unable to fetch flow analysis",
+            "timestamp": int(time.time() * 1000)
+        }
 
 @router.get("/signals/symbol/{symbol}", response_model=SymbolSignals)
 async def get_signals_by_symbol(

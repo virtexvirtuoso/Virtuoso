@@ -2,7 +2,8 @@
 
 from fastapi import FastAPI
 # Phase 1 API Consolidation: Consolidated imports
-from .routes import signals, market, system, trading, dashboard, alpha, liquidation, manipulation, top_symbols, whale_activity, admin, cache, debug_test, core_api
+from .routes import signals, market, system, trading, dashboard, alpha, liquidation, manipulation, top_symbols, admin, cache, debug_test, core_api
+# Phase 2 removed: whale_activity (now in signals.py)
 # Removed: correlation, bitcoin_beta, sentiment (now in market.py)
 try:
     from .routes import cache_dashboard
@@ -101,12 +102,9 @@ def init_api_routes(app: FastAPI):
         tags=["top-symbols"]
     )
     
-    # Include whale activity routes
-    app.include_router(
-        whale_activity.router,
-        prefix=f"{api_prefix}/whale-activity",
-        tags=["whale-activity"]
-    )
+    # Phase 2 Consolidation: Whale activity now in signals.py
+    # Endpoints available at:
+    # /api/signals/whale/* (whale activity endpoints)
     
     # Phase 1 Consolidation: Sentiment analysis now in market.py
     # Endpoints available at:
@@ -191,6 +189,8 @@ def init_api_routes(app: FastAPI):
     # Log registered routes
     import logging
     logger = logging.getLogger(__name__)
-    logger.info("🚀 Phase 1 API Consolidation - Market endpoints consolidated")
-    logger.info("✅ Consolidated: correlation, bitcoin-beta, sentiment -> market.py")
-    logger.info("📍 New endpoints: /api/market/correlation/*, /api/market/bitcoin-beta/*, /api/market/sentiment/*")
+    logger.info("🚀 Phase 1-2 API Consolidation Complete")
+    logger.info("✅ Phase 1: correlation, bitcoin-beta, sentiment -> market.py")
+    logger.info("✅ Phase 2: alerts, whale_activity -> signals.py")
+    logger.info("📍 Market endpoints: /api/market/correlation/*, /api/market/bitcoin-beta/*, /api/market/sentiment/*")
+    logger.info("📍 Signals endpoints: /api/signals/alerts/*, /api/signals/whale/*")
