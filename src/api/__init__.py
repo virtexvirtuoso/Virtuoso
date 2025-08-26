@@ -1,7 +1,9 @@
 """API initialization and route registration module."""
 
 from fastapi import FastAPI
-from .routes import signals, market, system, trading, dashboard, alpha, liquidation, correlation, bitcoin_beta, manipulation, top_symbols, whale_activity, sentiment, admin, cache, debug_test, core_api
+# Phase 1 API Consolidation: Consolidated imports
+from .routes import signals, market, system, trading, dashboard, alpha, liquidation, manipulation, top_symbols, whale_activity, admin, cache, debug_test, core_api
+# Removed: correlation, bitcoin_beta, sentiment (now in market.py)
 try:
     from .routes import cache_dashboard
     cache_dashboard_available = True
@@ -80,19 +82,10 @@ def init_api_routes(app: FastAPI):
         tags=["liquidation"]
     )
     
-    # Include correlation analysis routes
-    app.include_router(
-        correlation.router,
-        prefix=f"{api_prefix}/correlation",
-        tags=["correlation"]
-    )
-    
-    # Include Bitcoin Beta routes
-    app.include_router(
-        bitcoin_beta.router,
-        prefix=f"{api_prefix}/bitcoin-beta",
-        tags=["bitcoin-beta"]
-    )
+    # Phase 1 Consolidation: Correlation and Bitcoin Beta now in market.py
+    # Endpoints available at:
+    # /api/market/correlation/* (correlation analysis)
+    # /api/market/bitcoin-beta/* (bitcoin beta analysis)
     
     # Include market manipulation routes
     app.include_router(
@@ -115,12 +108,9 @@ def init_api_routes(app: FastAPI):
         tags=["whale-activity"]
     )
     
-    # Include sentiment analysis routes
-    app.include_router(
-        sentiment.router,
-        prefix=f"{api_prefix}/sentiment",
-        tags=["sentiment"]
-    )
+    # Phase 1 Consolidation: Sentiment analysis now in market.py
+    # Endpoints available at:
+    # /api/market/sentiment/* (sentiment analysis)
     
     # Include admin dashboard routes at /admin
     app.include_router(
@@ -201,4 +191,6 @@ def init_api_routes(app: FastAPI):
     # Log registered routes
     import logging
     logger = logging.getLogger(__name__)
-    logger.info("API routes initialized with cache monitoring")
+    logger.info("🚀 Phase 1 API Consolidation - Market endpoints consolidated")
+    logger.info("✅ Consolidated: correlation, bitcoin-beta, sentiment -> market.py")
+    logger.info("📍 New endpoints: /api/market/correlation/*, /api/market/bitcoin-beta/*, /api/market/sentiment/*")

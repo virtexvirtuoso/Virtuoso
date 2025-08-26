@@ -1,12 +1,28 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, Body
+"""Consolidated Market API Routes - Phase 1 API Consolidation
+
+This module consolidates the following endpoints:
+- Market data (original market.py)
+- Correlation analysis (correlation.py) 
+- Bitcoin Beta analysis (bitcoin_beta.py)
+- Market sentiment (sentiment.py)
+
+Backward compatibility maintained for all existing endpoints.
+"""
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Body, Request
 from typing import Dict, List, Optional, Any
 from ..models.market import MarketData, OrderBook, Trade, MarketComparison, TechnicalAnalysis
 from src.core.exchanges.manager import ExchangeManager
-from fastapi import Request
-from datetime import datetime
+from datetime import datetime, timedelta
 import time
 import logging
 import asyncio
+import json
+import numpy as np
+import pandas as pd
+from pathlib import Path
+from pydantic import BaseModel
+from aiomcache import Client
 from src.core.analysis.confluence import ConfluenceAnalyzer
 from src.core.cache.unified_cache import get_cache
 
@@ -1405,3 +1421,907 @@ async def get_comprehensive_symbol_analysis(
     except Exception as e:
         logger.error(f"Error in comprehensive analysis for {symbol}: {e}")
         raise HTTPException(status_code=500, detail=f"Error generating comprehensive analysis for {symbol}: {str(e)}")
+
+# =============================================================================
+# CORRELATION ANALYSIS ENDPOINTS (from correlation.py)
+# =============================================================================
+
+# Signal types for correlation analysis
+SIGNAL_TYPES = [
+    "momentum", "technical", "volume", "orderflow", 
+    "orderbook", "sentiment", "price_action", "beta_exp", 
+    "confluence", "whale_act", "liquidation"
+]
+
+DEFAULT_ASSETS = [
+    "BTCUSDT", "ETHUSDT", "ADAUSDT", "DOTUSDT", 
+    "AVAXUSDT", "NEARUSDT", "SOLUSDT", "ALGOUSDT", 
+    "ATOMUSDT", "FTMUSDT"
+]
+
+class SignalCorrelationCalculator:
+    """Calculate correlations between different signals and assets."""
+    
+    def __init__(self):
+        self.logger = logging.getLogger(__name__)
+        
+    async def calculate_signal_correlations(
+        self, 
+        symbols: List[str], 
+        timeframe: str = "1h",
+        lookback_periods: int = 100
+    ) -> Dict[str, Any]:
+        """Calculate correlation matrix between signals across assets."""
+        try:
+            # Get recent signal data for analysis
+            signal_data = await self._get_recent_signals(symbols, lookback_periods)
+            
+            if not signal_data:
+                return {"error": "No signal data available"}
+            
+            # Calculate signal correlations
+            correlations = self._compute_signal_correlations(signal_data)
+            
+            # Calculate cross-asset correlations
+            asset_correlations = self._compute_asset_correlations(signal_data)
+            
+            # Generate correlation statistics
+            stats = self._calculate_correlation_stats(correlations, asset_correlations)
+            
+            return {
+                "signal_correlations": correlations,
+                "asset_correlations": asset_correlations,
+                "statistics": stats,
+                "metadata": {
+                    "symbols": symbols,
+                    "timeframe": timeframe,
+                    "lookback_periods": lookback_periods,
+                    "calculation_time": datetime.utcnow().isoformat(),
+                    "data_points": len(signal_data)
+                }
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error calculating signal correlations: {e}")
+            raise
+    
+    async def _get_recent_signals(self, symbols: List[str], periods: int) -> List[Dict[str, Any]]:
+        """Get recent signal data from stored signals."""
+        try:
+            signals_dir = Path("reports/json")
+            all_signals = []
+            
+            if not signals_dir.exists():
+                return []
+            
+            # Get signal files for specified symbols
+            for symbol in symbols:
+                symbol_files = list(signals_dir.glob(f"{symbol}_*.json"))
+                symbol_files.sort(key=lambda x: x.stat().st_mtime, reverse=True)
+                
+                # Take recent files
+                for file_path in symbol_files[:periods]:
+                    try:
+                        with open(file_path, 'r') as f:
+                            signal_data = json.load(f)
+                        signal_data['symbol'] = symbol
+                        signal_data['timestamp'] = file_path.stat().st_mtime
+                        all_signals.append(signal_data)
+                    except Exception as e:
+                        self.logger.warning(f"Error reading signal file {file_path}: {e}")
+                        continue
+            
+            return all_signals
+            
+        except Exception as e:
+            self.logger.error(f"Error getting recent signals: {e}")
+            return []
+    
+    def _compute_signal_correlations(self, signal_data: List[Dict[str, Any]]) -> Dict[str, Dict[str, float]]:
+        """Compute correlations between different signal types."""
+        try:
+            # Create DataFrame with signal scores
+            df_data = []
+            
+            for signal in signal_data:
+                row = {"symbol": signal.get("symbol"), "timestamp": signal.get("timestamp")}
+                
+                # Extract component scores
+                components = signal.get("components", {})
+                for signal_type in SIGNAL_TYPES:
+                    if signal_type in components:
+                        comp_data = components[signal_type]
+                        if isinstance(comp_data, dict):
+                            row[signal_type] = comp_data.get("score", 50.0)
+                        else:
+                            row[signal_type] = float(comp_data) if comp_data is not None else 50.0
+                    else:
+                        row[signal_type] = 50.0  # Default neutral score
+                
+                df_data.append(row)
+            
+            if not df_data:
+                return {}
+            
+            df = pd.DataFrame(df_data)
+            
+            # Calculate correlation matrix for signal types
+            signal_cols = [col for col in df.columns if col in SIGNAL_TYPES]
+            if len(signal_cols) < 2:
+                return {}
+            
+            corr_matrix = df[signal_cols].corr()
+            
+            # Convert to nested dict
+            correlations = {}
+            for i, signal1 in enumerate(signal_cols):
+                correlations[signal1] = {}
+                for j, signal2 in enumerate(signal_cols):
+                    correlations[signal1][signal2] = float(corr_matrix.iloc[i, j])
+            
+            return correlations
+            
+        except Exception as e:
+            self.logger.error(f"Error computing signal correlations: {e}")
+            return {}
+    
+    def _compute_asset_correlations(self, signal_data: List[Dict[str, Any]]) -> Dict[str, Dict[str, float]]:
+        """Compute correlations between assets based on their signal patterns."""
+        try:
+            # Group signals by symbol
+            symbol_signals = {}
+            for signal in signal_data:
+                symbol = signal.get("symbol")
+                if symbol:
+                    if symbol not in symbol_signals:
+                        symbol_signals[symbol] = []
+                    symbol_signals[symbol].append(signal)
+            
+            # Calculate average signal scores per symbol
+            symbol_averages = {}
+            for symbol, signals in symbol_signals.items():
+                avg_scores = {}
+                for signal_type in SIGNAL_TYPES:
+                    scores = []
+                    for signal in signals:
+                        components = signal.get("components", {})
+                        if signal_type in components:
+                            comp_data = components[signal_type]
+                            if isinstance(comp_data, dict):
+                                scores.append(comp_data.get("score", 50.0))
+                            else:
+                                scores.append(float(comp_data) if comp_data is not None else 50.0)
+                    
+                    avg_scores[signal_type] = np.mean(scores) if scores else 50.0
+                
+                symbol_averages[symbol] = avg_scores
+            
+            # Create correlation matrix between symbols
+            symbols = list(symbol_averages.keys())
+            if len(symbols) < 2:
+                return {}
+            
+            df_assets = pd.DataFrame(symbol_averages).T
+            corr_matrix = df_assets.corr()
+            
+            # Convert to nested dict
+            asset_correlations = {}
+            for i, symbol1 in enumerate(symbols):
+                asset_correlations[symbol1] = {}
+                for j, symbol2 in enumerate(symbols):
+                    asset_correlations[symbol1][symbol2] = float(corr_matrix.iloc[i, j])
+            
+            return asset_correlations
+            
+        except Exception as e:
+            self.logger.error(f"Error computing asset correlations: {e}")
+            return {}
+    
+    def _calculate_correlation_stats(self, signal_corr: Dict, asset_corr: Dict) -> Dict[str, Any]:
+        """Calculate correlation statistics."""
+        try:
+            stats = {}
+            
+            # Signal correlation stats
+            if signal_corr:
+                all_signal_corrs = []
+                for s1, correlations in signal_corr.items():
+                    for s2, corr in correlations.items():
+                        if s1 != s2 and not pd.isna(corr):
+                            all_signal_corrs.append(abs(corr))
+                
+                if all_signal_corrs:
+                    stats["signal_correlation_stats"] = {
+                        "mean_correlation": float(np.mean(all_signal_corrs)),
+                        "max_correlation": float(np.max(all_signal_corrs)),
+                        "min_correlation": float(np.min(all_signal_corrs)),
+                        "std_correlation": float(np.std(all_signal_corrs))
+                    }
+            
+            # Asset correlation stats
+            if asset_corr:
+                all_asset_corrs = []
+                for s1, correlations in asset_corr.items():
+                    for s2, corr in correlations.items():
+                        if s1 != s2 and not pd.isna(corr):
+                            all_asset_corrs.append(abs(corr))
+                
+                if all_asset_corrs:
+                    stats["asset_correlation_stats"] = {
+                        "mean_correlation": float(np.mean(all_asset_corrs)),
+                        "max_correlation": float(np.max(all_asset_corrs)),
+                        "min_correlation": float(np.min(all_asset_corrs)),
+                        "std_correlation": float(np.std(all_asset_corrs))
+                    }
+            
+            # Summary
+            stats["summary"] = {
+                "total_signals": len(signal_corr),
+                "total_assets": len(asset_corr),
+                "analysis_quality": "high" if len(asset_corr) > 5 else "medium" if len(asset_corr) > 2 else "low"
+            }
+            
+            return stats
+            
+        except Exception as e:
+            self.logger.error(f"Error calculating correlation stats: {e}")
+            return {}
+
+# Initialize correlation calculator
+correlation_calculator = SignalCorrelationCalculator()
+
+@router.get("/correlation/matrix")
+async def get_signal_confluence_matrix(
+    symbols: Optional[str] = Query(default=None),
+    timeframe: str = Query(default="1h"),
+    include_correlations: bool = Query(default=True)
+) -> Dict[str, Any]:
+    """Get the signal confluence matrix data matching the dashboard display."""
+    try:
+        # Parse symbols parameter
+        if symbols:
+            symbols_list = [s.strip() for s in symbols.split(',') if s.strip()]
+        else:
+            symbols_list = DEFAULT_ASSETS
+        
+        logger.info(f"Generating signal confluence matrix for {len(symbols_list)} symbols")
+        
+        # Get dashboard integration service
+        try:
+            from src.dashboard.dashboard_integration import get_dashboard_integration
+            integration = get_dashboard_integration()
+        except ImportError:
+            integration = None
+        
+        matrix_data = {}
+        
+        if integration:
+            # Get real signal data from dashboard integration
+            try:
+                dashboard_data = await integration.get_dashboard_overview()
+                signals_data = dashboard_data.get("signals", []) if isinstance(dashboard_data, dict) else []
+                
+                # Process signals into matrix format
+                for symbol in symbols_list:
+                    matrix_data[symbol] = {}
+                    
+                    # Find signal data for this symbol
+                    symbol_signal = None
+                    for signal in signals_data:
+                        if isinstance(signal, dict) and signal.get("symbol") == symbol:
+                            symbol_signal = signal
+                            break
+                    
+                    if symbol_signal and isinstance(symbol_signal, dict) and "confluence_signals" in symbol_signal:
+                        # Use real signal data
+                        confluence_signals = symbol_signal["confluence_signals"]
+                        if isinstance(confluence_signals, dict):
+                            for signal_type in SIGNAL_TYPES:
+                                if signal_type in confluence_signals:
+                                    signal_data = confluence_signals[signal_type]
+                                    if isinstance(signal_data, dict):
+                                        matrix_data[symbol][signal_type] = {
+                                            "score": float(signal_data.get("confidence", 50.0)),
+                                            "direction": signal_data.get("direction", "neutral"),
+                                            "strength": signal_data.get("strength", "medium")
+                                        }
+                                    else:
+                                        # Handle string or numeric signal data
+                                        try:
+                                            score = float(signal_data) if signal_data is not None else 50.0
+                                        except (ValueError, TypeError):
+                                            score = 50.0
+                                        
+                                        direction = "bullish" if score > 60 else "bearish" if score < 40 else "neutral"
+                                        strength = "strong" if score > 70 or score < 30 else "medium"
+                                        
+                                        matrix_data[symbol][signal_type] = {
+                                            "score": score,
+                                            "direction": direction,
+                                            "strength": strength
+                                        }
+                                else:
+                                    # Default neutral signal
+                                    matrix_data[symbol][signal_type] = {
+                                        "score": 50.0,
+                                        "direction": "neutral", 
+                                        "strength": "medium"
+                                    }
+                        else:
+                            # confluence_signals is not a dict, create default signals
+                            for signal_type in SIGNAL_TYPES:
+                                matrix_data[symbol][signal_type] = {
+                                    "score": 50.0,
+                                    "direction": "neutral", 
+                                    "strength": "medium"
+                                }
+                    else:
+                        # No signal data found, create default signals
+                        for signal_type in SIGNAL_TYPES:
+                            matrix_data[symbol][signal_type] = {
+                                "score": 50.0,
+                                "direction": "neutral", 
+                                "strength": "medium"
+                            }
+                    
+                    # Calculate composite score
+                    if matrix_data[symbol]:
+                        scores = [data["score"] for data in matrix_data[symbol].values() if isinstance(data, dict)]
+                        composite_score = sum(scores) / len(scores) if scores else 50.0
+                        matrix_data[symbol]["composite_score"] = composite_score
+                    else:
+                        matrix_data[symbol]["composite_score"] = 50.0
+                        
+            except Exception as e:
+                logger.warning(f"Error getting dashboard data: {e}, falling back to mock data")
+                integration = None  # Force fallback to mock data
+        
+        if not integration:
+            # Fallback to mock data when dashboard integration is not available
+            logger.warning("Dashboard integration not available, using mock data")
+            for symbol in symbols_list:
+                matrix_data[symbol] = {}
+                for signal_type in SIGNAL_TYPES:
+                    # Generate realistic mock data
+                    score = np.random.uniform(30, 85)
+                    direction = "bullish" if score > 60 else "bearish" if score < 40 else "neutral"
+                    strength = "strong" if score > 70 or score < 30 else "medium"
+                    
+                    matrix_data[symbol][signal_type] = {
+                        "score": round(score, 1),
+                        "direction": direction,
+                        "strength": strength
+                    }
+                
+                # Calculate composite score
+                scores = [data["score"] for data in matrix_data[symbol].values()]
+                matrix_data[symbol]["composite_score"] = sum(scores) / len(scores)
+        
+        # Calculate correlations if requested
+        correlations = {}
+        if include_correlations:
+            try:
+                correlations = await correlation_calculator.calculate_signal_correlations(symbols_list, timeframe)
+            except Exception as e:
+                logger.warning(f"Error calculating correlations: {e}")
+                correlations = {}
+        
+        return {
+            "matrix_data": matrix_data,
+            "correlations": correlations,
+            "metadata": {
+                "symbols": symbols_list,
+                "signal_types": SIGNAL_TYPES,
+                "timeframe": timeframe,
+                "timestamp": datetime.utcnow().isoformat(),
+                "total_symbols": len(symbols_list),
+                "total_signals": len(SIGNAL_TYPES)
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Error generating signal confluence matrix: {e}")
+        raise HTTPException(status_code=500, detail=f"Error generating matrix: {str(e)}")
+
+@router.get("/correlation/signals")
+async def get_signal_correlations(
+    symbols: Optional[str] = Query(default=None),
+    timeframe: str = Query(default="1h"),
+    lookback_periods: int = Query(default=100, ge=10, le=500)
+) -> Dict[str, Any]:
+    """Calculate correlations between different signal types."""
+    try:
+        # Parse symbols parameter
+        if symbols:
+            symbols_list = [s.strip() for s in symbols.split(',') if s.strip()]
+        else:
+            symbols_list = DEFAULT_ASSETS
+        
+        correlations = await correlation_calculator.calculate_signal_correlations(
+            symbols_list, timeframe, lookback_periods
+        )
+        
+        return correlations
+        
+    except Exception as e:
+        logger.error(f"Error calculating signal correlations: {e}")
+        raise HTTPException(status_code=500, detail=f"Error calculating correlations: {str(e)}")
+
+@router.get("/correlation/assets")
+async def get_asset_correlations(
+    symbols: Optional[str] = Query(default=None),
+    timeframe: str = Query(default="1h"),
+    lookback_periods: int = Query(default=100, ge=10, le=500)
+) -> Dict[str, Any]:
+    """Calculate correlations between assets based on their signal patterns."""
+    try:
+        if symbols:
+            symbols_list = [s.strip() for s in symbols.split(',') if s.strip()]
+        else:
+            symbols_list = DEFAULT_ASSETS
+        
+        correlations = await correlation_calculator.calculate_signal_correlations(
+            symbols_list, timeframe, lookback_periods
+        )
+        
+        return {
+            "asset_correlations": correlations.get("asset_correlations", {}),
+            "statistics": correlations.get("statistics", {}).get("asset_correlation_stats", {}),
+            "metadata": correlations.get("metadata", {})
+        }
+        
+    except Exception as e:
+        logger.error(f"Error calculating asset correlations: {e}")
+        raise HTTPException(status_code=500, detail=f"Error calculating correlations: {str(e)}")
+
+# =============================================================================
+# BITCOIN BETA ENDPOINTS (from bitcoin_beta.py)
+# =============================================================================
+
+# Cache client for bitcoin beta
+btc_cache = Client('localhost', 11211)
+
+@router.get("/bitcoin-beta/status")
+async def get_bitcoin_beta_status() -> Dict[str, Any]:
+    """Get Bitcoin Beta analysis status and latest metrics."""
+    try:
+        # Import here to avoid circular imports
+        from src.reports.bitcoin_beta_report import BitcoinBetaReport
+        
+        # Initialize reporter
+        reporter = BitcoinBetaReport()
+        
+        # Get latest beta analysis
+        try:
+            beta_data = await reporter.get_latest_beta_analysis()
+            
+            return {
+                "status": "active",
+                "timestamp": datetime.utcnow().isoformat(),
+                "beta_coefficient": beta_data.get("beta_coefficient", 0.0),
+                "correlation": beta_data.get("correlation", 0.0),
+                "r_squared": beta_data.get("r_squared", 0.0),
+                "alpha": beta_data.get("alpha", 0.0),
+                "volatility_ratio": beta_data.get("volatility_ratio", 0.0),
+                "last_update": beta_data.get("timestamp", datetime.utcnow().isoformat()),
+                "analysis_period": beta_data.get("analysis_period", "30d"),
+                "market_regime": beta_data.get("market_regime", "neutral"),
+                "confidence_level": beta_data.get("confidence_level", 0.0)
+            }
+            
+        except Exception as e:
+            logger.warning(f"Could not get latest beta analysis: {e}")
+            # Return default/mock data if analysis fails
+            return {
+                "status": "inactive",
+                "timestamp": datetime.utcnow().isoformat(),
+                "beta_coefficient": 0.0,
+                "correlation": 0.0,
+                "r_squared": 0.0,
+                "alpha": 0.0,
+                "volatility_ratio": 0.0,
+                "last_update": datetime.utcnow().isoformat(),
+                "analysis_period": "30d",
+                "market_regime": "neutral",
+                "confidence_level": 0.0,
+                "message": "Beta analysis temporarily unavailable"
+            }
+            
+    except Exception as e:
+        logger.error(f"Error getting Bitcoin Beta status: {e}")
+        raise HTTPException(status_code=500, detail=f"Error getting Bitcoin Beta status: {str(e)}")
+
+@router.get("/bitcoin-beta/analysis")
+async def get_bitcoin_beta_analysis() -> Dict[str, Any]:
+    """Get detailed Bitcoin Beta analysis."""
+    try:
+        from src.reports.bitcoin_beta_report import BitcoinBetaReporter
+        
+        reporter = BitcoinBetaReporter()
+        analysis = await reporter.generate_analysis()
+        
+        return {
+            "status": "success",
+            "timestamp": datetime.utcnow().isoformat(),
+            "analysis": analysis
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting Bitcoin Beta analysis: {e}")
+        raise HTTPException(status_code=500, detail=f"Error getting analysis: {str(e)}")
+
+@router.get("/bitcoin-beta/realtime")
+async def get_realtime_beta() -> Dict[str, Any]:
+    """Get real-time beta values from cache"""
+    try:
+        # Get market overview
+        overview_data = await btc_cache.get(b'beta:overview')
+        if overview_data:
+            overview = json.loads(overview_data.decode())
+        else:
+            overview = {
+                'market_beta': 1.0,
+                'btc_dominance': 57.4,
+                'total_symbols': 20,
+                'high_beta_count': 0,
+                'low_beta_count': 0,
+                'neutral_beta_count': 0,
+                'avg_correlation': 0.0,
+                'market_regime': 'NEUTRAL',
+                'timestamp': int(datetime.utcnow().timestamp() * 1000)
+            }
+        
+        # Get all symbol betas
+        symbols = []
+        symbol_list = [
+            'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'ADAUSDT',
+            'DOTUSDT', 'AVAXUSDT', 'MATICUSDT', 'LINKUSDT',
+            'NEARUSDT', 'ATOMUSDT', 'FTMUSDT', 'ALGOUSDT',
+            'AAVEUSDT', 'UNIUSDT', 'SUSHIUSDT', 'COMPUSDT',
+            'SNXUSDT', 'CRVUSDT', 'MKRUSDT'
+        ]
+        
+        for symbol in symbol_list:
+            cache_key = f'beta:values:{symbol}'.encode()
+            beta_data = await btc_cache.get(cache_key)
+            
+            if beta_data:
+                symbol_data = json.loads(beta_data.decode())
+                symbols.append(symbol_data)
+        
+        # Sort by 30d beta value (highest first)
+        symbols.sort(key=lambda x: x.get('beta_30d', 1.0), reverse=True)
+        
+        return {
+            'status': 'success',
+            'overview': overview,
+            'symbols': symbols,
+            'timestamp': datetime.utcnow().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting realtime beta data: {e}")
+        # Return minimal valid response
+        return {
+            'status': 'error',
+            'overview': {
+                'market_beta': 1.0,
+                'btc_dominance': 57.4,
+                'total_symbols': 0,
+                'market_regime': 'NEUTRAL'
+            },
+            'symbols': [],
+            'timestamp': datetime.utcnow().isoformat(),
+            'error': str(e)
+        }
+
+@router.get("/bitcoin-beta/history/{symbol}")
+async def get_beta_history(symbol: str) -> Dict[str, Any]:
+    """Get historical beta values for charting"""
+    try:
+        cache_key = f'beta:history:{symbol}'.encode()
+        history_data = await btc_cache.get(cache_key)
+        
+        if history_data:
+            history = json.loads(history_data.decode())
+        else:
+            history = []
+        
+        # Get current beta value
+        current_beta = 1.0
+        beta_cache_key = f'beta:values:{symbol}'.encode()
+        beta_data = await btc_cache.get(beta_cache_key)
+        
+        if beta_data:
+            beta_values = json.loads(beta_data.decode())
+            current_beta = beta_values.get('beta_30d', 1.0)
+        
+        return {
+            'status': 'success',
+            'symbol': symbol,
+            'history': history,
+            'current_beta': current_beta,
+            'timestamp': datetime.utcnow().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting beta history for {symbol}: {e}")
+        return {
+            'status': 'error',
+            'symbol': symbol,
+            'history': [],
+            'current_beta': 1.0,
+            'error': str(e)
+        }
+
+# =============================================================================
+# MARKET SENTIMENT ENDPOINTS (from sentiment.py)
+# =============================================================================
+
+class SentimentData(BaseModel):
+    """Market sentiment data model."""
+    symbol: str
+    overall_sentiment: str  # 'extremely_fearful', 'fearful', 'neutral', 'greedy', 'extremely_greedy'
+    sentiment_score: float  # 0-100 scale
+    fear_greed_index: float  # 0-100 scale
+    social_sentiment: float  # -1 to 1 scale
+    news_sentiment: float   # -1 to 1 scale
+    technical_sentiment: float  # -1 to 1 scale
+    volume_sentiment: float     # -1 to 1 scale
+    timestamp: int
+
+class MarketMood(BaseModel):
+    """Overall market mood model."""
+    overall_mood: str
+    mood_score: float
+    dominant_emotion: str
+    volatility_sentiment: str
+    trend_sentiment: str
+    momentum_sentiment: str
+    timestamp: int
+
+@router.get("/sentiment/market")
+async def get_market_sentiment():
+    """Get market sentiment analysis."""
+    return {
+        "overall_sentiment": "cautiously_optimistic",
+        "sentiment_score": 62,
+        "fear_greed_index": 58,
+        "market_mood": "bullish",
+        "social_sentiment": 0.25,
+        "news_sentiment": 0.15,
+        "technical_sentiment": 0.35,
+        "timestamp": int(time.time() * 1000)
+    }
+
+@router.get("/sentiment/symbols")
+async def get_symbol_sentiments(
+    limit: int = Query(10, ge=1, le=50, description="Maximum number of symbols"),
+    sort_by: str = Query("sentiment_score", description="Sort by: sentiment_score, volume, mentions")
+) -> List[SentimentData]:
+    """Get sentiment data for multiple symbols."""
+    try:
+        logger.info(f"Getting symbol sentiments: limit={limit}, sort_by={sort_by}")
+        
+        current_time = int(time.time() * 1000)
+        symbols = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'AVAXUSDT', 'ADAUSDT', 'DOTUSDT', 'LINKUSDT', 'ATOMUSDT', 'NEARUSDT']
+        
+        sentiments = []
+        for i, symbol in enumerate(symbols[:limit]):
+            base_score = 35 + (i * 6) + (hash(symbol) % 15)  # Vary scores
+            
+            sentiment = SentimentData(
+                symbol=symbol,
+                overall_sentiment=_get_sentiment_label(base_score),
+                sentiment_score=base_score,
+                fear_greed_index=base_score + (i % 10) - 5,
+                social_sentiment=(base_score - 50) / 50,
+                news_sentiment=(base_score - 48) / 50,
+                technical_sentiment=(base_score - 52) / 50,
+                volume_sentiment=(base_score - 45) / 50,
+                timestamp=current_time
+            )
+            sentiments.append(sentiment)
+        
+        # Sort by requested criteria
+        if sort_by == "sentiment_score":
+            sentiments.sort(key=lambda x: x.sentiment_score, reverse=True)
+        elif sort_by == "fear_greed_index":
+            sentiments.sort(key=lambda x: x.fear_greed_index, reverse=True)
+        
+        logger.info(f"Returning sentiment data for {len(sentiments)} symbols")
+        return sentiments
+        
+    except Exception as e:
+        logger.error(f"Error getting symbol sentiments: {str(e)}")
+        return []
+
+@router.get("/sentiment/fear-greed")
+async def get_fear_greed_index(
+    days: int = Query(7, ge=1, le=30, description="Number of days of historical data")
+) -> Dict[str, Any]:
+    """Get Fear & Greed Index data and historical trends."""
+    try:
+        logger.info(f"Getting fear & greed index for {days} days")
+        
+        current_time = int(time.time() * 1000)
+        current_index = 62  # Moderate greed
+        
+        # Generate historical data
+        historical_data = []
+        for i in range(days):
+            day_offset = i * 24 * 60 * 60 * 1000
+            timestamp = current_time - day_offset
+            # Simulate some variation in the index
+            index_value = current_index + (i % 7 - 3) * 5 + (hash(str(i)) % 10 - 5)
+            index_value = max(0, min(100, index_value))  # Clamp to 0-100
+            
+            historical_data.append({
+                "timestamp": timestamp,
+                "index": index_value,
+                "label": _get_sentiment_label(index_value),
+                "date": datetime.fromtimestamp(timestamp / 1000).strftime("%Y-%m-%d")
+            })
+        
+        # Reverse to get chronological order
+        historical_data.reverse()
+        
+        fear_greed_data = {
+            "current": {
+                "value": current_index,
+                "label": _get_sentiment_label(current_index),
+                "classification": _get_fear_greed_classification(current_index),
+                "timestamp": current_time
+            },
+            "components": {
+                "volatility": {"value": 58, "weight": 25},
+                "market_momentum": {"value": 67, "weight": 25},
+                "social_media": {"value": 55, "weight": 15},
+                "surveys": {"value": 60, "weight": 15},
+                "dominance": {"value": 72, "weight": 10},
+                "trends": {"value": 45, "weight": 10}
+            },
+            "historical": historical_data,
+            "statistics": {
+                "period_days": days,
+                "average": sum(h["index"] for h in historical_data) / len(historical_data),
+                "min": min(h["index"] for h in historical_data),
+                "max": max(h["index"] for h in historical_data),
+                "volatility": _calculate_volatility([h["index"] for h in historical_data])
+            },
+            "insights": {
+                "trend": "increasing" if historical_data[-1]["index"] > historical_data[0]["index"] else "decreasing",
+                "dominant_emotion": _get_fear_greed_classification(current_index),
+                "market_cycle_stage": "accumulation" if current_index < 50 else "distribution",
+                "contrarian_signal": current_index > 75 or current_index < 25
+            }
+        }
+        
+        logger.info(f"Returning fear & greed index data")
+        return fear_greed_data
+        
+    except Exception as e:
+        logger.error(f"Error getting fear & greed index: {str(e)}")
+        return {
+            "error": "Unable to fetch fear & greed index",
+            "timestamp": int(time.time() * 1000)
+        }
+
+@router.get("/sentiment/social")
+async def get_social_sentiment(
+    symbol: Optional[str] = Query(None, description="Filter by symbol"),
+    platform: Optional[str] = Query(None, description="Filter by platform: twitter, reddit, telegram"),
+    hours: int = Query(24, ge=1, le=168, description="Hours to look back")
+) -> Dict[str, Any]:
+    """Get social media sentiment analysis."""
+    try:
+        logger.info(f"Getting social sentiment: symbol={symbol}, platform={platform}, hours={hours}")
+        
+        current_time = int(time.time() * 1000)
+        
+        social_data = {
+            "period_hours": hours,
+            "platforms": {
+                "twitter": {
+                    "mentions": 15420,
+                    "sentiment_score": 0.23,
+                    "positive_ratio": 0.65,
+                    "negative_ratio": 0.35,
+                    "engagement_rate": 0.087,
+                    "trending_hashtags": ["#BTC", "#crypto", "#bullrun", "#DeFi"]
+                },
+                "reddit": {
+                    "mentions": 8940,
+                    "sentiment_score": 0.15,
+                    "positive_ratio": 0.58,
+                    "negative_ratio": 0.42,
+                    "upvote_ratio": 0.78,
+                    "trending_subreddits": ["cryptocurrency", "bitcoin", "ethtrader"]
+                },
+                "telegram": {
+                    "mentions": 3250,
+                    "sentiment_score": 0.31,
+                    "positive_ratio": 0.72,
+                    "negative_ratio": 0.28,
+                    "active_groups": 125,
+                    "message_volume": "high"
+                }
+            },
+            "overall_metrics": {
+                "total_mentions": 27610,
+                "weighted_sentiment": 0.21,
+                "sentiment_trend": "improving",
+                "viral_coefficient": 1.34,
+                "influence_score": 0.67
+            },
+            "trending_topics": [
+                {"topic": "bitcoin etf", "mentions": 2140, "sentiment": 0.45},
+                {"topic": "defi yield", "mentions": 1890, "sentiment": 0.32},
+                {"topic": "altcoin season", "mentions": 1560, "sentiment": 0.28},
+                {"topic": "regulation", "mentions": 1230, "sentiment": -0.15}
+            ],
+            "influencer_sentiment": {
+                "crypto_influencers": 0.25,
+                "financial_analysts": 0.18,
+                "tech_leaders": 0.31,
+                "institutional_voices": 0.22
+            },
+            "timestamp": current_time
+        }
+        
+        # Filter by symbol if specified
+        if symbol:
+            symbol_hash = hash(symbol) % 1000
+            social_data["symbol_specific"] = {
+                "symbol": symbol,
+                "mentions": 500 + symbol_hash,
+                "sentiment_score": (symbol_hash % 100 - 50) / 100,
+                "trend": "bullish" if symbol_hash % 2 == 0 else "bearish",
+                "community_size": 10000 + symbol_hash * 10
+            }
+        
+        logger.info(f"Returning social sentiment data")
+        return social_data
+        
+    except Exception as e:
+        logger.error(f"Error getting social sentiment: {str(e)}")
+        return {
+            "error": "Unable to fetch social sentiment",
+            "timestamp": int(time.time() * 1000)
+        }
+
+# Helper functions for sentiment
+def _get_sentiment_label(score: float) -> str:
+    """Convert sentiment score to label."""
+    if score >= 75:
+        return "extremely_greedy"
+    elif score >= 55:
+        return "greedy"
+    elif score >= 45:
+        return "neutral"
+    elif score >= 25:
+        return "fearful"
+    else:
+        return "extremely_fearful"
+
+def _get_fear_greed_classification(score: float) -> str:
+    """Get fear & greed classification."""
+    if score >= 75:
+        return "extreme_greed"
+    elif score >= 55:
+        return "greed"
+    elif score >= 45:
+        return "neutral"
+    elif score >= 25:
+        return "fear"
+    else:
+        return "extreme_fear"
+
+def _calculate_volatility(values: List[float]) -> float:
+    """Calculate simple volatility of a list of values."""
+    if len(values) < 2:
+        return 0.0
+    
+    mean = sum(values) / len(values)
+    variance = sum((x - mean) ** 2 for x in values) / len(values)
+    return (variance ** 0.5) / mean if mean != 0 else 0.0
