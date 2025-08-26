@@ -1,8 +1,9 @@
 """API initialization and route registration module."""
 
 from fastapi import FastAPI
-# Phase 1 API Consolidation: Consolidated imports
-from .routes import signals, market, system, trading, dashboard, alpha, liquidation, manipulation, top_symbols, admin, debug_test, core_api
+# Phase 4 API Consolidation: Consolidated imports
+from .routes import signals, market, system, trading, dashboard, alpha, liquidation, manipulation, top_symbols, core_api
+# Phase 4 removed: admin, debug_test (now in system.py)
 # Phase 3 removed: cache (now in dashboard.py)
 # Phase 2 removed: whale_activity (now in signals.py)
 # Removed: correlation, bitcoin_beta, sentiment (now in market.py)
@@ -94,22 +95,10 @@ def init_api_routes(app: FastAPI):
     # Endpoints available at:
     # /api/market/sentiment/* (sentiment analysis)
     
-    # Include admin dashboard routes at /admin
-    app.include_router(
-        admin.router,
-        prefix="/admin",
-        tags=["admin"]
-    )
-    
-    # Phase 3 Consolidation: Cache monitoring now in dashboard.py
-    # Endpoints available at: /api/dashboard/cache/*
-    
-    # Include debug routes
-    app.include_router(
-        debug_test.router,
-        prefix=f"{api_prefix}/debug",
-        tags=["debug"]
-    )
+    # Phase 4 Consolidation: Admin and debug routes now in system.py
+    # Endpoints available at:
+    # /api/system/admin/* (admin authentication & config management)
+    # /api/system/debug/* (cache testing & diagnostics)
     
     # Include core API routes (standard endpoints)
     app.include_router(
@@ -135,10 +124,12 @@ def init_api_routes(app: FastAPI):
     # Log registered routes
     import logging
     logger = logging.getLogger(__name__)
-    logger.info("🚀 Phase 1-3 API Consolidation Complete")
+    logger.info("🚀 Phase 1-4 API Consolidation Complete")
     logger.info("✅ Phase 1: correlation, bitcoin-beta, sentiment -> market.py")
     logger.info("✅ Phase 2: alerts, whale_activity -> signals.py")
     logger.info("✅ Phase 3: cache variants, dashboard_cached, dashboard_fast -> dashboard.py")
+    logger.info("✅ Phase 4: admin, debug_test -> system.py")
     logger.info("📍 Market: /api/market/{correlation,bitcoin-beta,sentiment}/*")
     logger.info("📍 Signals: /api/signals/{alerts,whale}/*")
     logger.info("📍 Dashboard: /api/dashboard/{cache,cached,fast,direct}/*")
+    logger.info("📍 System: /api/system/{admin,debug}/*")
