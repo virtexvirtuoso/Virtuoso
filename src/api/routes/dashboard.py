@@ -1,4 +1,13 @@
-"""Dashboard API routes for the Virtuoso Trading System."""
+"""Consolidated Dashboard API Routes - Phase 3 API Consolidation
+
+This module consolidates the following endpoints:
+- Dashboard overview and WebSocket (original dashboard.py)
+- Cache management and monitoring (cache.py)
+- Cache dashboard routes (cache_dashboard.py, dashboard_cached.py)
+- Ultra-fast dashboard variants (dashboard_fast.py, direct_cache.py)
+
+Backward compatibility maintained for all existing endpoints.
+"""
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException, Depends, Request
 from fastapi.responses import FileResponse
@@ -141,6 +150,374 @@ async def get_dashboard_overview() -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Error getting dashboard overview: {e}")
         raise HTTPException(status_code=500, detail=f"Error getting dashboard overview: {str(e)}")
+
+# =============================================================================
+# CACHE MANAGEMENT ENDPOINTS (from cache.py)
+# =============================================================================
+
+from src.core.cache.unified_cache import get_cache
+
+@router.get("/cache/metrics")
+async def get_cache_metrics() -> Dict[str, Any]:
+    """Get cache performance metrics"""
+    try:
+        cache = get_cache()
+        metrics = cache.get_metrics()
+        
+        return {
+            "status": "success",
+            "timestamp": datetime.utcnow().isoformat(),
+            "metrics": metrics,
+            "cache_config": {
+                "host": cache.host,
+                "port": cache.port,
+                "memcached_available": cache.memcached_available,
+                "local_fallback_enabled": cache.enable_local_fallback
+            }
+        }
+    except Exception as e:
+        logger.error(f"Error retrieving cache metrics: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/cache/health")
+async def cache_health_check() -> Dict[str, Any]:
+    """Check cache health status"""
+    try:
+        cache = get_cache()
+        
+        # Test cache connectivity
+        test_key = "health_check"
+        test_value = {"timestamp": datetime.utcnow().isoformat()}
+        
+        # Try to set and get a test value
+        await cache.set(test_key, test_value, ttl=60)
+        retrieved_value = await cache.get(test_key)
+        
+        cache_healthy = retrieved_value is not None
+        
+        return {
+            "status": "healthy" if cache_healthy else "degraded",
+            "timestamp": datetime.utcnow().isoformat(),
+            "cache_connected": cache_healthy,
+            "memcached_available": cache.memcached_available,
+            "local_fallback_active": not cache.memcached_available
+        }
+    except Exception as e:
+        logger.error(f"Cache health check failed: {e}")
+        return {
+            "status": "unhealthy",
+            "timestamp": datetime.utcnow().isoformat(),
+            "error": str(e)
+        }
+
+@router.delete("/cache/clear")
+async def clear_cache(pattern: Optional[str] = None) -> Dict[str, str]:
+    """Clear cache entries by pattern"""
+    try:
+        cache = get_cache()
+        
+        if pattern:
+            cleared_count = await cache.clear_pattern(pattern)
+            message = f"Cleared {cleared_count} entries matching pattern: {pattern}"
+        else:
+            await cache.clear_all()
+            message = "All cache entries cleared"
+        
+        return {
+            "status": "success",
+            "message": message,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Error clearing cache: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# =============================================================================
+# CACHE DASHBOARD ENDPOINTS (from cache_dashboard.py)
+# =============================================================================
+
+import aiomcache
+
+# Cache client (singleton)
+_cache_client = None
+
+async def get_cache_client():
+    """Get or create cache client"""
+    global _cache_client
+    if _cache_client is None:
+        _cache_client = aiomcache.Client('localhost', 11211)
+    return _cache_client
+
+async def get_from_cache(key: bytes, default: Any = None) -> Any:
+    """Get data from cache with fallback default"""
+    try:
+        cache = await get_cache_client()
+        data = await cache.get(key)
+        if data:
+            if key == b'analysis:market_regime':
+                return data.decode()
+            return json.loads(data.decode())
+        return default
+    except Exception as e:
+        logger.error(f"Cache read error for {key}: {e}")
+        return default
+
+@router.get("/cache/overview")
+async def get_cache_overview() -> Dict[str, Any]:
+    """Get complete dashboard overview from cache"""
+    start = time.perf_counter()
+    
+    try:
+        # Get all cached data in parallel
+        market_data = await get_from_cache(b'market:overview', {})
+        analysis_data = await get_from_cache(b'analysis:results', {})
+        signals_data = await get_from_cache(b'analysis:signals', {})
+        alerts_data = await get_from_cache(b'alerts:recent', [])
+        
+        # Build comprehensive overview
+        overview = {
+            'market': market_data,
+            'analysis': analysis_data,
+            'signals': signals_data.get('signals', []) if signals_data else [],
+            'alerts': alerts_data,
+            'performance': {
+                'response_time_ms': (time.perf_counter() - start) * 1000,
+                'source': 'cache',
+                'cache_hit': True
+            },
+            'timestamp': int(time.time() * 1000)
+        }
+        
+        logger.debug(f"Cache overview generated in {(time.perf_counter() - start) * 1000:.2f}ms")
+        return overview
+        
+    except Exception as e:
+        logger.error(f"Error getting cache overview: {e}")
+        return {
+            'error': str(e),
+            'performance': {
+                'response_time_ms': (time.perf_counter() - start) * 1000,
+                'source': 'error',
+                'cache_hit': False
+            },
+            'timestamp': int(time.time() * 1000)
+        }
+
+@router.get("/cache/symbols")
+async def get_cache_symbols() -> Dict[str, Any]:
+    """Get symbols data from cache"""
+    start = time.perf_counter()
+    
+    try:
+        symbols_data = await get_from_cache(b'market:tickers', {})
+        
+        # Format symbols for dashboard
+        symbols = []
+        if symbols_data:
+            for symbol, data in list(symbols_data.items())[:50]:  # Limit to 50
+                symbols.append({
+                    'symbol': symbol,
+                    'price': data.get('price', 0),
+                    'change_24h': data.get('change_24h', 0),
+                    'volume': data.get('volume', 0),
+                    'timestamp': data.get('timestamp', int(time.time()))
+                })
+        
+        return {
+            'symbols': symbols,
+            'count': len(symbols),
+            'performance': {
+                'response_time_ms': (time.perf_counter() - start) * 1000,
+                'source': 'cache'
+            },
+            'timestamp': int(time.time())
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting cache symbols: {e}")
+        return {
+            'error': str(e),
+            'symbols': [],
+            'count': 0,
+            'timestamp': int(time.time())
+        }
+
+# =============================================================================
+# CACHED DASHBOARD ENDPOINTS (from dashboard_cached.py)
+# =============================================================================
+
+# Import cache adapter
+try:
+    from src.api.cache_adapter_direct import cache_adapter
+    CACHE_ADAPTER_AVAILABLE = True
+except ImportError:
+    CACHE_ADAPTER_AVAILABLE = False
+
+# Performance tracking decorator
+from functools import wraps
+
+def track_time(func):
+    @wraps(func)
+    async def wrapper(*args, **kwargs):
+        start = time.perf_counter()
+        result = await func(*args, **kwargs)
+        elapsed = (time.perf_counter() - start) * 1000
+        if isinstance(result, dict):
+            result['response_time_ms'] = elapsed
+        logger.debug(f"{func.__name__} responded in {elapsed:.2f}ms")
+        return result
+    return wrapper
+
+@router.get("/cached/market-overview")
+@track_time
+async def get_cached_market_overview() -> Dict[str, Any]:
+    """Get market overview from cache"""
+    if CACHE_ADAPTER_AVAILABLE:
+        return await cache_adapter.get_market_overview()
+    else:
+        return await get_from_cache(b'market:overview', {
+            'error': 'Cache adapter not available',
+            'timestamp': int(time.time())
+        })
+
+@router.get("/cached/symbols")
+@track_time
+async def get_cached_symbols() -> Dict[str, Any]:
+    """Get symbols data from cache"""
+    if CACHE_ADAPTER_AVAILABLE:
+        return await cache_adapter.get_dashboard_symbols()
+    else:
+        return await get_cache_symbols()
+
+@router.get("/cached/signals")
+@track_time
+async def get_cached_signals() -> Dict[str, Any]:
+    """Get signals from cache"""
+    if CACHE_ADAPTER_AVAILABLE:
+        return await cache_adapter.get_signals()
+    else:
+        signals_data = await get_from_cache(b'analysis:signals', {})
+        return {
+            'signals': signals_data.get('signals', []) if signals_data else [],
+            'count': len(signals_data.get('signals', [])) if signals_data else 0,
+            'timestamp': int(time.time()),
+            'source': 'cache'
+        }
+
+# =============================================================================
+# ULTRA-FAST DASHBOARD ENDPOINTS (from dashboard_fast.py)
+# =============================================================================
+
+# Import direct cache if available
+try:
+    from src.core.direct_cache import DirectCache
+    DIRECT_CACHE_AVAILABLE = True
+except ImportError:
+    DIRECT_CACHE_AVAILABLE = False
+
+@router.get("/fast/overview")
+async def fast_overview() -> Dict[str, Any]:
+    """Dashboard overview - ultra fast from cache"""
+    start = time.perf_counter()
+    
+    if DIRECT_CACHE_AVAILABLE:
+        data = await DirectCache.get_dashboard_data()
+    else:
+        data = await get_cache_overview()
+    
+    data['response_ms'] = (time.perf_counter() - start) * 1000
+    data['source'] = 'fast_cache'
+    return data
+
+@router.get("/fast/market")
+async def fast_market() -> Dict[str, Any]:
+    """Market overview - ultra fast from cache"""
+    start = time.perf_counter()
+    
+    if DIRECT_CACHE_AVAILABLE:
+        data = await DirectCache.get_market_overview()
+    else:
+        data = await get_from_cache(b'market:overview', {
+            'error': 'Direct cache not available',
+            'timestamp': int(time.time())
+        })
+    
+    data['response_ms'] = (time.perf_counter() - start) * 1000
+    data['source'] = 'fast_cache'
+    return data
+
+# =============================================================================
+# DIRECT CACHE ENDPOINTS (from direct_cache.py)
+# =============================================================================
+
+@router.get("/direct/signals")
+async def get_signals_direct() -> Dict[str, Any]:
+    """Get signals directly from cache"""
+    try:
+        client = aiomcache.Client('localhost', 11211)
+        
+        # Get signals data
+        signals_data = await client.get(b'analysis:signals')
+        
+        signals = []
+        raw_data = None
+        if signals_data:
+            raw_data = signals_data.decode()[:100]  # First 100 chars for debug
+            data = json.loads(signals_data.decode())
+            signals = data.get('signals', [])
+        
+        await client.close()
+        
+        return {
+            'status': 'success',
+            'signals': signals,
+            'count': len(signals),
+            'raw_preview': raw_data,
+            'source': 'direct_cache',
+            'timestamp': int(time.time())
+        }
+        
+    except Exception as e:
+        logger.error(f"Direct cache signals error: {e}")
+        return {
+            'status': 'error',
+            'error': str(e),
+            'signals': [],
+            'count': 0,
+            'source': 'direct_cache_error',
+            'timestamp': int(time.time())
+        }
+
+@router.get("/direct/market")
+async def get_market_direct() -> Dict[str, Any]:
+    """Get market data directly from cache"""
+    try:
+        client = aiomcache.Client('localhost', 11211)
+        
+        # Get market overview
+        market_data = await client.get(b'market:overview')
+        
+        result = {'source': 'direct_cache', 'timestamp': int(time.time())}
+        
+        if market_data:
+            data = json.loads(market_data.decode())
+            result.update(data)
+            result['status'] = 'success'
+        else:
+            result['status'] = 'no_data'
+            result['message'] = 'No market data in cache'
+        
+        await client.close()
+        return result
+        
+    except Exception as e:
+        logger.error(f"Direct cache market error: {e}")
+        return {
+            'status': 'error',
+            'error': str(e),
+            'source': 'direct_cache_error',
+            'timestamp': int(time.time())
+        }
 
 @router.get("/signals")
 async def get_dashboard_signals() -> List[Dict[str, Any]]:

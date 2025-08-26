@@ -2,32 +2,16 @@
 
 from fastapi import FastAPI
 # Phase 1 API Consolidation: Consolidated imports
-from .routes import signals, market, system, trading, dashboard, alpha, liquidation, manipulation, top_symbols, admin, cache, debug_test, core_api
+from .routes import signals, market, system, trading, dashboard, alpha, liquidation, manipulation, top_symbols, admin, debug_test, core_api
+# Phase 3 removed: cache (now in dashboard.py)
 # Phase 2 removed: whale_activity (now in signals.py)
 # Removed: correlation, bitcoin_beta, sentiment (now in market.py)
-try:
-    from .routes import cache_dashboard
-    cache_dashboard_available = True
-except ImportError:
-    cache_dashboard_available = False
-
-try:
-    from .routes import dashboard_cached
-    dashboard_cached_available = True
-except ImportError:
-    dashboard_cached_available = False
-
-try:
-    from .routes import dashboard_fast
-    dashboard_fast_available = True
-except ImportError:
-    dashboard_fast_available = False
-
-try:
-    from .routes import direct_cache
-    direct_cache_available = True
-except ImportError:
-    direct_cache_available = False
+# Phase 3 Consolidation: All dashboard cache variants now in dashboard.py
+# Endpoints available at:
+# /api/dashboard/cache/* (cache management)
+# /api/dashboard/cached/* (cached dashboard routes)
+# /api/dashboard/fast/* (ultra-fast routes)
+# /api/dashboard/direct/* (direct cache access)
 
 def init_api_routes(app: FastAPI):
     """Initialize all API routes for the application."""
@@ -117,12 +101,8 @@ def init_api_routes(app: FastAPI):
         tags=["admin"]
     )
     
-    # Include cache monitoring routes
-    app.include_router(
-        cache.router,
-        prefix=f"{api_prefix}",
-        tags=["cache"]
-    )
+    # Phase 3 Consolidation: Cache monitoring now in dashboard.py
+    # Endpoints available at: /api/dashboard/cache/*
     
     # Include debug routes
     app.include_router(
@@ -138,46 +118,12 @@ def init_api_routes(app: FastAPI):
         tags=["core"]
     )
     
-    # Include Phase 2 cache dashboard routes if available
-    if cache_dashboard_available:
-        app.include_router(
-            cache_dashboard.router,
-            prefix=f"{api_prefix}/cache",
-            tags=["cache-dashboard"]
-        )
-    
-    # Include cached dashboard routes for existing dashboards
-    if dashboard_cached_available:
-        app.include_router(
-            dashboard_cached.router,
-            prefix=f"{api_prefix}/dashboard-cached",
-            tags=["dashboard-cached"]
-        )
-        import logging
-        cache_logger = logging.getLogger(__name__)
-        cache_logger.info("✅ Cached dashboard routes enabled for ultra-fast response")
-    
-    # Include Phase 3 ultra-fast dashboard routes
-    if dashboard_fast_available:
-        app.include_router(
-            dashboard_fast.router,
-            prefix=f"{api_prefix}/fast",
-            tags=["fast-dashboard"]
-        )
-        import logging
-        fast_logger = logging.getLogger(__name__)
-        fast_logger.info("🚀 Phase 3 ultra-fast routes enabled (<50ms response)")
-    
-    # Include direct cache routes (bypass adapter issues)
-    if direct_cache_available:
-        app.include_router(
-            direct_cache.router,
-            prefix=f"{api_prefix}/direct",
-            tags=["direct-cache"]
-        )
-        import logging
-        direct_logger = logging.getLogger(__name__)
-        direct_logger.info("✅ Direct cache routes enabled (adapter bypass)")
+    # Phase 3 Consolidation: All cache dashboard variants now in dashboard.py
+    # Unified endpoints:
+    # • /api/dashboard/cache/* (cache management & monitoring)
+    # • /api/dashboard/cached/* (cached dashboard routes) 
+    # • /api/dashboard/fast/* (ultra-fast <50ms routes)
+    # • /api/dashboard/direct/* (direct cache access, bypass adapters)
     
     # Health and resilience monitoring
     try:
@@ -189,8 +135,10 @@ def init_api_routes(app: FastAPI):
     # Log registered routes
     import logging
     logger = logging.getLogger(__name__)
-    logger.info("🚀 Phase 1-2 API Consolidation Complete")
+    logger.info("🚀 Phase 1-3 API Consolidation Complete")
     logger.info("✅ Phase 1: correlation, bitcoin-beta, sentiment -> market.py")
     logger.info("✅ Phase 2: alerts, whale_activity -> signals.py")
-    logger.info("📍 Market endpoints: /api/market/correlation/*, /api/market/bitcoin-beta/*, /api/market/sentiment/*")
-    logger.info("📍 Signals endpoints: /api/signals/alerts/*, /api/signals/whale/*")
+    logger.info("✅ Phase 3: cache variants, dashboard_cached, dashboard_fast -> dashboard.py")
+    logger.info("📍 Market: /api/market/{correlation,bitcoin-beta,sentiment}/*")
+    logger.info("📍 Signals: /api/signals/{alerts,whale}/*")
+    logger.info("📍 Dashboard: /api/dashboard/{cache,cached,fast,direct}/*")
