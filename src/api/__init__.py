@@ -2,7 +2,7 @@
 
 from fastapi import FastAPI
 # Phase 4 API Consolidation: Consolidated imports
-from .routes import signals, market, system, trading, dashboard, alpha, liquidation, manipulation, top_symbols, core_api
+from .routes import signals, market, system, trading, dashboard, alpha, liquidation, manipulation, top_symbols, core_api, performance, mobile_direct
 # Phase 4 removed: admin, debug_test (now in system.py)
 # Phase 3 removed: cache (now in dashboard.py)
 # Phase 2 removed: whale_activity (now in signals.py)
@@ -24,6 +24,13 @@ def init_api_routes(app: FastAPI):
         signals.router,
         prefix=f"{api_prefix}/signals",
         tags=["signals"]
+    )
+    
+    # Include direct alerts routes (backward compatibility)
+    app.include_router(
+        signals.router,
+        prefix=f"{api_prefix}/alerts",
+        tags=["alerts"]
     )
     
     # Include market routes
@@ -100,12 +107,26 @@ def init_api_routes(app: FastAPI):
     # /api/system/admin/* (admin authentication & config management)
     # /api/system/debug/* (cache testing & diagnostics)
     
+    # Include performance monitoring routes
+    app.include_router(
+        performance.router,
+        tags=["monitoring"]
+    )
+    
     # Include core API routes (standard endpoints)
     app.include_router(
         core_api.router,
         prefix=f"{api_prefix}",
         tags=["core"]
     )
+    
+    # Include mobile routes
+    app.include_router(
+        mobile_direct.router,
+        prefix=f"{api_prefix}/mobile",
+        tags=["mobile"]
+    )
+    
     
     # Phase 3 Consolidation: All cache dashboard variants now in dashboard.py
     # Unified endpoints:
@@ -133,3 +154,4 @@ def init_api_routes(app: FastAPI):
     logger.info("📍 Signals: /api/signals/{alerts,whale}/*")
     logger.info("📍 Dashboard: /api/dashboard/{cache,cached,fast,direct}/*")
     logger.info("📍 System: /api/system/{admin,debug}/*")
+    logger.info("📍 Mobile: /api/dashboard/mobile/* (mobile-optimized endpoints)")

@@ -1,48 +1,44 @@
 """
 Cache Adapter for Existing Dashboard Endpoints
-Intercepts existing API calls and serves from cache
+Uses the unified CacheManager for all caching operations
 Provides backward compatibility with zero frontend changes
 """
 import json
 import time
 import logging
 from typing import Dict, Any, Optional, List
-import aiomcache
+from src.core.cache_manager import get_cache_manager
 
 logger = logging.getLogger(__name__)
 
 class CacheAdapter:
     """
-    Adapter to make existing dashboard endpoints use cache
+    Adapter to make existing dashboard endpoints use unified cache
     Drop-in replacement - no frontend changes needed
     """
     
     _instance = None
-    _cache_client = None
     
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super().__new__(cls)
         return cls._instance
     
-    async def get_cache(self):
-        """Get or create cache client"""
-        if self._cache_client is None:
-            self._cache_client = aiomcache.Client('localhost', 11211)
-        return self._cache_client
+    def __init__(self):
+        if not hasattr(self, 'cache_manager'):
+            self.cache_manager = get_cache_manager()
     
-    async def _get_from_cache(self, key: bytes, default: Any = None) -> Any:
-        """Safe cache getter with fallback"""
+    async def _get_from_cache(self, key: str, namespace: str = 'api', default: Any = None) -> Any:
+        """Safe cache getter with fallback using unified cache"""
         try:
-            cache = await self.get_cache()
-            data = await cache.get(key)
-            if data:
-                if key == b'analysis:market_regime':
-                    return data.decode()
-                return json.loads(data.decode())
-            return default
+            # Handle special cases
+            if key == 'market_regime':
+                namespace = 'analysis'
+            
+            value = await self.cache_manager.get(namespace, key, default)
+            return value
         except Exception as e:
-            logger.debug(f"Cache miss for {key}: {e}")
+            logger.debug(f"Cache miss for {namespace}:{key}: {e}")
             return default
     
     async def get_market_overview(self) -> Dict[str, Any]:
@@ -73,8 +69,8 @@ class CacheAdapter:
         Replacement for /api/market/movers
         Returns top gainers and losers from cache
         """
-        gainers = await self._get_from_cache(b'market:top_gainers', [])
-        losers = await self._get_from_cache(b'market:top_losers', [])
+        gainers = await self._get_from_cache('top_gainers', 'market', [])
+        losers = await self._get_from_cache('top_losers', 'market', [])
         
         return {
             'gainers': gainers[:10] if gainers else [],
@@ -88,9 +84,9 @@ class CacheAdapter:
         Replacement for /api/dashboard/overview
         Aggregates all dashboard data from cache
         """
-        overview = await self._get_from_cache(b'market:overview', {})
-        analysis = await self._get_from_cache(b'analysis:results', {})
-        tickers = await self._get_from_cache(b'market:tickers', {})
+        overview = await self._get_from_cache('overview', 'market', {})
+        analysis = await self._get_from_cache('results', 'analysis', {})
+        tickers = await self._get_from_cache('tickers', 'market', {})
         
         # Calculate summary statistics
         total_symbols = len(tickers) if tickers else overview.get('total_symbols', 0)
@@ -102,7 +98,7 @@ class CacheAdapter:
                 'average_change': overview.get('average_change_24h', 0),
                 'timestamp': int(time.time())
             },
-            'market_regime': await self._get_from_cache(b'analysis:market_regime', 'unknown'),
+            'market_regime': await self._get_from_cache('market_regime', 'analysis', 'unknown'),
             'momentum': analysis.get('momentum', {}) if analysis else {},
             'volatility': analysis.get('volatility', {}) if analysis else {},
             'source': 'cache'
@@ -113,7 +109,7 @@ class CacheAdapter:
         Replacement for /api/dashboard/symbols
         Returns symbol data from cache
         """
-        tickers = await self._get_from_cache(b'market:tickers', {})
+        tickers = await self._get_from_cache('tickers', 'market', {})
         
         # Format for existing dashboard
         symbols = []

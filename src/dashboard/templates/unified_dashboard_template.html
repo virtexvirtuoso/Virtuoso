@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Virtuoso Unified Dashboard</title>
+    
+    <!-- Unified Chart System -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="/static/js/unified-charts.js"></script>
+    
+    <!-- Theme CSS (matching your existing theme) -->
+    <style>
+        :root {
+            --bg-primary: #0c1a2b;
+            --bg-secondary: #0f172a; 
+            --bg-panel: #1a2332;
+            --text-primary: #ffbf00;
+            --text-secondary: #b8860b;
+            --accent-primary: #ff9900;
+            --accent-positive: #4caf50;
+            --accent-negative: #f44336;
+            --border-light: #1a2a40;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            margin: 0;
+            padding: 20px;
+        }
+
+        .dashboard-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 20px;
+        }
+
+        .chart-card {
+            background: var(--bg-panel);
+            border: 1px solid var(--border-light);
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+
+        .chart-card h3 {
+            margin: 0 0 15px 0;
+            color: var(--text-primary);
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        .chart-container {
+            position: relative;
+            height: 300px;
+            width: 100%;
+        }
+
+        .chart-container.small {
+            height: 200px;
+        }
+
+        .chart-container.large {
+            height: 400px;
+        }
+
+        .confluence-indicator {
+            height: 250px;
+        }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .metric-item {
+            background: rgba(255, 191, 0, 0.1);
+            padding: 12px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .metric-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: var(--text-primary);
+        }
+
+        .metric-label {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-top: 4px;
+        }
+
+        @media (max-width: 768px) {
+            .dashboard-container {
+                grid-template-columns: 1fr;
+                padding: 10px;
+            }
+            
+            .chart-card {
+                padding: 15px;
+            }
+            
+            .chart-container {
+                height: 250px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="dashboard-container">
+        <!-- Price Chart -->
+        <div class="chart-card">
+            <h3>BTC/USD Price Chart</h3>
+            <div class="chart-container large">
+                <canvas id="priceChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Volume Chart -->
+        <div class="chart-card">
+            <h3>Volume Analysis</h3>
+            <div class="chart-container">
+                <canvas id="volumeChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Confluence Score -->
+        <div class="chart-card">
+            <h3>Market Confluence Score</h3>
+            <div class="confluence-indicator">
+                <canvas id="confluenceIndicator"></canvas>
+            </div>
+        </div>
+
+        <!-- Market Breadth -->
+        <div class="chart-card">
+            <h3>Market Breadth</h3>
+            <div class="chart-container">
+                <canvas id="marketBreadth"></canvas>
+            </div>
+        </div>
+
+        <!-- Multi-Symbol Comparison -->
+        <div class="chart-card">
+            <h3>Top Movers Comparison</h3>
+            <div class="chart-container">
+                <canvas id="symbolComparison"></canvas>
+            </div>
+        </div>
+
+        <!-- Key Metrics -->
+        <div class="chart-card">
+            <h3>Key Market Metrics</h3>
+            <div class="metrics-grid">
+                <div class="metric-item">
+                    <div class="metric-value" id="btc-price">$0</div>
+                    <div class="metric-label">BTC Price</div>
+                </div>
+                <div class="metric-item">
+                    <div class="metric-value" id="market-cap">$0</div>
+                    <div class="metric-label">Market Cap</div>
+                </div>
+                <div class="metric-item">
+                    <div class="metric-value" id="volume-24h">$0</div>
+                    <div class="metric-label">24h Volume</div>
+                </div>
+                <div class="metric-item">
+                    <div class="metric-value" id="dominance">0%</div>
+                    <div class="metric-label">BTC Dominance</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Initialize unified charting system when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            initializeDashboard();
+        });
+
+        async function initializeDashboard() {
+            try {
+                // Fetch data from your existing API endpoints
+                const [priceData, volumeData, confluenceScore, breadthData] = await Promise.all([
+                    fetchPriceData(),
+                    fetchVolumeData(), 
+                    fetchConfluenceScore(),
+                    fetchMarketBreadth()
+                ]);
+
+                // Create price chart
+                if (priceData && window.virtuosoCharts) {
+                    window.virtuosoCharts.createPriceChart('priceChart', priceData, {
+                        dataset: {
+                            label: 'BTC/USD'
+                        },
+                        chartOptions: {
+                            plugins: {
+                                title: {
+                                    display: false // Title handled by HTML
+                                }
+                            }
+                        }
+                    });
+                }
+
+                // Create volume chart  
+                if (volumeData && window.virtuosoCharts) {
+                    window.virtuosoCharts.createVolumeChart('volumeChart', volumeData);
+                }
+
+                // Create confluence indicator
+                if (confluenceScore !== null && window.virtuosoCharts) {
+                    window.virtuosoCharts.createConfluenceIndicator('confluenceIndicator', confluenceScore);
+                }
+
+                // Create market breadth chart
+                if (breadthData && window.virtuosoCharts) {
+                    window.virtuosoCharts.createMarketBreadthChart('marketBreadth', breadthData);
+                }
+
+                // Update key metrics
+                updateKeyMetrics();
+
+                // Set up real-time updates
+                setupRealTimeUpdates();
+
+            } catch (error) {
+                console.error('Error initializing dashboard:', error);
+            }
+        }
+
+        // Data fetching functions (adapt to your existing API endpoints)
+        async function fetchPriceData() {
+            try {
+                const response = await fetch('/api/dashboard/price-data?symbol=BTCUSDT&timeframe=1h&limit=24');
+                if (!response.ok) throw new Error('Failed to fetch price data');
+                
+                const data = await response.json();
+                return {
+                    timestamps: data.timestamps || [],
+                    prices: data.prices || [],
+                    symbol: data.symbol || 'BTCUSDT'
+                };
+            } catch (error) {
+                console.error('Error fetching price data:', error);
+                return generateMockPriceData(); // Fallback to mock data
+            }
+        }
+
+        async function fetchVolumeData() {
+            try {
+                const response = await fetch('/api/dashboard/volume-data?symbol=BTCUSDT&timeframe=1h&limit=24');
+                if (!response.ok) throw new Error('Failed to fetch volume data');
+                
+                const data = await response.json();
+                return {
+                    timestamps: data.timestamps || [],
+                    volumes: data.volumes || [],
+                    prices: data.prices || [] // For coloring bars
+                };
+            } catch (error) {
+                console.error('Error fetching volume data:', error);
+                return generateMockVolumeData();
+            }
+        }
+
+        async function fetchConfluenceScore() {
+            try {
+                const response = await fetch('/api/dashboard/confluence-score?symbol=BTCUSDT');
+                if (!response.ok) throw new Error('Failed to fetch confluence score');
+                
+                const data = await response.json();
+                return data.score || 0;
+            } catch (error) {
+                console.error('Error fetching confluence score:', error);
+                return Math.random() * 100; // Mock score
+            }
+        }
+
+        async function fetchMarketBreadth() {
+            try {
+                const response = await fetch('/api/dashboard/market-breadth');
+                if (!response.ok) throw new Error('Failed to fetch market breadth');
+                
+                return await response.json();
+            } catch (error) {
+                console.error('Error fetching market breadth:', error);
+                return {
+                    strongSell: 5,
+                    sell: 10, 
+                    neutral: 15,
+                    buy: 20,
+                    strongBuy: 25
+                };
+            }
+        }
+
+        // Mock data generators (remove when real API is connected)
+        function generateMockPriceData() {
+            const now = new Date();
+            const data = {
+                timestamps: [],
+                prices: [],
+                symbol: 'BTCUSDT'
+            };
+
+            let price = 45000 + Math.random() * 10000;
+            for (let i = 23; i >= 0; i--) {
+                const timestamp = new Date(now.getTime() - i * 60 * 60 * 1000);
+                price += (Math.random() - 0.5) * 1000;
+                
+                data.timestamps.push(timestamp.toISOString());
+                data.prices.push(price);
+            }
+
+            return data;
+        }
+
+        function generateMockVolumeData() {
+            const now = new Date();
+            const data = {
+                timestamps: [],
+                volumes: [],
+                prices: []
+            };
+
+            let price = 45000;
+            for (let i = 23; i >= 0; i--) {
+                const timestamp = new Date(now.getTime() - i * 60 * 60 * 1000);
+                const volume = Math.random() * 1000000 + 500000;
+                price += (Math.random() - 0.5) * 1000;
+                
+                data.timestamps.push(timestamp.toISOString());
+                data.volumes.push(volume);
+                data.prices.push(price);
+            }
+
+            return data;
+        }
+
+        // Update key metrics display
+        function updateKeyMetrics() {
+            // These should be fetched from your API
+            document.getElementById('btc-price').textContent = '$65,432.10';
+            document.getElementById('market-cap').textContent = '$1.28T';
+            document.getElementById('volume-24h').textContent = '$28.5B';
+            document.getElementById('dominance').textContent = '54.2%';
+        }
+
+        // Set up WebSocket or polling for real-time updates
+        function setupRealTimeUpdates() {
+            // Option 1: WebSocket connection (preferred)
+            if (typeof WebSocket !== 'undefined') {
+                try {
+                    const ws = new WebSocket(`ws://${window.location.host}/ws/dashboard`);
+                    
+                    ws.onmessage = (event) => {
+                        const data = JSON.parse(event.data);
+                        handleRealTimeUpdate(data);
+                    };
+
+                    ws.onerror = (error) => {
+                        console.error('WebSocket error, falling back to polling:', error);
+                        setupPolling();
+                    };
+                } catch (error) {
+                    console.error('WebSocket not available, using polling:', error);
+                    setupPolling();
+                }
+            } else {
+                setupPolling();
+            }
+        }
+
+        // Option 2: Polling fallback
+        function setupPolling() {
+            setInterval(async () => {
+                try {
+                    const confluenceScore = await fetchConfluenceScore();
+                    if (window.virtuosoCharts && confluenceScore !== null) {
+                        // Update confluence indicator
+                        const chart = window.virtuosoCharts.charts.get('confluenceIndicator');
+                        if (chart) {
+                            chart.data.datasets[0].data = [confluenceScore, 100 - confluenceScore];
+                            chart.update('none'); // No animation for real-time updates
+                        }
+                    }
+                } catch (error) {
+                    console.error('Error in polling update:', error);
+                }
+            }, 5000); // Update every 5 seconds
+        }
+
+        // Handle real-time WebSocket updates
+        function handleRealTimeUpdate(data) {
+            try {
+                if (data.type === 'confluence_score' && window.virtuosoCharts) {
+                    window.virtuosoCharts.updateChart('confluenceIndicator', {
+                        datasets: [{
+                            data: [data.score, 100 - data.score]
+                        }]
+                    }, { animation: false });
+                }
+
+                if (data.type === 'price_update' && window.virtuosoCharts) {
+                    // Add new price point to chart
+                    const chart = window.virtuosoCharts.charts.get('priceChart');
+                    if (chart) {
+                        chart.data.labels.push(new Date(data.timestamp));
+                        chart.data.datasets[0].data.push(data.price);
+                        
+                        // Keep only last 24 points
+                        if (chart.data.labels.length > 24) {
+                            chart.data.labels.shift();
+                            chart.data.datasets[0].data.shift();
+                        }
+                        
+                        chart.update('none');
+                    }
+                }
+
+                // Update key metrics
+                if (data.type === 'metrics_update') {
+                    updateKeyMetrics();
+                }
+
+            } catch (error) {
+                console.error('Error handling real-time update:', error);
+            }
+        }
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            if (window.virtuosoCharts) {
+                window.virtuosoCharts.destroyAllCharts();
+            }
+        });
+    </script>
+</body>
+</html>

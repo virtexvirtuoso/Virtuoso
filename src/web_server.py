@@ -147,6 +147,11 @@ async def dashboard_phase2_ui():
     """Serve the Phase 2 Cache-Based dashboard"""
     return FileResponse(TEMPLATE_DIR / "dashboard_phase2_cache.html")
 
+@app.get("/performance")
+async def performance_dashboard_ui():
+    """Serve the Performance Monitoring dashboard"""
+    return FileResponse(TEMPLATE_DIR / "performance_dashboard.html")
+
 @app.get("/beta-analysis")
 async def beta_analysis_ui():
     """Serve the Beta Analysis dashboard"""

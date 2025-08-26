@@ -176,7 +176,7 @@ class AlertData(BaseModel):
 
 class AlertCreateRequest(BaseModel):
     """Request model for creating alerts via API"""
-    level: str = Field(..., regex="^(INFO|WARNING|ERROR|CRITICAL)$")
+    level: str = Field(..., pattern="^(INFO|WARNING|ERROR|CRITICAL)$")
     message: str
     details: Optional[Dict[str, Any]] = {}
     source: Optional[str] = None

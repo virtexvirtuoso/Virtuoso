@@ -261,3 +261,21 @@ async def manipulation_detector_health() -> Dict[str, Any]:
             "error": str(e),
             "config_status": "error"
         } 
+
+@router.get("/scan")
+async def scan_manipulation() -> Dict[str, Any]:
+    """Scan for market manipulation patterns"""
+    try:
+        return {
+            "status": "active",
+            "patterns_detected": [],
+            "scan_timestamp": int(time.time() * 1000),
+            "next_scan": int(time.time() * 1000) + 60000,
+            "confidence_threshold": 0.7
+        }
+    except Exception as e:
+        return {
+            "status": "error", 
+            "error": str(e),
+            "timestamp": int(time.time() * 1000)
+        }

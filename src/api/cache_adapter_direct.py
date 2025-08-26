@@ -20,18 +20,20 @@ class DirectCacheAdapter:
     
     def __init__(self):
         self._client = None
+        self._client_lock = asyncio.Lock()
     
     async def _get_client(self):
-        """Get or create cache client"""
-        if self._client is None:
-            self._client = aiomcache.Client('localhost', 11211, pool_size=2)
+        """Get or create cache client with connection pooling"""
+        async with self._client_lock:
+            if self._client is None:
+                self._client = aiomcache.Client('localhost', 11211, pool_size=10)
         return self._client
     
     async def _get(self, key: str, default: Any = None) -> Any:
-        """Direct cache read"""
+        """Direct cache read with connection reuse"""
         try:
-            # Always create a fresh client for each request to avoid connection issues
-            client = aiomcache.Client('localhost', 11211, pool_size=2)
+            # Use persistent client instead of creating new one each time
+            client = await self._get_client()
             data = await client.get(key.encode())
             
             result = default
@@ -44,11 +46,29 @@ class DirectCacheAdapter:
                     except:
                         result = data.decode()
             
-            await client.close()
+            # Don't close the client - reuse it for connection pooling
             return result
         except Exception as e:
             logger.debug(f"Cache read error for {key}: {e}")
+            # Reset client on error to allow reconnection
+            async with self._client_lock:
+                if self._client:
+                    try:
+                        await self._client.close()
+                    except:
+                        pass
+                    self._client = None
             return default
+    
+    async def close(self):
+        """Close the cache client"""
+        async with self._client_lock:
+            if self._client:
+                try:
+                    await self._client.close()
+                except:
+                    pass
+                self._client = None
     
     async def get_market_overview(self) -> Dict[str, Any]:
         """Get market overview with correct field names"""
@@ -391,4 +411,14 @@ class DirectCacheAdapter:
         }
 
 # Global instance
-cache_adapter = DirectCacheAdapter()
+_global_cache_adapter = None
+
+def get_cache_adapter() -> DirectCacheAdapter:
+    """Get or create global cache adapter instance"""
+    global _global_cache_adapter
+    if _global_cache_adapter is None:
+        _global_cache_adapter = DirectCacheAdapter()
+    return _global_cache_adapter
+
+# Backward compatibility
+cache_adapter = get_cache_adapter()

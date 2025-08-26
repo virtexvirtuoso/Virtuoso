@@ -2233,14 +2233,30 @@ class PrettyTableFormatter:
             # Calculate weighted contributions
             contributions = []
             if weights:
-                for component, score in components.items():
+                for component, score_data in components.items():
+                    # Extract score value if it's a dict, otherwise use as-is
+                    score = score_data.get('score', score_data) if isinstance(score_data, dict) else score_data
+                    # Ensure score is numeric
+                    try:
+                        score = float(score) if score is not None else 50.0
+                    except (ValueError, TypeError):
+                        score = 50.0  # Default fallback
+                    
                     weight = weights.get(component, 0)
                     contribution = score * weight
                     contributions.append((component, score, weight, contribution))
             else:
                 # Estimate equal weights if not provided
                 weight = 1.0 / max(len(components), 1)
-                for component, score in components.items():
+                for component, score_data in components.items():
+                    # Extract score value if it's a dict, otherwise use as-is
+                    score = score_data.get('score', score_data) if isinstance(score_data, dict) else score_data
+                    # Ensure score is numeric
+                    try:
+                        score = float(score) if score is not None else 50.0
+                    except (ValueError, TypeError):
+                        score = 50.0  # Default fallback
+                    
                     contribution = score * weight
                     contributions.append((component, score, weight, contribution))
             

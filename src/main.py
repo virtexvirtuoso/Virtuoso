@@ -715,7 +715,8 @@ class WebSocketProcessor:
                     self.executor.submit(self._handle_message, message)
                     self.processed_count += 1
                 else:
-                    time.sleep(0.01)  # Small sleep to prevent busy waiting
+                    # Use non-blocking sleep equivalent
+                    continue
             except queue.Empty:
                 continue
             except Exception as e:
@@ -726,7 +727,13 @@ class WebSocketProcessor:
         try:
             # Heavy processing moved here
             if hasattr(market_data_manager, 'process_websocket_message'):
-                asyncio.run(market_data_manager.process_websocket_message(message))
+                # Use create_task to run async function from sync context
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    loop.run_until_complete(market_data_manager.process_websocket_message(message))
+                finally:
+                    loop.close()
         except Exception as e:
             logger.error(f"Error handling message: {e}")
             

@@ -307,9 +307,9 @@ class BybitExchange(BaseExchange):
             self.session = aiohttp.ClientSession(
                 connector=self.connector,
                 timeout=aiohttp.ClientTimeout(
-                    total=30,
-                    connect=5,
-                    sock_read=25
+                    total=15,
+                    connect=3,
+                    sock_read=10
                 )
             )
             
@@ -645,7 +645,7 @@ class BybitExchange(BaseExchange):
         self.circuit_breakers = {}
         self.circuit_breaker_config = {
             'failure_threshold': 5,  # Open circuit after 5 failures
-            'recovery_timeout': 60,  # Try again after 60 seconds
+            'recovery_timeout': 30,  # Try again after 30 seconds
             'expected_exception': asyncio.TimeoutError
         }
     
@@ -758,17 +758,17 @@ class BybitExchange(BaseExchange):
                 if method.upper() == 'GET':
                     # Use timeout context manager for the entire operation
                     # Use longer timeout for market tickers endpoint
-                    timeout_val = 90.0 if 'tickers' in endpoint else 60.0
+                    timeout_val = 15.0 if 'tickers' in endpoint else 10.0
                     async with asyncio.timeout(timeout_val):
                         async with self.session.get(url, params=params, headers=headers) as response:
                             return await self._process_response(response, url)
                 elif method.upper() == 'POST':
                     # For POST requests, send params as JSON in the body
-                    async with asyncio.timeout(60.0):
+                    async with asyncio.timeout(10.0):
                         async with self.session.post(url, json=params, headers=headers) as response:
                             return await self._process_response(response, url)
             except asyncio.TimeoutError:
-                timeout_val = 90 if 'tickers' in endpoint else 60
+                timeout_val = 15 if 'tickers' in endpoint else 10
                 self.logger.error(f"Request timeout after {timeout_val}s: {endpoint}")
                 return {'retCode': -1, 'retMsg': 'Request timeout'}
             except Exception as e:
@@ -4989,7 +4989,7 @@ async def get_market_tickers_working(self) -> Dict[str, Dict[str, float]]:
         params = {"category": "linear"}
         
         # Simple session that works
-        timeout = aiohttp.ClientTimeout(total=60)
+        timeout = aiohttp.ClientTimeout(total=15)
         async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.get(url, params=params) as response:
                 if response.status == 200:
