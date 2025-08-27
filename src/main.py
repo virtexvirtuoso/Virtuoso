@@ -130,6 +130,7 @@ top_symbols_manager = None
 market_monitor = None
 metrics_manager = None
 alert_manager = None
+_service_scope = None  # For proper resource management
 market_reporter = None
 health_monitor = None
 validation_service = None
@@ -360,148 +361,45 @@ async def cleanup_all_components():
 
 async def initialize_components():
     """
-    Centralized initialization of all system components.
+    Centralized initialization using pure dependency injection.
     
     Returns:
-        Dict containing all initialized components
+        ServiceContainer with all initialized components
     """
-    logger.info("Starting centralized component initialization...")
+    logger.info("Starting DI-based component initialization...")
     
-    # Initialize config manager
+    # Initialize config manager - this is the only manual creation needed
     config_manager = ConfigManager()
     logger.info("✅ ConfigManager initialized")
     
-    # Initialize exchange manager with proper config
-    logger.info("Initializing exchange manager...")
-    exchange_manager = ExchangeManager(config_manager)
-    if not await exchange_manager.initialize():
-        logger.error("Failed to initialize exchange manager")
-        raise RuntimeError("Exchange manager initialization failed")
-    
-    # Get primary exchange and verify it's available
-    primary_exchange = await exchange_manager.get_primary_exchange()
-    if not primary_exchange:
-        logger.error("No primary exchange available")
-        raise RuntimeError("No primary exchange available")
-    
-    logger.info(f"✅ Primary exchange initialized: {primary_exchange.exchange_id}")
-    
-    # Initialize database client
-    database_client = DatabaseClient(config_manager.config)
-    logger.info("✅ DatabaseClient initialized")
-    
-    # Initialize portfolio analyzer
-    portfolio_analyzer = PortfolioAnalyzer(config_manager.config)
-    logger.info("✅ PortfolioAnalyzer initialized")
-    
-    # Initialize confluence analyzer
-    confluence_analyzer = ConfluenceAnalyzer(config_manager.config)
-    logger.info("✅ ConfluenceAnalyzer initialized")
-    
-    # Initialize alert manager first
-    alert_manager = AlertManager(config_manager.config)
-    
-    # Register Discord handler 
-    alert_manager.register_discord_handler()
-    
-    # ALERT PIPELINE DEBUG: Verify AlertManager initialization state
-    logger.info("ALERT DEBUG: Verifying AlertManager initialization state")
-    logger.info(f"ALERT DEBUG: AlertManager handlers: {alert_manager.handlers}")
-    logger.info(f"ALERT DEBUG: AlertManager alert_handlers: {list(alert_manager.alert_handlers.keys())}")
-    logger.info(f"ALERT DEBUG: Discord webhook URL configured: {bool(alert_manager.discord_webhook_url)}")
-    
-    # Perform direct validation of AlertManager
-    if not alert_manager.handlers:
-        logger.critical("ALERT DEBUG: No handlers registered in AlertManager! Attempting to force register Discord...")
-        if alert_manager.discord_webhook_url:
-            logger.info(f"ALERT DEBUG: Discord webhook URL exists, trying to register: {alert_manager.discord_webhook_url[:20]}...{alert_manager.discord_webhook_url[-10:]}")
-            alert_manager.register_handler('discord')
-            logger.info(f"ALERT DEBUG: After forced registration, handlers: {alert_manager.handlers}")
-        else:
-            logger.critical("ALERT DEBUG: No Discord webhook URL configured! Alerts won't work!")
-    
-    logger.info("✅ AlertManager initialized")
-    
-    # Initialize metrics manager with alert_manager
-    metrics_manager = MetricsManager(config_manager.config, alert_manager)
-    logger.info("✅ MetricsManager initialized")
-    
-    # Initialize validation service first
-    validation_service = AsyncValidationService()
-    logger.info("✅ AsyncValidationService initialized")
-    
-    # Initialize signal generator
-    signal_generator = SignalGenerator(config_manager.config, alert_manager)
-    logger.info("✅ SignalGenerator initialized")
-    
-    # Initialize top symbols manager
-    logger.info("Initializing top symbols manager...")
-    top_symbols_manager = TopSymbolsManager(
-        exchange_manager=exchange_manager,
-        config=config_manager.config,
-        validation_service=validation_service
-    )
-    logger.info("✅ TopSymbolsManager initialized")
-    
-    # Initialize market data manager
-    logger.info("Initializing market data manager...")
-    market_data_manager = MarketDataManager(config_manager.config, exchange_manager, alert_manager)
-    logger.info("✅ MarketDataManager initialized")
-    
-    # Initialize market reporter
-    logger.info("Initializing market reporter...")
-    market_reporter = MarketReporter(
-        top_symbols_manager=top_symbols_manager,
-        alert_manager=alert_manager,
-        exchange=primary_exchange,
-        logger=logger
-    )
-    logger.info("✅ MarketReporter initialized")
-    
-    # Initialize liquidation detection engine
-    logger.info("Initializing liquidation detection engine...")
-    liquidation_detector = None
-    try:
-        from src.core.analysis.liquidation_detector import LiquidationDetectionEngine
-        database_url = config_manager.config.get('database', {}).get('url')
-        liquidation_detector = LiquidationDetectionEngine(
-            exchange_manager=exchange_manager,
-            database_url=database_url
-        )
-        logger.info("✅ LiquidationDetectionEngine initialized")
-    except Exception as e:
-        logger.error(f"Failed to initialize liquidation detection engine: {e}")
-        logger.warning("⚠️ Continuing without liquidation detection engine")
-        liquidation_detector = None
-    
-    # Initialize market monitor using DI container (PROPER DEPENDENCY INJECTION)
-    logger.info("Initializing market monitor with DI container...")
-    
-    # Bootstrap DI container with config
+    # Bootstrap DI container with config - this handles ALL other components
+    logger.info("Bootstrapping DI container with all services...")
     container = bootstrap_container(config_manager.config)
     
-    # Get MarketMonitor from DI container (automatically resolves all dependencies)
-    market_monitor = await container.get_service(MarketMonitor)
+    # Register the manually created config manager instance
+    from src.core.interfaces.services import IConfigService
+    container.register_instance(IConfigService, config_manager)
     
-    # Store important components that DI container may not have handled
-    if hasattr(market_monitor, 'exchange_manager') and not market_monitor.exchange_manager:
-        market_monitor.exchange_manager = exchange_manager
-    if hasattr(market_monitor, 'database_client') and not market_monitor.database_client:
-        market_monitor.database_client = database_client
-    if hasattr(market_monitor, 'portfolio_analyzer') and not market_monitor.portfolio_analyzer:
-        market_monitor.portfolio_analyzer = portfolio_analyzer
-    if hasattr(market_monitor, 'confluence_analyzer') and not market_monitor.confluence_analyzer:
-        market_monitor.confluence_analyzer = confluence_analyzer
-    if hasattr(market_monitor, 'top_symbols_manager') and not market_monitor.top_symbols_manager:
-        market_monitor.top_symbols_manager = top_symbols_manager
-    if hasattr(market_monitor, 'market_data_manager') and not market_monitor.market_data_manager:
-        market_monitor.market_data_manager = market_data_manager
-    if hasattr(market_monitor, 'signal_generator') and not market_monitor.signal_generator:
-        market_monitor.signal_generator = signal_generator
-    if hasattr(market_monitor, 'liquidation_detector') and not market_monitor.liquidation_detector:
-        market_monitor.liquidation_detector = liquidation_detector
+    # All other services are resolved through the DI container
+    logger.info("Resolving all services through DI container...")
     
-    logger.info("✅ MarketMonitor initialized via DI container")
+    # Verify critical services can be resolved
+    try:
+        # Test resolution of key services to ensure container is properly configured
+        exchange_manager = await container.get_service('ExchangeManager')
+        logger.info("✅ ExchangeManager resolved via DI")
+        
+        alert_manager = await container.get_service('AlertManager')
+        logger.info("✅ AlertManager resolved via DI")
+        
+        market_monitor = await container.get_service('MarketMonitor')
+        logger.info("✅ MarketMonitor resolved via DI")
+        
+    except Exception as e:
+        logger.error(f"DI container service resolution failed: {e}")
+        raise RuntimeError(f"Dependency injection failed: {e}")
+    
+    logger.info("✅ All components initialized via dependency injection")
     
     # Initialize alpha opportunity detection (CENTRALIZED)
     alpha_integration = None
@@ -570,7 +468,7 @@ async def initialize_components():
 async def lifespan(app: FastAPI):
     """Application lifespan handler."""
     global config_manager, exchange_manager, portfolio_analyzer, database_client
-    global confluence_analyzer, top_symbols_manager, market_monitor
+    global confluence_analyzer, top_symbols_manager, market_monitor, market_data_manager
     global metrics_manager, alert_manager, market_reporter, health_monitor, validation_service
 
     try:
@@ -2905,7 +2803,7 @@ async def main():
     # Display banner at startup
     display_banner()
     
-    global market_monitor
+    global market_monitor, _service_scope
     
     shutdown_event = asyncio.Event()
     
@@ -2920,21 +2818,34 @@ async def main():
         for sig in (signal.SIGINT, signal.SIGTERM):
             loop.add_signal_handler(sig, signal_handler)
         
-        # Initialize all components using centralized function
-        components = await initialize_components()
+        # Initialize all components using DI container with proper resource management
+        container = await initialize_components()
         
-        # Extract market monitor (already fully initialized)
-        market_monitor = components['market_monitor']
+        # Create service scope for proper resource cleanup
+        scope = await container.create_scope().__aenter__()
+        _service_scope = scope
         
-        # Start monitoring
-        await market_monitor.start()
-        
-        # Keep the application running until interrupted
-        logger.info("Monitoring system running. Press Ctrl+C to stop.")
         try:
-            # Wait for shutdown signal or monitor to stop
-            while not shutdown_event.is_set() and market_monitor.running:
-                await asyncio.sleep(1)  # Check every second
+            # Extract market monitor from DI container
+            market_monitor = await scope.get_service('MarketMonitor')
+            
+            # Start monitoring
+            await market_monitor.start()
+            
+            # Keep the application running until interrupted
+            logger.info("Monitoring system running. Press Ctrl+C to stop.")
+            try:
+                # Wait for shutdown signal or monitor to stop
+                while not shutdown_event.is_set() and market_monitor.running:
+                    await asyncio.sleep(1)  # Check every second
+                    
+            except asyncio.CancelledError:
+                logger.info("Main loop cancelled.")
+        
+        finally:
+            # Ensure scope cleanup
+            if _service_scope:
+                await _service_scope.__aexit__(None, None, None)
                 
         except asyncio.CancelledError:
             logger.info("Main loop cancelled.")
