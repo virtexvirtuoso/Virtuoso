@@ -409,42 +409,10 @@ def register_monitoring_services(container: ServiceContainer) -> ServiceContaine
     
     container.register_factory(HealthMonitor, create_health_monitor, ServiceLifetime.SINGLETON)
     
-    # Signal Frequency Tracker (singleton) - SKIP, class doesn't exist
-    try:
-        from ...monitoring.signal_frequency_tracker import SignalFrequencyTracker
-        
-        async def create_signal_frequency_tracker():
-            try:
-                config_service = await container.get_service(IConfigService)
-                config_dict = config_service.to_dict() if hasattr(config_service, 'to_dict') else {}
-                
-                # Ensure signal frequency config exists
-                if 'monitoring' not in config_dict:
-                    config_dict['monitoring'] = {}
-                if 'signal_frequency' not in config_dict['monitoring']:
-                    config_dict['monitoring']['signal_frequency'] = {
-                        'tracking_window': 3600,  # 1 hour window
-                        'max_signals_per_window': 100,
-                        'cooldown_period': 300  # 5 minutes
-                    }
-                
-                return SignalFrequencyTracker(config_dict)
-            except Exception as e:
-                logger.warning(f"Could not create SignalFrequencyTracker: {e}")
-                # Return with minimal config
-                return SignalFrequencyTracker({
-                    'monitoring': {
-                        'signal_frequency': {
-                            'tracking_window': 3600,
-                            'max_signals_per_window': 100,
-                            'cooldown_period': 300
-                        }
-                    }
-                })
-        
-        container.register_factory(SignalFrequencyTracker, create_signal_frequency_tracker, ServiceLifetime.SINGLETON)
-    except ImportError:
-        logger.warning("SignalFrequencyTracker class not found, skipping registration")
+    # Signal Frequency Tracker (singleton) - Class doesn't exist, skipped
+    # SignalFrequencyTracker is referenced in tests but not implemented
+    # TODO: Implement SignalFrequencyTracker if needed for production
+    logger.info("SignalFrequencyTracker registration skipped - class not implemented")
     
     logger.info("Monitoring services registered successfully")
     return container
@@ -739,10 +707,26 @@ def register_api_services(container: ServiceContainer) -> ServiceContainer:
     """
     logger.info("Registering API services...")
     
-    # Dashboard Integration Service (singleton) - skip if not available
+    # Dashboard Integration Service (singleton) - use factory to avoid dependency analysis issues
     try:
         from ...dashboard.dashboard_integration import DashboardIntegrationService
-        container.register_singleton(DashboardIntegrationService, DashboardIntegrationService)
+        
+        async def create_dashboard_integration_service():
+            try:
+                # Try to get MarketMonitor if available
+                market_monitor = None
+                try:
+                    market_monitor = await container.get_service(MarketMonitor)
+                except Exception as e:
+                    logger.warning(f"MarketMonitor not available for DashboardIntegrationService: {e}")
+                
+                return DashboardIntegrationService(monitor=market_monitor)
+            except Exception as e:
+                logger.warning(f"Could not create DashboardIntegrationService: {e}")
+                # Return service with no monitor (fallback mode)
+                return DashboardIntegrationService(monitor=None)
+        
+        container.register_factory(DashboardIntegrationService, create_dashboard_integration_service, ServiceLifetime.SINGLETON)
     except ImportError:
         logger.warning("DashboardIntegrationService class not found, skipping registration")
     
