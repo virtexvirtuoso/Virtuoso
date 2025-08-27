@@ -342,52 +342,49 @@ def register_monitoring_services(container: ServiceContainer) -> ServiceContaine
         from ...core.market.top_symbols import TopSymbolsManager
         
         async def create_market_monitor():
-            # Get available dependencies
-            config_service = await container.get_service(IConfigService)
-            config_dict = config_service.to_dict() if hasattr(config_service, 'to_dict') else {}
-            
-            alert_manager = await container.get_service(IAlertService)
-            metrics_manager = await container.get_service(IMetricsService)
-            
-            # Try to get optional dependencies
-            exchange_manager = None
-            market_data_manager = None
-            top_symbols_manager = None
-            confluence_analyzer = None
-            
+            """
+            Create MarketMonitor using minimal dependencies to avoid circular references.
+            Additional dependencies are resolved lazily when needed.
+            """
+            # Get only essential dependencies to break circular references
+            config_dict = {}
             try:
-                exchange_manager = await container.get_service(ExchangeManager)
+                config_service = await container.get_service(IConfigService)
+                config_dict = config_service.to_dict() if hasattr(config_service, 'to_dict') else {}
             except Exception as e:
-                logger.warning(f"ExchangeManager not available for MarketMonitor: {e}")
-                
-            try:
-                market_data_manager = await container.get_service(MarketDataManager)
-            except Exception as e:
-                logger.warning(f"MarketDataManager not available for MarketMonitor: {e}")
-                
-            try:
-                top_symbols_manager = await container.get_service(TopSymbolsManager)
-            except Exception as e:
-                logger.warning(f"TopSymbolsManager not available for MarketMonitor: {e}")
-                
-            try:
-                from ...analysis.core.confluence import ConfluenceAnalyzer
-                confluence_analyzer = await container.get_service(ConfluenceAnalyzer)
-            except Exception as e:
-                logger.warning(f"ConfluenceAnalyzer not available for MarketMonitor: {e}")
+                logger.warning(f"Config service not available: {e}")
             
-            # Create monitor with available dependencies
+            # Create monitor with minimal dependencies - others resolved lazily
             monitor = MarketMonitor(
-                exchange_manager=exchange_manager,
                 config=config_dict,
-                alert_manager=alert_manager,
-                metrics_manager=metrics_manager,
-                market_data_manager=market_data_manager,
-                top_symbols_manager=top_symbols_manager,
-                confluence_analyzer=confluence_analyzer,
                 logger=logging.getLogger('src.monitoring.monitor')
             )
             
+            # Add container reference for lazy dependency resolution
+            monitor._di_container = container
+            
+            # Add lazy dependency resolution methods
+            async def get_exchange_manager():
+                if not hasattr(monitor, '_exchange_manager_cached'):
+                    try:
+                        monitor._exchange_manager_cached = await container.get_service(ExchangeManager)
+                    except Exception:
+                        monitor._exchange_manager_cached = None
+                return monitor._exchange_manager_cached
+            
+            async def get_alert_manager():
+                if not hasattr(monitor, '_alert_manager_cached'):
+                    try:
+                        monitor._alert_manager_cached = await container.get_service(IAlertService)
+                    except Exception:
+                        monitor._alert_manager_cached = None
+                return monitor._alert_manager_cached
+            
+            # Add lazy getters to monitor
+            monitor.get_exchange_manager = get_exchange_manager
+            monitor.get_alert_manager = get_alert_manager
+            
+            logger.info("MarketMonitor created with lazy dependency resolution")
             return monitor
             
         container.register_factory(MarketMonitor, create_market_monitor, ServiceLifetime.SINGLETON)

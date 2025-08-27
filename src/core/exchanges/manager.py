@@ -44,6 +44,7 @@ class ExchangeManager:
         self.initialized = False
         self.logger = logging.getLogger(__name__)
         self.factory = ExchangeFactory()
+        self._disposed = False
         
     async def initialize(self) -> bool:
         """Initialize all configured exchanges"""
@@ -388,11 +389,30 @@ class ExchangeManager:
         
     async def close(self):
         """Close all exchange connections"""
+        if self._disposed:
+            return
+            
+        self._disposed = True
         for exchange in self.exchanges.values():
             try:
                 await exchange.close()
             except Exception as e:
                 logger.error(f"Error closing exchange connection: {str(e)}")
+        
+        self.exchanges.clear()
+        self.initialized = False
+        logger.info("ExchangeManager properly disposed")
+    
+    async def __aenter__(self):
+        """Async context manager entry"""
+        if not self.initialized:
+            await self.initialize()
+        return self
+    
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Async context manager exit with proper cleanup"""
+        await self.close()
+        return False  # Don't suppress exceptions
                 
     def get_active_exchanges(self) -> List[str]:
         """Get list of active exchange IDs"""
