@@ -1,0 +1,431 @@
+"""
+Data collection module for the monitoring system.
+
+This module is responsible for fetching market data from exchanges, including
+OHLCV candles, orderbooks, trades, tickers, and other market information.
+It provides efficient batch fetching and handles exchange-specific quirks.
+"""
+
+import logging
+import asyncio
+from typing import Dict, List, Any, Optional, Tuple
+from datetime import datetime, timezone
+import pandas as pd
+
+from .base import MonitoringComponent, DataProvider
+from .utils.decorators import handle_monitoring_error, retry_on_error, measure_performance
+from .utils.timestamp import TimestampUtility
+from .utils.converters import ccxt_time_to_minutes
+
+
+class DataCollector(MonitoringComponent, DataProvider):
+    """Handles all data collection from exchanges.
+    
+    This class is responsible for fetching market data from various exchanges,
+    including OHLCV data, orderbooks, trades, and tickers. It manages concurrent
+    fetching for multiple symbols and handles exchange-specific requirements.
+    """
+    
+    def __init__(
+        self,
+        exchange_manager,
+        config: Optional[Dict[str, Any]] = None,
+        logger: Optional[logging.Logger] = None
+    ):
+        """Initialize the data collector.
+        
+        Args:
+            exchange_manager: Exchange manager instance for accessing exchanges
+            config: Configuration dictionary
+            logger: Optional logger instance
+        """
+        super().__init__(logger)
+        
+        self.exchange_manager = exchange_manager
+        self.config = config or {}
+        
+        # Configuration for data fetching
+        self.timeframes = self.config.get('timeframes', {
+            'ltf': '5m',   # Low timeframe
+            'mtf': '30m',  # Medium timeframe
+            'htf': '4h'    # High timeframe
+        })
+        
+        # Limits for data fetching
+        self.ohlcv_limit = self.config.get('ohlcv_limit', 100)
+        self.orderbook_limit = self.config.get('orderbook_limit', 20)
+        self.trades_limit = self.config.get('trades_limit', 100)
+        
+        # Concurrency settings
+        self.max_concurrent_fetches = self.config.get('max_concurrent_fetches', 10)
+        self.fetch_timeout = self.config.get('fetch_timeout', 30.0)
+        
+        # Cache for recent data (simple in-memory cache)
+        self._data_cache = {}
+        self._cache_ttl = self.config.get('cache_ttl', 5)  # seconds
+        self._max_cache_size = self.config.get('max_cache_size', 50)  # max entries to prevent memory leaks
+        
+        # Metrics
+        self._fetch_stats = {
+            'total_fetches': 0,
+            'successful_fetches': 0,
+            'failed_fetches': 0,
+            'cache_hits': 0,
+            'average_fetch_time': 0
+        }
+    
+    async def _perform_initialization(self) -> None:
+        """Perform component-specific initialization."""
+        # Ensure exchange manager is initialized
+        if not self.exchange_manager:
+            raise ValueError("Exchange manager is required for DataCollector")
+        
+        self.logger.info("DataCollector initialized with timeframes: %s", self.timeframes)
+    
+    @measure_performance()
+    async def fetch_market_data(self, symbol: str) -> Dict[str, Any]:
+        """Fetch complete market data for a symbol.
+        
+        This is the main entry point for fetching all market data for a symbol.
+        It aggregates OHLCV, orderbook, trades, and ticker data.
+        
+        Args:
+            symbol: Trading pair symbol
+            
+        Returns:
+            Dictionary containing all market data for the symbol
+        """
+        self._fetch_stats['total_fetches'] += 1
+        
+        # Check cache first
+        cache_key = f"{symbol}_market_data"
+        cached_data = self._get_cached_data(cache_key)
+        if cached_data:
+            self._fetch_stats['cache_hits'] += 1
+            return cached_data
+        
+        try:
+            # Get exchange instance
+            exchange = await self.exchange_manager.get_primary_exchange()
+            if not exchange:
+                self.logger.error("No exchange available for data fetching")
+                self._fetch_stats['failed_fetches'] += 1
+                return {}
+            
+            # Fetch data concurrently
+            tasks = [
+                self._fetch_ohlcv_all_timeframes(exchange, symbol),
+                self._fetch_orderbook(exchange, symbol),
+                self._fetch_trades(exchange, symbol),
+                self._fetch_ticker(exchange, symbol)
+            ]
+            
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            # Process results
+            market_data = {
+                'symbol': symbol,
+                'timestamp': TimestampUtility.get_utc_timestamp(),
+                'exchange': exchange.exchange_id
+            }
+            
+            # Add OHLCV data
+            if not isinstance(results[0], Exception):
+                market_data['ohlcv'] = results[0]
+            else:
+                self.logger.error(f"Error fetching OHLCV for {symbol}: {results[0]}")
+                market_data['ohlcv'] = {}
+            
+            # Add orderbook
+            if not isinstance(results[1], Exception):
+                market_data['orderbook'] = results[1]
+            else:
+                self.logger.error(f"Error fetching orderbook for {symbol}: {results[1]}")
+                market_data['orderbook'] = None
+            
+            # Add trades
+            if not isinstance(results[2], Exception):
+                market_data['trades'] = results[2]
+            else:
+                self.logger.error(f"Error fetching trades for {symbol}: {results[2]}")
+                market_data['trades'] = []
+            
+            # Add ticker
+            if not isinstance(results[3], Exception):
+                market_data['ticker'] = results[3]
+            else:
+                self.logger.error(f"Error fetching ticker for {symbol}: {results[3]}")
+                market_data['ticker'] = None
+            
+            # Cache the data
+            self._cache_data(cache_key, market_data)
+            
+            self._fetch_stats['successful_fetches'] += 1
+            return market_data
+            
+        except Exception as e:
+            self.logger.error(f"Error fetching market data for {symbol}: {str(e)}")
+            self._fetch_stats['failed_fetches'] += 1
+            return {'symbol': symbol, 'error': str(e)}
+    
+    async def fetch_batch(self, symbols: List[str]) -> Dict[str, Dict[str, Any]]:
+        """Fetch market data for multiple symbols concurrently.
+        
+        Args:
+            symbols: List of trading pair symbols
+            
+        Returns:
+            Dictionary mapping symbols to their market data
+        """
+        self.logger.info(f"Fetching batch data for {len(symbols)} symbols")
+        
+        # Create semaphore for concurrency control
+        semaphore = asyncio.Semaphore(self.max_concurrent_fetches)
+        
+        async def fetch_with_semaphore(symbol: str) -> Tuple[str, Dict[str, Any]]:
+            """Fetch data with semaphore control."""
+            async with semaphore:
+                data = await self.fetch_market_data(symbol)
+                return symbol, data
+        
+        # Fetch all symbols concurrently
+        tasks = [fetch_with_semaphore(symbol) for symbol in symbols]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # Process results into dictionary
+        batch_data = {}
+        for result in results:
+            if isinstance(result, Exception):
+                self.logger.error(f"Error in batch fetch: {result}")
+            else:
+                symbol, data = result
+                batch_data[symbol] = data
+        
+        self.logger.info(f"Batch fetch completed: {len(batch_data)}/{len(symbols)} successful")
+        return batch_data
+    
+    @retry_on_error(max_attempts=3, delay=1.0)
+    async def _fetch_ohlcv_all_timeframes(
+        self,
+        exchange,
+        symbol: str
+    ) -> Dict[str, pd.DataFrame]:
+        """Fetch OHLCV data for all configured timeframes.
+        
+        Args:
+            exchange: Exchange instance
+            symbol: Trading pair symbol
+            
+        Returns:
+            Dictionary mapping timeframe names to DataFrames
+        """
+        ohlcv_data = {}
+        
+        for tf_name, timeframe in self.timeframes.items():
+            try:
+                candles = await exchange.fetch_ohlcv(
+                    symbol,
+                    timeframe,
+                    limit=self.ohlcv_limit
+                )
+                
+                if candles:
+                    df = self._process_ohlcv_data(candles)
+                    ohlcv_data[tf_name] = df
+                    self.logger.debug(f"Fetched {len(candles)} candles for {symbol} {timeframe}")
+                    
+            except Exception as e:
+                self.logger.error(f"Error fetching {timeframe} OHLCV for {symbol}: {str(e)}")
+                ohlcv_data[tf_name] = pd.DataFrame()
+        
+        return ohlcv_data
+    
+    def _process_ohlcv_data(self, candles: List[List]) -> pd.DataFrame:
+        """Process raw OHLCV data into DataFrame.
+        
+        Args:
+            candles: Raw OHLCV data from exchange
+            
+        Returns:
+            Processed DataFrame with OHLCV columns
+        """
+        if not candles:
+            return pd.DataFrame()
+        
+        # Create DataFrame
+        df = pd.DataFrame(
+            candles,
+            columns=['timestamp', 'open', 'high', 'low', 'close', 'volume']
+        )
+        
+        # Set timestamp as index
+        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms', utc=True)
+        df.set_index('timestamp', inplace=True)
+        
+        # Ensure numeric types
+        for col in ['open', 'high', 'low', 'close', 'volume']:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+        
+        # Sort by timestamp
+        df.sort_index(inplace=True)
+        
+        return df
+    
+    @retry_on_error(max_attempts=2, delay=0.5)
+    async def _fetch_orderbook(self, exchange, symbol: str) -> Dict[str, Any]:
+        """Fetch orderbook data.
+        
+        Args:
+            exchange: Exchange instance
+            symbol: Trading pair symbol
+            
+        Returns:
+            Orderbook dictionary with bids and asks
+        """
+        try:
+            orderbook = await exchange.fetch_order_book(symbol, self.orderbook_limit)
+            
+            # Add timestamp if not present
+            if 'timestamp' not in orderbook:
+                orderbook['timestamp'] = TimestampUtility.get_utc_timestamp()
+            
+            return orderbook
+            
+        except Exception as e:
+            self.logger.error(f"Error fetching orderbook for {symbol}: {str(e)}")
+            return {'bids': [], 'asks': [], 'timestamp': TimestampUtility.get_utc_timestamp()}
+    
+    @retry_on_error(max_attempts=2, delay=0.5)
+    async def _fetch_trades(self, exchange, symbol: str) -> List[Dict[str, Any]]:
+        """Fetch recent trades.
+        
+        Args:
+            exchange: Exchange instance
+            symbol: Trading pair symbol
+            
+        Returns:
+            List of recent trades
+        """
+        try:
+            trades = await exchange.fetch_trades(symbol, limit=self.trades_limit)
+            return trades if trades else []
+            
+        except Exception as e:
+            self.logger.error(f"Error fetching trades for {symbol}: {str(e)}")
+            return []
+    
+    @retry_on_error(max_attempts=2, delay=0.5)
+    async def _fetch_ticker(self, exchange, symbol: str) -> Dict[str, Any]:
+        """Fetch ticker data.
+        
+        Args:
+            exchange: Exchange instance
+            symbol: Trading pair symbol
+            
+        Returns:
+            Ticker dictionary
+        """
+        try:
+            ticker = await exchange.fetch_ticker(symbol)
+            
+            # Add timestamp if not present
+            if ticker and 'timestamp' not in ticker:
+                ticker['timestamp'] = TimestampUtility.get_utc_timestamp()
+            
+            return ticker
+            
+        except Exception as e:
+            self.logger.error(f"Error fetching ticker for {symbol}: {str(e)}")
+            return None
+    
+    def _get_cached_data(self, key: str) -> Optional[Dict[str, Any]]:
+        """Get data from cache if still fresh.
+        
+        Args:
+            key: Cache key
+            
+        Returns:
+            Cached data if fresh, None otherwise
+        """
+        if key in self._data_cache:
+            cached_item = self._data_cache[key]
+            age = TimestampUtility.get_age_seconds(cached_item['timestamp'])
+            
+            if age <= self._cache_ttl:
+                return cached_item['data']
+        
+        return None
+    
+    def _cache_data(self, key: str, data: Dict[str, Any]) -> None:
+        """Cache data with timestamp.
+        
+        Args:
+            key: Cache key
+            data: Data to cache
+        """
+        # Clean stale entries proactively to prevent memory leaks
+        current_time = TimestampUtility.get_utc_timestamp()
+        max_age_ms = self._cache_ttl * 1000
+        
+        # Remove expired entries before adding new ones
+        keys_to_remove = []
+        for existing_key, item in self._data_cache.items():
+            if current_time - item['timestamp'] > max_age_ms:
+                keys_to_remove.append(existing_key)
+        
+        for remove_key in keys_to_remove:
+            del self._data_cache[remove_key]
+        
+        # Add new cache entry
+        self._data_cache[key] = {
+            'data': data,
+            'timestamp': current_time
+        }
+        
+        # Enforce maximum cache size to prevent memory leaks
+        if len(self._data_cache) > self._max_cache_size:
+            # Remove oldest entries if cache is full
+            cache_items = list(self._data_cache.items())
+            cache_items.sort(key=lambda x: x[1]['timestamp'])  # Sort by timestamp
+            
+            # Keep only the newest entries
+            entries_to_keep = cache_items[-self._max_cache_size:]
+            self._data_cache = dict(entries_to_keep)
+            
+            removed_count = len(cache_items) - len(entries_to_keep)
+            if removed_count > 0:
+                self.logger.debug(f"Removed {removed_count} old cache entries to prevent memory leak")
+    
+    def _clean_cache(self) -> None:
+        """Remove stale entries from cache."""
+        current_time = TimestampUtility.get_utc_timestamp()
+        max_age_ms = self._cache_ttl * 1000
+        
+        keys_to_remove = []
+        for key, item in self._data_cache.items():
+            if current_time - item['timestamp'] > max_age_ms:
+                keys_to_remove.append(key)
+        
+        for key in keys_to_remove:
+            del self._data_cache[key]
+        
+        if keys_to_remove:
+            self.logger.debug(f"Cleaned {len(keys_to_remove)} stale cache entries")
+    
+    def get_stats(self) -> Dict[str, Any]:
+        """Get data collector statistics.
+        
+        Returns:
+            Dictionary of statistics
+        """
+        return {
+            **self._fetch_stats,
+            'cache_size': len(self._data_cache),
+            'configured_timeframes': list(self.timeframes.values()),
+            'is_running': self.is_running
+        }
+    
+    async def clear_cache(self) -> None:
+        """Clear all cached data."""
+        self._data_cache.clear()
+        self.logger.info("Data cache cleared")

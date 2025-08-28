@@ -22,17 +22,22 @@ class DirectCacheAdapter:
         self._client = None
     
     async def _get_client(self):
-        """Get or create cache client"""
+        """Get or create cache client with connection pooling"""
         if self._client is None:
             self._client = aiomcache.Client('localhost', 11211, pool_size=2)
         return self._client
     
     async def _get(self, key: str, default: Any = None) -> Any:
-        """Direct cache read"""
+        """Direct cache read with timeout using connection pool"""
         try:
-            # Always create a fresh client for each request to avoid connection issues
-            client = aiomcache.Client('localhost', 11211, pool_size=2)
-            data = await client.get(key.encode())
+            # Use connection pooled client instead of creating fresh ones
+            client = await self._get_client()
+            
+            # Add timeout wrapper
+            data = await asyncio.wait_for(
+                client.get(key.encode()), 
+                timeout=2.0  # 2 second timeout
+            )
             
             result = default
             if data:
@@ -44,8 +49,11 @@ class DirectCacheAdapter:
                     except:
                         result = data.decode()
             
-            await client.close()
+            # Don't close client - reuse the connection pool
             return result
+        except asyncio.TimeoutError:
+            logger.warning(f"Cache timeout for {key}")
+            return default
         except Exception as e:
             logger.debug(f"Cache read error for {key}: {e}")
             return default
@@ -389,6 +397,16 @@ class DirectCacheAdapter:
             "status": "success",
             "source": "cache"
         }
+
+    async def close(self):
+        """Close the cache client connection"""
+        if self._client:
+            try:
+                await self._client.close()
+                self._client = None
+                logger.info("Cache client connection closed")
+            except Exception as e:
+                logger.debug(f"Error closing cache client: {e}")
 
 # Global instance
 cache_adapter = DirectCacheAdapter()
