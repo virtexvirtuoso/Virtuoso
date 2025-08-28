@@ -1,7 +1,60 @@
 #!/bin/bash
-
-# Deploy critical updates to VPS
+#
+# Script: deploy_updates_to_vps.sh
+# Purpose: Deploy critical updates and fixes to production VPS
+# Author: Virtuoso Team
+# Version: 2.0.0
 # Created: 2025-08-19
+# Modified: 2025-08-28
+#
+# Description:
+#   Deploys critical system updates to the production VPS including:
+#   - Environment configuration files
+#   - Python source code fixes
+#   - Service restart and health verification
+#   This script performs incremental updates without full redeployment.
+#
+# Usage:
+#   ./deploy_updates_to_vps.sh [options]
+#
+# Options:
+#   -h, --help     Show this help message
+#   -v, --verbose  Enable verbose output
+#   -f, --force    Force deployment without confirmation
+#   -n, --no-restart  Skip service restart after deployment
+#
+# Environment Variables:
+#   VPS_HOST       Target VPS connection (default: linuxuser@45.77.40.77)
+#   VPS_DIR        Project directory on VPS (default: /home/linuxuser/trading/Virtuoso_ccxt)
+#   LOCAL_DIR      Local project directory (default: /Users/ffv_macmini/Desktop/Virtuoso_ccxt)
+#
+# Exit Codes:
+#   0              Success
+#   1              Connection error
+#   2              File transfer error
+#   3              Service restart failed
+#
+# Examples:
+#   # Basic deployment
+#   ./deploy_updates_to_vps.sh
+#   
+#   # Verbose deployment with output
+#   ./deploy_updates_to_vps.sh --verbose
+#   
+#   # Deploy without restarting service
+#   ./deploy_updates_to_vps.sh --no-restart
+#
+# Dependencies:
+#   - SSH access to VPS with key authentication
+#   - rsync/scp for file transfers
+#   - sudo privileges on VPS for service restart
+#
+# Notes:
+#   - Always test changes locally before deploying
+#   - Creates automatic backups before overwriting files
+#   - Monitors service health after restart
+#
+#==============================================================================
 
 VPS_HOST="linuxuser@45.77.40.77"
 VPS_DIR="/home/linuxuser/trading/Virtuoso_ccxt"

@@ -1,3 +1,39 @@
+"""
+Position Calculator Module
+
+This module provides comprehensive position sizing and risk management calculations
+for the Virtuoso CCXT trading system. It implements industry-standard risk management
+techniques including percentage-based position sizing, ATR-based stop losses, and
+risk/reward ratio calculations.
+
+Key Features:
+    - Dynamic position sizing based on account risk percentage
+    - ATR-based and percentage-based stop loss calculations
+    - Take profit calculations using risk/reward ratios
+    - Real-time position metrics and PnL tracking
+    - Support for both long and short positions
+
+Risk Management Principles:
+    - Default 1% risk per trade (configurable)
+    - Maximum 2% risk per trade (safety limit)
+    - Minimum position size constraints
+    - Risk/reward ratio optimization
+
+Usage:
+    >>> calculator = PositionCalculator()
+    >>> position_size = await calculator.calculate_position_size(
+    ...     exchange_id="binance",
+    ...     symbol="BTC/USDT",
+    ...     risk_percentage=1.0,
+    ...     stop_loss=45000,
+    ...     entry_price=50000,
+    ...     account_balance=10000
+    ... )
+
+Author: Virtuoso CCXT Development Team
+Version: 1.0.0
+"""
+
 from typing import Dict, Optional
 import logging
 from datetime import datetime
@@ -5,9 +41,38 @@ from datetime import datetime
 logger = logging.getLogger(__name__)
 
 class PositionCalculator:
-    """Position Calculator for Risk Management"""
+    """
+    Position Calculator for Risk Management.
+    
+    This class provides comprehensive position sizing and risk management
+    calculations for trading operations. It enforces strict risk limits
+    while allowing flexible configuration for different trading strategies.
+    
+    Attributes:
+        default_risk_percentage (float): Default risk per trade (1.0%)
+        max_risk_percentage (float): Maximum allowed risk per trade (2.0%)
+        min_position_size (float): Minimum tradeable position size (0.001)
+    
+    Methods:
+        calculate_position_size: Calculate optimal position size based on risk
+        calculate_stop_loss: Determine stop loss price using ATR or percentage
+        calculate_take_profit: Set take profit based on risk/reward ratio
+        calculate_position_metrics: Compute real-time position performance
+    """
     
     def __init__(self):
+        """
+        Initialize the Position Calculator with default risk parameters.
+        
+        Sets up the risk management constraints including:
+        - Default 1% risk per trade for conservative management
+        - Maximum 2% risk ceiling to prevent excessive exposure
+        - Minimum position size to ensure viable trades
+        
+        Note:
+            These values can be adjusted based on trading strategy and
+            risk tolerance, but defaults follow industry best practices.
+        """
         self.default_risk_percentage = 1.0  # Default risk of 1% per trade
         self.max_risk_percentage = 2.0  # Maximum risk of 2% per trade
         self.min_position_size = 0.001  # Minimum position size in base currency

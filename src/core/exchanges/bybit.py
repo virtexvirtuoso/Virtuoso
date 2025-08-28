@@ -39,6 +39,8 @@ from .base import (
     RateLimitError  # Added import
 )
 
+from .rate_limiter import BybitRateLimiter
+
 logger = logging.getLogger(__name__)
 
 @dataclass
@@ -238,6 +240,12 @@ class BybitExchange(BaseExchange):
         
         self.logger.info(f"Bybit exchange initialized with endpoint: {self.rest_endpoint}")
         self.logger.info(f"WebSocket endpoint: {self.ws_endpoint}")
+        
+        # Initialize rate limiter
+        self.rate_limiter = BybitRateLimiter()
+        
+        # Initialize circuit breakers
+        self._init_circuit_breakers()
         
         # Mark as not initialized until async init completes
         self.initialized = False
@@ -692,6 +700,18 @@ class BybitExchange(BaseExchange):
         if breaker['failures'] >= self.circuit_breaker_config['failure_threshold']:
             breaker['state'] = 'open'
             self.logger.warning(f"Circuit breaker opened for {endpoint} after {breaker['failures']} failures")
+    
+    def get_rate_limiter_stats(self) -> Dict[str, Any]:
+        """Get rate limiter statistics for monitoring.
+        
+        Returns:
+            Dict containing rate limiter statistics
+        """
+        return {
+            'api_calls': self.rate_limiter.get_api_call_stats(),
+            'rate_limit_status': self.rate_limit_status.copy(),
+            'circuit_breakers': {k: v.copy() for k, v in self.circuit_breakers.items()}
+        }
 
     async def _make_request(self, method: str, endpoint: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Make a request to the Bybit API.
@@ -710,6 +730,14 @@ class BybitExchange(BaseExchange):
             if not endpoint.startswith('v5/'):
                 endpoint = f"v5/{endpoint}"
             url = f"{self.rest_endpoint}/{endpoint}"
+            
+            # Check circuit breaker before proceeding
+            if not self._check_circuit_breaker(endpoint):
+                raise ExchangeError(f"Circuit breaker is open for {endpoint}")
+            
+            # Apply rate limiting before making the request
+            await self.rate_limiter.wait_if_needed(endpoint)
+            self.logger.debug(f"Rate limiting applied for endpoint: {endpoint}")
             
             # Ensure params is a dictionary
             if params is None:
@@ -761,18 +789,32 @@ class BybitExchange(BaseExchange):
                     timeout_val = 90.0 if 'tickers' in endpoint else 60.0
                     async with asyncio.timeout(timeout_val):
                         async with self.session.get(url, params=params, headers=headers) as response:
-                            return await self._process_response(response, url)
+                            result = await self._process_response(response, url)
+                            # Record successful request for circuit breaker
+                            if result.get('retCode', -1) == 0:
+                                self._record_circuit_breaker_success(endpoint)
+                            else:
+                                self._record_circuit_breaker_failure(endpoint)
+                            return result
                 elif method.upper() == 'POST':
                     # For POST requests, send params as JSON in the body
                     async with asyncio.timeout(60.0):
                         async with self.session.post(url, json=params, headers=headers) as response:
-                            return await self._process_response(response, url)
+                            result = await self._process_response(response, url)
+                            # Record successful request for circuit breaker
+                            if result.get('retCode', -1) == 0:
+                                self._record_circuit_breaker_success(endpoint)
+                            else:
+                                self._record_circuit_breaker_failure(endpoint)
+                            return result
             except asyncio.TimeoutError:
                 timeout_val = 90 if 'tickers' in endpoint else 60
                 self.logger.error(f"Request timeout after {timeout_val}s: {endpoint}")
+                self._record_circuit_breaker_failure(endpoint)
                 return {'retCode': -1, 'retMsg': 'Request timeout'}
             except Exception as e:
                 self.logger.error(f"Error during request: {str(e)}")
+                self._record_circuit_breaker_failure(endpoint)
                 return {'retCode': -1, 'retMsg': str(e)}
                     
         except GeneratorExit:
@@ -784,6 +826,7 @@ class BybitExchange(BaseExchange):
         except Exception as e:
             self.logger.error(f"Request error: {str(e)}")
             self.logger.debug(traceback.format_exc())
+            self._record_circuit_breaker_failure(endpoint)
             return {'retCode': -1, 'retMsg': str(e)}
 
     def _get_auth_headers(self, endpoint: str, params: dict) -> dict:
@@ -901,8 +944,13 @@ class BybitExchange(BaseExchange):
         Returns:
             Processed API response
         """
-        # Extract rate limit headers from response
+        # Extract rate limit headers from response and update rate limiter
         try:
+            # Update rate limiter with response headers
+            endpoint = url.split('/')[-1] if '/' in url else url
+            self.rate_limiter.update_from_headers(endpoint, dict(response.headers))
+            
+            # Also update legacy rate_limit_status for backward compatibility
             self.rate_limit_status['remaining'] = int(response.headers.get('X-Bapi-Limit-Status', 600))
             self.rate_limit_status['limit'] = int(response.headers.get('X-Bapi-Limit', 600))
             reset_time = response.headers.get('X-Bapi-Limit-Reset-Timestamp')

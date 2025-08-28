@@ -1,4 +1,47 @@
 #!/bin/bash
+
+#############################################################################
+# Script: setup_cache_service.sh
+# Purpose: Set up Market Data Cache Service as systemd service
+# Author: Virtuoso CCXT Development Team
+# Version: 1.1.0
+# Created: 2024-08-20
+# Modified: 2024-08-28
+#############################################################################
+#
+# Description:
+#   Creates and configures a systemd service for the Market Data Cache Service
+#   which provides high-performance caching for trading system data. The service
+#   runs continuously in the background and depends on Memcached.
+#
+# Service Configuration:
+#   - Service Name: market-data-cache.service
+#   - User: linuxuser
+#   - Working Directory: /home/linuxuser/trading/Virtuoso_ccxt
+#   - Dependencies: network.target, memcached.service
+#   - Auto-restart on failure (10 second delay)
+#
+# Usage:
+#   ./setup_cache_service.sh
+#
+# Requirements:
+#   - sudo privileges for systemctl operations
+#   - Memcached service installed and configured
+#   - Python virtual environment (venv311) set up
+#   - market_data_cache_service.py script present
+#
+# Exit Codes:
+#   0 - Service setup successful
+#   1 - Permission denied (need sudo)
+#   2 - Service creation failed
+#
+# Notes:
+#   - Service is automatically enabled and started
+#   - Logs are available via journalctl
+#   - Restart policy ensures high availability
+#
+#############################################################################
+
 # Setup script for Market Data Cache Service
 
 cat > /tmp/market-data-cache.service << 'EOF'

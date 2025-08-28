@@ -1,104 +1,62 @@
-"""Independent health check endpoint."""
+"""
+Health Check API Routes - Part of Phase 1: Emergency Stabilization
+Provides HTTP endpoints for health monitoring integration
+"""
 
 from fastapi import APIRouter
-from typing import Dict, Any
+from fastapi.responses import JSONResponse
 from datetime import datetime
-import psutil
-import time
 
 router = APIRouter()
 
-
-@router.get("/health/system")
-async def system_health() -> Dict[str, Any]:
-    """Get system health independent of external services.
-    
-    Returns:
-        System health status
-    """
-    # Get system metrics
-    cpu_percent = psutil.cpu_percent(interval=0.1)
-    memory = psutil.virtual_memory()
-    disk = psutil.disk_usage('/')
-    
-    # Get process info
-    process = psutil.Process()
-    process_info = {
-        "pid": process.pid,
-        "cpu_percent": process.cpu_percent(),
-        "memory_mb": process.memory_info().rss / 1024 / 1024,
-        "threads": process.num_threads(),
-        "connections": len(process.connections())
+@router.get("/health")
+async def basic_health_check():
+    """Basic health check endpoint - returns 200 if service is running"""
+    return {
+        "status": "healthy",
+        "timestamp": datetime.utcnow().isoformat(),
+        "service": "virtuoso_ccxt",
+        "version": "1.0.0",
+        "phase": "1_emergency_stabilization"
     }
+
+@router.get("/health/quick")
+async def quick_health_check():
+    """Quick health check with minimal overhead"""
+    timestamp = datetime.utcnow()
+    checks = []
     
-    # Check internal services
-    services_status = {}
-    
-    # Check cache
+    # Quick memory check
     try:
-        from pymemcache.client.base import Client
-        mc = Client(('127.0.0.1', 11211))
-        mc.get(b'test')
-        mc.close()
-        services_status["memcached"] = "healthy"
-    except:
-        services_status["memcached"] = "unavailable"
+        import psutil
+        memory = psutil.virtual_memory()
+        checks.append({
+            "name": "memory",
+            "status": "healthy" if memory.percent < 90 else "critical",
+            "value": f"{memory.percent:.1f}%"
+        })
+    except Exception:
+        checks.append({
+            "name": "memory",
+            "status": "unknown",
+            "value": "check_failed"
+        })
     
-    # Check circuit breakers
-    try:
-        from src.core.resilience.circuit_breaker import get_all_circuit_states
-        breakers = get_all_circuit_states()
-        services_status["circuit_breakers"] = {
-            "total": len(breakers),
-            "open": sum(1 for b in breakers.values() if b["state"] == "open")
-        }
-    except:
-        services_status["circuit_breakers"] = "not_initialized"
+    # API response check
+    checks.append({
+        "name": "api_response",
+        "status": "healthy",
+        "value": "responding"
+    })
     
-    # Overall health determination
-    is_healthy = (
-        cpu_percent < 90 and
-        memory.percent < 90 and
-        disk.percent < 90
-    )
+    overall_status = "healthy"
+    if any(check["status"] == "critical" for check in checks):
+        overall_status = "critical"
+    elif any(check["status"] == "unknown" for check in checks):
+        overall_status = "warning"
     
     return {
-        "status": "healthy" if is_healthy else "degraded",
-        "timestamp": datetime.utcnow().isoformat(),
-        "uptime_seconds": time.time() - process.create_time(),
-        "system": {
-            "cpu_percent": cpu_percent,
-            "memory_percent": memory.percent,
-            "disk_percent": disk.percent
-        },
-        "process": process_info,
-        "services": services_status
+        "overall_status": overall_status,
+        "timestamp": timestamp.isoformat(),
+        "checks": checks
     }
-
-
-@router.get("/health/resilience")
-async def resilience_health() -> Dict[str, Any]:
-    """Get resilience system health.
-    
-    Returns:
-        Resilience system status
-    """
-    try:
-        from src.core.resilience.circuit_breaker import get_all_circuit_states
-        from src.core.resilience.fallback_provider import get_fallback_provider
-        
-        breakers = get_all_circuit_states()
-        fallback = get_fallback_provider()
-        
-        return {
-            "status": "operational",
-            "circuit_breakers": breakers,
-            "fallback_system": fallback.get_health_status(),
-            "timestamp": datetime.utcnow().isoformat()
-        }
-    except Exception as e:
-        return {
-            "status": "error",
-            "error": str(e),
-            "timestamp": datetime.utcnow().isoformat()
-        }

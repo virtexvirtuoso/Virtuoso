@@ -1,5 +1,65 @@
 #!/bin/bash
 
+#############################################################################
+# Script: transfer_to_vps.sh
+# Purpose: Transfer Virtuoso CCXT trading system to production VPS
+# Author: Virtuoso CCXT Development Team
+# Version: 2.0.0
+# Created: 2024-08-10
+# Modified: 2024-08-28
+#############################################################################
+#
+# Description:
+#   Efficiently transfers the Virtuoso CCXT trading system to production VPS
+#   while excluding large non-essential files (logs, exports, virtual envs).
+#   Reduces transfer size from ~8.7GB to ~100MB using smart exclusions.
+#
+# Transfer Methods:
+#   1. rsync with exclusions (RECOMMENDED) - Incremental updates
+#   2. Compressed tar archive - Full transfer
+#
+# Dependencies:
+#   - rsync for efficient file transfer
+#   - SSH access to VPS (45.77.40.77)
+#   - .rsync-exclude file in project root
+#   - tar/gzip for archive method
+#
+# Usage:
+#   ./transfer_to_vps.sh
+#   
+#   Then follow the displayed commands for actual transfer
+#
+# Files Excluded:
+#   - Virtual environments (venv311/, venv/) - ~2GB
+#   - Log files (logs/, *.log) - ~1GB
+#   - Exports and reports - ~5GB
+#   - Cache and temporary files
+#   - Git history (.git/)
+#
+# VPS Configuration:
+#   - Host: 45.77.40.77
+#   - User: linuxuser
+#   - Path: ~/trading/Virtuoso_ccxt/
+#
+# Post-Transfer Setup Required:
+#   1. Create Python virtual environment
+#   2. Install dependencies
+#   3. Configure environment variables
+#   4. Create necessary directories
+#   5. Start services
+#
+# Exit Codes:
+#   0 - Success (instructions displayed)
+#   1 - Missing .rsync-exclude file
+#
+# Notes:
+#   - Always use rsync for updates (preserves timestamps)
+#   - Archive method better for initial deployment
+#   - Verify SSH keys before transfer
+#   - Monitor transfer progress with -P flag
+#
+#############################################################################
+
 echo "📦 Transferring Virtuoso Trading Bot to VPS"
 echo "=========================================="
 

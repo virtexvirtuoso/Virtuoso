@@ -1,3 +1,39 @@
+"""
+Base Indicator Module
+
+This module provides the foundational framework for all technical indicators in the
+Virtuoso CCXT trading system. It establishes a standardized API for indicator 
+calculation, validation, caching, and debugging across the entire indicator suite.
+
+Key Components:
+    - BaseIndicator: Abstract base class for all indicators
+    - DebugLevel: Enumeration for controlling debug verbosity
+    - IndicatorResult: TypedDict for standardized return format
+    - ValidationError/AnalysisError: Custom exceptions for indicator errors
+    - Debug decorators and metrics for performance monitoring
+
+Indicator API Standardization:
+    - All indicators use calculate() as the standard entry point
+    - Returns standardized dictionary with score, components, signals, metadata
+    - Built-in caching, validation, and error handling
+    - Multi-timeframe support with configurable weights
+
+Design Patterns:
+    - Abstract Factory: BaseIndicator creates specific indicator instances
+    - Template Method: calculate() defines algorithm skeleton
+    - Decorator: Debug logging and caching decorators
+    - Strategy: Pluggable validation and scoring strategies
+
+Usage:
+    >>> class CustomIndicator(BaseIndicator):
+    ...     async def calculate(self, data):
+    ...         # Implement indicator logic
+    ...         return self.format_result(score, components, signals)
+
+Author: Virtuoso CCXT Development Team
+Version: 1.0.0
+"""
+
 from typing import Dict, Any, Optional, List, Union
 try:
     from typing import TypedDict
@@ -36,12 +72,39 @@ indicator_logger.debug(f"Module attributes pre-class: {dir()}")
 # Define DebugLevel first
 indicator_logger.debug("1. Defining DebugLevel enum")
 class DebugLevel(Enum):
+    """
+    Enumeration for controlling debug verbosity levels.
+    
+    Defines the amount of debug information logged during indicator
+    calculations. Higher levels provide more detailed information
+    but may impact performance.
+    
+    Levels:
+        MINIMAL (0): Only critical errors and warnings
+        BASIC (1): Basic calculation flow and results
+        DETAILED (2): Component scores and intermediate values
+        FULL (3): Complete debug including all data transformations
+    
+    Example:
+        >>> @debug_method(level=DebugLevel.DETAILED)
+        >>> async def calculate_indicator(self, data):
+        ...     # Method will log detailed debug information
+    """
     MINIMAL = 0
     BASIC = 1 
     DETAILED = 2
     FULL = 3
     
     def __ge__(self, other):
+        """
+        Compare debug levels for filtering.
+        
+        Args:
+            other: Another DebugLevel instance to compare against
+            
+        Returns:
+            bool: True if this level is greater than or equal to other
+        """
         if self.__class__ is other.__class__:
             return self.value >= other.value
         return NotImplemented
@@ -1094,9 +1157,53 @@ class BaseIndicator(ABC):
                     self.logger.info(f"  Applied bonus: {bonus:.2f}")
 
 class ValidationError(Exception):
+    """
+    Exception raised when indicator input validation fails.
+    
+    This exception is raised when the input data provided to an indicator
+    does not meet the required format, structure, or content requirements.
+    Common causes include missing columns, insufficient data points, or
+    invalid data types.
+    
+    Attributes:
+        message (str): Detailed description of the validation failure
+        field (str, optional): The specific field that failed validation
+        requirement (str, optional): The requirement that was not met
+    
+    Example:
+        >>> if len(data) < min_candles:
+        ...     raise ValidationError(
+        ...         f"Insufficient data: {len(data)} < {min_candles}",
+        ...         field="ohlcv_data",
+        ...         requirement="min_candles"
+        ...     )
+    """
     pass
 
 class AnalysisError(Exception):
+    """
+    Exception raised when indicator analysis computation fails.
+    
+    This exception is raised when the indicator calculation process
+    encounters an error during computation, such as mathematical errors,
+    convergence failures, or unexpected data conditions that prevent
+    proper analysis.
+    
+    Attributes:
+        message (str): Description of the analysis failure
+        indicator (str, optional): Name of the indicator that failed
+        phase (str, optional): Phase of analysis where failure occurred
+    
+    Example:
+        >>> try:
+        ...     result = complex_calculation(data)
+        ... except ZeroDivisionError as e:
+        ...     raise AnalysisError(
+        ...         f"Division by zero in RSI calculation: {e}",
+        ...         indicator="RSI",
+        ...         phase="normalization"
+        ...     )
+    """
     pass 
 
 # Move logging AFTER the single class definition

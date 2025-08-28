@@ -1,7 +1,72 @@
-"""API initialization and route registration module."""
+"""
+Virtuoso CCXT API Package
+
+This package provides the REST API layer for the Virtuoso CCXT trading system,
+implementing FastAPI-based endpoints for market data, signal generation, trading
+operations, and dashboard interfaces.
+
+API Architecture:
+    - FastAPI framework with automatic OpenAPI documentation
+    - Modular route organization by functional area
+    - Multi-tier caching with performance optimization
+    - Rate limiting and request throttling
+    - CORS support for web dashboard integration
+
+Main API Endpoints:
+    Market Data:
+        /api/market/* - Real-time market data and analysis
+        /api/signals/* - Trading signals and confluence scores
+        /api/bitcoin-beta/* - Bitcoin correlation analysis
+        /api/liquidation/* - Liquidation intelligence data
+        
+    Trading Operations:
+        /api/trading/* - Trade execution and management
+        /api/alpha/* - Alpha opportunity scanning
+        /api/whale-activity/* - Large order detection
+        
+    System Monitoring:
+        /api/system/* - System health and performance
+        /api/cache/* - Cache status and monitoring
+        /api/health/* - Service health checks
+        
+    Dashboard Interfaces:
+        /api/dashboard/* - Standard dashboard data
+        /api/dashboard-cached/* - Cached dashboard (optimized)
+        /api/fast/* - Ultra-fast dashboard (<50ms)
+        /api/direct/* - Direct cache bypass routes
+
+Performance Features:
+    - Multi-tier caching architecture
+    - Response time optimization (<50ms for cached routes)
+    - Automatic cache invalidation and refresh
+    - Connection pooling and rate limiting
+    - Background task processing
+
+Route Registration:
+    The init_api_routes() function dynamically registers all available
+    route modules with conditional loading for optional features.
+    
+Cache Optimization Levels:
+    1. Standard routes - No caching
+    2. Cached routes - 30-60s TTL
+    3. Fast routes - <50ms response time
+    4. Direct routes - Bypass adapter layer
+
+Author: Virtuoso CCXT Development Team
+Version: 2.5.0
+"""
 
 from fastapi import FastAPI
 from .routes import signals, market, system, trading, dashboard, alpha, liquidation, correlation, bitcoin_beta, manipulation, top_symbols, whale_activity, sentiment, admin, cache, debug_test, core_api
+from .routes import dashboard_optimized
+
+
+# Priority 2 Gateway Implementation
+try:
+    from .routes import gateway_routes
+    gateway_available = True
+except ImportError:
+    gateway_available = False
 try:
     from .routes import cache_dashboard
     cache_dashboard_available = True
@@ -197,6 +262,17 @@ def init_api_routes(app: FastAPI):
         app.include_router(health.router, prefix="/api/health", tags=["health"])
     except ImportError:
         pass
+    
+    # Include Priority 2 Gateway Routes
+    if gateway_available:
+        app.include_router(
+            gateway_routes.router,
+            prefix="",
+            tags=["gateway"]
+        )
+        import logging
+        gateway_logger = logging.getLogger(__name__)
+        gateway_logger.info("🚀 Priority 2 API Gateway enabled with multi-tier cache and rate limiting")
     
     # Log registered routes
     import logging
