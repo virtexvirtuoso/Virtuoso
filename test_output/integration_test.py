@@ -1,7 +1,35 @@
 #!/usr/bin/env python3
 """
-Integration Test for Optimization Methods
-Tests the integration of all 3 phases with existing indicator classes
+Integration Test Suite for Optimization Methods
+
+This module provides comprehensive integration testing for the Virtuoso trading system's
+optimization framework. It tests the seamless integration of all three optimization
+phases with existing indicator classes and validates performance improvements.
+
+Test Categories:
+    - Phase Integration Testing: Validates proper interaction between optimization phases
+    - Performance Benchmarking: Measures optimization impact on computational efficiency
+    - Data Processing Validation: Ensures optimized methods produce correct results
+    - Memory Usage Monitoring: Tracks memory efficiency improvements
+    - Error Handling Testing: Validates robust error handling in optimized code
+
+Test Data:
+    - Generates realistic OHLCV market data for testing
+    - Supports configurable sample sizes and market conditions
+    - Includes edge cases and boundary conditions
+
+Usage:
+    python integration_test.py
+    
+Requirements:
+    - pandas >= 1.3.0
+    - numpy >= 1.21.0
+    - Python 3.8+
+    - Access to src/indicators/ modules
+
+Author: Virtuoso CCXT Development Team
+Version: 2.0.0
+Created: 2025-08-28
 """
 
 import sys

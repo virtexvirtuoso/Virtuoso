@@ -14,6 +14,14 @@ import aiohttp
 import numpy as np
 import random
 
+# Import correlation service for real market data calculations
+try:
+    from src.core.services.simple_correlation_service import get_simple_correlation_service
+    CORRELATION_SERVICE_AVAILABLE = True
+except ImportError as e:
+    logger.warning(f"Correlation service not available: {e}")
+    CORRELATION_SERVICE_AVAILABLE = False
+
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
@@ -175,6 +183,70 @@ async def get_dashboard_overview() -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Error getting dashboard overview: {e}")
         raise HTTPException(status_code=500, detail=f"Error getting dashboard overview: {str(e)}")
+
+@router.get("/data")
+async def get_dashboard_data():
+    """Main dashboard data endpoint - matches frontend expectations"""
+    try:
+        # BYPASS ALL COMPLEXITY - Direct cache access
+        import aiomcache
+        import json
+        import time
+        
+        logger.info("BYPASS: Direct memcached access for dashboard data")
+        client = aiomcache.Client('localhost', 11211, pool_size=1)
+        
+        # Get data directly from cache
+        overview_bytes = await client.get(b'market:overview')
+        signals_bytes = await client.get(b'analysis:signals')
+        regime_bytes = await client.get(b'analysis:market_regime')
+        movers_bytes = await client.get(b'market:movers')
+        
+        # Parse data
+        overview = json.loads(overview_bytes.decode()) if overview_bytes else {}
+        signals = json.loads(signals_bytes.decode()) if signals_bytes else {}
+        regime = regime_bytes.decode() if regime_bytes else 'unknown'
+        movers = json.loads(movers_bytes.decode()) if movers_bytes else {}
+        
+        logger.info(f"BYPASS: Got overview with {overview.get('total_symbols', 0)} symbols")
+        logger.info(f"BYPASS: Got {len(signals.get('signals', []))} signals")
+        
+        # Build response directly
+        return {
+            'summary': {
+                'total_symbols': overview.get('total_symbols', 0),
+                'total_volume': overview.get('total_volume', overview.get('total_volume_24h', 0)),
+                'total_volume_24h': overview.get('total_volume', overview.get('total_volume_24h', 0)),
+                'average_change': overview.get('average_change', 0),
+                'timestamp': int(time.time())
+            },
+            'market_regime': regime,
+            'signals': signals.get('signals', [])[:10],  # Top 10 signals
+            'top_gainers': movers.get('gainers', [])[:5],
+            'top_losers': movers.get('losers', [])[:5],
+            'momentum': {
+                'gainers': len(movers.get('gainers', [])),
+                'losers': len(movers.get('losers', []))
+            },
+            'volatility': {
+                'value': overview.get('volatility', 0),
+                'level': 'high' if overview.get('volatility', 0) > 2 else 'normal'
+            },
+            'source': 'direct_bypass',
+            'data_source': 'memcached_direct'
+        }
+        
+    except Exception as e:
+        logger.error(f"BYPASS: Error getting dashboard data: {e}")
+        return {
+            "status": "error",
+            "summary": {"total_symbols": 0, "total_volume": 0, "average_change": 0},
+            "market_regime": "unknown",
+            "signals": [],
+            "top_gainers": [],
+            "top_losers": [],
+            "error": str(e)
+        }
 
 @router.get(
     "/signals",
@@ -1392,7 +1464,26 @@ async def get_correlation_matrix() -> Dict[str, Any]:
         # Mock correlation matrix data
         symbols = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT", "ADAUSDT"]
         
-        # Generate correlation matrix (mock data)
+        # Use real correlation calculations if available
+        if CORRELATION_SERVICE_AVAILABLE:
+            try:
+                # Get simple correlation service
+                correlation_service = get_simple_correlation_service()
+                
+                # Calculate real correlation matrix
+                result = await correlation_service.calculate_correlation_matrix(symbols, days=30)
+                
+                # Update timeframe to reflect actual calculation period
+                if result["status"] == "success":
+                    result["timeframe"] = "30d"  # Actual timeframe used
+                    return result
+                else:
+                    logger.warning(f"Correlation calculation failed: {result.get('error')}")
+                    # Fall back to null values
+            except Exception as e:
+                logger.error(f"Error using correlation service: {e}")
+        
+        # Fallback: return null values with clear indication
         correlations = []
         for i, sym1 in enumerate(symbols):
             row = []
@@ -1400,19 +1491,18 @@ async def get_correlation_matrix() -> Dict[str, Any]:
                 if i == j:
                     corr = 1.0
                 else:
-                    # Generate realistic correlations
-                    base_corr = 0.7 - (abs(i - j) * 0.15)
-                    corr = round(base_corr + np.random.uniform(-0.1, 0.1), 2)
-                    corr = max(0.3, min(0.95, corr))  # Keep in realistic range
+                    corr = None  # Indicates real data not available
                 row.append(corr)
             correlations.append(row)
         
         return {
             "symbols": symbols,
             "correlation_matrix": correlations,
-            "timeframe": "24h",
+            "timeframe": "unavailable",
             "timestamp": datetime.utcnow().isoformat(),
-            "status": "success"
+            "status": "partial",
+            "data_source": "fallback_null_values",
+            "message": "Real correlation data temporarily unavailable"
         }
         
     except Exception as e:
@@ -1479,19 +1569,41 @@ async def get_beta_time_series() -> Dict[str, Any]:
         symbols = ["ETHUSDT", "SOLUSDT", "XRPUSDT", "ADAUSDT", "DOTUSDT"]
         end_date = datetime.utcnow()
         
+        # Use real beta calculations if available
+        if CORRELATION_SERVICE_AVAILABLE:
+            try:
+                # Get simple correlation service
+                correlation_service = get_simple_correlation_service()
+                
+                # Get real beta time series data
+                beta_result = await correlation_service.calculate_beta_time_series(
+                    symbols, window_days=30, num_windows=7
+                )
+                
+                if beta_result["status"] == "success":
+                    return {
+                        "chart_data": beta_result["series_data"],
+                        "period": "7d",
+                        "window_size": "30d",
+                        "benchmark": "BTCUSDT",
+                        "timestamp": beta_result["timestamp"],
+                        "status": "success",
+                        "data_source": "real_market_data"
+                    }
+            except Exception as e:
+                logger.error(f"Error calculating real beta time series: {e}")
+        
+        # Fallback: return null values
         series_data = {}
         for symbol in symbols:
             data_points = []
-            base_beta = {"ETHUSDT": 1.12, "SOLUSDT": 1.45, "XRPUSDT": 0.98, "ADAUSDT": 1.23, "DOTUSDT": 1.34}[symbol]
             
             for i in range(7):
                 date = end_date - timedelta(days=6-i)
-                # Add some realistic variance
-                beta = base_beta + random.uniform(-0.15, 0.15)
                 data_points.append({
                     "date": date.strftime("%Y-%m-%d"),
                     "timestamp": int(date.timestamp() * 1000),
-                    "beta": round(beta, 3)
+                    "beta": None  # Indicates real data not available
                 })
             
             series_data[symbol] = data_points
@@ -1500,7 +1612,9 @@ async def get_beta_time_series() -> Dict[str, Any]:
             "chart_data": series_data,
             "period": "7d",
             "timestamp": datetime.utcnow().isoformat(),
-            "status": "success"
+            "status": "partial",
+            "data_source": "fallback_null_values",
+            "message": "Real beta data temporarily unavailable"
         }
         
     except Exception as e:
@@ -1513,32 +1627,45 @@ async def get_correlation_heatmap() -> Dict[str, Any]:
     try:
         symbols = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT", "ADAUSDT", "DOTUSDT", "AVAXUSDT", "NEARUSDT"]
         
-        # Generate correlation matrix
+        # Use real correlation calculations for heatmap if available
+        if CORRELATION_SERVICE_AVAILABLE:
+            try:
+                # Get simple correlation service
+                correlation_service = get_simple_correlation_service()
+                
+                # Get real correlation heatmap data
+                heatmap_result = await correlation_service.get_correlation_heatmap(symbols, days=30)
+                
+                if heatmap_result["status"] == "success":
+                    return heatmap_result
+            except Exception as e:
+                logger.error(f"Error calculating real correlation heatmap: {e}")
+        
+        # Fallback: return null correlation values
         heatmap_data = []
         for i, sym1 in enumerate(symbols):
             for j, sym2 in enumerate(symbols):
                 if i == j:
                     correlation = 1.0
                 else:
-                    # Generate realistic correlations based on market relationships
-                    base_corr = 0.75 - (abs(i - j) * 0.08)
-                    correlation = round(base_corr + np.random.uniform(-0.1, 0.1), 3)
-                    correlation = max(0.25, min(0.95, correlation))
+                    correlation = None  # Indicates real data not available
                 
                 heatmap_data.append({
                     "x": sym1,
                     "y": sym2,
                     "value": correlation,
-                    "color_intensity": correlation  # For color mapping
+                    "color_intensity": correlation if correlation is not None else 0
                 })
         
         return {
             "heatmap_data": heatmap_data,
             "symbols": symbols,
-            "min_correlation": 0.25,
+            "min_correlation": 0.0,
             "max_correlation": 1.0,
             "timestamp": datetime.utcnow().isoformat(),
-            "status": "success"
+            "status": "partial",
+            "data_source": "fallback_null_values",
+            "message": "Real correlation data temporarily unavailable"
         }
         
     except Exception as e:

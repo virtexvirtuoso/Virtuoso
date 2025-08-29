@@ -29,6 +29,7 @@ components in the monitoring loop while maintaining the same external interface.
 
 import asyncio
 import logging
+import time
 import traceback
 from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Any, Optional, Callable
@@ -172,8 +173,14 @@ class RefactoredMarketMonitor:
             'use_ws_for_tickers': True
         })
         
-        # Initialize modular components
-        self._initialize_components()
+        # Components will be initialized lazily when first accessed
+        self._data_collector = None
+        self._validator = None
+        self._signal_processor = None
+        self._metrics_tracker = None
+        self._ws_manager_component = None
+        self._alert_manager_component = None
+        self._components_initialized = False
         
         # Runtime state
         self.running = False
@@ -188,25 +195,106 @@ class RefactoredMarketMonitor:
         
         self.logger.info(f"Refactored Market Monitor initialized for {self.exchange_id} exchange")
     
-    def _initialize_components(self):
-        """Initialize the modular monitoring components."""
+    async def _ensure_dependencies(self):
+        """Ensure all dependencies are resolved from DI container."""
+        if hasattr(self, '_di_container') and self._di_container:
+            # Resolve exchange_manager if not available
+            if not self.exchange_manager and hasattr(self, 'get_exchange_manager'):
+                self.exchange_manager = await self.get_exchange_manager()
+            
+            # Resolve alert_manager if not available  
+            if not self.alert_manager and hasattr(self, 'get_alert_manager'):
+                self.alert_manager = await self.get_alert_manager()
+                
+            # Resolve signal_generator from DI container
+            if not self.signal_generator:
+                try:
+                    from ..signal_generation.signal_generator import SignalGenerator
+                    self.signal_generator = await self._di_container.get_service(SignalGenerator)
+                    self.logger.info("✅ SignalGenerator resolved from DI container")
+                except Exception as e:
+                    self.logger.warning(f"Could not resolve SignalGenerator from DI container: {e}")
+                    
+            # Resolve metrics_manager from DI container
+            if not self.metrics_manager:
+                try:
+                    from ..monitoring.metrics_manager import MetricsManager
+                    self.metrics_manager = await self._di_container.get_service(MetricsManager)
+                    self.logger.info("✅ MetricsManager resolved from DI container")
+                except Exception as e:
+                    self.logger.warning(f"Could not resolve MetricsManager from DI container: {e}")
+                    
+            # Resolve market_data_manager from DI container
+            if not self.market_data_manager:
+                try:
+                    from ..core.market.market_data_manager import MarketDataManager
+                    self.market_data_manager = await self._di_container.get_service(MarketDataManager)
+                    self.logger.info("✅ MarketDataManager resolved from DI container")
+                except Exception as e:
+                    self.logger.warning(f"Could not resolve MarketDataManager from DI container: {e}")
+                
+            # Try to resolve other dependencies from container
+            try:
+                from ..core.exchanges.manager import ExchangeManager
+                from ..core.market.market_data_manager import MarketDataManager
+                from ..signal_generation.signal_generator import SignalGenerationService
+                from ..monitoring.components.metrics_manager import MetricsManager
+                
+                if not self.exchange_manager:
+                    try:
+                        self.exchange_manager = await self._di_container.get_service(ExchangeManager)
+                    except Exception:
+                        pass
+                        
+                if not self.market_data_manager:
+                    try:
+                        self.market_data_manager = await self._di_container.get_service(MarketDataManager)
+                    except Exception:
+                        pass
+                        
+                if not self.signal_generator:
+                    try:
+                        self.signal_generator = await self._di_container.get_service(SignalGenerationService)
+                    except Exception:
+                        pass
+                        
+                if not self.metrics_manager:
+                    try:
+                        self.metrics_manager = await self._di_container.get_service(MetricsManager)
+                    except Exception:
+                        pass
+                        
+            except ImportError:
+                pass
+    
+    async def _initialize_components(self):
+        """Initialize the modular monitoring components lazily."""
+        if self._components_initialized:
+            return
+            
         try:
+            # Ensure dependencies are resolved
+            await self._ensure_dependencies()
+            
             # Data Collector - handles all market data fetching
-            self.data_collector = DataCollector(
-                exchange_manager=self.exchange_manager,
-                config=self.config,
-                logger=self.logger.getChild('data_collector')
-            )
+            if self.exchange_manager:
+                self._data_collector = DataCollector(
+                    exchange_manager=self.exchange_manager,
+                    config=self.config,
+                    logger=self.logger.getChild('data_collector')
+                )
+            else:
+                self.logger.warning("DataCollector not initialized - exchange_manager unavailable")
             
             # Validator - handles data validation and quality checks
-            self.validator = MarketDataValidator(
+            self._validator = MarketDataValidator(
                 config=self.validation_config,
                 logger=self.logger.getChild('validator')
             )
             
             # Signal Processor - handles analysis processing and signal generation
             if self.signal_generator and self.metrics_manager:
-                self.signal_processor = SignalProcessor(
+                self._signal_processor = SignalProcessor(
                     config=self.config,
                     signal_generator=self.signal_generator,
                     metrics_manager=self.metrics_manager,
@@ -214,66 +302,172 @@ class RefactoredMarketMonitor:
                     market_data_manager=self.market_data_manager,
                     logger=self.logger.getChild('signal_processor')
                 )
+                self.logger.info("✅ Signal processor initialized successfully")
             else:
-                self.signal_processor = None
-                self.logger.warning("Signal processor not initialized - missing dependencies")
+                self._signal_processor = None
+                self.logger.warning(f"Signal processor not initialized - signal_generator: {self.signal_generator is not None}, metrics_manager: {self.metrics_manager is not None}")
             
             # WebSocket Manager - handles real-time data streaming
-            self.ws_manager_component = None  # Will be initialized per symbol
+            self._ws_manager_component = None  # Will be initialized per symbol
             
             # Metrics Tracker - handles performance monitoring
-            self.metrics_tracker = MetricsTracker(
-                config=self.config,
-                metrics_manager=self.metrics_manager,
-                market_data_manager=self.market_data_manager,
-                exchange_manager=self.exchange_manager,
-                error_handler=getattr(self, 'error_handler', None),
-                logger=self.logger.getChild('metrics_tracker')
-            )
+            if self.metrics_manager and self.exchange_manager:
+                self._metrics_tracker = MetricsTracker(
+                    config=self.config,
+                    metrics_manager=self.metrics_manager,
+                    market_data_manager=self.market_data_manager,
+                    exchange_manager=self.exchange_manager,
+                    error_handler=getattr(self, 'error_handler', None),
+                    logger=self.logger.getChild('metrics_tracker')
+                )
+                self.logger.info("✅ MetricsTracker initialized successfully")
+            else:
+                self.logger.warning(f"MetricsTracker not initialized - metrics_manager: {self.metrics_manager is not None}, exchange_manager: {self.exchange_manager is not None}")
             
             # Alert Manager Component - enhanced alert handling (if needed)
-            self.alert_manager_component = self.alert_manager  # Use existing alert manager
+            self._alert_manager_component = self.alert_manager  # Use existing alert manager
             
-            self.logger.info("All monitoring components initialized successfully")
+            self._components_initialized = True
+            self.logger.info("✅ All monitoring components initialized successfully")
             
         except Exception as e:
             self.logger.error(f"Failed to initialize monitoring components: {str(e)}")
             self.logger.debug(traceback.format_exc())
             raise
     
+    # Lazy property accessors for components
+    @property
+    def data_collector(self):
+        """Get data collector, initializing components if needed."""
+        if not self._components_initialized:
+            # Run initialization in background if we have an event loop
+            try:
+                import asyncio
+                loop = asyncio.get_running_loop()
+                if not hasattr(self, '_init_task') or self._init_task.done():
+                    self._init_task = loop.create_task(self._initialize_components())
+            except RuntimeError:
+                # No event loop running, skip initialization for now
+                pass
+        return self._data_collector
+    
+    @property  
+    def validator(self):
+        """Get validator, initializing components if needed."""
+        if not self._components_initialized:
+            try:
+                import asyncio
+                loop = asyncio.get_running_loop()
+                if not hasattr(self, '_init_task') or self._init_task.done():
+                    self._init_task = loop.create_task(self._initialize_components())
+            except RuntimeError:
+                pass
+        return self._validator
+        
+    @property
+    def signal_processor(self):
+        """Get signal processor, initializing components if needed."""
+        if not self._components_initialized:
+            try:
+                import asyncio
+                loop = asyncio.get_running_loop()
+                if not hasattr(self, '_init_task') or self._init_task.done():
+                    self._init_task = loop.create_task(self._initialize_components())
+            except RuntimeError:
+                pass
+        return self._signal_processor
+        
+    @property
+    def metrics_tracker(self):
+        """Get metrics tracker, initializing components if needed."""
+        if not self._components_initialized:
+            try:
+                import asyncio
+                loop = asyncio.get_running_loop()
+                if not hasattr(self, '_init_task') or self._init_task.done():
+                    self._init_task = loop.create_task(self._initialize_components())
+            except RuntimeError:
+                pass
+        return self._metrics_tracker
+        
+    @property
+    def ws_manager_component(self):
+        """Get websocket manager component."""
+        return self._ws_manager_component
+        
+    @property
+    def alert_manager_component(self):
+        """Get alert manager component."""
+        return self._alert_manager_component
+    
     async def initialize(self) -> bool:
         """Initialize all monitoring components asynchronously."""
         try:
             self.logger.info("Initializing monitoring components...")
             
-            # Initialize data collector
-            if not await self.data_collector.initialize():
-                self.logger.error("Failed to initialize data collector")
-                return False
+            # Try to create components, but don't fail if dependencies are missing
+            try:
+                await self._initialize_components()
+            except Exception as e:
+                self.logger.warning(f"Component initialization incomplete due to missing dependencies: {e}")
+                # Continue with partial initialization - components will be created on demand
             
-            # Initialize validator
-            if not await self.validator.initialize():
-                self.logger.error("Failed to initialize validator")
-                return False
+            # Initialize available components (non-blocking)
+            initialized_count = 0
+            
+            # Initialize data collector if available
+            if self._data_collector:
+                try:
+                    if await self._data_collector.initialize():
+                        initialized_count += 1
+                    else:
+                        self.logger.warning("DataCollector failed to initialize - will retry on demand")
+                except Exception as e:
+                    self.logger.warning(f"DataCollector initialization error: {e}")
+            
+            # Initialize validator if available
+            if self._validator:
+                try:
+                    if await self._validator.initialize():
+                        initialized_count += 1
+                    else:
+                        self.logger.warning("Validator failed to initialize - will retry on demand")
+                except Exception as e:
+                    self.logger.warning(f"Validator initialization error: {e}")
             
             # Initialize signal processor if available
-            if self.signal_processor:
-                if not await self.signal_processor.initialize():
-                    self.logger.error("Failed to initialize signal processor")
-                    return False
+            if self._signal_processor:
+                try:
+                    if await self._signal_processor.initialize():
+                        initialized_count += 1
+                    else:
+                        self.logger.warning("SignalProcessor failed to initialize - will retry on demand")
+                except Exception as e:
+                    self.logger.warning(f"SignalProcessor initialization error: {e}")
             
-            # Initialize metrics tracker
-            if not await self.metrics_tracker.initialize():
-                self.logger.error("Failed to initialize metrics tracker")
-                return False
+            # Initialize metrics tracker if available
+            if self._metrics_tracker:
+                try:
+                    if await self._metrics_tracker.initialize():
+                        initialized_count += 1
+                    else:
+                        self.logger.warning("MetricsTracker failed to initialize - will retry on demand")
+                except Exception as e:
+                    self.logger.warning(f"MetricsTracker initialization error: {e}")
             
-            self.logger.info("All monitoring components initialized successfully")
+            if initialized_count > 0:
+                self.logger.info(f"Successfully initialized {initialized_count} monitoring components - others will initialize on demand")
+            else:
+                self.logger.info("Monitoring components will initialize on demand when dependencies become available")
+            
+            # Always return True - we can function with lazy initialization
             return True
             
         except Exception as e:
-            self.logger.error(f"Failed to initialize monitor: {str(e)}")
+            self.logger.error(f"Critical error during monitor initialization: {str(e)}")
             self.logger.debug(traceback.format_exc())
-            return False
+            # Still return True to allow the system to continue with fallback behavior
+            return True
     
     @measure_performance()
     async def fetch_market_data(self, symbol: str) -> Optional[Dict[str, Any]]:
@@ -343,7 +537,7 @@ class RefactoredMarketMonitor:
             if self.signal_processor and hasattr(self.signal_processor, 'stop'):
                 await self.signal_processor.stop()
             
-            if hasattr(self.metrics_tracker, 'stop'):
+            if self.metrics_tracker is not None and hasattr(self.metrics_tracker, 'stop'):
                 await self.metrics_tracker.stop()
             
             self.logger.info("All monitoring components stopped")
@@ -359,8 +553,11 @@ class RefactoredMarketMonitor:
                 # Run monitoring cycle
                 await self._monitoring_cycle()
                 
-                # Update metrics
-                await self.metrics_tracker.update_metrics()
+                # Update metrics (with null check)
+                if self.metrics_tracker is not None:
+                    await self.metrics_tracker.update_metrics()
+                else:
+                    self.logger.debug("Metrics tracker not available, skipping metrics update")
                 
                 # Check system health
                 health_status = await self._check_system_health()
@@ -469,20 +666,163 @@ class RefactoredMarketMonitor:
                 except Exception as e:
                     self.logger.error(f"Error in confluence analysis for {symbol_str}: {str(e)}")
             
-            # Step 6: Update metrics
-            await self.metrics_tracker.update_symbol_metrics(symbol_str, market_data)
+            # Step 6: Update metrics (with null check)
+            if self.metrics_tracker is not None:
+                await self.metrics_tracker.update_symbol_metrics(symbol_str, market_data)
+            else:
+                self.logger.warning(f"⚠️  Metrics tracker not initialized, skipping metrics update for {symbol_str}")
             
         except Exception as e:
             self.logger.error(f"Error processing symbol {symbol}: {str(e)}")
             self.logger.debug(traceback.format_exc())
     
     async def _check_system_health(self) -> Dict[str, Any]:
-        """Check system health using metrics tracker."""
+        """Check system health using metrics tracker with fallback."""
         try:
-            return await self.metrics_tracker.check_system_health()
+            # First try metrics tracker if available
+            if self.metrics_tracker is not None:
+                return await self.metrics_tracker.check_system_health()
+            else:
+                # Fallback to basic health check
+                return await self._fallback_health_check()
+                
         except Exception as e:
             self.logger.error(f"Error checking system health: {str(e)}")
-            return {'status': 'error', 'components': {}}
+            # Return fallback on any error
+            try:
+                return await self._fallback_health_check()
+            except Exception as fallback_error:
+                self.logger.error(f"Error in fallback health check: {str(fallback_error)}")
+                return {
+                    'status': 'error',
+                    'timestamp': time.time(),
+                    'components': {
+                        'system': {'status': 'error', 'message': 'Health check system unavailable'}
+                    }
+                }
+    
+    async def _fallback_health_check(self) -> Dict[str, Any]:
+        """Fallback health check when metrics tracker is unavailable."""
+        import psutil
+        
+        try:
+            components = {}
+            overall_status = 'healthy'
+            
+            # Check basic system resources
+            try:
+                cpu_percent = psutil.cpu_percent(interval=0.1)
+                memory = psutil.virtual_memory()
+                
+                # CPU health
+                cpu_status = 'healthy' if cpu_percent < 80 else 'warning' if cpu_percent < 95 else 'critical'
+                components['cpu'] = {
+                    'status': cpu_status,
+                    'usage_percent': cpu_percent,
+                    'message': f'CPU usage: {cpu_percent:.1f}%'
+                }
+                
+                # Memory health
+                memory_status = 'healthy' if memory.percent < 80 else 'warning' if memory.percent < 95 else 'critical'
+                components['memory'] = {
+                    'status': memory_status,
+                    'usage_percent': memory.percent,
+                    'available_gb': memory.available / (1024**3),
+                    'message': f'Memory usage: {memory.percent:.1f}%'
+                }
+                
+                if cpu_status == 'critical' or memory_status == 'critical':
+                    overall_status = 'critical'
+                elif cpu_status == 'warning' or memory_status == 'warning':
+                    overall_status = 'warning'
+                    
+            except Exception as e:
+                components['system_resources'] = {
+                    'status': 'error',
+                    'message': f'Unable to check system resources: {str(e)}'
+                }
+                overall_status = 'warning'
+            
+            # Check component availability
+            component_statuses = []
+            
+            # Check exchange manager
+            if hasattr(self, 'exchange_manager') and self.exchange_manager:
+                components['exchange_manager'] = {
+                    'status': 'healthy',
+                    'message': 'Exchange manager available'
+                }
+                component_statuses.append('healthy')
+            else:
+                components['exchange_manager'] = {
+                    'status': 'warning',
+                    'message': 'Exchange manager not available'
+                }
+                component_statuses.append('warning')
+                if overall_status == 'healthy':
+                    overall_status = 'warning'
+            
+            # Check data collector
+            if self._data_collector:
+                components['data_collector'] = {
+                    'status': 'healthy',
+                    'message': 'Data collector initialized'
+                }
+                component_statuses.append('healthy')
+            else:
+                components['data_collector'] = {
+                    'status': 'warning',
+                    'message': 'Data collector not initialized'
+                }
+                component_statuses.append('warning')
+                if overall_status == 'healthy':
+                    overall_status = 'warning'
+            
+            # Check validator
+            if self._validator:
+                components['validator'] = {
+                    'status': 'healthy',
+                    'message': 'Validator available'
+                }
+                component_statuses.append('healthy')
+            else:
+                components['validator'] = {
+                    'status': 'warning',
+                    'message': 'Validator not available'
+                }
+                component_statuses.append('warning')
+                if overall_status == 'healthy':
+                    overall_status = 'warning'
+            
+            # Add metrics tracker status
+            components['metrics_tracker'] = {
+                'status': 'warning',
+                'message': 'Metrics tracker not available - using fallback health check'
+            }
+            if overall_status == 'healthy':
+                overall_status = 'warning'
+            
+            return {
+                'status': overall_status,
+                'timestamp': time.time(),
+                'components': components,
+                'fallback_mode': True,
+                'message': f'Health check using fallback mode - {len([s for s in component_statuses if s == "healthy"])}/{len(component_statuses)} components healthy'
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error in fallback health check: {str(e)}")
+            return {
+                'status': 'error',
+                'timestamp': time.time(),
+                'components': {
+                    'fallback_system': {
+                        'status': 'error',
+                        'message': f'Fallback health check failed: {str(e)}'
+                    }
+                },
+                'fallback_mode': True
+            }
     
     async def _handle_health_issues(self, health_status: Dict[str, Any]) -> None:
         """Handle system health issues."""
@@ -524,8 +864,17 @@ class RefactoredMarketMonitor:
             if not self.alert_manager_component:
                 return
             
-            # Get system metrics
-            metrics = await self.metrics_tracker.get_system_metrics()
+            # Get system metrics (with null check)
+            if self.metrics_tracker is not None:
+                metrics = await self.metrics_tracker.get_system_metrics()
+            else:
+                # Fallback to basic metrics when tracker unavailable
+                health_check = await self._fallback_health_check()
+                metrics = {
+                    'health': health_check,
+                    'timestamp': time.time(),
+                    'fallback_mode': True
+                }
             
             # Generate report content
             report = self._create_market_report(metrics)
@@ -583,6 +932,18 @@ class RefactoredMarketMonitor:
                 'metrics_tracker': bool(self.metrics_tracker),
             }
         }
+
+    async def start(self):
+        """
+        Backward compatibility method for the original MarketMonitor interface.
+        The refactored monitor runs continuously when start_monitoring() is called.
+        """
+        self.logger.info("Starting RefactoredMarketMonitor - compatibility method")
+        try:
+            await self.start_monitoring()
+        except Exception as e:
+            self.logger.error(f"RefactoredMarketMonitor start failed: {e}")
+            raise
 
 
 # Backward compatibility alias

@@ -537,31 +537,72 @@ class MarketDataValidator(MonitoringComponent, DataValidator):
         Returns:
             bool: True if valid
         """
-        # Handle nested structures
-        if isinstance(trades_data, dict):
-            if 'result' in trades_data and isinstance(trades_data['result'], dict):
-                if 'list' in trades_data['result']:
-                    trades_data = trades_data['result']['list']
-            elif 'list' in trades_data:
-                trades_data = trades_data['list']
-            elif 'result' in trades_data and isinstance(trades_data['result'], list):
-                trades_data = trades_data['result']
-        
-        if not isinstance(trades_data, (list, pd.DataFrame)):
-            self.logger.error(f"Trades data must be a list or DataFrame, got {type(trades_data)}")
-            return False
-        
-        # Empty trades are valid
-        if isinstance(trades_data, list) and len(trades_data) == 0:
-            return True
-        if isinstance(trades_data, pd.DataFrame) and trades_data.empty:
-            return True
-        
-        # Validate structure
-        if isinstance(trades_data, list):
-            return self._validate_trades_list(trades_data)
-        else:
-            return self._validate_trades_dataframe(trades_data)
+        try:
+            # Handle nested structures from different exchange APIs
+            original_data = trades_data
+            if isinstance(trades_data, dict):
+                self.logger.debug(f"Processing nested trades structure. Keys: {list(trades_data.keys())}")
+                
+                # Handle Bybit API format: {result: {list: [trades]}}
+                if 'result' in trades_data and isinstance(trades_data['result'], dict):
+                    if 'list' in trades_data['result']:
+                        trades_data = trades_data['result']['list']
+                        self.logger.debug(f"Extracted {len(trades_data)} trades from result.list structure")
+                # Handle format: {list: [trades]}
+                elif 'list' in trades_data:
+                    trades_data = trades_data['list']
+                    self.logger.debug(f"Extracted {len(trades_data)} trades from list structure")
+                # Handle format: {result: [trades]}
+                elif 'result' in trades_data and isinstance(trades_data['result'], list):
+                    trades_data = trades_data['result']
+                    self.logger.debug(f"Extracted {len(trades_data)} trades from result structure")
+                else:
+                    self.logger.warning(f"Unknown trades dict structure, keys: {list(trades_data.keys())}")
+                    if self.strict_mode:
+                        return False
+            
+            # Validate data type
+            if not isinstance(trades_data, (list, pd.DataFrame)):
+                self.logger.error(f"Trades data must be a list or DataFrame, got {type(trades_data)}. Original structure: {type(original_data)}")
+                return False
+            
+            # Empty trades are considered valid
+            if isinstance(trades_data, list) and len(trades_data) == 0:
+                self.logger.debug("Empty trades list - considered valid")
+                return True
+            if isinstance(trades_data, pd.DataFrame) and trades_data.empty:
+                self.logger.debug("Empty trades DataFrame - considered valid")
+                return True
+            
+            # Log validation attempt
+            data_type = "DataFrame" if isinstance(trades_data, pd.DataFrame) else "list"
+            count = len(trades_data)
+            self.logger.debug(f"Validating trades {data_type} with {count} entries")
+            
+            # Validate structure based on data type
+            if isinstance(trades_data, list):
+                result = self._validate_trades_list(trades_data)
+                if result:
+                    self.logger.debug(f"Trades list validation passed for {count} trades")
+                else:
+                    self.logger.warning(f"Trades list validation failed for {count} trades")
+                return result
+            else:
+                result = self._validate_trades_dataframe(trades_data)
+                if result:
+                    self.logger.debug(f"Trades DataFrame validation passed for {count} trades")
+                else:
+                    self.logger.warning(f"Trades DataFrame validation failed for {count} trades")
+                return result
+                
+        except Exception as e:
+            self.logger.error(f"Exception during trades validation: {str(e)}")
+            self.logger.debug(f"Trades data type: {type(trades_data)}, Original data type: {type(original_data) if 'original_data' in locals() else 'Unknown'}")
+            if self.strict_mode:
+                return False
+            else:
+                self.logger.warning("Continuing with validation failure in non-strict mode")
+                return True
     
     def _validate_trades_list(self, trades: List) -> bool:
         """Validate trades in list format.
@@ -578,26 +619,65 @@ class MarketDataValidator(MonitoringComponent, DataValidator):
         # Check first trade structure
         first_trade = trades[0]
         
-        required_fields = []
         if isinstance(first_trade, dict):
-            # Check for required fields in dict format
-            required_fields = ['price', 'timestamp']
-            size_fields = ['amount', 'size', 'quantity', 'qty']
+            # Check for price field (always required)
+            price_fields = ['price', 'p']
+            has_price = any(field in first_trade for field in price_fields)
             
-            has_required = all(field in first_trade for field in required_fields)
+            # Check for timestamp field (multiple possible names)
+            timestamp_fields = ['timestamp', 'time', 'T', 'datetime']
+            has_timestamp = any(field in first_trade for field in timestamp_fields)
+            
+            # Check for size/amount field (multiple possible names) 
+            size_fields = ['amount', 'size', 'quantity', 'qty', 'v']
             has_size = any(field in first_trade for field in size_fields)
             
-            if not (has_required and has_size):
-                self.logger.error("Trades missing required fields")
-                return False
+            # Log detailed field analysis for debugging
+            missing_fields = []
+            if not has_price:
+                missing_fields.append("price field (tried: price, p)")
+            if not has_timestamp:
+                missing_fields.append("timestamp field (tried: timestamp, time, T, datetime)")
+            if not has_size:
+                missing_fields.append("size field (tried: amount, size, quantity, qty, v)")
+            
+            if missing_fields:
+                if self.strict_mode:
+                    self.logger.error(f"Trades missing required fields: {', '.join(missing_fields)}")
+                    self.logger.debug(f"Available fields in first trade: {list(first_trade.keys())}")
+                    return False
+                else:
+                    self.logger.warning(f"Trades missing some fields: {', '.join(missing_fields)} - continuing in non-strict mode")
+                    self.logger.debug(f"Available fields in first trade: {list(first_trade.keys())}")
+                    # In non-strict mode, require at minimum price field
+                    if not has_price:
+                        self.logger.error("Price field is absolutely required for trade validation")
+                        return False
+                    
+                    # If we only have price field, we can continue
+                    if has_price and not (has_timestamp or has_size):
+                        self.logger.info("Trades have price field but missing timestamp/size - allowing in non-strict mode")
         
         # Validate sample trades
         for i, trade in enumerate(trades[:10]):
             if isinstance(trade, dict):
-                price = trade.get('price', 0)
-                if price <= 0:
-                    self.logger.error(f"Invalid trade price at index {i}: {price}")
-                    return False
+                # Try to get price from various field names
+                price = None
+                for price_field in ['price', 'p']:
+                    if price_field in trade:
+                        try:
+                            price = float(trade[price_field])
+                            break
+                        except (ValueError, TypeError):
+                            continue
+                
+                if price is None or price <= 0:
+                    if self.strict_mode:
+                        self.logger.error(f"Invalid or missing trade price at index {i}: {price}")
+                        return False
+                    else:
+                        self.logger.warning(f"Invalid trade price at index {i}: {price} - skipping validation")
+                        continue
         
         return True
     
@@ -610,21 +690,66 @@ class MarketDataValidator(MonitoringComponent, DataValidator):
         Returns:
             bool: True if valid
         """
-        # Check required columns
-        required_columns = ['price', 'timestamp']
-        size_columns = ['amount', 'size', 'quantity', 'qty']
+        # Check for price columns (multiple possible names)
+        price_columns = ['price', 'p']
+        price_col = None
+        for col in price_columns:
+            if col in df.columns:
+                price_col = col
+                break
         
-        missing_required = [col for col in required_columns if col not in df.columns]
-        has_size = any(col in df.columns for col in size_columns)
+        # Check for timestamp columns (multiple possible names)
+        timestamp_columns = ['timestamp', 'time', 'T', 'datetime']
+        timestamp_col = None
+        for col in timestamp_columns:
+            if col in df.columns:
+                timestamp_col = col
+                break
         
-        if missing_required or not has_size:
-            self.logger.error(f"Trades DataFrame missing required columns")
-            return False
+        # Check for size columns (multiple possible names)
+        size_columns = ['amount', 'size', 'quantity', 'qty', 'v']
+        size_col = None
+        for col in size_columns:
+            if col in df.columns:
+                size_col = col
+                break
         
-        # Check for invalid prices
-        if (df['price'] <= 0).any():
-            self.logger.error("Found trades with invalid prices")
-            return False
+        # Log detailed column analysis for debugging
+        missing_types = []
+        if not price_col:
+            missing_types.append(f"price column (tried: {', '.join(price_columns)})")
+        if not timestamp_col:
+            missing_types.append(f"timestamp column (tried: {', '.join(timestamp_columns)})")
+        if not size_col:
+            missing_types.append(f"size column (tried: {', '.join(size_columns)})")
+        
+        if missing_types:
+            if self.strict_mode:
+                self.logger.error(f"Trades DataFrame missing required columns: {', '.join(missing_types)}")
+                self.logger.debug(f"Available columns: {list(df.columns)}")
+                return False
+            else:
+                self.logger.warning(f"Trades DataFrame missing some columns: {', '.join(missing_types)} - continuing in non-strict mode")
+                self.logger.debug(f"Available columns: {list(df.columns)}")
+                # In non-strict mode, require at minimum price column
+                if not price_col:
+                    self.logger.error("Price column is absolutely required for trade DataFrame validation")
+                    return False
+        
+        # Check for invalid prices if we have a price column
+        if price_col:
+            try:
+                invalid_prices = (df[price_col] <= 0)
+                if invalid_prices.any():
+                    num_invalid = invalid_prices.sum()
+                    if self.strict_mode:
+                        self.logger.error(f"Found {num_invalid} trades with invalid prices in column '{price_col}'")
+                        return False
+                    else:
+                        self.logger.warning(f"Found {num_invalid} trades with invalid prices in column '{price_col}' - continuing in non-strict mode")
+            except Exception as e:
+                self.logger.error(f"Error validating prices in column '{price_col}': {str(e)}")
+                return False
         
         return True
     

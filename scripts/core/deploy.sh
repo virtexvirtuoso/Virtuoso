@@ -1,5 +1,64 @@
 #!/bin/bash
-# Master Deployment Script - Unified deployment interface
+
+#############################################################################
+# Script: deploy.sh
+# Purpose: Master Deployment Script - Unified deployment interface
+# Author: Virtuoso CCXT Development Team
+# Version: 1.0.0
+# Created: 2025-08-28
+# Modified: 2025-08-28
+#############################################################################
+#
+# Description:
+#   Master deployment script that provides unified deployment interface for local,
+#   staging, and production environments. Handles prerequisites checking, environment
+#   validation, and safe deployment with rollback capabilities.
+#
+# Dependencies:
+#   - Bash 4.0+
+#   - rsync
+#   - ssh
+#   - git
+#   - systemctl
+#   - Access to project directory structure
+#
+# Usage:
+#   ./deploy.sh [options]
+#   
+#   Examples:
+#     ./deploy.sh
+#     ./deploy.sh --verbose
+#     ./deploy.sh --dry-run
+#
+# Options:
+#   -h, --help       Show help message
+#   -v, --verbose    Enable verbose output
+#   -d, --dry-run    Show what would be done
+#
+# Environment Variables:
+#   PROJECT_ROOT     Trading system root directory
+#   VPS_HOST         VPS hostname (default: 45.77.40.77)
+#   VPS_USER         VPS username (default: linuxuser)
+#
+# Output:
+#   - Console output with operation status
+#   - Log messages with timestamps
+#   - Success/failure indicators
+#
+# Exit Codes:
+#   0 - Success
+#   1 - Deployment failed
+#   2 - Invalid arguments
+#   3 - Connection error
+#   4 - Service start failed
+#
+# Notes:
+#   - Run from project root directory
+#   - Requires proper SSH key configuration for VPS operations
+#   - Creates backups before destructive operations
+#
+#############################################################################
+
 # Part of Phase 1: Emergency Stabilization
 
 set -e

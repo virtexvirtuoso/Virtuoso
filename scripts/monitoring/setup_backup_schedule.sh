@@ -1,5 +1,62 @@
 #!/bin/bash
-# Setup Automated Backup Schedule - Part of Phase 1: Emergency Stabilization
+
+#############################################################################
+# Script: setup_backup_schedule.sh
+# Purpose: Setup Automated Backup Schedule - Part of Phase 1: Emergency Stabilization
+# Author: Virtuoso CCXT Development Team
+# Version: 1.0.0
+# Created: 2025-08-28
+# Modified: 2025-08-28
+#############################################################################
+#
+# Description:
+#   Automated backup schedule setup script for the Virtuoso trading system.
+#   Configures LaunchAgent for macOS and cron jobs for regular backup operations
+#   with proper error handling and validation.
+#
+# Dependencies:
+#   - Bash 4.0+
+#   - systemctl
+#   - mkdir
+#   - chmod
+#   - Access to project directory structure
+#
+# Usage:
+#   ./setup_backup_schedule.sh [options]
+#   
+#   Examples:
+#     ./setup_backup_schedule.sh
+#     ./setup_backup_schedule.sh --verbose
+#     ./setup_backup_schedule.sh --dry-run
+#
+# Options:
+#   -h, --help       Show help message
+#   -v, --verbose    Enable verbose output
+#   -d, --dry-run    Show what would be done
+#
+# Environment Variables:
+#   PROJECT_ROOT     Trading system root directory
+#   VPS_HOST         VPS hostname (default: 45.77.40.77)
+#   VPS_USER         VPS username (default: linuxuser)
+#
+# Output:
+#   - Console output with operation status
+#   - Log messages with timestamps
+#   - Success/failure indicators
+#
+# Exit Codes:
+#   0 - Setup completed successfully
+#   1 - Setup failed
+#   2 - Permission denied
+#   3 - Dependencies missing
+#   4 - Configuration error
+#
+# Notes:
+#   - Run from project root directory
+#   - Requires proper SSH key configuration for VPS operations
+#   - Creates backups before destructive operations
+#
+#############################################################################
 
 set -e
 

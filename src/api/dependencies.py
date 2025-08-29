@@ -23,16 +23,13 @@ def get_container(request: Request) -> Optional[ServiceContainer]:
     return getattr(request.app.state, 'container', None)
 
 
-def get_alert_service(request: Request) -> Optional[IAlertService]:
-    """Get alert service from DI container."""
+async def get_alert_service(request: Request) -> Optional[IAlertService]:
+    """Get alert service from DI container (async)."""
     try:
         container = get_container(request)
         if container:
-            # Use asyncio to get the service
-            import asyncio
             try:
-                loop = asyncio.get_event_loop()
-                return loop.run_until_complete(container.get_service(IAlertService))
+                return await container.get_service(IAlertService)
             except Exception:
                 # Fallback to app state
                 return getattr(request.app.state, 'alert_manager', None)
@@ -42,176 +39,8 @@ def get_alert_service(request: Request) -> Optional[IAlertService]:
         return getattr(request.app.state, 'alert_manager', None)
 
 
-def get_metrics_service(request: Request) -> Optional[IMetricsService]:
-    """Get metrics service from DI container."""
-    try:
-        container = get_container(request)
-        if container:
-            import asyncio
-            try:
-                loop = asyncio.get_event_loop()
-                return loop.run_until_complete(container.get_service(IMetricsService))
-            except Exception:
-                return getattr(request.app.state, 'metrics_manager', None)
-        return getattr(request.app.state, 'metrics_manager', None)
-    except Exception as e:
-        logger.warning(f"Could not get metrics service: {e}")
-        return getattr(request.app.state, 'metrics_manager', None)
-
-
-def get_config_service(request: Request) -> Optional[IConfigService]:
-    """Get config service from DI container."""
-    try:
-        container = get_container(request)
-        if container:
-            import asyncio
-            try:
-                loop = asyncio.get_event_loop()
-                return loop.run_until_complete(container.get_service(IConfigService))
-            except Exception:
-                return getattr(request.app.state, 'config_manager', None)
-        return getattr(request.app.state, 'config_manager', None)
-    except Exception as e:
-        logger.warning(f"Could not get config service: {e}")
-        return getattr(request.app.state, 'config_manager', None)
-
-
-def get_interpretation_service(request: Request) -> Optional[IInterpretationService]:
-    """Get interpretation service from DI container."""
-    try:
-        container = get_container(request)
-        if container:
-            import asyncio
-            try:
-                loop = asyncio.get_event_loop()
-                return loop.run_until_complete(container.get_service(IInterpretationService))
-            except Exception:
-                return None
-        return None
-    except Exception as e:
-        logger.warning(f"Could not get interpretation service: {e}")
-        return None
-
-
-def get_validation_service(request: Request) -> Optional[IValidationService]:
-    """Get validation service from DI container."""
-    try:
-        container = get_container(request)
-        if container:
-            import asyncio
-            try:
-                loop = asyncio.get_event_loop()
-                return loop.run_until_complete(container.get_service(IValidationService))
-            except Exception:
-                return None
-        return None
-    except Exception as e:
-        logger.warning(f"Could not get validation service: {e}")
-        return None
-
-
-def get_formatting_service(request: Request) -> Optional[IFormattingService]:
-    """Get formatting service from DI container."""
-    try:
-        container = get_container(request)
-        if container:
-            import asyncio
-            try:
-                loop = asyncio.get_event_loop()
-                return loop.run_until_complete(container.get_service(IFormattingService))
-            except Exception:
-                return None
-        return None
-    except Exception as e:
-        logger.warning(f"Could not get formatting service: {e}")
-        return None
-
-
-# Legacy compatibility functions
-def get_config_manager(request: Request):
-    """Legacy compatibility function for config manager."""
-    config_service = get_config_service(request)
-    if config_service:
-        return config_service
-    # Fallback to direct app state access
-    return getattr(request.app.state, 'config_manager', None)
-
-
-def get_alert_manager(request: Request):
-    """Legacy compatibility function for alert manager."""
-    alert_service = get_alert_service(request)
-    if alert_service:
-        return alert_service
-    return getattr(request.app.state, 'alert_manager', None)
-
-
-def get_metrics_manager(request: Request):
-    """Legacy compatibility function for metrics manager."""
-    metrics_service = get_metrics_service(request)
-    if metrics_service:
-        return metrics_service
-    return getattr(request.app.state, 'metrics_manager', None)
-
-
-# Optional dependency functions (don't raise exceptions if not available)
-def optional_alert_service(request: Request) -> Optional[IAlertService]:
-    """Get optional alert service."""
-    return get_alert_service(request)
-
-
-def optional_metrics_service(request: Request) -> Optional[IMetricsService]:
-    """Get optional metrics service."""
-    return get_metrics_service(request)
-
-
-def optional_config_service(request: Request) -> Optional[IConfigService]:
-    """Get optional config service."""
-    return get_config_service(request)
-
-
-# Required dependency functions (raise HTTPException if not available)
-def required_alert_service(request: Request) -> IAlertService:
-    """Get required alert service."""
-    service = get_alert_service(request)
-    if not service:
-        raise HTTPException(status_code=503, detail="Alert service not available")
-    return service
-
-
-def required_metrics_service(request: Request) -> IMetricsService:
-    """Get required metrics service."""
-    service = get_metrics_service(request)
-    if not service:
-        raise HTTPException(status_code=503, detail="Metrics service not available")
-    return service
-
-
-def required_config_service(request: Request) -> IConfigService:
-    """Get required config service."""
-    service = get_config_service(request)
-    if not service:
-        raise HTTPException(status_code=503, detail="Config service not available")
-    return service
-
-
-# Async versions for async routes
-async def get_alert_service_async(request: Request) -> Optional[IAlertService]:
-    """Get alert service from DI container (async version)."""
-    try:
-        container = get_container(request)
-        if container:
-            try:
-                return await container.get_service(IAlertService)
-            except Exception:
-                return getattr(request.app.state, 'alert_manager', None)
-        return getattr(request.app.state, 'alert_manager', None)
-    except Exception as e:
-        logger.warning(f"Could not get alert service: {e}")
-        return getattr(request.app.state, 'alert_manager', None)
-
-
-async def get_metrics_service_async(request: Request) -> Optional[IMetricsService]:
-    """Get metrics service from DI container (async version)."""
+async def get_metrics_service(request: Request) -> Optional[IMetricsService]:
+    """Get metrics service from DI container (async)."""
     try:
         container = get_container(request)
         if container:
@@ -225,8 +54,8 @@ async def get_metrics_service_async(request: Request) -> Optional[IMetricsServic
         return getattr(request.app.state, 'metrics_manager', None)
 
 
-async def get_config_service_async(request: Request) -> Optional[IConfigService]:
-    """Get config service from DI container (async version)."""
+async def get_config_service(request: Request) -> Optional[IConfigService]:
+    """Get config service from DI container (async)."""
     try:
         container = get_container(request)
         if container:
@@ -238,6 +67,121 @@ async def get_config_service_async(request: Request) -> Optional[IConfigService]
     except Exception as e:
         logger.warning(f"Could not get config service: {e}")
         return getattr(request.app.state, 'config_manager', None)
+
+
+async def get_interpretation_service(request: Request) -> Optional[IInterpretationService]:
+    """Get interpretation service from DI container (async)."""
+    try:
+        container = get_container(request)
+        if container:
+            try:
+                return await container.get_service(IInterpretationService)
+            except Exception:
+                return None
+        return None
+    except Exception as e:
+        logger.warning(f"Could not get interpretation service: {e}")
+        return None
+
+
+async def get_validation_service(request: Request) -> Optional[IValidationService]:
+    """Get validation service from DI container (async)."""
+    try:
+        container = get_container(request)
+        if container:
+            try:
+                return await container.get_service(IValidationService)
+            except Exception:
+                return None
+        return None
+    except Exception as e:
+        logger.warning(f"Could not get validation service: {e}")
+        return None
+
+
+async def get_formatting_service(request: Request) -> Optional[IFormattingService]:
+    """Get formatting service from DI container (async)."""
+    try:
+        container = get_container(request)
+        if container:
+            try:
+                return await container.get_service(IFormattingService)
+            except Exception:
+                return None
+        return None
+    except Exception as e:
+        logger.warning(f"Could not get formatting service: {e}")
+        return None
+
+
+# Legacy compatibility functions (async)
+async def get_config_manager(request: Request):
+    """Legacy compatibility function for config manager (async)."""
+    config_service = await get_config_service(request)
+    if config_service:
+        return config_service
+    # Fallback to direct app state access
+    return getattr(request.app.state, 'config_manager', None)
+
+
+async def get_alert_manager(request: Request):
+    """Legacy compatibility function for alert manager (async)."""
+    alert_service = await get_alert_service(request)
+    if alert_service:
+        return alert_service
+    return getattr(request.app.state, 'alert_manager', None)
+
+
+async def get_metrics_manager(request: Request):
+    """Legacy compatibility function for metrics manager (async)."""
+    metrics_service = await get_metrics_service(request)
+    if metrics_service:
+        return metrics_service
+    return getattr(request.app.state, 'metrics_manager', None)
+
+
+# Optional dependency functions (don't raise exceptions if not available)
+async def optional_alert_service(request: Request) -> Optional[IAlertService]:
+    """Get optional alert service (async)."""
+    return await get_alert_service(request)
+
+
+async def optional_metrics_service(request: Request) -> Optional[IMetricsService]:
+    """Get optional metrics service (async)."""
+    return await get_metrics_service(request)
+
+
+async def optional_config_service(request: Request) -> Optional[IConfigService]:
+    """Get optional config service (async)."""
+    return await get_config_service(request)
+
+
+# Required dependency functions (raise HTTPException if not available)
+async def required_alert_service(request: Request) -> IAlertService:
+    """Get required alert service (async)."""
+    service = await get_alert_service(request)
+    if not service:
+        raise HTTPException(status_code=503, detail="Alert service not available")
+    return service
+
+
+async def required_metrics_service(request: Request) -> IMetricsService:
+    """Get required metrics service (async)."""
+    service = await get_metrics_service(request)
+    if not service:
+        raise HTTPException(status_code=503, detail="Metrics service not available")
+    return service
+
+
+async def required_config_service(request: Request) -> IConfigService:
+    """Get required config service (async)."""
+    service = await get_config_service(request)
+    if not service:
+        raise HTTPException(status_code=503, detail="Config service not available")
+    return service
+
+
+# Note: All dependency functions are now async by default
 
 
 # Dependency factory for FastAPI Depends()

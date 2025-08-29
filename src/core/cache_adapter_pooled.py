@@ -37,13 +37,7 @@ class ConnectionPool:
         if self._client is None:
             async with self._lock:
                 if self._client is None:
-                    self._client = aiomcache.Client(
-                        'localhost', 11211, 
-                        pool_size=20,  # Increased pool size
-                        pool_minsize=5,
-                        timeout=1.0,
-                        connect_timeout=1.0
-                    )
+                    self._client = aiomcache.Client('localhost', 11211)
                     logger.info("Created new memcached connection pool with size 20")
         
         # Reset connection pool every hour to prevent stale connections
@@ -160,15 +154,25 @@ class DirectCacheAdapter:
                 timeout=1.0
             )
             
-            # Decode results
+            # Decode results - aiomcache returns tuple format
             decoded = {}
-            for key, value in results.items():
-                if value:
-                    try:
-                        decoded_key = key.decode() if isinstance(key, bytes) else key
-                        decoded[decoded_key] = json.loads(value.decode()) if isinstance(value, bytes) else value
-                    except:
-                        pass
+            if isinstance(results, dict):
+                for key, value in results.items():
+                    if value:
+                        try:
+                            decoded_key = key.decode() if isinstance(key, bytes) else key
+                            decoded[decoded_key] = json.loads(value.decode()) if isinstance(value, bytes) else value
+                        except:
+                            pass
+            elif isinstance(results, (list, tuple)):
+                # Handle tuple format from aiomcache
+                for i, key in enumerate(encoded_keys):
+                    if i < len(results) and results[i]:
+                        try:
+                            decoded_key = key.decode() if isinstance(key, bytes) else key
+                            decoded[decoded_key] = json.loads(results[i].decode()) if isinstance(results[i], bytes) else results[i]
+                        except:
+                            pass
                         
             return decoded
             

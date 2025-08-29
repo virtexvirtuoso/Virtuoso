@@ -13,6 +13,24 @@ import asyncio
 
 
 @runtime_checkable
+class IDisposable(Protocol):
+    """Interface for services that require cleanup/disposal of resources."""
+    
+    async def dispose(self) -> None:
+        """Dispose of resources and cleanup."""
+        ...
+
+
+@runtime_checkable  
+class IAsyncDisposable(Protocol):
+    """Interface for services that require async cleanup/disposal of resources."""
+    
+    async def dispose_async(self) -> None:
+        """Dispose of resources and cleanup asynchronously."""
+        ...
+
+
+@runtime_checkable
 class IAlertService(Protocol):
     """Interface for alert management services."""
     
@@ -335,6 +353,211 @@ class ServiceHealth:
     metadata: Optional[Dict[str, Any]] = None
 
 
+# Additional Core Service Interfaces (Priority 1)
+
+@runtime_checkable
+class IMarketDataService(Protocol):
+    """Interface for market data management services."""
+    
+    async def get_market_data(self, symbol: str, timeframe: str, limit: Optional[int] = None) -> Dict[str, Any]:
+        """Get market data for symbol and timeframe."""
+        ...
+    
+    async def get_real_time_data(self, symbols: List[str]) -> Dict[str, Any]:
+        """Get real-time data for multiple symbols."""
+        ...
+    
+    async def get_historical_data(self, symbol: str, timeframe: str, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Get historical market data."""
+        ...
+    
+    def get_supported_symbols(self) -> List[str]:
+        """Get list of supported trading symbols."""
+        ...
+    
+    def get_supported_timeframes(self) -> List[str]:
+        """Get list of supported timeframes."""
+        ...
+    
+    async def validate_market_data(self, data: Dict[str, Any]) -> bool:
+        """Validate market data structure and completeness."""
+        ...
+
+
+@runtime_checkable
+class IExchangeManagerService(Protocol):
+    """Interface for exchange management services."""
+    
+    async def get_primary_exchange(self) -> Any:
+        """Get the primary exchange instance."""
+        ...
+    
+    async def get_exchange(self, name: str) -> Any:
+        """Get exchange instance by name."""
+        ...
+    
+    def get_available_exchanges(self) -> List[str]:
+        """Get list of available exchange names."""
+        ...
+    
+    async def initialize(self) -> None:
+        """Initialize exchange connections."""
+        ...
+    
+    async def shutdown(self) -> None:
+        """Shutdown all exchange connections."""
+        ...
+    
+    def get_exchange_status(self, name: Optional[str] = None) -> Dict[str, Any]:
+        """Get status of exchanges."""
+        ...
+
+
+@runtime_checkable
+class IMonitoringService(Protocol):
+    """Interface for market monitoring services."""
+    
+    async def start_monitoring(self, symbols: List[str]) -> None:
+        """Start monitoring specified symbols."""
+        ...
+    
+    async def stop_monitoring(self) -> None:
+        """Stop all monitoring activities."""
+        ...
+    
+    def get_monitoring_status(self) -> Dict[str, Any]:
+        """Get current monitoring status."""
+        ...
+    
+    async def add_symbol(self, symbol: str) -> None:
+        """Add symbol to monitoring list."""
+        ...
+    
+    async def remove_symbol(self, symbol: str) -> None:
+        """Remove symbol from monitoring list."""
+        ...
+    
+    def get_monitored_symbols(self) -> List[str]:
+        """Get list of currently monitored symbols."""
+        ...
+    
+    async def get_monitoring_data(self, symbol: Optional[str] = None) -> Dict[str, Any]:
+        """Get monitoring data for symbols."""
+        ...
+
+
+@runtime_checkable
+class ISignalService(Protocol):
+    """Interface for signal generation and processing services."""
+    
+    async def generate_signals(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Generate trading signals from market data."""
+        ...
+    
+    async def validate_signal(self, signal: Dict[str, Any]) -> bool:
+        """Validate signal structure and data."""
+        ...
+    
+    def get_signal_config(self) -> Dict[str, Any]:
+        """Get signal generation configuration."""
+        ...
+    
+    def update_signal_config(self, config: Dict[str, Any]) -> None:
+        """Update signal generation configuration."""
+        ...
+    
+    async def get_signal_history(self, symbol: str, limit: int = 100) -> List[Dict[str, Any]]:
+        """Get signal generation history."""
+        ...
+    
+    def get_signal_statistics(self) -> Dict[str, Any]:
+        """Get signal generation statistics."""
+        ...
+
+
+@runtime_checkable
+class IWebSocketService(Protocol):
+    """Interface for WebSocket management services."""
+    
+    async def connect(self, streams: List[str]) -> None:
+        """Connect to WebSocket streams."""
+        ...
+    
+    async def disconnect(self) -> None:
+        """Disconnect from WebSocket."""
+        ...
+    
+    async def subscribe(self, stream: str) -> None:
+        """Subscribe to a WebSocket stream."""
+        ...
+    
+    async def unsubscribe(self, stream: str) -> None:
+        """Unsubscribe from a WebSocket stream."""
+        ...
+    
+    def is_connected(self) -> bool:
+        """Check if WebSocket is connected."""
+        ...
+    
+    def get_active_streams(self) -> List[str]:
+        """Get list of active streams."""
+        ...
+    
+    async def send_message(self, message: Dict[str, Any]) -> None:
+        """Send message through WebSocket."""
+        ...
+
+
+@runtime_checkable
+class IHealthService(Protocol):
+    """Interface for health monitoring services."""
+    
+    async def check_system_health(self) -> Dict[str, Any]:
+        """Check overall system health."""
+        ...
+    
+    async def check_component_health(self, component: str) -> Dict[str, Any]:
+        """Check health of specific component."""
+        ...
+    
+    def get_health_status(self) -> Dict[str, Any]:
+        """Get current health status."""
+        ...
+    
+    def register_health_check(self, name: str, check_func: Any) -> None:
+        """Register a health check function."""
+        ...
+    
+    async def run_diagnostics(self) -> Dict[str, Any]:
+        """Run comprehensive system diagnostics."""
+        ...
+
+
+@runtime_checkable
+class IReportingService(Protocol):
+    """Interface for reporting and document generation services."""
+    
+    async def generate_report(self, report_type: str, data: Dict[str, Any], format: str = 'pdf') -> bytes:
+        """Generate report in specified format."""
+        ...
+    
+    def get_available_reports(self) -> List[str]:
+        """Get list of available report types."""
+        ...
+    
+    def get_report_config(self, report_type: str) -> Dict[str, Any]:
+        """Get configuration for report type."""
+        ...
+    
+    async def schedule_report(self, report_type: str, schedule: str, recipients: List[str]) -> str:
+        """Schedule recurring report generation."""
+        ...
+    
+    async def cancel_scheduled_report(self, schedule_id: str) -> None:
+        """Cancel scheduled report."""
+        ...
+
+
 # Export all interfaces for easy importing
 __all__ = [
     'IAlertService',
@@ -347,6 +570,13 @@ __all__ = [
     'IIndicatorService',
     'IAnalysisService',
     'IPortfolioService',
+    'IMarketDataService',
+    'IExchangeManagerService',
+    'IMonitoringService',
+    'ISignalService',
+    'IWebSocketService',
+    'IHealthService',
+    'IReportingService',
     'ValidationResult',
     'ServiceHealth'
 ]

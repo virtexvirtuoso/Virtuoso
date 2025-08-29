@@ -1,0 +1,128 @@
+# Logrotate configuration for Virtuoso CCXT Trading System
+# Optimized for 160GB SSD storage with aggressive rotation
+
+# Main application logs
+/home/linuxuser/trading/Virtuoso_ccxt/logs/*.log {
+    # Rotate daily to prevent large log files on SSD
+    daily
+    
+    # Keep 7 days of logs (1 week) - balance between debugging and storage
+    rotate 7
+    
+    # Compress rotated logs to save SSD space
+    compress
+    delaycompress
+    
+    # Don't rotate if empty
+    notifempty
+    
+    # Don't fail if log file is missing
+    missingok
+    
+    # Copy and truncate instead of moving (safer for active processes)
+    copytruncate
+    
+    # Set permissions for rotated logs
+    create 0644 linuxuser linuxuser
+    
+    # Size-based rotation as backup - rotate if over 100MB
+    size 100M
+    
+    # Post-rotation script to notify application
+    postrotate
+        /bin/kill -USR1 $(cat /var/run/virtuoso.pid 2>/dev/null) 2>/dev/null || true
+        # Clean up old temporary cache files
+        find /home/linuxuser/trading/Virtuoso_ccxt/tmp_cache -type f -mtime +1 -delete 2>/dev/null || true
+    endscript
+}
+
+# Trading system specific logs with higher rotation frequency
+/home/linuxuser/trading/Virtuoso_ccxt/logs/trading/*.log {
+    # High-frequency trading logs - rotate every 6 hours
+    daily
+    rotate 14
+    compress
+    delaycompress
+    notifempty
+    missingok
+    copytruncate
+    create 0644 linuxuser linuxuser
+    
+    # Smaller size limit for frequent trading data
+    size 50M
+    
+    # Immediate compression for trading logs
+    compresscmd /bin/gzip
+    compressoptions -9
+    compressext .gz
+}
+
+# Error logs - Keep longer for debugging
+/home/linuxuser/trading/Virtuoso_ccxt/logs/error/*.log {
+    daily
+    rotate 14
+    compress
+    delaycompress
+    notifempty
+    missingok
+    copytruncate
+    create 0644 linuxuser linuxuser
+    size 200M
+}
+
+# Performance logs - High rotation due to frequency
+/home/linuxuser/trading/Virtuoso_ccxt/logs/performance/*.log {
+    # Every 12 hours for performance logs
+    daily
+    rotate 7
+    compress
+    delaycompress
+    notifempty
+    missingok
+    copytruncate
+    create 0644 linuxuser linuxuser
+    size 25M
+    
+    # Clean up performance data older than 3 days
+    postrotate
+        find /home/linuxuser/trading/Virtuoso_ccxt/logs/performance -name "*.gz" -mtime +3 -delete 2>/dev/null || true
+    endscript
+}
+
+# Cache logs - Most aggressive rotation
+/home/linuxuser/trading/Virtuoso_ccxt/logs/cache/*.log {
+    daily
+    rotate 3
+    compress
+    delaycompress
+    notifempty
+    missingok
+    copytruncate
+    create 0644 linuxuser linuxuser
+    size 10M
+}
+
+# System monitoring logs
+/home/linuxuser/trading/Virtuoso_ccxt/logs/monitoring/*.log {
+    daily  
+    rotate 10
+    compress
+    delaycompress
+    notifempty
+    missingok
+    copytruncate
+    create 0644 linuxuser linuxuser
+    size 75M
+    
+    # Archive old monitoring data
+    postrotate
+        # Create monthly archive if it's the first of the month
+        if [ $(date +%d) = "01" ]; then
+            mkdir -p /home/linuxuser/trading/Virtuoso_ccxt/logs/archive/$(date +%Y%m)
+            find /home/linuxuser/trading/Virtuoso_ccxt/logs/monitoring -name "*.gz" -exec mv {} /home/linuxuser/trading/Virtuoso_ccxt/logs/archive/$(date +%Y%m)/ \;
+        fi
+        
+        # Clean up archives older than 6 months
+        find /home/linuxuser/trading/Virtuoso_ccxt/logs/archive -type d -mtime +180 -exec rm -rf {} \; 2>/dev/null || true
+    endscript
+}

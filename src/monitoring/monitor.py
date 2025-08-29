@@ -1,81 +1,13 @@
-"""
-Market Monitor Module - Real-time Market Data Monitoring System
+"""Market data monitoring system.
 
-This module implements the core market monitoring system for the Virtuoso Trading
-Platform, providing continuous surveillance of cryptocurrency markets across
-multiple exchanges and timeframes.
-
-The MarketMonitor orchestrates the entire data pipeline from raw market data
-collection through analysis, signal generation, and alert distribution. It serves
-as the central hub for all market-related operations.
-
-Key Features:
-- Multi-exchange market data aggregation (Bybit, Binance)
-- Real-time OHLCV data collection across multiple timeframes
-- Order book depth monitoring and analysis
-- Trade flow tracking and volume analysis
-- 6-dimensional confluence analysis integration
-- Signal generation based on configurable thresholds
-- Alert management and distribution
-- Performance metrics and health monitoring
-- WebSocket data streaming for real-time updates
-
-Architecture Components:
-- ExchangeManager: Handles exchange connections and API calls
-- ConfluenceAnalyzer: Performs 6-dimensional market analysis
-- SignalGenerator: Converts analysis into trading signals
-- AlertManager: Distributes alerts via configured channels
-- MetricsManager: Tracks performance and system metrics
-- ValidationService: Ensures data quality and integrity
+This module provides monitoring functionality for market data:
+- Performance monitoring
+- Data quality monitoring
+- System health monitoring
+- Alert generation
 
 Signal Generation Flow:
-1. MarketMonitor fetches raw market data from exchanges
-2. Data is validated and normalized for consistency
-3. ConfluenceAnalyzer performs 6-dimensional analysis
-4. Confluence scores are calculated (0-100 scale)
-5. SignalGenerator evaluates scores against thresholds
-6. Signals trigger alerts through AlertManager
-7. Dashboard and WebSocket clients receive updates
-
-Performance Characteristics:
-- Symbol Processing: Concurrent processing of 30+ symbols
-- Update Frequency: 1-5 second intervals per symbol
-- Analysis Latency: <100ms per symbol average
-- Memory Usage: ~500MB for 30 active symbols
-- Connection Pool: 20 concurrent connections per exchange
-
-Data Quality Monitoring:
-- Validates OHLCV data completeness
-- Checks for stale or missing data
-- Monitors exchange connectivity
-- Tracks API rate limits and throttling
-- Detects anomalous price movements
-
-Health Monitoring:
-- System resource usage (CPU, memory, network)
-- Exchange API health and latency
-- Cache hit rates and performance
-- Processing queue depths
-- Error rates and recovery metrics
-
-Configuration:
-- Symbol lists in config.yaml under trading.symbols
-- Timeframes in config.yaml under trading.timeframes
-- Analysis thresholds in config.yaml under analysis.confluence
-- Alert settings in config.yaml under alerts
-
-Usage:
-    monitor = MarketMonitor(
-        exchange_manager=exchange_manager,
-        confluence_analyzer=analyzer,
-        signal_generator=generator,
-        alert_manager=alert_manager
-    )
-    await monitor.start()
-    # Monitor runs continuously, processing symbols
-
-Author: Virtuoso Team
-Version: 2.0.0
+- The MarketMonitor analyzes market data and calculates confluence scores
 - When a score exceeds the buy threshold (60) or falls below the sell threshold (40),
   the MarketMonitor initiates signal generation
 - Signals are passed to the SignalGenerator for further processing and alert dispatch
@@ -718,84 +650,16 @@ class MarketDataValidator:
         return self.validation_stats
 
 
-"""
-Market Monitor Module - Real-time Market Data Monitoring System
+"""Market data monitoring system.
 
-This module implements the core market monitoring system for the Virtuoso Trading
-Platform, providing continuous surveillance of cryptocurrency markets across
-multiple exchanges and timeframes.
-
-The MarketMonitor orchestrates the entire data pipeline from raw market data
-collection through analysis, signal generation, and alert distribution. It serves
-as the central hub for all market-related operations.
-
-Key Features:
-- Multi-exchange market data aggregation (Bybit, Binance)
-- Real-time OHLCV data collection across multiple timeframes
-- Order book depth monitoring and analysis
-- Trade flow tracking and volume analysis
-- 6-dimensional confluence analysis integration
-- Signal generation based on configurable thresholds
-- Alert management and distribution
-- Performance metrics and health monitoring
-- WebSocket data streaming for real-time updates
-
-Architecture Components:
-- ExchangeManager: Handles exchange connections and API calls
-- ConfluenceAnalyzer: Performs 6-dimensional market analysis
-- SignalGenerator: Converts analysis into trading signals
-- AlertManager: Distributes alerts via configured channels
-- MetricsManager: Tracks performance and system metrics
-- ValidationService: Ensures data quality and integrity
+This module provides monitoring functionality for market data:
+- Performance monitoring
+- Data quality monitoring
+- System health monitoring
+- Alert generation
 
 Signal Generation Flow:
-1. MarketMonitor fetches raw market data from exchanges
-2. Data is validated and normalized for consistency
-3. ConfluenceAnalyzer performs 6-dimensional analysis
-4. Confluence scores are calculated (0-100 scale)
-5. SignalGenerator evaluates scores against thresholds
-6. Signals trigger alerts through AlertManager
-7. Dashboard and WebSocket clients receive updates
-
-Performance Characteristics:
-- Symbol Processing: Concurrent processing of 30+ symbols
-- Update Frequency: 1-5 second intervals per symbol
-- Analysis Latency: <100ms per symbol average
-- Memory Usage: ~500MB for 30 active symbols
-- Connection Pool: 20 concurrent connections per exchange
-
-Data Quality Monitoring:
-- Validates OHLCV data completeness
-- Checks for stale or missing data
-- Monitors exchange connectivity
-- Tracks API rate limits and throttling
-- Detects anomalous price movements
-
-Health Monitoring:
-- System resource usage (CPU, memory, network)
-- Exchange API health and latency
-- Cache hit rates and performance
-- Processing queue depths
-- Error rates and recovery metrics
-
-Configuration:
-- Symbol lists in config.yaml under trading.symbols
-- Timeframes in config.yaml under trading.timeframes
-- Analysis thresholds in config.yaml under analysis.confluence
-- Alert settings in config.yaml under alerts
-
-Usage:
-    monitor = MarketMonitor(
-        exchange_manager=exchange_manager,
-        confluence_analyzer=analyzer,
-        signal_generator=generator,
-        alert_manager=alert_manager
-    )
-    await monitor.start()
-    # Monitor runs continuously, processing symbols
-
-Author: Virtuoso Team
-Version: 2.0.0
+- The MarketMonitor analyzes market data and calculates confluence scores
 - When a score exceeds the buy threshold (60) or falls below the sell threshold (40),
   the MarketMonitor initiates signal generation
 - Signals are passed to the SignalGenerator for further processing and alert dispatch

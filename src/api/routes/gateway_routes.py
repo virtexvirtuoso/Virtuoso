@@ -165,10 +165,11 @@ async def gateway_proxy(request: Request, path: str, gateway: APIGateway = Depen
     return await gateway.route_request(proxy_request)
 
 # Dashboard-specific gateway routes
-@router.get("/dashboard/data")
-async def dashboard_data_via_gateway(request: Request, gateway: APIGateway = Depends(get_gateway)):
-    """Dashboard data endpoint via gateway with caching"""
-    return await gateway.route_request(request)
+# TEMPORARILY DISABLED: Interfering with direct cache implementation
+# @router.get("/dashboard/data")
+# async def dashboard_data_via_gateway(request: Request, gateway: APIGateway = Depends(get_gateway)):
+#     """Dashboard data endpoint via gateway with caching"""
+#     return await gateway.route_request(request)
 
 @router.get("/dashboard/mobile")
 async def mobile_dashboard_via_gateway(request: Request, gateway: APIGateway = Depends(get_gateway)):

@@ -311,6 +311,129 @@ def register_monitoring_services(container: ServiceContainer) -> ServiceContaine
     
     container.register_factory(IMetricsService, create_metrics_manager, ServiceLifetime.SINGLETON)
     
+    # Also register MetricsManager as concrete type for backward compatibility
+    container.register_factory(MetricsManager, create_metrics_manager, ServiceLifetime.SINGLETON)
+    
+    # Signal Generator (singleton) - needs config and alert manager
+    from ...signal_generation.signal_generator import SignalGenerator
+    
+    async def create_signal_generator():
+        try:
+            # Get alert service that was just registered
+            alert_service = await container.get_service(IAlertService)
+            
+            # Get config from the container
+            config_service = await container.get_service(IConfigService)
+            if hasattr(config_service, 'to_dict'):
+                config_dict = config_service.to_dict()
+            else:
+                config_dict = {}
+            
+            # Ensure required config structure exists for SignalGenerator
+            if 'analysis' not in config_dict:
+                config_dict['analysis'] = {}
+            if 'confluence_thresholds' not in config_dict['analysis']:
+                config_dict['analysis']['confluence_thresholds'] = {
+                    'buy': 60,
+                    'sell': 40,
+                    'neutral_buffer': 5
+                }
+            
+            # Ensure timeframes config exists (required by SignalGenerator)
+            if 'timeframes' not in config_dict:
+                config_dict['timeframes'] = {
+                    'base': {
+                        'interval': 1,
+                        'required': 1000,
+                        'validation': {
+                            'max_gap': 60,
+                            'min_candles': 100
+                        },
+                        'weight': 0.4
+                    },
+                    'ltf': {
+                        'interval': 5,
+                        'required': 200,
+                        'validation': {
+                            'max_gap': 300,
+                            'min_candles': 50
+                        },
+                        'weight': 0.3
+                    },
+                    'mtf': {
+                        'interval': 30,
+                        'required': 200,
+                        'validation': {
+                            'max_gap': 1800,
+                            'min_candles': 50
+                        },
+                        'weight': 0.2
+                    },
+                    'htf': {
+                        'interval': 240,
+                        'required': 200,
+                        'validation': {
+                            'max_gap': 14400,
+                            'min_candles': 50
+                        },
+                        'weight': 0.1
+                    }
+                }
+                
+            return SignalGenerator(config_dict, alert_service)
+        except Exception as e:
+            logger.warning(f"Could not create SignalGenerator: {e}")
+            # Return with minimal config including required timeframes and validation
+            return SignalGenerator({
+                'analysis': {
+                    'confluence_thresholds': {
+                        'buy': 60,
+                        'sell': 40,
+                        'neutral_buffer': 5
+                    }
+                },
+                'timeframes': {
+                    'base': {
+                        'interval': 1,
+                        'required': 1000,
+                        'validation': {
+                            'max_gap': 60,
+                            'min_candles': 100
+                        },
+                        'weight': 0.4
+                    },
+                    'ltf': {
+                        'interval': 5,
+                        'required': 200,
+                        'validation': {
+                            'max_gap': 300,
+                            'min_candles': 50
+                        },
+                        'weight': 0.3
+                    },
+                    'mtf': {
+                        'interval': 30,
+                        'required': 200,
+                        'validation': {
+                            'max_gap': 1800,
+                            'min_candles': 50
+                        },
+                        'weight': 0.2
+                    },
+                    'htf': {
+                        'interval': 240,
+                        'required': 200,
+                        'validation': {
+                            'max_gap': 14400,
+                            'min_candles': 50
+                        },
+                        'weight': 0.1
+                    }
+                }
+            }, None)
+    
+    container.register_factory(SignalGenerator, create_signal_generator, ServiceLifetime.SINGLETON)
+    
     # Market Reporter (scoped) - needs exchange and other dependencies
     from ...monitoring.market_reporter import MarketReporter
     from ...core.exchanges.manager import ExchangeManager
@@ -373,10 +496,10 @@ def register_monitoring_services(container: ServiceContainer) -> ServiceContaine
         
         async def create_market_monitor():
             """
-            Create MarketMonitor using minimal dependencies to avoid circular references.
-            Additional dependencies are resolved lazily when needed.
+            Create MarketMonitor using proper constructor dependency injection.
+            All dependencies are resolved through the DI container.
             """
-            # Get only essential dependencies to break circular references
+            # Get configuration
             config_dict = {}
             try:
                 config_service = await container.get_service(IConfigService)
@@ -384,37 +507,92 @@ def register_monitoring_services(container: ServiceContainer) -> ServiceContaine
             except Exception as e:
                 logger.warning(f"Config service not available: {e}")
             
-            # Create monitor with minimal dependencies - others resolved lazily
+            # Resolve all dependencies through DI container for proper injection
+            exchange_manager = None
+            database_client = None
+            portfolio_analyzer = None
+            confluence_analyzer = None
+            alert_manager = None
+            signal_generator = None
+            top_symbols_manager = None
+            market_data_manager = None
+            metrics_manager = None
+            liquidation_detector = None
+            
+            # Try to resolve each dependency - these should be registered as instances
+            try:
+                exchange_manager = await container.get_service(ExchangeManager)
+            except Exception as e:
+                logger.debug(f"ExchangeManager not available: {e}")
+                
+            try:
+                from ...core.database.database_client import DatabaseClient
+                database_client = await container.get_service(DatabaseClient)
+            except Exception as e:
+                logger.debug(f"DatabaseClient not available: {e}")
+                
+            try:
+                from ...core.analysis.portfolio_analyzer import PortfolioAnalyzer
+                portfolio_analyzer = await container.get_service(PortfolioAnalyzer)
+            except Exception as e:
+                logger.debug(f"PortfolioAnalyzer not available: {e}")
+                
+            try:
+                confluence_analyzer = await container.get_service(ConfluenceAnalyzer)
+            except Exception as e:
+                logger.debug(f"ConfluenceAnalyzer not available: {e}")
+                
+            try:
+                alert_manager = await container.get_service(IAlertService)
+            except Exception as e:
+                logger.debug(f"AlertManager not available: {e}")
+                
+            try:
+                signal_generator = await container.get_service(SignalGenerator)
+            except Exception as e:
+                logger.debug(f"SignalGenerator not available: {e}")
+                
+            try:
+                top_symbols_manager = await container.get_service(TopSymbolsManager)
+            except Exception as e:
+                logger.debug(f"TopSymbolsManager not available: {e}")
+                
+            try:
+                market_data_manager = await container.get_service(MarketDataManager)
+            except Exception as e:
+                logger.debug(f"MarketDataManager not available: {e}")
+                
+            try:
+                metrics_manager = await container.get_service(IMetricsService)
+            except Exception as e:
+                logger.debug(f"MetricsManager not available: {e}")
+                
+            try:
+                from ...core.analysis.liquidation_detector import LiquidationDetectionEngine
+                liquidation_detector = await container.get_service(LiquidationDetectionEngine)
+            except Exception as e:
+                logger.debug(f"LiquidationDetectionEngine not available: {e}")
+            
+            # Create monitor with proper constructor injection
             monitor = MarketMonitor(
                 config=config_dict,
-                logger=logging.getLogger('src.monitoring.monitor')
+                logger=logging.getLogger('src.monitoring.monitor'),
+                exchange_manager=exchange_manager,
+                database_client=database_client,
+                portfolio_analyzer=portfolio_analyzer,
+                confluence_analyzer=confluence_analyzer,
+                alert_manager=alert_manager,
+                signal_generator=signal_generator,
+                top_symbols_manager=top_symbols_manager,
+                market_data_manager=market_data_manager,
+                metrics_manager=metrics_manager
             )
             
-            # Add container reference for lazy dependency resolution
-            monitor._di_container = container
+            # Set liquidation detector if available (not in constructor params)
+            if liquidation_detector:
+                monitor.liquidation_detector = liquidation_detector
             
-            # Add lazy dependency resolution methods
-            async def get_exchange_manager():
-                if not hasattr(monitor, '_exchange_manager_cached'):
-                    try:
-                        monitor._exchange_manager_cached = await container.get_service(ExchangeManager)
-                    except Exception:
-                        monitor._exchange_manager_cached = None
-                return monitor._exchange_manager_cached
-            
-            async def get_alert_manager():
-                if not hasattr(monitor, '_alert_manager_cached'):
-                    try:
-                        monitor._alert_manager_cached = await container.get_service(IAlertService)
-                    except Exception:
-                        monitor._alert_manager_cached = None
-                return monitor._alert_manager_cached
-            
-            # Add lazy getters to monitor
-            monitor.get_exchange_manager = get_exchange_manager
-            monitor.get_alert_manager = get_alert_manager
-            
-            logger.info("MarketMonitor created with lazy dependency resolution")
+            logger.info("MarketMonitor created with proper dependency injection")
             return monitor
             
         container.register_factory(MarketMonitor, create_market_monitor, ServiceLifetime.SINGLETON)

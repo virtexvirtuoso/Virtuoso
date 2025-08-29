@@ -54,23 +54,23 @@ def main():
     vps_command = " && ".join(vps_commands)
     
     print("🌐 Deploying to VPS...")
-    if not run_command(f'ssh vps "{vps_command}"', "Executing VPS deployment"):
+    if not run_command(f'ssh linuxuser@45.77.40.77 "{vps_command}"', "Executing VPS deployment"):
         print("❌ VPS deployment failed")
         return 1
     
     # Verify deployment
     print("🔍 Verifying deployment...")
-    log_command = 'ssh vps "sudo journalctl -u virtuoso.service --since \\"5 minutes ago\\" -n 50 --no-pager"'
+    log_command = 'ssh linuxuser@45.77.40.77 "sudo journalctl -u virtuoso.service --since \\"5 minutes ago\\" -n 50 --no-pager"'
     
     if run_command(log_command, "Checking service logs", check=False):
         print("✅ Deployment completed successfully!")
         print("\n📊 To monitor the service:")
-        print("ssh vps")
+        print("ssh linuxuser@45.77.40.77")
         print("sudo journalctl -u virtuoso.service -f")
         return 0
     else:
         print("⚠️ Deployment may have issues. Check logs manually:")
-        print("ssh vps")
+        print("ssh linuxuser@45.77.40.77")
         print("sudo journalctl -u virtuoso.service -f")
         return 1
 
