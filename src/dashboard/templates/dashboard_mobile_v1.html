@@ -1224,6 +1224,34 @@
             pullToRefresh.style.transform = '';
         }, { passive: true });
 
+        // Data validation helper functions
+        function safeExtractValue(data, fallback = '', debug = false) {
+            if (debug) console.log('Extracting value from:', data);
+            
+            if (data === null || data === undefined) return fallback;
+            
+            // If it's already a primitive value
+            if (typeof data === 'string' || typeof data === 'number' || typeof data === 'boolean') {
+                return String(data).replace(/[{}",]/g, '').trim();
+            }
+            
+            // If it's an object, try to extract meaningful value
+            if (typeof data === 'object') {
+                // Try common property names for regime/status
+                if (data.regime) return String(data.regime).replace(/[{}",]/g, '').trim();
+                if (data.status) return String(data.status).replace(/[{}",]/g, '').trim();
+                if (data.value) return String(data.value).replace(/[{}",]/g, '').trim();
+                
+                // Get first non-null value from object
+                const values = Object.values(data).filter(v => v !== null && v !== undefined);
+                if (values.length > 0) {
+                    return String(values[0]).replace(/[{}",]/g, '').trim();
+                }
+            }
+            
+            return fallback;
+        }
+
         // Market breadth update function
         function updateMarketBreadth(upCount, downCount) {
             const total = upCount + downCount;
@@ -1291,9 +1319,24 @@
                 // Use our new mobile-data endpoint for top movers
                 if (mobileData.status === 'success') {
                     updateTopMovers(mobileData.top_movers);
-                    // Update confluence scores if needed
+                    // Update confluence scores if needed - filter out system status entries
                     if (mobileData.confluence_scores) {
-                        updateSymbols({ symbols: mobileData.confluence_scores });
+                        console.log('Raw confluence scores:', mobileData.confluence_scores);
+                        const validScores = mobileData.confluence_scores.filter(score => 
+                            score && 
+                            score.symbol && 
+                            score.symbol !== 'SYSTEM_STATUS' && 
+                            score.sentiment !== 'INITIALIZING' &&
+                            !score.symbol.includes('SYSTEM')
+                        );
+                        console.log('Filtered valid scores:', validScores);
+                        if (validScores.length > 0) {
+                            updateSymbols({ symbols: validScores });
+                        } else {
+                            // If no valid scores, show empty state
+                            console.log('No valid confluence scores, showing empty state');
+                            updateSymbols({ symbols: [] });
+                        }
                     }
                 }
             } catch (error) {
@@ -1404,6 +1447,8 @@
         }
         
         function updateBetaOverview(data) {
+            console.log('Beta overview data:', data);  // Debug log
+            
             // Update beta coefficient
             const betaCoef = document.getElementById('betaCoefficient');
             if (betaCoef) {
@@ -1420,10 +1465,12 @@
                 correlation.style.color = corr > 0.7 ? 'var(--accent-positive)' : corr < 0.3 ? 'var(--accent-negative)' : 'var(--accent-warning)';
             }
             
-            // Update market regime
+            // Update market regime - use safe extraction
             const regime = document.getElementById('betaMarketRegime');
             if (regime) {
-                const marketRegime = (data.market_regime || 'NEUTRAL').toUpperCase();
+                const regimeData = data.market_regime || 'NEUTRAL';
+                const marketRegime = safeExtractValue(regimeData, 'NEUTRAL').toUpperCase();
+                
                 // Format display text
                 const displayText = marketRegime.replace(/_/g, ' ');
                 regime.textContent = displayText;
@@ -1881,10 +1928,16 @@
         }
         
         function updateMarketOverview(data) {
-            // Market Regime
-            const regime = data.regime || data.market_regime || 'NEUTRAL';
+            console.log('Market overview data:', data);  // Debug log
+            
+            // Market Regime - use safe extraction
+            const regimeData = data.regime || data.market_regime || 'NEUTRAL';
+            const regime = safeExtractValue(regimeData, 'NEUTRAL', true).toUpperCase();
+            
             const regimeElement = document.getElementById('marketRegime');
-            regimeElement.textContent = regime;
+            if (regimeElement) {
+                regimeElement.textContent = regime;
+            }
             
             // Market Breadth - Updated with visual display
             if (data.market_breadth) {
@@ -2079,14 +2132,14 @@
         }
 
         function createSignalCard(signal) {
-            // Extract signal details from dashboard integration format
-            const symbol = signal.symbol || 'N/A';
-            const score = signal.score || signal.confidence || 0;
-            const type = signal.type || 'NEUTRAL';
-            const strength = signal.strength || 'weak';
-            const price = signal.price || 0;
-            const change = signal.change_24h || 0;
-            const volume = signal.volume || 0;
+            // Extract signal details from dashboard integration format with safe extraction
+            const symbol = safeExtractValue(signal.symbol, 'N/A');
+            const score = parseFloat(signal.score || signal.confidence || 0);
+            const type = safeExtractValue(signal.type, 'NEUTRAL').toUpperCase();
+            const strength = safeExtractValue(signal.strength, 'weak');
+            const price = parseFloat(signal.price || 0);
+            const change = parseFloat(signal.change_24h || 0);
+            const volume = parseFloat(signal.volume || 0);
             const timestamp = signal.timestamp ? new Date(signal.timestamp).toLocaleTimeString() : 'now';
             
             const changeClass = change > 0 ? 'change-positive' : change < 0 ? 'change-negative' : 'change-neutral';

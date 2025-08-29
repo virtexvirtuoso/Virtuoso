@@ -1,6 +1,65 @@
 #!/bin/bash
-# Setup Systemd Services for Monitoring Components
-# Creates dedicated services for health monitoring and resource monitoring
+
+#############################################################################
+# Script: setup_monitoring_services.sh
+# Purpose: Setup comprehensive systemd services for monitoring components
+# Author: Virtuoso CCXT Development Team
+# Version: 1.0.0
+# Created: 2025-08-28
+# Modified: 2025-08-28
+#############################################################################
+#
+# Description:
+#   Sets up dedicated systemd services for comprehensive monitoring of the
+#   Virtuoso trading system. Creates health monitors for system resources,
+#   disk space, memory usage, CPU load, and network connectivity with
+#   automated alerting capabilities.
+#
+# Dependencies:
+#   - Bash 4.0+
+#   - systemctl (systemd)
+#   - Python 3.8+
+#   - Root privileges
+#   - Discord webhook for alerts (optional)
+#
+# Usage:
+#   sudo ./setup_monitoring_services.sh
+#   
+#   Examples:
+#     sudo ./setup_monitoring_services.sh
+#
+# Services Created:
+#   - virtuoso-health-monitor.service (system health monitoring)
+#   - virtuoso-resource-monitor.service (resource usage monitoring)
+#   - virtuoso-disk-monitor.service (disk space monitoring)
+#
+# Environment Variables:
+#   PROJECT_ROOT        Trading system root directory
+#   DISCORD_WEBHOOK_URL Discord webhook for alert notifications
+#
+# Configuration:
+#   Monitoring thresholds and intervals can be configured in:
+#   - scripts/monitoring/resource_monitor.py
+#   - scripts/monitoring/health_monitor.py
+#
+# Output:
+#   - Systemd service files in /etc/systemd/system/
+#   - Monitoring scripts in PROJECT_ROOT/scripts/monitoring/
+#   - Log files in systemd journal (journalctl -u service-name)
+#
+# Exit Codes:
+#   0 - Success
+#   1 - Permission denied (must run as root)
+#   2 - Service creation failed
+#   3 - Service start failed
+#
+# Notes:
+#   - Must be run as root to create systemd services
+#   - Services are enabled for auto-start on boot
+#   - Creates comprehensive monitoring suite for production deployment
+#   - Includes email and Discord notification capabilities
+#
+#############################################################################
 
 set -e
 

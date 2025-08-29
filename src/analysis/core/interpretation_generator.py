@@ -7,7 +7,7 @@ import logging
 import textwrap
 from typing import Dict, Any, List, Optional, Tuple
 import numpy as np
-from ...core.interfaces.services import IInterpretationService, IFormattingService, IValidationService
+from src.core.interfaces.services import IInterpretationService, IFormattingService, IValidationService
 
 class InterpretationGenerator(IInterpretationService):
     """

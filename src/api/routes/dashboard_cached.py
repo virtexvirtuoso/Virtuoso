@@ -12,6 +12,9 @@ import time
 import asyncio
 from functools import wraps
 from src.api.cache_adapter_direct import cache_adapter
+from src.api.validation import symbol_validator
+from src.api.services.mobile_fallback_service import mobile_fallback_service
+from src.api.services.mobile_optimization_service import mobile_optimization_service
 print("Using Direct Cache Adapter (zero abstraction)")
 
 router = APIRouter()
@@ -117,17 +120,35 @@ async def get_dashboard_overview() -> Dict[str, Any]:
 @track_time
 async def get_dashboard_symbols() -> Dict[str, Any]:
     """
-    Get symbol data from cache
+    Get symbol data from cache with validation
     """
-    return await cache_adapter.get_dashboard_symbols()
+    response = await cache_adapter.get_dashboard_symbols()
+    
+    # Validate and filter out system symbols
+    if response and 'symbols' in response:
+        original_count = len(response['symbols'])
+        response = symbol_validator.validate_api_response(response)
+        filtered_count = len(response['symbols'])
+        symbol_validator.log_validation_stats(filtered_count, original_count - filtered_count, "symbols")
+    
+    return response
 
 @router.get("/signals")
 @track_time
 async def get_signals() -> Dict[str, Any]:
     """
-    Get trading signals from cache analysis
+    Get trading signals from cache analysis with validation
     """
-    return await cache_adapter.get_signals()
+    response = await cache_adapter.get_signals()
+    
+    # Validate and filter out system symbols from signals
+    if response and 'signals' in response:
+        original_count = len(response['signals'])
+        response = symbol_validator.validate_api_response(response)
+        filtered_count = len(response['signals'])
+        symbol_validator.log_validation_stats(filtered_count, original_count - filtered_count, "signals")
+    
+    return response
 
 @router.get("/market-analysis")
 @track_time
@@ -398,23 +419,98 @@ async def get_mobile_signals() -> Dict[str, Any]:
     }
 
 @router.get("/mobile-data")
-@with_fallback({
-            'market_overview': {'market_regime': 'NEUTRAL', 'volatility': 0, 'btc_dominance': 59.3},
-            'confluence_scores': [],
-            'top_movers': {'gainers': [], 'losers': []},
-            'status': 'fallback'
-        })
 @track_time
 async def get_mobile_data() -> Dict[str, Any]:
     """
-    Complete mobile dashboard data from cache
-    Includes market overview, confluence scores, and top movers
+    Phase 2: Ultra-optimized mobile dashboard data with intelligent caching
     
-    This now delegates to cache_adapter.get_mobile_data() which includes
-    high_24h, low_24h, range_24h, and reliability for each symbol
+    Multi-tier optimization strategy:
+    1. Local mobile cache (15s TTL) - Ultra-fast
+    2. Priority cache warming - Smart startup optimization  
+    3. Regular cache adapter - Standard path
+    4. Direct exchange fallback - Reliable backup
+    5. Static fallback - Last resort
     """
-    # Use the cache adapter's get_mobile_data method which has all the fields
-    return await cache_adapter.get_mobile_data()
+    try:
+        # Use the mobile optimization service for intelligent data retrieval
+        response = await mobile_optimization_service.get_mobile_data_with_performance_tracking()
+        
+        # Always validate response to prevent system contamination
+        if response and response.get('confluence_scores'):
+            original_count = len(response['confluence_scores'])
+            response = symbol_validator.validate_api_response(response)
+            filtered_count = len(response['confluence_scores'])
+            
+            if original_count != filtered_count:
+                symbol_validator.log_validation_stats(
+                    filtered_count, 
+                    original_count - filtered_count, 
+                    "mobile-data-optimized"
+                )
+        
+        return response
+        
+    except Exception as e:
+        logger.error(f"Phase 2 mobile endpoint failed: {e}")
+        return {
+            'market_overview': {
+                'market_regime': 'ERROR',
+                'trend_strength': 0,
+                'volatility': 0,
+                'btc_dominance': 59.3,
+                'total_volume': 0
+            },
+            'confluence_scores': [],
+            'top_movers': {'gainers': [], 'losers': []},
+            'status': 'phase2_error_fallback',
+            'timestamp': int(time.time()),
+            'performance': {
+                'response_time_ms': 0,
+                'cache_source': 'error_fallback',
+                'optimization_level': 'failed'
+            }
+        }
+
+@router.get("/mobile-performance")
+@track_time
+async def get_mobile_performance() -> Dict[str, Any]:
+    """
+    Phase 2: Mobile performance monitoring endpoint
+    Provides detailed insights into mobile optimization performance
+    """
+    try:
+        performance_data = {
+            'mobile_optimization_stats': mobile_optimization_service.get_cache_stats(),
+            'priority_warmer_stats': {},
+            'system_health': 'unknown',
+            'timestamp': int(time.time())
+        }
+        
+        # Get priority warmer stats
+        try:
+            from src.core.cache.priority_warmer import priority_cache_warmer
+            performance_data['priority_warmer_stats'] = priority_cache_warmer.get_warming_stats()
+        except Exception as e:
+            performance_data['priority_warmer_error'] = str(e)
+        
+        # Check system health
+        try:
+            health_response = await cache_adapter.get_health_status()
+            performance_data['system_health'] = health_response.get('status', 'unknown')
+        except Exception as e:
+            performance_data['health_error'] = str(e)
+        
+        return performance_data
+        
+    except Exception as e:
+        logger.error(f"Mobile performance endpoint failed: {e}")
+        return {
+            'error': str(e),
+            'mobile_optimization_stats': {},
+            'priority_warmer_stats': {},
+            'system_health': 'error',
+            'timestamp': int(time.time())
+        }
 
 @router.get("/debug-cache")
 async def debug_cache() -> Dict[str, Any]:

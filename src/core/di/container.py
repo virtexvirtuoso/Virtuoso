@@ -14,7 +14,10 @@ import logging
 import inspect
 import uuid
 import weakref
+import gc
+import time
 from contextlib import asynccontextmanager
+from ..interfaces.services import IDisposable, IAsyncDisposable
 
 T = TypeVar('T')
 
@@ -87,12 +90,22 @@ class ServiceContainer:
         self._building_stack: set = set()  # For circular dependency detection
         self._health_checks: Dict[Type, Callable] = {}
         self._logger = logging.getLogger(__name__)
+        
+        # Enhanced stats with memory leak tracking
         self._stats = {
             'services_registered': 0,
             'instances_created': 0,
+            'instances_disposed': 0,
             'resolution_calls': 0,
-            'errors': 0
+            'errors': 0,
+            'disposal_errors': 0,
+            'memory_leak_warnings': 0
         }
+        
+        # Memory leak tracking
+        self._instance_creation_times: Dict[int, float] = {}  # id(instance) -> creation_time
+        self._disposed_instances: set = set()  # Track disposed instance IDs
+        self._leak_detection_enabled = True
     
     # Registration methods
     
@@ -123,7 +136,7 @@ class ServiceContainer:
         )
         self._services[service_type] = descriptor
         self._stats['services_registered'] += 1
-        self._logger.debug(f"Registered factory for {service_type.__name__} with {lifetime.value} lifetime")
+        self._logger.debug(f"Registered factory for {getattr(service_type, '__name__', str(service_type))} with {lifetime.value} lifetime")
         return self
     
     def register_instance(self, service_type: Type[T], instance: T) -> 'ServiceContainer':
@@ -210,15 +223,26 @@ class ServiceContainer:
         return scope[service_type]
     
     async def _create_instance(self, descriptor: ServiceDescriptor) -> Any:
-        """Create service instance with dependency injection."""
-        self._stats['instances_created'] += 1
+        """Create service instance with dependency injection and tracking."""
+        instance = None
         
-        if descriptor.factory:
-            return await self._call_factory(descriptor.factory)
-        elif descriptor.implementation_type:
-            return await self._create_from_type(descriptor)
-        else:
-            raise ValueError(f"No implementation or factory provided for {descriptor.service_type}")
+        try:
+            if descriptor.factory:
+                instance = await self._call_factory(descriptor.factory)
+            elif descriptor.implementation_type:
+                instance = await self._create_from_type(descriptor)
+            else:
+                raise ValueError(f"No implementation or factory provided for {descriptor.service_type}")
+            
+            # Track instance creation for memory leak detection
+            self._track_instance_creation(instance)
+            
+            return instance
+            
+        except Exception as e:
+            self._stats['errors'] += 1
+            self._logger.error(f"Error creating instance of {descriptor.service_type.__name__}: {e}")
+            raise
     
     async def _create_from_type(self, descriptor: ServiceDescriptor) -> Any:
         """Create instance using constructor injection."""
@@ -317,22 +341,147 @@ class ServiceContainer:
     
     # Cleanup
     
-    def dispose(self):
-        """Cleanup container resources."""
-        # Dispose singleton instances that support it
-        for instance in self._instances.values():
-            if hasattr(instance, 'dispose'):
-                try:
-                    instance.dispose()
-                except Exception as e:
-                    self._logger.error(f"Error disposing instance: {e}")
+    async def dispose(self):
+        """Cleanup container resources with proper memory leak prevention."""
+        self._logger.info("Starting container disposal...")
         
-        # Clear all instances and scopes
+        disposal_start = time.time()
+        disposed_count = 0
+        error_count = 0
+        
+        # Dispose all scoped instances first
+        for scope_id, scoped_instances in list(self._scoped_instances.items()):
+            self._logger.debug(f"Disposing scope {scope_id} with {len(scoped_instances)} instances")
+            for instance in scoped_instances.values():
+                try:
+                    await self._dispose_instance(instance)
+                    disposed_count += 1
+                except Exception as e:
+                    self._logger.error(f"Error disposing scoped instance: {e}")
+                    error_count += 1
+        
+        # Dispose singleton instances
+        self._logger.debug(f"Disposing {len(self._instances)} singleton instances")
+        for instance in list(self._instances.values()):
+            try:
+                await self._dispose_instance(instance)
+                disposed_count += 1
+            except Exception as e:
+                self._logger.error(f"Error disposing singleton instance: {e}")
+                error_count += 1
+        
+        # Clear all collections
         self._instances.clear()
         self._scoped_instances.clear()
         self._building_stack.clear()
         
-        self._logger.info("Container disposed")
+        # Force garbage collection to detect potential memory leaks
+        gc.collect()
+        
+        disposal_time = time.time() - disposal_start
+        self._logger.info(
+            f"Container disposed - {disposed_count} instances disposed, "
+            f"{error_count} errors, completed in {disposal_time:.3f}s"
+        )
+        
+        # Update stats
+        self._stats['instances_disposed'] += disposed_count
+        self._stats['disposal_errors'] += error_count
+        
+        # Check for potential memory leaks
+        await self._check_for_memory_leaks()
+    
+    async def _dispose_instance(self, instance: Any) -> None:
+        """Dispose a single instance with proper interface checking."""
+        if instance is None:
+            return
+        
+        try:
+            # Check for IAsyncDisposable first
+            if isinstance(instance, IAsyncDisposable):
+                await instance.dispose_async()
+                return
+            
+            # Check for IDisposable
+            if isinstance(instance, IDisposable):
+                await instance.dispose()
+                return
+            
+            # Check for dispose method (duck typing)
+            if hasattr(instance, 'dispose'):
+                dispose_method = getattr(instance, 'dispose')
+                if asyncio.iscoroutinefunction(dispose_method):
+                    await dispose_method()
+                else:
+                    dispose_method()
+                return
+            
+            # Check for close method (common pattern)
+            if hasattr(instance, 'close'):
+                close_method = getattr(instance, 'close')
+                if asyncio.iscoroutinefunction(close_method):
+                    await close_method()
+                else:
+                    close_method()
+                return
+                    
+        except Exception as e:
+            self._logger.error(f"Error disposing instance {type(instance).__name__}: {e}")
+            raise
+        finally:
+            # Track disposal for memory leak detection
+            if self._leak_detection_enabled:
+                instance_id = id(instance)
+                self._disposed_instances.add(instance_id)
+                if instance_id in self._instance_creation_times:
+                    creation_time = self._instance_creation_times[instance_id]
+                    lifetime = time.time() - creation_time
+                    self._logger.debug(f"Instance {type(instance).__name__} disposed after {lifetime:.3f}s")
+    
+    def _track_instance_creation(self, instance: Any) -> None:
+        """Track instance creation for memory leak detection."""
+        if self._leak_detection_enabled and instance is not None:
+            instance_id = id(instance)
+            self._instance_creation_times[instance_id] = time.time()
+            self._stats['instances_created'] += 1
+    
+    async def _check_for_memory_leaks(self) -> None:
+        """Check for potential memory leaks by analyzing undisposed instances."""
+        if not self._leak_detection_enabled:
+            return
+        
+        # Find instances that were created but not disposed
+        created_ids = set(self._instance_creation_times.keys())
+        undisposed_ids = created_ids - self._disposed_instances
+        
+        if undisposed_ids:
+            leak_count = len(undisposed_ids)
+            self._stats['memory_leak_warnings'] += leak_count
+            
+            # Log details about potential leaks
+            self._logger.warning(
+                f"Potential memory leak detected: {leak_count} instances created but not disposed"
+            )
+            
+            # Log oldest undisposed instances
+            current_time = time.time()
+            for instance_id in list(undisposed_ids)[:5]:  # Show first 5
+                if instance_id in self._instance_creation_times:
+                    age = current_time - self._instance_creation_times[instance_id]
+                    self._logger.warning(f"Undisposed instance (ID: {instance_id}) age: {age:.1f}s")
+        else:
+            self._logger.info("✅ No memory leaks detected - all instances properly disposed")
+    
+    def get_memory_stats(self) -> Dict[str, Any]:
+        """Get memory and disposal statistics."""
+        return {
+            'instances_created': self._stats['instances_created'],
+            'instances_disposed': self._stats['instances_disposed'],
+            'disposal_errors': self._stats['disposal_errors'],
+            'memory_leak_warnings': self._stats['memory_leak_warnings'],
+            'active_instances': self._stats['instances_created'] - self._stats['instances_disposed'],
+            'leak_detection_enabled': self._leak_detection_enabled
+        }
 
 
 class ServiceScope:
@@ -355,24 +504,25 @@ class ServiceScope:
         return await self.container.get_service(service_type, self.scope_id)
     
     async def dispose(self):
-        """Dispose of this scope and cleanup scoped instances."""
+        """Dispose of this scope and cleanup scoped instances with memory leak prevention."""
         if self._disposed:
             return
         
         if self.scope_id in self.container._scoped_instances:
-            # Dispose instances that support it
-            for instance in self.container._scoped_instances[self.scope_id].values():
-                if hasattr(instance, 'dispose'):
-                    try:
-                        if asyncio.iscoroutinefunction(instance.dispose):
-                            await instance.dispose()
-                        else:
-                            instance.dispose()
-                    except Exception as e:
-                        logging.error(f"Error disposing scoped instance: {e}")
+            instances = list(self.container._scoped_instances[self.scope_id].values())
+            
+            self.container._logger.debug(f"Disposing scope {self.scope_id} with {len(instances)} instances")
+            
+            # Use the enhanced disposal logic from the container
+            for instance in instances:
+                try:
+                    await self.container._dispose_instance(instance)
+                except Exception as e:
+                    self.container._logger.error(f"Error disposing scoped instance in scope {self.scope_id}: {e}")
             
             # Remove scope
             del self.container._scoped_instances[self.scope_id]
+            self.container._logger.debug(f"Scope {self.scope_id} removed successfully")
         
         self._disposed = True
     

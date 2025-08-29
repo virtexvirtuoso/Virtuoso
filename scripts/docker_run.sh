@@ -1,5 +1,85 @@
 #!/bin/bash
-# Docker run script for Virtuoso Trading System
+
+#############################################################################
+# Script: docker_run.sh
+# Purpose: Launch Virtuoso Trading System in Docker containers with profiles
+# Author: Virtuoso CCXT Development Team
+# Version: 1.0.0
+# Created: 2025-08-28
+# Modified: 2025-08-28
+#############################################################################
+#
+# Description:
+#   Launches the complete Virtuoso trading system using Docker Compose
+#   with configurable service profiles. Supports development, testing,
+#   and production deployment modes with optional services like Redis,
+#   PostgreSQL, monitoring, and external APIs.
+#
+# Dependencies:
+#   - Bash 4.0+
+#   - Docker Engine 20.0+
+#   - Docker Compose v2.0+
+#   - docker-compose.yml in project root
+#   - Valid .env file with required variables
+#
+# Usage:
+#   ./docker_run.sh [options] [profile]
+#   
+#   Examples:
+#     ./docker_run.sh
+#     ./docker_run.sh --with-redis --follow-logs
+#     ./docker_run.sh --profile production --detach
+#
+# Options:
+#   --with-redis         Include Redis caching service
+#   --with-database      Include PostgreSQL database service
+#   --with-monitoring    Include monitoring stack (Grafana, Prometheus)
+#   --profile PROFILE    Use specific Docker Compose profile
+#   --follow-logs        Follow container logs after startup
+#   --detach             Run containers in detached mode (default)
+#   --no-build           Skip image building, use existing images
+#   --force-recreate     Force recreate containers even if config unchanged
+#
+# Profiles:
+#   - minimal: Core trading system only
+#   - with-redis: Includes Redis for caching
+#   - with-database: Includes PostgreSQL for data persistence
+#   - with-monitoring: Full monitoring stack
+#   - development: Dev tools and debug services
+#   - production: Optimized for production deployment
+#
+# Environment Variables:
+#   DOCKER_BUILDKIT      Enable advanced Docker build features
+#   COMPOSE_FILE         Override default docker-compose.yml
+#   PROJECT_NAME         Docker Compose project name
+#
+# Configuration:
+#   Service configuration managed through:
+#   - docker-compose.yml (service definitions)
+#   - .env files (environment variables)
+#   - config/ directory (application configuration)
+#
+# Output:
+#   - Container startup logs and status
+#   - Service health check results
+#   - Optional log following for debugging
+#   - Container ID and port mapping information
+#
+# Exit Codes:
+#   0 - Containers started successfully
+#   1 - Docker Compose startup failed
+#   2 - Invalid arguments or profile
+#   3 - Docker daemon not available
+#   4 - Required files missing
+#   5 - Resource allocation failed
+#
+# Notes:
+#   - Automatically validates Docker environment before startup
+#   - Supports graceful shutdown with Ctrl+C
+#   - Creates necessary volumes and networks
+#   - Provides real-time status monitoring during startup
+#
+#############################################################################
 
 set -e
 

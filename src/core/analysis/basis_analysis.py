@@ -1,42 +1,3 @@
-"""
-Basis Analysis Module
-
-This module provides sophisticated analysis of spot-futures basis trading opportunities
-in cryptocurrency markets. It analyzes price discrepancies between spot and perpetual/futures
-markets to identify arbitrage and carry trade opportunities.
-
-Key Features:
-    - Real-time basis calculation and monitoring
-    - Market depth analysis for execution feasibility
-    - Trade flow analysis for market sentiment
-    - Execution cost estimation including slippage
-    - Risk-adjusted trading signal generation
-    - Multi-exchange arbitrage detection
-
-Trading Strategies Supported:
-    - Cash and carry arbitrage
-    - Reverse cash and carry
-    - Funding rate arbitrage
-    - Basis momentum trading
-
-Mathematical Models:
-    - Basis = Futures Price - Spot Price
-    - Basis % = (Basis / Spot Price) × 100
-    - Implied Funding = Basis % × 365 × 3 (for 8-hour funding)
-    - Risk Score = weighted combination of basis size, depth, and flow
-
-Usage:
-    >>> analyzer = BasisAnalysis()
-    >>> result = await analyzer.analyze_basis(
-    ...     spot_data=spot_market_data,
-    ...     futures_data=futures_market_data,
-    ...     symbol="BTC/USDT"
-    ... )
-
-Author: Virtuoso CCXT Development Team
-Version: 1.0.0
-"""
-
 from typing import Dict, List, Optional, Any
 import logging
 import asyncio
@@ -45,38 +6,9 @@ from datetime import datetime
 logger = logging.getLogger(__name__)
 
 class BasisAnalysis:
-    """
-    Analyzes spot vs futures basis and funding opportunities.
-    
-    This class provides comprehensive analysis of price discrepancies between
-    spot and futures markets, identifying profitable arbitrage opportunities
-    while accounting for execution costs and market risks.
-    
-    Attributes:
-        metrics (Dict): Storage for calculated basis metrics and historical data
-    
-    Methods:
-        analyze_basis: Main analysis entry point for spot-futures comparison
-        _calculate_market_depth: Analyze orderbook depth and liquidity
-        _analyze_trade_flow: Evaluate recent trading activity and sentiment
-        _calculate_execution_costs: Estimate slippage and trading costs
-        _generate_trading_signals: Generate risk-adjusted trading signals
-    """
+    """Analyzes spot vs futures basis and funding opportunities"""
     
     def __init__(self):
-        """
-        Initialize the Basis Analysis engine.
-        
-        Sets up the metrics storage dictionary for tracking historical basis
-        data and analysis results. This allows for trend analysis and 
-        performance tracking over time.
-        
-        The metrics dictionary will store:
-        - Historical basis values by symbol
-        - Average funding rates
-        - Arbitrage opportunity counts
-        - Execution success metrics
-        """
         self.metrics = {}
         
     async def analyze_basis(

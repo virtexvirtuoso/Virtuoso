@@ -4077,6 +4077,17 @@ class BybitExchange(BaseExchange):
             List of OHLCV candles
         """
         try:
+            # Validate and convert the timeframe to Bybit format
+            if not isinstance(timeframe, str):
+                self.logger.error(f"❌ ERROR: Invalid timeframe type: {type(timeframe)}, value: {timeframe}")
+                if isinstance(timeframe, dict) and 'timeframe' in timeframe:
+                    timeframe = timeframe['timeframe']
+                elif isinstance(timeframe, dict) and 'interval' in timeframe:
+                    timeframe = timeframe['interval']
+                else:
+                    self.logger.error(f"❌ ERROR: Cannot extract timeframe string from: {timeframe}")
+                    return []
+            
             # Convert the timeframe to Bybit format if needed
             tf = self.TIMEFRAME_MAP.get(timeframe, timeframe)
             

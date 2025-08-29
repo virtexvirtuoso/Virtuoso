@@ -1,5 +1,85 @@
 #!/bin/bash
-# Comprehensive Docker setup validation script
+
+#############################################################################
+# Script: docker_validate.sh
+# Purpose: Comprehensive Docker setup validation for trading system deployment
+# Author: Virtuoso CCXT Development Team
+# Version: 1.0.0
+# Created: 2025-08-28
+# Modified: 2025-08-28
+#############################################################################
+#
+# Description:
+#   Validates complete Docker environment setup for the Virtuoso trading
+#   system. Checks Docker installation, image availability, container
+#   configuration, network setup, volume mounts, environment variables,
+#   and resource allocations. Provides detailed validation report.
+#
+# Dependencies:
+#   - Bash 4.0+
+#   - Docker Engine 20.0+
+#   - Docker Compose v2.0+
+#   - Network connectivity for image pulls
+#   - Sufficient system resources (CPU, memory, disk)
+#
+# Usage:
+#   ./docker_validate.sh [options]
+#   
+#   Examples:
+#     ./docker_validate.sh
+#     ./docker_validate.sh --verbose
+#     ./docker_validate.sh --fix-issues
+#
+# Options:
+#   -v, --verbose        Enable detailed validation output
+#   -f, --fix-issues     Attempt to automatically fix common issues
+#   -q, --quiet          Suppress non-critical output
+#   --skip-network       Skip network connectivity tests
+#   --skip-resources     Skip resource allocation checks
+#
+# Validation Checks:
+#   - Docker Engine installation and version
+#   - Docker Compose availability and version
+#   - Required Docker images (Python, Redis, Memcached)
+#   - Container configuration files (Dockerfile, docker-compose.yml)
+#   - Network configuration and connectivity
+#   - Volume mount permissions and availability
+#   - Environment variable configuration
+#   - Resource limits and system capacity
+#   - Port availability and firewall rules
+#
+# Environment Variables:
+#   DOCKER_HOST          Docker daemon connection (optional)
+#   PROJECT_ROOT         Trading system root directory
+#   DOCKER_BUILDKIT      Enable BuildKit for improved builds
+#
+# Configuration:
+#   Validation parameters can be customized in:
+#   - docker-compose.yml (service definitions)
+#   - .env files (environment variables)
+#   - Dockerfile (image build configuration)
+#
+# Output:
+#   - Detailed validation report with pass/fail status
+#   - Warning and error summary
+#   - Recommendations for fixing issues
+#   - Exit code indicating overall validation status
+#
+# Exit Codes:
+#   0 - All validations passed
+#   1 - Critical validation failures
+#   2 - Warning conditions present
+#   3 - Docker not installed or accessible
+#   4 - Configuration files missing
+#   5 - Resource constraints detected
+#
+# Notes:
+#   - Run before Docker deployment to ensure clean setup
+#   - Provides actionable recommendations for fixing issues
+#   - Can be integrated into CI/CD pipelines for automated validation
+#   - Supports both development and production environment validation
+#
+#############################################################################
 
 set -e
 

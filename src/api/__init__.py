@@ -270,9 +270,26 @@ def init_api_routes(app: FastAPI):
             prefix="",
             tags=["gateway"]
         )
+    
+    # Include Phase 3 WebSocket Mobile Routes
+    try:
+        from .routes import websocket_mobile
+        app.include_router(
+            websocket_mobile.router,
+            prefix="",
+            tags=["phase3-websocket"]
+        )
         import logging
-        gateway_logger = logging.getLogger(__name__)
-        gateway_logger.info("🚀 Priority 2 API Gateway enabled with multi-tier cache and rate limiting")
+        phase3_logger = logging.getLogger(__name__)
+        phase3_logger.info("✅ Phase 3 WebSocket mobile routes enabled")
+    except ImportError as e:
+        import logging
+        phase3_logger = logging.getLogger(__name__)
+        phase3_logger.debug(f"Phase 3 WebSocket mobile routes not available: {e}")
+        
+    import logging
+    gateway_logger = logging.getLogger(__name__)
+    gateway_logger.info("🚀 Priority 2 API Gateway enabled with multi-tier cache and rate limiting")
     
     # Log registered routes
     import logging

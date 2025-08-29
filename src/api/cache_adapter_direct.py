@@ -110,6 +110,12 @@ class DirectCacheAdapter:
         regime = await self._get('analysis:market_regime', 'unknown')
         movers = await self._get('market:movers', {})
         
+        # DEBUG: Log what we got from cache
+        logger.info(f"DEBUG CACHE: overview={overview}")
+        logger.info(f"DEBUG CACHE: signals={signals}")
+        logger.info(f"DEBUG CACHE: regime={regime}")
+        logger.info(f"DEBUG CACHE: movers={movers}")
+        
         # Build response with all data
         return {
             'summary': {
@@ -131,7 +137,8 @@ class DirectCacheAdapter:
                 'value': overview.get('volatility', 0),
                 'level': 'high' if overview.get('volatility', 0) > 5 else 'normal'
             },
-            'source': 'cache'
+            'source': 'cache',
+            'data_source': 'real' if overview else 'no_data'  # Data source indicator
         }
     
     async def get_signals(self) -> Dict[str, Any]:
@@ -182,7 +189,8 @@ class DirectCacheAdapter:
             'symbols': symbols,
             'count': len(symbols),
             'timestamp': int(time.time()),
-            'source': 'cache'
+            'source': 'cache',
+            'data_source': 'real' if symbols else 'no_data'  # Data source indicator
         }
     
     async def get_market_movers(self) -> Dict[str, Any]:
@@ -193,7 +201,8 @@ class DirectCacheAdapter:
             'gainers': movers.get('gainers', []),
             'losers': movers.get('losers', []),
             'timestamp': movers.get('timestamp', int(time.time())),
-            'source': 'cache'
+            'source': 'cache',
+            'data_source': 'real' if movers else 'no_data'  # Data source indicator
         }
     
     async def get_market_analysis(self) -> Dict[str, Any]:

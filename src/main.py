@@ -742,6 +742,28 @@ async def lifespan(app: FastAPI):
                 logger.info("✅ Real-time liquidation data collection integrated - events will be processed automatically from WebSocket feeds")
         else:
             logger.info("Components already initialized, using existing instances...")
+            
+            # Verify that critical components are actually available
+            if market_data_manager is None:
+                logger.warning("⚠️ MarketDataManager is None despite components being initialized - reinitializing...")
+                components = await initialize_components()
+                
+                # Extract components for global access
+                config_manager = components['config_manager']
+                exchange_manager = components['exchange_manager']
+                database_client = components['database_client']
+                portfolio_analyzer = components['portfolio_analyzer']
+                confluence_analyzer = components['confluence_analyzer']
+                alert_manager = components['alert_manager']
+                metrics_manager = components['metrics_manager']
+                validation_service = components['validation_service']
+                top_symbols_manager = components['top_symbols_manager']
+                market_reporter = components['market_reporter']
+                market_monitor = components['market_monitor']
+                market_data_manager = components['market_data_manager']
+                globals()['market_data_manager'] = market_data_manager
+                logger.info("✅ Components reinitialized due to missing MarketDataManager")
+            
             # Wait for market_monitor to be available if it's being initialized by monitoring task
             max_wait = 30  # 30 seconds timeout
             wait_count = 0
@@ -814,6 +836,15 @@ async def lifespan(app: FastAPI):
         # Initialize and start continuous analysis
         # Ensure market_data_manager is available from the local scope first, then app state or globals
         _market_data_manager = None
+        logger.info(f"DEBUG: Looking for MarketDataManager...")
+        logger.info(f"DEBUG: locals() has market_data_manager: {'market_data_manager' in locals()}")
+        logger.info(f"DEBUG: locals() market_data_manager value: {locals().get('market_data_manager', 'NOT_FOUND')}")
+        logger.info(f"DEBUG: globals() has market_data_manager: {'market_data_manager' in globals()}")  
+        logger.info(f"DEBUG: globals() market_data_manager value: {globals().get('market_data_manager', 'NOT_FOUND')}")
+        logger.info(f"DEBUG: app.state has market_data_manager: {hasattr(app.state, 'market_data_manager')}")
+        if hasattr(app.state, 'market_data_manager'):
+            logger.info(f"DEBUG: app.state.market_data_manager value: {app.state.market_data_manager}")
+        
         if 'market_data_manager' in locals() and market_data_manager:
             _market_data_manager = market_data_manager
             logger.info("Found MarketDataManager in locals (primary)")

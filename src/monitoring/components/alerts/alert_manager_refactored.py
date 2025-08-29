@@ -51,6 +51,10 @@ class AlertManagerRefactored:
         self._total_alerts_sent = 0
         self._alerts_throttled = 0
         
+        # In-memory alert storage for compatibility
+        self._alerts = []
+        self._max_alerts_in_memory = 1000
+        
         # Handler registry for compatibility
         self._handlers = set()
         
@@ -59,6 +63,9 @@ class AlertManagerRefactored:
         
         # Additional compatibility properties for main.py
         self.alert_handlers = {'discord': self._send_discord_alert}
+        
+        # Database alert storage compatibility
+        self.alert_storage = database if database else None
         
         logger.info("AlertManagerRefactored initialized with modular components")
         
@@ -116,6 +123,29 @@ class AlertManagerRefactored:
             # Send alert via delivery component
             success, error = await self.delivery.send_simple_alert(level, formatted_message)
             
+            # Always store alert in memory for get_alerts compatibility (even if delivery fails)
+            alert_record = {
+                'id': len(self._alerts) + 1,
+                'timestamp': datetime.now().timestamp(),
+                'level': level,
+                'severity': level.upper(),
+                'message': formatted_message,
+                'alert_type': alert_type,
+                'type': alert_type,
+                'symbol': symbol,
+                'details': details or {},
+                'sent': success,
+                'delivery_error': error if not success else None,
+                'created_at': datetime.now().isoformat()
+            }
+            
+            # Add to in-memory storage
+            self._alerts.append(alert_record)
+            
+            # Keep only recent alerts in memory
+            if len(self._alerts) > self._max_alerts_in_memory:
+                self._alerts = self._alerts[-self._max_alerts_in_memory:]
+            
             if success:
                 # Mark as sent for throttling
                 self.throttler.mark_sent(alert_key, alert_type, message)
@@ -128,6 +158,8 @@ class AlertManagerRefactored:
                 logger.info(f"Alert sent successfully: {level} - {message[:50]}...")
                 return True
             else:
+                # Still count as attempted even if failed
+                self._alerts_throttled += 1
                 logger.error(f"Failed to send alert: {error}")
                 return False
                 
@@ -209,6 +241,41 @@ class AlertManagerRefactored:
             logger.error(f"Error sending signal alert: {e}")
             return False
             
+    async def send_trade_execution_alert(self, trade_data: Dict[str, Any]) -> bool:
+        """
+        Send trade execution alert - simplified version.
+        
+        Args:
+            trade_data: Trade execution data dictionary
+            
+        Returns:
+            True if alert was sent successfully
+        """
+        try:
+            # Extract key information
+            symbol = trade_data.get('symbol', 'UNKNOWN')
+            action = trade_data.get('action', 'UNKNOWN')
+            quantity = trade_data.get('quantity', 0)
+            price = trade_data.get('price', 0)
+            
+            # Create formatted message
+            message = f"📊 Trade Executed: {symbol}\n"
+            message += f"Action: {action} | Qty: {quantity}"
+            if price:
+                message += f" | Price: ${price}"
+                
+            return await self.send_alert(
+                level="info",
+                message=message,
+                details=trade_data,
+                alert_type="trade",
+                symbol=symbol
+            )
+            
+        except Exception as e:
+            logger.error(f"Error sending trade execution alert: {e}")
+            return False
+            
     def _generate_alert_key(self, 
                            alert_type: str, 
                            symbol: Optional[str] = None, 
@@ -284,7 +351,87 @@ class AlertManagerRefactored:
             return 1.0
         return self._total_alerts_sent / total_attempted
         
+    def get_alerts(self, level: Optional[str] = None,
+                  limit: Optional[int] = None,
+                  start_time: Optional[float] = None) -> List[Dict[str, Any]]:
+        """
+        Get filtered alerts - maintains compatibility with original AlertManager interface.
+        
+        Args:
+            level: Filter by alert level (info, warning, error, critical)
+            limit: Maximum number of alerts to return
+            start_time: Unix timestamp to filter alerts after this time
+            
+        Returns:
+            List of alert dictionaries with expected format
+        """
+        try:
+            # First try to get alerts from database via alert_storage if available
+            if hasattr(self, 'alert_storage') and self.alert_storage:
+                try:
+                    # Map level to severity for database query
+                    severity = level.upper() if level else None
+                    alerts = self.alert_storage.get_alerts(
+                        limit=limit or 50,
+                        start_time=start_time,
+                        severity=severity
+                    )
+                    # Ensure compatibility with expected format
+                    for alert in alerts:
+                        # Map database fields to expected fields
+                        if 'severity' in alert and 'level' not in alert:
+                            alert['level'] = alert['severity'].lower()
+                        if 'alert_type' in alert and 'type' not in alert:
+                            alert['type'] = alert['alert_type']
+                    return alerts
+                except Exception as e:
+                    logger.error(f"Error retrieving alerts from database: {e}")
+                    # Fall back to in-memory alerts
+            
+            # Use in-memory alerts as fallback
+            alerts = list(self._alerts)
+            
+            # Apply filters
+            if level:
+                level_lower = level.lower()
+                level_upper = level.upper()
+                alerts = [a for a in alerts if 
+                         a.get('level') == level_lower or 
+                         a.get('severity') == level_upper]
+                
+            if start_time is not None:
+                start_time = float(start_time)
+                alerts = [a for a in alerts if float(a.get('timestamp', 0)) >= start_time]
+                
+            # Apply limit (get most recent alerts)
+            if limit is not None:
+                limit = int(limit)
+                alerts = alerts[-limit:]
+                
+            # Sort by timestamp descending (most recent first)
+            alerts.sort(key=lambda x: x.get('timestamp', 0), reverse=True)
+            
+            return alerts
+            
+        except Exception as e:
+            logger.error(f"Error retrieving alerts: {e}")
+            return []
+        
     # Backward compatibility methods (simplified)
+    
+    async def initialize(self) -> None:
+        """
+        Initialize method for backward compatibility.
+        AlertManagerRefactored is initialized in __init__, so this is a no-op.
+        """
+        logger.debug("AlertManagerRefactored.initialize() called - already initialized")
+        
+    async def start(self) -> None:
+        """
+        Start method for backward compatibility.
+        AlertManagerRefactored is ready to use immediately, so this is a no-op.
+        """
+        logger.debug("AlertManagerRefactored.start() called - already started")
     
     def register_handler(self, name: str) -> None:
         """

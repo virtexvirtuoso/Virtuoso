@@ -45,11 +45,40 @@ class DataCollector(MonitoringComponent, DataProvider):
         self.config = config or {}
         
         # Configuration for data fetching
-        self.timeframes = self.config.get('timeframes', {
+        # Handle complex timeframe config or fallback to simple strings
+        raw_timeframes = self.config.get('timeframes', {
             'ltf': '5m',   # Low timeframe
             'mtf': '30m',  # Medium timeframe
             'htf': '4h'    # High timeframe
         })
+        
+        # Extract interval strings from complex config if needed
+        self.timeframes = {}
+        for tf_name, tf_config in raw_timeframes.items():
+            if isinstance(tf_config, dict) and 'interval' in tf_config:
+                # Convert interval minutes to timeframe string
+                interval_minutes = tf_config['interval']
+                if interval_minutes == 1:
+                    self.timeframes[tf_name] = '1m'
+                elif interval_minutes == 5:
+                    self.timeframes[tf_name] = '5m'
+                elif interval_minutes == 30:
+                    self.timeframes[tf_name] = '30m'
+                elif interval_minutes == 240:
+                    self.timeframes[tf_name] = '4h'
+                elif interval_minutes == 60:
+                    self.timeframes[tf_name] = '1h'
+                elif interval_minutes == 15:
+                    self.timeframes[tf_name] = '15m'
+                else:
+                    self.timeframes[tf_name] = f'{interval_minutes}m'
+            elif isinstance(tf_config, str):
+                # Already a string, use as-is
+                self.timeframes[tf_name] = tf_config
+            else:
+                # Fallback to default
+                default_map = {'ltf': '5m', 'mtf': '30m', 'htf': '4h', 'base': '1m'}
+                self.timeframes[tf_name] = default_map.get(tf_name, '1m')
         
         # Limits for data fetching
         self.ohlcv_limit = self.config.get('ohlcv_limit', 100)
