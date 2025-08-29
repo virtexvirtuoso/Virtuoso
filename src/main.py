@@ -622,11 +622,48 @@ async def initialize_components():
             logger.error(f"Failed to initialize alpha integration: {e}")
             alpha_integration = None
     
-    # Initialize dashboard integration service
+    # Initialize dashboard integration service (with monitoring readiness check)
     logger.info("Initializing dashboard integration...")
     dashboard_integration = None
     try:
         from src.dashboard.dashboard_integration import DashboardIntegrationService, set_dashboard_integration
+        
+        # Wait for market monitor to have symbols ready (fix race condition)
+        logger.info("Waiting for market monitor to be ready...")
+        monitor_ready = False
+        max_wait_time = 30  # seconds
+        wait_interval = 1
+        waited = 0
+        
+        while not monitor_ready and waited < max_wait_time:
+            try:
+                # Check if monitor has symbols or is ready
+                if hasattr(market_monitor, 'symbols') and market_monitor.symbols:
+                    logger.info(f"✅ Market monitor has {len(market_monitor.symbols)} symbols ready")
+                    monitor_ready = True
+                elif hasattr(market_monitor, 'top_symbols_manager') and market_monitor.top_symbols_manager:
+                    # Try to get symbols from the manager
+                    test_symbols = await market_monitor.top_symbols_manager.get_top_symbols(limit=1)
+                    if test_symbols and len(test_symbols) > 0:
+                        logger.info("✅ Market monitor's top symbols manager is ready")
+                        monitor_ready = True
+                elif waited > 10:  # After 10 seconds, proceed anyway with fallback
+                    logger.warning("⚠️ Proceeding with dashboard integration without waiting for monitor readiness")
+                    monitor_ready = True
+                
+                if not monitor_ready:
+                    await asyncio.sleep(wait_interval)
+                    waited += wait_interval
+                    
+            except Exception as e:
+                logger.debug(f"Error checking monitor readiness: {e}")
+                if waited > 15:  # Give up after 15 seconds
+                    logger.warning("⚠️ Could not verify monitor readiness, proceeding anyway")
+                    monitor_ready = True
+                else:
+                    await asyncio.sleep(wait_interval)
+                    waited += wait_interval
+        
         dashboard_integration = DashboardIntegrationService(market_monitor)
         
         # Initialize with detailed error handling
@@ -634,9 +671,9 @@ async def initialize_components():
         if init_success:
             await dashboard_integration.start()
             set_dashboard_integration(dashboard_integration)
-            logger.info("✅ Dashboard integration service initialized and started successfully")
+            logger.info("✅ Dashboard integration service initialized and started successfully - providing REAL market data")
         else:
-            logger.warning("⚠️ Dashboard integration initialization failed")
+            logger.warning("⚠️ Dashboard integration initialization failed - dashboard may show limited data")
             dashboard_integration = None
             
     except Exception as e:
@@ -645,7 +682,7 @@ async def initialize_components():
         dashboard_integration = None
         logger.warning("⚠️ Continuing startup without dashboard integration")
     
-    logger.info("🎉 All components initialized successfully!")
+    logger.info("🎉 All components initialized successfully - system will now use REAL market data!")
     
     return {
         'config_manager': config_manager,
@@ -694,6 +731,7 @@ async def lifespan(app: FastAPI):
             market_reporter = components['market_reporter']
             market_monitor = components['market_monitor']  # Already initialized in initialize_components()
             market_data_manager = components['market_data_manager']  # Extract this so ContinuousAnalysisManager can use it
+            globals()['market_data_manager'] = market_data_manager  # Also store in globals for ContinuousAnalysisManager access
             
             # Don't start monitoring system here - it's handled by the monitoring task
             logger.info("Market monitor initialized (will be started by monitoring task)")
@@ -731,7 +769,41 @@ async def lifespan(app: FastAPI):
         app.state.market_monitor = market_monitor
         app.state.liquidation_detector = getattr(market_monitor, 'liquidation_detector', None)
         
-                # Start health monitor
+        # Initialize Phase 2: Mobile optimization services with market monitor
+        try:
+            from src.core.cache.priority_warmer import priority_cache_warmer
+            from src.api.services.mobile_optimization_service import mobile_optimization_service
+            
+            # Connect priority warmer to market monitor
+            priority_cache_warmer.market_monitor = market_monitor
+            priority_cache_warmer.cache_adapter = cache_adapter if 'cache_adapter' in locals() else None
+            
+            # Initialize mobile optimization service
+            await mobile_optimization_service.initialize_dependencies()
+            
+            logger.info("✅ Phase 2 mobile optimization services initialized with market monitor")
+            
+        except Exception as e:
+            logger.error(f"Failed to initialize Phase 2 mobile optimization: {e}")
+        
+        # Initialize Phase 3: Real-time streaming and WebSocket optimization
+        try:
+            from src.api.websocket.mobile_stream_manager import mobile_stream_manager
+            from src.core.streaming.realtime_pipeline import realtime_pipeline
+            
+            # Initialize and start Phase 3 components
+            await mobile_stream_manager.start()
+            await realtime_pipeline.initialize()
+            
+            # Start real-time data monitoring in background
+            asyncio.create_task(realtime_pipeline.start_monitoring())
+            
+            logger.info("✅ Phase 3 real-time streaming services initialized")
+            
+        except Exception as e:
+            logger.error(f"Failed to initialize Phase 3 streaming services: {e}")
+        
+        # Start health monitor
         await health_monitor.start()
         logger.info("Health monitor started")
         
@@ -740,18 +812,39 @@ async def lifespan(app: FastAPI):
         logger.info("WebSocket processor started")
         
         # Initialize and start continuous analysis
-        _market_data_manager = market_data_manager if 'market_data_manager' in locals() else globals().get('market_data_manager')
+        # Ensure market_data_manager is available from the local scope first, then app state or globals
+        _market_data_manager = None
+        if 'market_data_manager' in locals() and market_data_manager:
+            _market_data_manager = market_data_manager
+            logger.info("Found MarketDataManager in locals (primary)")
+        elif hasattr(app.state, 'market_data_manager') and app.state.market_data_manager:
+            _market_data_manager = app.state.market_data_manager
+            logger.info("Found MarketDataManager in app.state")
+        elif 'market_data_manager' in globals() and globals()['market_data_manager']:
+            _market_data_manager = globals()['market_data_manager']
+            logger.info("Found MarketDataManager in globals")
+        else:
+            logger.warning("MarketDataManager not found in locals, app.state, or globals - cache data bridge will have limited functionality")
+        
         if confluence_analyzer and _market_data_manager:
-            logger.info(f"Initializing ContinuousAnalysisManager with confluence_analyzer={confluence_analyzer is not None} and market_data_manager={_market_data_manager is not None}")
+            logger.info(f"✅ Initializing ContinuousAnalysisManager with confluence_analyzer={confluence_analyzer is not None} and market_data_manager={_market_data_manager is not None}")
             global continuous_analysis_manager
             continuous_analysis_manager = ContinuousAnalysisManager(
                 confluence_analyzer, 
                 _market_data_manager
             )
             await continuous_analysis_manager.start()
-            logger.info("Continuous analysis manager started and will push data to cache")
+            logger.info("✅ Continuous analysis manager started and will push REAL data to cache")
+            
+            # Store market_data_manager in app.state for general access
+            app.state.market_data_manager = _market_data_manager
+            logger.info("✅ MarketDataManager stored in app.state for general access")
         else:
-            logger.warning(f"Cannot start ContinuousAnalysisManager: confluence_analyzer={confluence_analyzer is not None}, market_data_manager={_market_data_manager is not None}")
+            logger.warning(f"⚠️  Cannot start ContinuousAnalysisManager: confluence_analyzer={confluence_analyzer is not None}, market_data_manager={_market_data_manager is not None}")
+            if not confluence_analyzer:
+                logger.warning("   - confluence_analyzer is missing")
+            if not _market_data_manager:
+                logger.warning("   - market_data_manager is missing (check if it was properly initialized and stored in app.state)")
         
         # Initialize worker pool
         init_worker_pool()
@@ -760,12 +853,85 @@ async def lifespan(app: FastAPI):
         asyncio.create_task(schedule_background_update())
         logger.info("Background cache updates scheduled")
         
+        # Store components for cache bridge access by capturing them in closure
+        market_data_mgr = _market_data_manager
+        dashboard_integ = globals().get('dashboard_integration')
+        confluence_anal = confluence_analyzer
+        
+        # Start cache data bridge for dashboard integration with REAL data sources  
+        async def start_cache_bridge_with_delay():
+            await asyncio.sleep(5)  # Wait for components to be fully ready
+            try:
+                from src.core.cache_data_bridge import cache_data_bridge
+                
+                # Initialize cache data bridge with real data sources (captured from closure)
+                if market_data_mgr:
+                    cache_data_bridge.set_market_data_manager(market_data_mgr)
+                    logger.info("✅ Cache data bridge configured with MarketDataManager (captured)")
+                else:
+                    logger.warning("⚠️ MarketDataManager not available for cache data bridge")
+                
+                # Set dashboard integration if available
+                if dashboard_integ:
+                    cache_data_bridge.set_dashboard_integration(dashboard_integ)
+                    logger.info("✅ Cache data bridge configured with DashboardIntegrationService (captured)")
+                else:
+                    logger.warning("⚠️ DashboardIntegrationService not available for cache data bridge")
+                
+                # Set confluence analyzer if available
+                if confluence_anal:
+                    cache_data_bridge.set_confluence_analyzer(confluence_anal)
+                    logger.info("✅ Cache data bridge configured with ConfluenceAnalyzer (captured)")
+                else:
+                    logger.warning("⚠️ ConfluenceAnalyzer not available for cache data bridge")
+                
+                # Start the bridge with real data sources
+                await cache_data_bridge.start_bridge_loop(interval=30)
+                logger.info("🚀 Cache data bridge started with REAL data sources!")
+                
+            except Exception as e:
+                logger.error(f"❌ Failed to start cache data bridge: {e}")
+                import traceback
+                logger.debug(traceback.format_exc())
+        
+        # Start the delayed cache bridge initialization
+        asyncio.create_task(start_cache_bridge_with_delay())
+        logger.info("🚀 Cache data bridge initialization scheduled with captured REAL data sources")
+        
         logger.info("FastAPI lifespan startup complete - web server ready")
         
         yield
         
         # Cleanup on shutdown - only if we're the ones who initialized
         logger.info("FastAPI lifespan shutdown starting...")
+        
+        # Cleanup mobile services HTTP sessions
+        try:
+            from src.api.services.mobile_fallback_service import mobile_fallback_service
+            await mobile_fallback_service.close()
+            logger.debug("Mobile fallback service HTTP session closed")
+        except Exception as e:
+            logger.debug(f"Error closing mobile fallback service: {e}")
+        
+        # Cleanup mobile optimization service
+        try:
+            from src.api.services.mobile_optimization_service import mobile_optimization_service
+            if hasattr(mobile_optimization_service, 'cleanup'):
+                await mobile_optimization_service.cleanup()
+            logger.debug("Mobile optimization service cleaned up")
+        except Exception as e:
+            logger.debug(f"Error cleaning up mobile optimization service: {e}")
+        
+        # Cleanup Phase 3: Real-time streaming services
+        try:
+            from src.api.websocket.mobile_stream_manager import mobile_stream_manager
+            from src.core.streaming.realtime_pipeline import realtime_pipeline
+            
+            await mobile_stream_manager.stop()
+            await realtime_pipeline.stop_monitoring()
+            logger.debug("Phase 3 streaming services cleaned up")
+        except Exception as e:
+            logger.debug(f"Error cleaning up Phase 3 services: {e}")
         
         # Note: In concurrent mode, cleanup is handled by the monitoring task
         # We only do minimal cleanup here to avoid double-cleanup
