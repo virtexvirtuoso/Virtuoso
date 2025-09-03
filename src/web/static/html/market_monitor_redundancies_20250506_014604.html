@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+        <html>
+        <head>
+            <title>Market Monitor Redundancy Analysis</title>
+            <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+            <style>
+                body { font-family: Arial, sans-serif; margin: 20px; }
+                .chart-container { height: 400px; margin-bottom: 30px; }
+                .section { margin-bottom: 30px; }
+                table { border-collapse: collapse; width: 100%; }
+                th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+                th { background-color: #f2f2f2; }
+                tr:nth-child(even) { background-color: #f9f9f9; }
+            </style>
+        </head>
+        <body>
+            <h1>Market Monitor Redundancy Analysis</h1>
+            
+            <div class="section">
+                <h2>Duplicate Data Fetches by Symbol</h2>
+                <div class="chart-container">
+                    <canvas id="duplicateFetchesChart"></canvas>
+                </div>
+            </div>
+            
+            <div class="section">
+                <h2>Cache Performance by Symbol</h2>
+                <div class="chart-container">
+                    <canvas id="cachePerformanceChart"></canvas>
+                </div>
+            </div>
+            
+            <div class="section">
+                <h2>API Call Distribution</h2>
+                <div class="chart-container">
+                    <canvas id="apiCallsChart"></canvas>
+                </div>
+            </div>
+            
+            <script>
+        
+                // Duplicate Fetches Chart
+                new Chart(document.getElementById('duplicateFetchesChart'), {
+                    type: 'bar',
+                    data: {
+                        labels: ["SUIUSDT", "XRPUSDT", "SOLUSDT", "FARTCOINUSDT", "VIRTUALUSDT", "DOGEUSDT", "ADAUSDT", "1000PEPEUSDT", "dynamic", "BTCUSDT", "ETHUSDT", "AVAXUSDT"],
+                        datasets: [{
+                            label: 'Number of Duplicate Fetches',
+                            data: [3, 3, 4, 3, 3, 3, 1, 2, 3, 3, 3, 2],
+                            backgroundColor: 'rgba(255, 99, 132, 0.7)',
+                            borderColor: 'rgb(255, 99, 132)',
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                title: {
+                                    display: true,
+                                    text: 'Count'
+                                }
+                            }
+                        }
+                    }
+                });
+        
+                // Cache Performance Chart
+                new Chart(document.getElementById('cachePerformanceChart'), {
+                    type: 'bar',
+                    data: {
+                        labels: ["BTCUSDT", "ETHUSDT", "SOLUSDT"],
+                        datasets: [
+                            {
+                                label: 'Cache Hits',
+                                data: [16, 8, 8],
+                                backgroundColor: 'rgba(75, 192, 192, 0.7)',
+                                borderColor: 'rgb(75, 192, 192)',
+                                borderWidth: 1
+                            },
+                            {
+                                label: 'Cache Misses',
+                                data: [0, 0, 0],
+                                backgroundColor: 'rgba(255, 99, 132, 0.7)',
+                                borderColor: 'rgb(255, 99, 132)',
+                                borderWidth: 1
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                title: {
+                                    display: true,
+                                    text: 'Count'
+                                }
+                            }
+                        }
+                    }
+                });
+        
+                // API Calls Chart
+                new Chart(document.getElementById('apiCallsChart'), {
+                    type: 'pie',
+                    data: {
+                        labels: [],
+                        datasets: [{
+                            data: [],
+                            backgroundColor: [
+                                'rgba(255, 99, 132, 0.7)',
+                                'rgba(54, 162, 235, 0.7)',
+                                'rgba(255, 206, 86, 0.7)',
+                                'rgba(75, 192, 192, 0.7)',
+                                'rgba(153, 102, 255, 0.7)'
+                            ]
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false
+                    }
+                });
+            </script>
+        </body>
+        </html>
+        

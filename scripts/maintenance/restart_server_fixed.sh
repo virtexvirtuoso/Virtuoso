@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: 45.77.40.77)
+#   VPS_HOST         VPS hostname (default: VPS_HOST_REDACTED)
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -61,7 +61,7 @@
 
 echo "🔄 Restarting Virtuoso server with correct environment..."
 
-ssh linuxuser@45.77.40.77 'bash -s' << 'ENDSSH'
+ssh linuxuser@VPS_HOST_REDACTED 'bash -s' << 'ENDSSH'
 cd /home/linuxuser/trading/Virtuoso_ccxt
 
 # Kill existing processes

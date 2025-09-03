@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: 45.77.40.77)
+#   VPS_HOST         VPS hostname (default: VPS_HOST_REDACTED)
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -109,7 +109,7 @@ check_prerequisites() {
             fi
             ;;
         "staging"|"production")
-            if ! ssh -o ConnectTimeout=5 linuxuser@45.77.40.77 "echo 'Connection test'" >/dev/null 2>&1; then
+            if ! ssh -o ConnectTimeout=5 linuxuser@VPS_HOST_REDACTED "echo 'Connection test'" >/dev/null 2>&1; then
                 log_error "Cannot connect to VPS. Check SSH configuration."
                 return 1
             fi
@@ -143,7 +143,7 @@ deploy_staging() {
         source "$PROJECT_ROOT/scripts/deployment/deploy_to_vps.sh"
     else
         log_warn "No staging deployment script found. Using basic deployment."
-        rsync -av --exclude='venv311' --exclude='__pycache__' "$PROJECT_ROOT/" linuxuser@45.77.40.77:/home/linuxuser/trading/Virtuoso_ccxt/
+        rsync -av --exclude='venv311' --exclude='__pycache__' "$PROJECT_ROOT/" linuxuser@VPS_HOST_REDACTED:/home/linuxuser/trading/Virtuoso_ccxt/
     fi
     
     log_info "Staging deployment completed successfully"

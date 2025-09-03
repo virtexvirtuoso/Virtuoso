@@ -11,7 +11,7 @@ from datetime import datetime
 import sys
 
 # VPS Configuration
-VPS_BASE_URL = "http://45.77.40.77:8003"
+VPS_BASE_URL = "http://VPS_HOST_REDACTED:8003"
 TIMEOUT = 30
 
 def test_endpoint(method, path, description, expected_fields=None):

@@ -5,7 +5,7 @@ import aiohttp
 async def test_endpoints():
     async with aiohttp.ClientSession() as session:
         # Test the cached signals endpoint
-        async with session.get('http://45.77.40.77:8001/api/dashboard-cached/signals') as resp:
+        async with session.get('http://VPS_HOST_REDACTED:8001/api/dashboard-cached/signals') as resp:
             data = await resp.json()
             print(f"Cached signals endpoint:")
             print(f"  Status: {resp.status}")
@@ -13,7 +13,7 @@ async def test_endpoints():
             print(f"  Response keys: {list(data.keys())}")
             
         # Test mobile data endpoint
-        async with session.get('http://45.77.40.77:8001/api/dashboard-cached/mobile-data') as resp:
+        async with session.get('http://VPS_HOST_REDACTED:8001/api/dashboard-cached/mobile-data') as resp:
             data = await resp.json()
             print(f"\nMobile data endpoint:")
             print(f"  Status: {resp.status}")
@@ -22,7 +22,7 @@ async def test_endpoints():
                 print(f"  First score: {data['confluence_scores'][0]}")
                 
         # Test fast signals (known to work)
-        async with session.get('http://45.77.40.77:8001/api/fast/signals') as resp:
+        async with session.get('http://VPS_HOST_REDACTED:8001/api/fast/signals') as resp:
             data = await resp.json()
             print(f"\nFast signals endpoint (reference):")
             print(f"  Status: {resp.status}")

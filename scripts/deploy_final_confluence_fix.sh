@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: 45.77.40.77)
+#   VPS_HOST         VPS hostname (default: VPS_HOST_REDACTED)
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -66,14 +66,14 @@ echo
 
 # Copy the fixed dashboard.py to VPS
 echo "📤 Copying fixed dashboard.py to VPS..."
-scp src/api/routes/dashboard.py linuxuser@45.77.40.77:/home/linuxuser/trading/Virtuoso_ccxt/src/api/routes/
+scp src/api/routes/dashboard.py linuxuser@VPS_HOST_REDACTED:/home/linuxuser/trading/Virtuoso_ccxt/src/api/routes/
 
 # Copy test script
 echo "📤 Copying test script..."
-scp scripts/test_final_dashboard_fix.py linuxuser@45.77.40.77:/home/linuxuser/trading/Virtuoso_ccxt/scripts/
+scp scripts/test_final_dashboard_fix.py linuxuser@VPS_HOST_REDACTED:/home/linuxuser/trading/Virtuoso_ccxt/scripts/
 
 # SSH to VPS and test
-ssh linuxuser@45.77.40.77 << 'EOF'
+ssh linuxuser@VPS_HOST_REDACTED << 'EOF'
 echo
 echo "🔍 Testing on VPS..."
 cd /home/linuxuser/trading/Virtuoso_ccxt

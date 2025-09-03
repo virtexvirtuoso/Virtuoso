@@ -343,7 +343,7 @@
                     localStorage.setItem('virtuoso-auth-token', data.token);
                     
                     // Redirect to dashboard
-                    window.location.href = '/dashboard/mobile';
+                    window.location.href = '/mobile';
                 } else {
                     throw new Error('Invalid credentials');
                 }
@@ -356,7 +356,7 @@
                 // Check for specific credentials
                 if (username === 'fern' && password === 'xrpsux') {
                     localStorage.setItem('virtuoso-auth-token', 'demo-token');
-                    window.location.href = '/dashboard/mobile';
+                    window.location.href = '/mobile';
                 }
             } finally {
                 // Reset button state
@@ -368,7 +368,7 @@
         
         // Check if user is already logged in
         if (localStorage.getItem('virtuoso-auth-token')) {
-            window.location.href = '/dashboard/mobile';
+            window.location.href = '/mobile';
         }
         
         // Auto-focus username field

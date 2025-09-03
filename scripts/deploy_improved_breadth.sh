@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: 45.77.40.77)
+#   VPS_HOST         VPS hostname (default: VPS_HOST_REDACTED)
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -62,7 +62,7 @@
 echo "🎨 Deploying Improved Market Breadth Visualization..."
 echo "===================================================="
 
-VPS_HOST="linuxuser@45.77.40.77"
+VPS_HOST="linuxuser@VPS_HOST_REDACTED"
 PROJECT_DIR="/home/linuxuser/trading/Virtuoso_ccxt"
 
 # Backup current version on VPS
@@ -92,7 +92,7 @@ echo "   • Live indicator shows real-time updates"
 echo "   • Smooth animations for all transitions"
 echo ""
 echo "📱 Access the improved dashboard at:"
-echo "   http://45.77.40.77:8001/dashboard/mobile"
+echo "   http://VPS_HOST_REDACTED:8001/dashboard/mobile"
 echo ""
 echo "💡 Features:"
 echo "   • Clearer visualization of market sentiment"

@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: 45.77.40.77)
+#   VPS_HOST         VPS hostname (default: VPS_HOST_REDACTED)
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -64,19 +64,19 @@ echo "=============================================="
 
 # Deploy pooled cache adapter
 echo "📦 Deploying connection pooling..."
-scp src/core/cache_adapter_pooled.py linuxuser@45.77.40.77:/home/linuxuser/trading/Virtuoso_ccxt/src/core/
+scp src/core/cache_adapter_pooled.py linuxuser@VPS_HOST_REDACTED:/home/linuxuser/trading/Virtuoso_ccxt/src/core/
 
 # Deploy parallel dashboard routes
 echo "📦 Deploying parallel processing routes..."
-scp src/api/routes/dashboard_parallel.py linuxuser@45.77.40.77:/home/linuxuser/trading/Virtuoso_ccxt/src/api/routes/
+scp src/api/routes/dashboard_parallel.py linuxuser@VPS_HOST_REDACTED:/home/linuxuser/trading/Virtuoso_ccxt/src/api/routes/
 
 # Update dashboard.py to use pooled adapter
 echo "🔧 Updating dashboard to use pooled adapter..."
-ssh linuxuser@45.77.40.77 'cd /home/linuxuser/trading/Virtuoso_ccxt && sed -i "s/from src.api.cache_adapter_direct/from src.core.cache_adapter_pooled/g" src/api/routes/dashboard.py'
+ssh linuxuser@VPS_HOST_REDACTED 'cd /home/linuxuser/trading/Virtuoso_ccxt && sed -i "s/from src.api.cache_adapter_direct/from src.core.cache_adapter_pooled/g" src/api/routes/dashboard.py'
 
 # Restart service
 echo "🔄 Restarting service..."
-ssh linuxuser@45.77.40.77 'sudo systemctl restart virtuoso.service'
+ssh linuxuser@VPS_HOST_REDACTED 'sudo systemctl restart virtuoso.service'
 
 # Wait for startup
 echo "⏳ Waiting for service to start..."
@@ -91,11 +91,11 @@ for i in {1..3}; do
     echo ""
     echo "Test Run $i:"
     echo -n "  Mobile: "
-    time=$(curl -w "%{time_total}" -o /dev/null -s http://45.77.40.77:8003/api/dashboard/mobile 2>/dev/null)
+    time=$(curl -w "%{time_total}" -o /dev/null -s http://VPS_HOST_REDACTED:8003/api/dashboard/mobile 2>/dev/null)
     echo "${time}s"
     
     echo -n "  Alerts: "
-    time=$(curl -w "%{time_total}" -o /dev/null -s http://45.77.40.77:8003/api/dashboard/alerts 2>/dev/null)
+    time=$(curl -w "%{time_total}" -o /dev/null -s http://VPS_HOST_REDACTED:8003/api/dashboard/alerts 2>/dev/null)
     echo "${time}s"
     
     sleep 1
@@ -103,4 +103,4 @@ done
 
 echo ""
 echo "✅ Phase 1 deployment complete!"
-echo "Monitor: ssh linuxuser@45.77.40.77 'sudo journalctl -u virtuoso.service -f'"
+echo "Monitor: ssh linuxuser@VPS_HOST_REDACTED 'sudo journalctl -u virtuoso.service -f'"

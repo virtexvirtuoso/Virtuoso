@@ -237,3 +237,10 @@ src/indicators/price_structure_indicators.py
 .backup/
 *.backup*
 *.pre_*
+
+# Evidence Package - Contains sensitive documentation
+vultr_evidence_package/
+*_evidence_package/
+
+# Vultr backup files - Contains API keys and sensitive data
+vultr_backup_files/

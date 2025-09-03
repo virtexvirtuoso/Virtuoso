@@ -10,7 +10,7 @@ from datetime import datetime
 
 def run_ssh_command(command):
     """Execute SSH command and return result."""
-    ssh_cmd = f'ssh linuxuser@45.77.40.77 "{command}"'
+    ssh_cmd = f'ssh linuxuser@VPS_HOST_REDACTED "{command}"'
     try:
         result = subprocess.run(ssh_cmd, shell=True, capture_output=True, text=True, timeout=30)
         if result.returncode == 0:

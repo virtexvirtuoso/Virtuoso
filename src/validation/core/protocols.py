@@ -5,7 +5,12 @@ Merged from: core/validation/protocols.py and validation/core/protocols.py
 
 from .base import ValidationResult, ValidationContext
 from .models import ValidationRule
-from typing import Protocol, Dict, Any, Optional, List
+try:
+    from typing import Protocol, runtime_checkable
+except ImportError:
+    from typing_extensions import Protocol, runtime_checkable
+
+from typing import Dict, Any, Optional, List
 from typing_extensions import runtime_checkable
 
 @runtime_checkable

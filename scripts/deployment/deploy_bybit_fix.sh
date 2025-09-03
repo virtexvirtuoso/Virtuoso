@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: 45.77.40.77)
+#   VPS_HOST         VPS hostname (default: VPS_HOST_REDACTED)
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -63,7 +63,7 @@
 echo "🚀 Deploying BybitExchange fix to VPS..."
 echo "========================================"
 
-VPS_HOST="linuxuser@45.77.40.77"
+VPS_HOST="linuxuser@VPS_HOST_REDACTED"
 VPS_DIR="/home/linuxuser/trading/Virtuoso_ccxt"
 
 # Copy the fixed bybit.py file

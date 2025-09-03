@@ -174,4 +174,4 @@ if __name__ == '__main__':
     file_path = create_fixed_cache_manager()
     print(f"Fixed file created: {file_path}")
     print("\nTo deploy:")
-    print(f"scp {file_path} linuxuser@45.77.40.77:/home/linuxuser/trading/Virtuoso_ccxt/src/core/dashboard_cache_manager.py")
+    print(f"scp {file_path} linuxuser@VPS_HOST_REDACTED:/home/linuxuser/trading/Virtuoso_ccxt/src/core/dashboard_cache_manager.py")

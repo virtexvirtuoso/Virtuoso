@@ -2113,7 +2113,7 @@ class BybitExchange(BaseExchange):
             'bid': float(ticker.get('bid', 0)),
             'ask': float(ticker.get('ask', 0)),
             'last': float(ticker.get('last', 0)),
-            'volume': float(ticker.get('volume', 0)),
+            'volume': float(ticker.get('volume24h', ticker.get('volume', 0))),
             'open_interest': float(ticker.get('openInterest', 0)),
             'open_interest_value': float(ticker.get('openInterestValue', 0)),
             'funding_rate': float(ticker.get('fundingRate', 0)),

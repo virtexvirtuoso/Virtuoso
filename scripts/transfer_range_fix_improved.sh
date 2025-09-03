@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: 45.77.40.77)
+#   VPS_HOST         VPS hostname (default: VPS_HOST_REDACTED)
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -60,9 +60,9 @@
 #############################################################################
 
 # Transfer script for range volume fix with directory creation
-# Target: linuxuser@45.77.40.77
+# Target: linuxuser@VPS_HOST_REDACTED
 
-TARGET_HOST="linuxuser@45.77.40.77"
+TARGET_HOST="linuxuser@VPS_HOST_REDACTED"
 TARGET_BASE="~/Virtuoso_ccxt"
 
 echo "Transferring range volume fix files to VPS..."

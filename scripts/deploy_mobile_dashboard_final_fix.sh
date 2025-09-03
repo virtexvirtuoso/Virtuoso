@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: 45.77.40.77)
+#   VPS_HOST         VPS hostname (default: VPS_HOST_REDACTED)
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -62,7 +62,7 @@
 echo "🚀 Deploying Mobile Dashboard Final Fixes to VPS..."
 echo "==========================================="
 
-VPS_HOST="linuxuser@45.77.40.77"
+VPS_HOST="linuxuser@VPS_HOST_REDACTED"
 PROJECT_DIR="/home/linuxuser/trading/Virtuoso_ccxt"
 
 # Copy the updated files
@@ -89,17 +89,17 @@ echo "🧪 Testing fixed endpoints..."
 echo ""
 
 echo "1. Market Breadth Test:"
-curl -s "http://45.77.40.77:8001/api/dashboard-cached/mobile-data" | jq '.market_breadth'
+curl -s "http://VPS_HOST_REDACTED:8001/api/dashboard-cached/mobile-data" | jq '.market_breadth'
 
 echo ""
 echo "2. Top Movers Test:"
-curl -s "http://45.77.40.77:8001/api/dashboard-cached/mobile-data" | jq '{gainers: .top_movers.gainers | length, losers: .top_movers.losers | length}'
+curl -s "http://VPS_HOST_REDACTED:8001/api/dashboard-cached/mobile-data" | jq '{gainers: .top_movers.gainers | length, losers: .top_movers.losers | length}'
 
 echo ""
 echo "3. First Confluence Score with Price:"
-curl -s "http://45.77.40.77:8001/api/dashboard-cached/mobile-data" | jq '.confluence_scores[0] | {symbol, score, price, change_24h}'
+curl -s "http://VPS_HOST_REDACTED:8001/api/dashboard-cached/mobile-data" | jq '.confluence_scores[0] | {symbol, score, price, change_24h}'
 
 echo ""
 echo "✅ Deployment Complete!"
 echo ""
-echo "📱 Test mobile dashboard at: http://45.77.40.77:8001/dashboard/mobile"
+echo "📱 Test mobile dashboard at: http://VPS_HOST_REDACTED:8001/dashboard/mobile"

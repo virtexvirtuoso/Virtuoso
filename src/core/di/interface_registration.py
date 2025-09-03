@@ -107,7 +107,7 @@ def _register_infrastructure_services(container: ServiceContainer, config: Dict[
     
     # IInterpretationService - Scoped (per-analysis context)
     async def create_interpretation_service():
-        from src.analysis.core.interpretation_generator import InterpretationGenerator
+        from src.core.analysis.interpretation_generator import InterpretationGenerator
         return InterpretationGenerator()
     
     container.register_factory(IInterpretationService, create_interpretation_service, ServiceLifetime.SCOPED)
@@ -220,7 +220,7 @@ def _register_analysis_services(container: ServiceContainer, config: Dict[str, A
                 def is_healthy(self): return True
             return FastConfluenceAnalyzer()
         
-        from src.analysis.core.confluence import ConfluenceAnalyzer
+        from src.core.analysis.confluence import ConfluenceAnalyzer
         
         config_service = await container.get_service(IConfigService)
         config_dict = config_service.to_dict() if hasattr(config_service, 'to_dict') else {}

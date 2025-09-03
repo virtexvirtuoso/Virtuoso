@@ -50,7 +50,7 @@ from dataclasses import dataclass
 import os
 import traceback
 from functools import wraps
-from ..utils.cache import cached
+# from ..utils.cache import cached  # Archived - using simplified caching
 import time
 from contextlib import contextmanager
 import re
@@ -510,7 +510,7 @@ class DatabaseClient:
             logger.error(f"Error converting DataFrame types: {str(e)}")
             return df
 
-    @cached(ttl=300)  # 5 minute cache
+    # @cached(ttl=300)  # 5 minute cache - Archived, using simplified caching
     @handle_db_errors
     async def get_imbalance_history(
         self, 

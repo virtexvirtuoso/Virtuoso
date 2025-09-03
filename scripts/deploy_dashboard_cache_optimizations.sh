@@ -15,7 +15,7 @@ NC='\033[0m' # No Color
 # Configuration
 LOCAL_PATH="/Users/ffv_macmini/Desktop/Virtuoso_ccxt"
 VPS_USER="linuxuser"
-VPS_HOST="45.77.40.77"
+VPS_HOST="VPS_HOST_REDACTED"
 VPS_PATH="/home/linuxuser/trading/Virtuoso_ccxt"
 
 echo -e "${BLUE}🚀 Deploying Dashboard Cache Optimizations${NC}"

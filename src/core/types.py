@@ -1,6 +1,11 @@
 """Common type definitions to avoid circular imports."""
 
-from typing import Dict, Any, Optional, List, Union, TypeVar, Protocol, Callable, TYPE_CHECKING
+try:
+    from typing import Protocol, runtime_checkable
+except ImportError:
+    from typing_extensions import Protocol, runtime_checkable
+
+from typing import Dict, Any, Optional, List, Union, TypeVar, Callable, TYPE_CHECKING
 from datetime import datetime
 from enum import Enum, auto
 

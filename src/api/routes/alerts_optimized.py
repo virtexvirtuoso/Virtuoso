@@ -11,18 +11,15 @@ import logging
 from datetime import datetime, timedelta
 import time
 
-# Import our optimized cache components
-from src.core.cache.key_generator import CacheKeyGenerator
-from src.core.cache.batch_operations import BatchCacheManager
-from src.core.cache.ttl_strategy import TTLStrategy, DataType
-from src.core.cache_adapter_pooled import cache_adapter
+# Import our cache adapter
+from src.api.cache_adapter_direct import cache_adapter
 
 router = APIRouter(prefix="/alerts", tags=["alerts"])
 logger = logging.getLogger(__name__)
 
-# Initialize optimized cache components
-batch_manager = BatchCacheManager(cache_adapter)
-ttl_strategy = TTLStrategy()
+# Simplified cache operations (replacing complex multi-tier system)
+# batch_manager = BatchCacheManager(cache_adapter)  # Commented out - archived
+# ttl_strategy = TTLStrategy()  # Commented out - archived
 
 class AlertCacheService:
     """Optimized alert caching service"""

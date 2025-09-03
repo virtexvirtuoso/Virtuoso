@@ -5,7 +5,7 @@ echo "Timestamp: $(date)"
 echo
 
 echo "1. Testing VPS Service Status:"
-ssh linuxuser@45.77.40.77 "
+ssh linuxuser@VPS_HOST_REDACTED "
     echo 'Main service status:'
     sudo systemctl status virtuoso.service --no-pager -l | grep -E 'Active|Main PID|Memory'
     echo
@@ -17,7 +17,7 @@ ssh linuxuser@45.77.40.77 "
 "
 
 echo "2. Testing Cache Connectivity:"
-ssh linuxuser@45.77.40.77 "
+ssh linuxuser@VPS_HOST_REDACTED "
     echo 'Memcached status:'
     sudo systemctl status memcached --no-pager | grep Active
     echo 'Memcached connectivity test:'
@@ -28,7 +28,7 @@ ssh linuxuser@45.77.40.77 "
 "
 
 echo "3. Testing Local API Endpoints from VPS:"
-ssh linuxuser@45.77.40.77 "
+ssh linuxuser@VPS_HOST_REDACTED "
     echo 'Local health check:'
     curl -s -w 'Response time: %{time_total}s\n' 'http://localhost:8003/health' | tail -1
     echo
@@ -40,7 +40,7 @@ ssh linuxuser@45.77.40.77 "
 "
 
 echo "4. Testing Recent Logs:"
-ssh linuxuser@45.77.40.77 "
+ssh linuxuser@VPS_HOST_REDACTED "
     echo 'Recent error logs (last 20 lines):'
     sudo journalctl -u virtuoso.service --no-pager -n 20 | grep -E 'ERROR|CRITICAL|Exception' || echo 'No recent errors in systemd logs'
     echo
@@ -49,7 +49,7 @@ ssh linuxuser@45.77.40.77 "
 "
 
 echo "5. Resource Usage:"
-ssh linuxuser@45.77.40.77 "
+ssh linuxuser@VPS_HOST_REDACTED "
     echo 'Memory usage:'
     free -h
     echo

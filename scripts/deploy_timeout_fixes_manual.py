@@ -53,7 +53,7 @@ def main():
     ]
     
     for file_path in files_to_copy:
-        scp_command = f'scp "{file_path}" linuxuser@45.77.40.77:/home/linuxuser/trading/Virtuoso_ccxt/{file_path}'
+        scp_command = f'scp "{file_path}" linuxuser@VPS_HOST_REDACTED:/home/linuxuser/trading/Virtuoso_ccxt/{file_path}'
         result = run_command(scp_command, f"Copy {file_path}")
         if result is None:
             print(f"❌ Failed to copy {file_path}")
@@ -85,7 +85,7 @@ def main():
     ]
     
     for cmd in restart_commands:
-        ssh_command = f'ssh linuxuser@45.77.40.77 "cd /home/linuxuser/trading/Virtuoso_ccxt && {cmd}"'
+        ssh_command = f'ssh linuxuser@VPS_HOST_REDACTED "cd /home/linuxuser/trading/Virtuoso_ccxt && {cmd}"'
         result = run_command(ssh_command, f"VPS: {cmd}")
         
         if result is None and "systemctl status" not in cmd:
@@ -118,7 +118,7 @@ def main():
     validation_results = {}
     
     for cmd in validation_commands:
-        ssh_command = f'ssh linuxuser@45.77.40.77 "{cmd}"'
+        ssh_command = f'ssh linuxuser@VPS_HOST_REDACTED "{cmd}"'
         result = run_command(ssh_command, f"Validation: {cmd[:50]}...")
         if result is not None:
             validation_results[cmd] = result
@@ -156,10 +156,10 @@ def main():
     # 5. Monitoring recommendations  
     print("\n📋 Step 5: Extended Monitoring Plan")
     print("   🎯 Monitor these metrics for the next 1 hour:")
-    print("   • Timeout frequency: ssh linuxuser@45.77.40.77 'sudo journalctl -u virtuoso.service -f | grep timeout'")
-    print("   • Connection pool: ssh linuxuser@45.77.40.77 'sudo journalctl -u virtuoso.service -f | grep pool'") 
-    print("   • WebSocket activity: ssh linuxuser@45.77.40.77 'sudo journalctl -u virtuoso.service -f | grep messages.*minute'")
-    print("   • Service health: ssh linuxuser@45.77.40.77 'sudo systemctl status virtuoso.service'")
+    print("   • Timeout frequency: ssh linuxuser@VPS_HOST_REDACTED 'sudo journalctl -u virtuoso.service -f | grep timeout'")
+    print("   • Connection pool: ssh linuxuser@VPS_HOST_REDACTED 'sudo journalctl -u virtuoso.service -f | grep pool'") 
+    print("   • WebSocket activity: ssh linuxuser@VPS_HOST_REDACTED 'sudo journalctl -u virtuoso.service -f | grep messages.*minute'")
+    print("   • Service health: ssh linuxuser@VPS_HOST_REDACTED 'sudo systemctl status virtuoso.service'")
     
     # 6. Performance expectations
     print("\n🎯 Expected Performance Improvements:")
@@ -172,11 +172,11 @@ def main():
     # 7. Quick test command
     print("\n🧪 Quick Test Commands:")
     print("   # Check timeout errors in last 10 minutes:")
-    print("   ssh linuxuser@45.77.40.77 'sudo journalctl -u virtuoso.service --since \"10 minutes ago\" | grep timeout | wc -l'")
+    print("   ssh linuxuser@VPS_HOST_REDACTED 'sudo journalctl -u virtuoso.service --since \"10 minutes ago\" | grep timeout | wc -l'")
     print("   # Check adaptive timeout usage:")
-    print("   ssh linuxuser@45.77.40.77 'sudo journalctl -u virtuoso.service --since \"5 minutes ago\" | grep adaptive'")
+    print("   ssh linuxuser@VPS_HOST_REDACTED 'sudo journalctl -u virtuoso.service --since \"5 minutes ago\" | grep adaptive'")
     print("   # Check connection pool scaling:")
-    print("   ssh linuxuser@45.77.40.77 'sudo journalctl -u virtuoso.service --since \"5 minutes ago\" | grep scaling'")
+    print("   ssh linuxuser@VPS_HOST_REDACTED 'sudo journalctl -u virtuoso.service --since \"5 minutes ago\" | grep scaling'")
     
     print("\n" + "="*60)
     print("🎉 MANUAL DEPLOYMENT COMPLETED SUCCESSFULLY!")

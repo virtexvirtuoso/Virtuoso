@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: 45.77.40.77)
+#   VPS_HOST         VPS hostname (default: VPS_HOST_REDACTED)
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -61,12 +61,12 @@
 
 # Fix FastAPI lifespan error with market_data_manager variable
 echo "=== Fixing FastAPI Lifespan Error ==="
-echo "Target: VPS at 45.77.40.77"
+echo "Target: VPS at VPS_HOST_REDACTED"
 echo "Time: $(date)"
 
 # Define VPS connection details
 VPS_USER="linuxuser"
-VPS_HOST="45.77.40.77"
+VPS_HOST="VPS_HOST_REDACTED"
 VPS_PATH="/home/linuxuser/trading/Virtuoso_ccxt"
 
 # Copy the fixed files

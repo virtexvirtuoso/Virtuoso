@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: 45.77.40.77)
+#   VPS_HOST         VPS hostname (default: VPS_HOST_REDACTED)
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -63,7 +63,7 @@ echo "🔧 Fixing IndentationError in ReportManager"
 echo "=========================================="
 
 # Fix the indentation error in report_manager.py
-ssh linuxuser@45.77.40.77 << 'EOF'
+ssh linuxuser@VPS_HOST_REDACTED << 'EOF'
 cd ~/trading/Virtuoso_ccxt
 
 echo "Creating fix script..."
@@ -101,7 +101,7 @@ EOF
 
 echo ""
 echo "Fix applied! Now you can run:"
-echo "  ssh linuxuser@45.77.40.77"
+echo "  ssh linuxuser@VPS_HOST_REDACTED"
 echo "  cd ~/trading/Virtuoso_ccxt"
 echo "  source venv/bin/activate"
 echo "  python src/main.py"

@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: 45.77.40.77)
+#   VPS_HOST         VPS hostname (default: VPS_HOST_REDACTED)
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -59,11 +59,11 @@
 #
 #############################################################################
 
-echo "🔧 Final server fix for Virtuoso on 45.77.40.77"
+echo "🔧 Final server fix for Virtuoso on VPS_HOST_REDACTED"
 echo "=============================================="
 
 # Run all fixes on remote server
-ssh linuxuser@45.77.40.77 'bash -s' << 'ENDSSH'
+ssh linuxuser@VPS_HOST_REDACTED 'bash -s' << 'ENDSSH'
 cd /home/linuxuser/trading/Virtuoso_ccxt
 
 echo "1. Killing ALL Python processes on port 8003..."
@@ -145,21 +145,21 @@ test_endpoint() {
 
 # Test all routes
 echo "   Testing dashboard routes:"
-test_endpoint "http://45.77.40.77:8003/dashboard" "Main Dashboard"
-test_endpoint "http://45.77.40.77:8003/dashboard/desktop" "Desktop Route"
-test_endpoint "http://45.77.40.77:8003/dashboard/v10" "V10 Route"
-test_endpoint "http://45.77.40.77:8003/dashboard/mobile" "Mobile Route"
+test_endpoint "http://VPS_HOST_REDACTED:8003/dashboard" "Main Dashboard"
+test_endpoint "http://VPS_HOST_REDACTED:8003/dashboard/desktop" "Desktop Route"
+test_endpoint "http://VPS_HOST_REDACTED:8003/dashboard/v10" "V10 Route"
+test_endpoint "http://VPS_HOST_REDACTED:8003/dashboard/mobile" "Mobile Route"
 
 echo ""
 echo "   Testing API endpoints:"
-test_endpoint "http://45.77.40.77:8003/health" "Health Check"
-test_endpoint "http://45.77.40.77:8003/api/dashboard/overview" "Dashboard API"
+test_endpoint "http://VPS_HOST_REDACTED:8003/health" "Health Check"
+test_endpoint "http://VPS_HOST_REDACTED:8003/api/dashboard/overview" "Dashboard API"
 
 # Test Market Overview API with timing
 echo ""
 echo "7. Testing Market Overview API performance:"
 start_time=$(date +%s.%N)
-response=$(curl -s -o /dev/null -w "%{http_code}" "http://45.77.40.77:8003/api/market/overview" --max-time 30)
+response=$(curl -s -o /dev/null -w "%{http_code}" "http://VPS_HOST_REDACTED:8003/api/market/overview" --max-time 30)
 end_time=$(date +%s.%N)
 duration=$(echo "$end_time - $start_time" | bc)
 
@@ -179,9 +179,9 @@ echo ""
 echo "✅ Server fix completed!"
 echo ""
 echo "Dashboard URLs:"
-echo "  Desktop: http://45.77.40.77:8003/dashboard"
-echo "  Mobile:  http://45.77.40.77:8003/dashboard/mobile"
-echo "  V10:     http://45.77.40.77:8003/dashboard/v10"
+echo "  Desktop: http://VPS_HOST_REDACTED:8003/dashboard"
+echo "  Mobile:  http://VPS_HOST_REDACTED:8003/dashboard/mobile"
+echo "  V10:     http://VPS_HOST_REDACTED:8003/dashboard/v10"
 echo ""
 echo "To monitor logs:"
-echo "  ssh linuxuser@45.77.40.77 'tail -f /home/linuxuser/trading/Virtuoso_ccxt/web_server.log'"
+echo "  ssh linuxuser@VPS_HOST_REDACTED 'tail -f /home/linuxuser/trading/Virtuoso_ccxt/web_server.log'"

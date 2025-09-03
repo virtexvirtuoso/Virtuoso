@@ -36,7 +36,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: 45.77.40.77)
+#   VPS_HOST         VPS hostname (default: VPS_HOST_REDACTED)
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -61,7 +61,7 @@
 # Setup automatic daily restart for Virtuoso service on VPS
 # This prevents memory leaks and connection pool exhaustion
 
-VPS_HOST="linuxuser@45.77.40.77"
+VPS_HOST="linuxuser@VPS_HOST_REDACTED"
 
 echo "Setting up automatic daily restart on VPS..."
 

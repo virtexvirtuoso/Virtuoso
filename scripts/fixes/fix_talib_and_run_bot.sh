@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: 45.77.40.77)
+#   VPS_HOST         VPS hostname (default: VPS_HOST_REDACTED)
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -312,5 +312,5 @@ echo "To run in background:"
 echo "  nohup python src/main.py > logs/bot.log 2>&1 &"
 echo ""
 echo "To check dashboard:"
-echo "  http://45.77.40.77:8003"
+echo "  http://VPS_HOST_REDACTED:8003"
 echo "=================================================="

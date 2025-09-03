@@ -57,7 +57,7 @@ Version: 2.5.0
 """
 
 from fastapi import FastAPI
-from .routes import signals, market, system, trading, dashboard, alpha, liquidation, correlation, bitcoin_beta, manipulation, top_symbols, whale_activity, sentiment, admin, cache, debug_test, core_api
+from .routes import signals, market, system, trading, dashboard, alpha, liquidation, correlation, bitcoin_beta, manipulation, top_symbols, whale_activity, sentiment, admin, debug_test, core_api, alerts
 from .routes import dashboard_optimized
 
 
@@ -67,11 +67,12 @@ try:
     gateway_available = True
 except ImportError:
     gateway_available = False
-try:
-    from .routes import cache_dashboard
-    cache_dashboard_available = True
-except ImportError:
-    cache_dashboard_available = False
+# Cache dashboard routes archived
+# try:
+#     from .routes import cache_dashboard
+#     cache_dashboard_available = True
+# except ImportError:
+cache_dashboard_available = False
 
 try:
     from .routes import dashboard_cached
@@ -85,11 +86,12 @@ try:
 except ImportError:
     dashboard_fast_available = False
 
-try:
-    from .routes import direct_cache
-    direct_cache_available = True
-except ImportError:
-    direct_cache_available = False
+# Direct cache routes archived
+# try:
+#     from .routes import direct_cache
+#     direct_cache_available = True
+# except ImportError:
+direct_cache_available = False
 
 def init_api_routes(app: FastAPI):
     """Initialize all API routes for the application."""
@@ -115,6 +117,20 @@ def init_api_routes(app: FastAPI):
         system.router,
         prefix=f"{api_prefix}/system",
         tags=["system"]
+    )
+    
+    # Include monitoring alias routes for compatibility
+    app.include_router(
+        system.router,
+        prefix=f"{api_prefix}/monitoring",
+        tags=["monitoring"]
+    )
+    
+    # Include config alias routes for compatibility
+    app.include_router(
+        system.router,
+        prefix=f"{api_prefix}/config",
+        tags=["config"]
     )
     
     # Include trading routes
@@ -187,6 +203,13 @@ def init_api_routes(app: FastAPI):
         tags=["sentiment"]
     )
     
+    # Include alerts routes
+    app.include_router(
+        alerts.router,
+        prefix=f"{api_prefix}/alerts",
+        tags=["alerts"]
+    )
+    
     # Include admin dashboard routes at /admin
     app.include_router(
         admin.router,
@@ -194,12 +217,12 @@ def init_api_routes(app: FastAPI):
         tags=["admin"]
     )
     
-    # Include cache monitoring routes
-    app.include_router(
-        cache.router,
-        prefix=f"{api_prefix}",
-        tags=["cache"]
-    )
+    # Cache monitoring routes archived
+    # app.include_router(
+    #     cache.router,
+    #     prefix=f"{api_prefix}",
+    #     tags=["cache"]
+    # )
     
     # Include debug routes
     app.include_router(

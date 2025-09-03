@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: 45.77.40.77)
+#   VPS_HOST         VPS hostname (default: VPS_HOST_REDACTED)
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -70,7 +70,7 @@ echo "🚀 Deploying Dashboard Performance Fixes to VPS"
 echo "=================================================="
 
 # Configuration
-VPS_HOST="45.77.40.77"
+VPS_HOST="VPS_HOST_REDACTED"
 VPS_USER="linuxuser"
 VPS_PROJECT_PATH="/home/linuxuser/trading/Virtuoso_ccxt"
 
@@ -122,8 +122,8 @@ ssh ${VPS_USER}@${VPS_HOST} "
 echo -e "${GREEN}🎉 Deployment complete!${NC}"
 echo "Monitor with: ssh ${VPS_USER}@${VPS_HOST} 'sudo journalctl -u virtuoso.service -f'"
 echo "Test endpoints:"
-echo "  curl http://45.77.40.77:8003/api/dashboard-cached/overview"
-echo "  curl http://45.77.40.77:8003/api/dashboard-cached/mobile-data"
-echo "  curl http://45.77.40.77:8003/api/dashboard-cached/opportunities"
+echo "  curl http://VPS_HOST_REDACTED:8003/api/dashboard-cached/overview"
+echo "  curl http://VPS_HOST_REDACTED:8003/api/dashboard-cached/mobile-data"
+echo "  curl http://VPS_HOST_REDACTED:8003/api/dashboard-cached/opportunities"
 
 exit 0

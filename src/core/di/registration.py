@@ -10,7 +10,9 @@ from typing import Optional, Dict, Any
 import logging
 from ..interfaces.services import (
     IAlertService, IMetricsService, IInterpretationService, 
-    IFormattingService, IValidationService, IConfigService, IExchangeService
+    IFormattingService, IValidationService, IConfigService, IExchangeService,
+    IMarketMonitorService, IDashboardService, ITopSymbolsManagerService, 
+    IConfluenceAnalyzerService, ICacheService, IAnalysisEngineService
 )
 from .container import ServiceContainer, ServiceLifetime
 
@@ -75,7 +77,7 @@ def register_analysis_services(container: ServiceContainer) -> ServiceContainer:
     logger.info("Registering analysis services...")
     
     # Interpretation Service (scoped)
-    from ...analysis.core.interpretation_generator import InterpretationGenerator
+    from ...core.analysis.interpretation_generator import InterpretationGenerator
     container.register_scoped(IInterpretationService, InterpretationGenerator)
     
     # Market Data Manager (singleton) - needs config and exchange manager
@@ -101,7 +103,7 @@ def register_analysis_services(container: ServiceContainer) -> ServiceContainer:
     container.register_factory(MarketDataManager, create_market_data_manager, ServiceLifetime.SINGLETON)
     
     # Alpha Scanner (scoped) - needs exchange manager and config
-    from ...analysis.core.alpha_scanner import AlphaScannerEngine
+    from ...core.analysis.alpha_scanner import AlphaScannerEngine
     
     async def create_alpha_scanner():
         try:
@@ -116,7 +118,7 @@ def register_analysis_services(container: ServiceContainer) -> ServiceContainer:
     container.register_factory(AlphaScannerEngine, create_alpha_scanner, ServiceLifetime.SCOPED)
     
     # Confluence Analyzer (scoped) - needs config
-    from ...analysis.core.confluence import ConfluenceAnalyzer
+    from ...core.analysis.confluence import ConfluenceAnalyzer
     
     async def create_confluence_analyzer():
         try:
@@ -186,8 +188,11 @@ def register_analysis_services(container: ServiceContainer) -> ServiceContainer:
     
     container.register_factory(ConfluenceAnalyzer, create_confluence_analyzer, ServiceLifetime.SCOPED)
     
+    # Register with interface for proper DI resolution
+    container.register_factory(IConfluenceAnalyzerService, create_confluence_analyzer, ServiceLifetime.SCOPED)
+    
     # Liquidation Detector (scoped) - needs exchange manager
-    from ...analysis.core.liquidation_detector import LiquidationDetectionEngine
+    from ...core.analysis.liquidation_detector import LiquidationDetectionEngine
     
     async def create_liquidation_detector():
         try:
@@ -597,6 +602,9 @@ def register_monitoring_services(container: ServiceContainer) -> ServiceContaine
             
         container.register_factory(MarketMonitor, create_market_monitor, ServiceLifetime.SINGLETON)
         
+        # Register with interface for proper DI resolution
+        container.register_factory(IMarketMonitorService, create_market_monitor, ServiceLifetime.SINGLETON)
+        
         # Also register with the RefactoredMarketMonitor type for explicit resolution
         try:
             from ...monitoring.monitor_refactored import RefactoredMarketMonitor
@@ -824,6 +832,9 @@ def register_exchange_services(container: ServiceContainer) -> ServiceContainer:
     
     container.register_factory(TopSymbolsManager, create_top_symbols_manager, ServiceLifetime.SINGLETON)
     
+    # Register with interface for proper DI resolution
+    container.register_factory(ITopSymbolsManagerService, create_top_symbols_manager, ServiceLifetime.SINGLETON)
+    
     logger.info("Exchange services registered successfully")
     return container
 
@@ -932,12 +943,15 @@ def register_api_services(container: ServiceContainer) -> ServiceContainer:
         
         async def create_dashboard_integration_service():
             try:
-                # Try to get MarketMonitor if available
+                # Try to get MarketMonitor via interface first, then fallback to concrete type
                 market_monitor = None
                 try:
-                    market_monitor = await container.get_service(MarketMonitor)
-                except Exception as e:
-                    logger.warning(f"MarketMonitor not available for DashboardIntegrationService: {e}")
+                    market_monitor = await container.get_service(IMarketMonitorService)
+                except Exception:
+                    try:
+                        market_monitor = await container.get_service(MarketMonitor)
+                    except Exception as e:
+                        logger.warning(f"MarketMonitor not available for DashboardIntegrationService: {e}")
                 
                 return DashboardIntegrationService(monitor=market_monitor)
             except Exception as e:
@@ -946,6 +960,9 @@ def register_api_services(container: ServiceContainer) -> ServiceContainer:
                 return DashboardIntegrationService(monitor=None)
         
         container.register_factory(DashboardIntegrationService, create_dashboard_integration_service, ServiceLifetime.SINGLETON)
+        
+        # Register with interface for proper DI resolution
+        container.register_factory(IDashboardService, create_dashboard_integration_service, ServiceLifetime.SINGLETON)
     except ImportError:
         logger.warning("DashboardIntegrationService class not found, skipping registration")
     
@@ -961,7 +978,7 @@ def register_api_services(container: ServiceContainer) -> ServiceContainer:
     return container
 
 
-def bootstrap_container(config: Optional[Dict[str, Any]] = None) -> ServiceContainer:
+def bootstrap_container(config: Optional[Dict[str, Any]] = None, enable_events: bool = True) -> ServiceContainer:
     """
     Bootstrap a fully configured dependency injection container.
     
@@ -970,6 +987,7 @@ def bootstrap_container(config: Optional[Dict[str, Any]] = None) -> ServiceConta
     
     Args:
         config: Optional configuration dictionary
+        enable_events: Whether to enable event-driven architecture (default: True)
         
     Returns:
         Fully configured ServiceContainer
@@ -985,6 +1003,17 @@ def bootstrap_container(config: Optional[Dict[str, Any]] = None) -> ServiceConta
     register_analysis_services(container)
     register_monitoring_services(container)
     register_api_services(container)
+    
+    # Register event-driven services if enabled
+    if enable_events:
+        try:
+            from .event_services_registration import register_event_services
+            register_event_services(container)
+            logger.info("Event-driven architecture services registered")
+        except ImportError as e:
+            logger.warning(f"Event-driven services not available: {e}")
+        except Exception as e:
+            logger.error(f"Failed to register event-driven services: {e}")
     
     # Add health checks for critical services  
     try:

@@ -4,7 +4,12 @@ System Interfaces for Monitoring Components.
 Clean interfaces for metrics collection, health checking, and WebSocket management.
 """
 
-from typing import Dict, Any, List, Optional, Protocol, runtime_checkable, Callable
+try:
+    from typing import Protocol, runtime_checkable
+except ImportError:
+    from typing_extensions import Protocol, runtime_checkable
+
+from typing import Dict, Any, List, Optional, Callable
 from abc import ABC, abstractmethod
 from datetime import datetime
 

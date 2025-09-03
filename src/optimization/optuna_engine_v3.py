@@ -13,7 +13,7 @@ Features:
 """
 
 import optuna
-from optuna.storages import JournalStorage, JournalFileStorage
+from optuna.storages import RDBStorage
 from optuna.samplers import TPESampler, CmaEsSampler, NSGAIISampler, QMCSampler
 from optuna.pruners import MedianPruner, HyperbandPruner, SuccessiveHalvingPruner, ThresholdPruner
 from optuna.visualization import plot_optimization_history, plot_param_importances
@@ -51,6 +51,7 @@ class ResourceLimits:
     max_trial_duration_seconds: int = 300  # 5 minutes per trial
     max_study_duration_seconds: int = 7200  # 2 hours per study
     max_concurrent_trials: int = 2  # For VPS with 4 cores
+    max_concurrent_studies: int = 2  # Max simultaneous studies
     check_interval_seconds: int = 10  # Resource check interval
 
 
@@ -245,12 +246,17 @@ class ModernOptunaEngine:
         self.resource_monitor = ResourceMonitor(self.resource_limits)
         self.circuit_breaker = CircuitBreaker()
         
-        # Storage configuration (using Journal for better performance)
+        # Storage configuration (using SQLite for compatibility)
         self.storage_path = Path(config.get('storage_path', 'data/optuna'))
         self.storage_path.mkdir(parents=True, exist_ok=True)
         
-        # Use JournalFileStorage for better performance and safety
-        self.storage = JournalFileStorage(str(self.storage_path / "journal.log"))
+        # Use RDBStorage for better compatibility
+        storage_url = config.get('storage', {}).get('url', f'sqlite:///{self.storage_path}/optuna_studies.db')
+        self.storage = optuna.storages.RDBStorage(
+            url=storage_url,
+            heartbeat_interval=config.get('storage', {}).get('heartbeat_interval', 60),
+            grace_period=config.get('storage', {}).get('grace_period', 120),
+        )
         
         # Cache configuration
         self.cache_config = config.get('cache', {})
@@ -566,19 +572,19 @@ class ModernOptunaEngine:
         except Exception as e:
             logger.warning(f"Failed to update dashboard cache: {e}")
     
-    def _progress_callback(self, study: optuna.Study, trial: optuna.FrozenTrial):
+    def _progress_callback(self, study: optuna.Study, trial: optuna.trial.FrozenTrial):
         """Callback for progress tracking."""
         if trial.number % 10 == 0:
             logger.info(f"Study '{study.study_name}': Trial {trial.number} completed. "
                        f"Best value so far: {study.best_value if study.trials else 'N/A'}")
     
-    def _checkpoint_callback(self, study: optuna.Study, trial: optuna.FrozenTrial):
+    def _checkpoint_callback(self, study: optuna.Study, trial: optuna.trial.FrozenTrial):
         """Callback for creating checkpoints."""
         if trial.number % 25 == 0:
             self._create_snapshot(study.study_name)
             logger.info(f"Checkpoint created for '{study.study_name}' at trial {trial.number}")
     
-    def _performance_callback(self, study: optuna.Study, trial: optuna.FrozenTrial):
+    def _performance_callback(self, study: optuna.Study, trial: optuna.trial.FrozenTrial):
         """Callback for performance tracking."""
         if study.study_name not in self.performance_tracker:
             self.performance_tracker[study.study_name] = []

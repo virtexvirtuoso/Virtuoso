@@ -186,65 +186,61 @@ async def get_dashboard_overview() -> Dict[str, Any]:
 
 @router.get("/data")
 async def get_dashboard_data():
-    """Main dashboard data endpoint - matches frontend expectations"""
+    """Main dashboard data endpoint - FIXED to use working cache adapter"""
     try:
-        # BYPASS ALL COMPLEXITY - Direct cache access
-        import aiomcache
-        import json
-        import time
+        logger.info("FIXED: Using DirectCacheAdapter for dashboard data")
         
-        logger.info("BYPASS: Direct memcached access for dashboard data")
-        client = aiomcache.Client('localhost', 11211, pool_size=1)
-        
-        # Get data directly from cache
-        overview_bytes = await client.get(b'market:overview')
-        signals_bytes = await client.get(b'analysis:signals')
-        regime_bytes = await client.get(b'analysis:market_regime')
-        movers_bytes = await client.get(b'market:movers')
-        
-        # Parse data
-        overview = json.loads(overview_bytes.decode()) if overview_bytes else {}
-        signals = json.loads(signals_bytes.decode()) if signals_bytes else {}
-        regime = regime_bytes.decode() if regime_bytes else 'unknown'
-        movers = json.loads(movers_bytes.decode()) if movers_bytes else {}
-        
-        logger.info(f"BYPASS: Got overview with {overview.get('total_symbols', 0)} symbols")
-        logger.info(f"BYPASS: Got {len(signals.get('signals', []))} signals")
-        
-        # Build response directly
-        return {
-            'summary': {
-                'total_symbols': overview.get('total_symbols', 0),
-                'total_volume': overview.get('total_volume', overview.get('total_volume_24h', 0)),
-                'total_volume_24h': overview.get('total_volume', overview.get('total_volume_24h', 0)),
-                'average_change': overview.get('average_change', 0),
-                'timestamp': int(time.time())
-            },
-            'market_regime': regime,
-            'signals': signals.get('signals', [])[:10],  # Top 10 signals
-            'top_gainers': movers.get('gainers', [])[:5],
-            'top_losers': movers.get('losers', [])[:5],
-            'momentum': {
-                'gainers': len(movers.get('gainers', [])),
-                'losers': len(movers.get('losers', []))
-            },
-            'volatility': {
-                'value': overview.get('volatility', 0),
-                'level': 'high' if overview.get('volatility', 0) > 2 else 'normal'
-            },
-            'source': 'direct_bypass',
-            'data_source': 'memcached_direct'
-        }
+        # Use the working DirectCacheAdapter instead of broken direct access
+        if USE_DIRECT_CACHE:
+            # This is the working path that accesses real cache data correctly
+            return await direct_cache.get_dashboard_overview()
+        else:
+            # Fallback to integration service
+            integration = get_dashboard_integration()
+            if integration:
+                dashboard_data = await integration.get_dashboard_overview()
+                return dashboard_data
+            else:
+                # Last resort - return minimal working data structure
+                return {
+                    "status": "no_integration",
+                    "summary": {
+                        "total_symbols": 0,
+                        "total_volume": 0,
+                        "total_volume_24h": 0,
+                        "average_change": 0,
+                        "timestamp": int(time.time())
+                    },
+                    "market_regime": "unknown",
+                    "signals": [],
+                    "top_gainers": [],
+                    "top_losers": [],
+                    "momentum": {"gainers": 0, "losers": 0},
+                    "volatility": {"value": 0, "level": "normal"},
+                    "source": "fallback",
+                    "data_source": "no_data"
+                }
         
     except Exception as e:
-        logger.error(f"BYPASS: Error getting dashboard data: {e}")
+        logger.error(f"FIXED: Error getting dashboard data: {e}")
+        # Return proper error structure that won't break the frontend
         return {
             "status": "error",
-            "summary": {"total_symbols": 0, "total_volume": 0, "average_change": 0},
-            "market_regime": "unknown",
+            "summary": {
+                "total_symbols": 0,
+                "total_volume": 0,
+                "total_volume_24h": 0,
+                "average_change": 0,
+                "timestamp": int(time.time())
+            },
+            "market_regime": "error",
             "signals": [],
             "top_gainers": [],
             "top_losers": [],
+            "momentum": {"gainers": 0, "losers": 0},
+            "volatility": {"value": 0, "level": "normal"},
+            "source": "error",
+            "data_source": "error",
             "error": str(e)
         }
 
@@ -664,38 +660,54 @@ async def get_mobile_dashboard_data_direct(request: Request) -> Dict[str, Any]:
                 top_symbols = await top_symbols_manager.get_top_symbols(limit=10)
                 confluence_scores = []
                 
+                # Import confluence cache service
+                from src.core.cache.confluence_cache_service import confluence_cache_service
+                
                 for symbol_info in top_symbols[:10]:
                     symbol = symbol_info.get('symbol', symbol_info) if isinstance(symbol_info, dict) else symbol_info
                     
                     try:
-                        # Get market data
-                        if market_data_manager:
-                            market_data = await market_data_manager.get_market_data(symbol)
-                            if market_data and confluence_analyzer:
-                                # Get confluence analysis
-                                result = await confluence_analyzer.analyze(market_data)
-                                
-                                score = result.get('confluence_score', 50)
-                                components = result.get('components', {})
-                                ticker = market_data.get('ticker', {})
-                                
-                                confluence_scores.append({
-                                    "symbol": symbol,
-                                    "score": round(score, 2),
-                                    "price": ticker.get('last', 0),
-                                    "change_24h": round(ticker.get('percentage', 0), 2),
-                                    "volume_24h": ticker.get('quoteVolume', 0),
-                                    "components": {
-                                        "technical": round(components.get('technical', 50), 2),
-                                        "volume": round(components.get('volume', 50), 2),
-                                        "orderflow": round(components.get('orderflow', 50), 2),
-                                        "sentiment": round(components.get('sentiment', 50), 2),
-                                        "orderbook": round(components.get('orderbook', 50), 2),
-                                        "price_structure": round(components.get('price_structure', 50), 2)
-                                    }
-                                })
+                        # Try to get cached confluence data first
+                        cached_result = None
+                        try:
+                            cached_result = await confluence_cache_service.get_cached_breakdown(symbol)
+                        except Exception as cache_error:
+                            logger.debug(f"Cache miss for {symbol}: {cache_error}")
+                        
+                        if cached_result:
+                            # Use cached data
+                            logger.debug(f"Using cached confluence data for {symbol}")
+                            score = cached_result.get('confluence_score', 50)
+                            components = cached_result.get('components', {})
+                            
+                            # Still need fresh ticker data for price/volume
+                            ticker = {}
+                            if market_data_manager:
+                                market_data = await market_data_manager.get_market_data(symbol)
+                                if market_data:
+                                    ticker = market_data.get('ticker', {})
+                        else:
+                            # Fallback: calculate confluence if cache miss (but this shouldn't happen if monitor is running)
+                            logger.warning(f"No cached confluence for {symbol}, skipping (monitor should populate cache)")
+                            continue  # Skip this symbol if no cache data
+                        
+                        confluence_scores.append({
+                            "symbol": symbol,
+                            "score": round(score, 2),
+                            "price": ticker.get('last', 0),
+                            "change_24h": round(ticker.get('percentage', 0), 2),
+                            "volume_24h": ticker.get('quoteVolume', 0),
+                            "components": {
+                                "technical": round(components.get('technical', 50), 2),
+                                "volume": round(components.get('volume', 50), 2),
+                                "orderflow": round(components.get('orderflow', 50), 2),
+                                "sentiment": round(components.get('sentiment', 50), 2),
+                                "orderbook": round(components.get('orderbook', 50), 2),
+                                "price_structure": round(components.get('price_structure', 50), 2)
+                            }
+                        })
                     except Exception as e:
-                        logger.warning(f"Error analyzing {symbol}: {e}")
+                        logger.warning(f"Error getting data for {symbol}: {e}")
                         continue
                 
                 response["confluence_scores"] = confluence_scores

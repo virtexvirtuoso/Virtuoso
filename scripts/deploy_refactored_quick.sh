@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: 45.77.40.77)
+#   VPS_HOST         VPS hostname (default: VPS_HOST_REDACTED)
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -66,7 +66,7 @@ set -e
 echo "🚀 Quick Deploy - Refactored Components"
 echo "======================================="
 
-VPS="linuxuser@45.77.40.77"
+VPS="linuxuser@VPS_HOST_REDACTED"
 VPS_DIR="/home/linuxuser/trading/Virtuoso_ccxt"
 
 # Create directories on VPS

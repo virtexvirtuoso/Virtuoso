@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: 45.77.40.77)
+#   VPS_HOST         VPS hostname (default: VPS_HOST_REDACTED)
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -64,7 +64,7 @@
 echo "🚀 Deploying Alert Persistence System to VPS..."
 
 # VPS connection details
-VPS_HOST="linuxuser@45.77.40.77"
+VPS_HOST="linuxuser@VPS_HOST_REDACTED"
 VPS_PATH="/home/linuxuser/trading/Virtuoso_ccxt"
 
 # Step 1: Copy new files to VPS
@@ -152,7 +152,7 @@ sleep 5  # Wait for service to fully start
 
 # Test persisted alerts endpoint
 echo "Testing /api/alerts/persisted/stats endpoint..."
-curl -s "http://45.77.40.77:8000/api/alerts/persisted/stats?hours=1" | head -100
+curl -s "http://VPS_HOST_REDACTED:8000/api/alerts/persisted/stats?hours=1" | head -100
 
 echo ""
 echo "✅ Alert persistence deployment complete!"
@@ -163,4 +163,4 @@ echo "  - GET  /api/alerts/persisted/{id}    - Get specific alert"
 echo "  - GET  /api/alerts/persisted/stats   - Get statistics"
 echo ""
 echo "💾 Alerts are now being persisted to: $VPS_PATH/data/alerts.db"
-echo "🔍 To query specific alert: curl http://45.77.40.77:8000/api/alerts/persisted/WA-1755686017-API3USDT"
+echo "🔍 To query specific alert: curl http://VPS_HOST_REDACTED:8000/api/alerts/persisted/WA-1755686017-API3USDT"

@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: 45.77.40.77)
+#   VPS_HOST         VPS hostname (default: VPS_HOST_REDACTED)
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -129,5 +129,5 @@ else:
 SCRIPT
 
 # Copy to VPS and run
-scp /tmp/add_proxy.py linuxuser@45.77.40.77:/tmp/
-ssh linuxuser@45.77.40.77 "cd /home/linuxuser/trading/Virtuoso_ccxt && cp src/api/routes/dashboard.py src/api/routes/dashboard.py.backup_proxy && python /tmp/add_proxy.py src/api/routes/dashboard.py"
+scp /tmp/add_proxy.py linuxuser@VPS_HOST_REDACTED:/tmp/
+ssh linuxuser@VPS_HOST_REDACTED "cd /home/linuxuser/trading/Virtuoso_ccxt && cp src/api/routes/dashboard.py src/api/routes/dashboard.py.backup_proxy && python /tmp/add_proxy.py src/api/routes/dashboard.py"

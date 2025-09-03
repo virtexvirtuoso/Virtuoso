@@ -1,4 +1,7 @@
-from typing import Protocol
+try:
+    from typing import Protocol, runtime_checkable
+except ImportError:
+    from typing_extensions import Protocol, runtime_checkable
 from datetime import datetime
 
 class ValidationProvider(Protocol):

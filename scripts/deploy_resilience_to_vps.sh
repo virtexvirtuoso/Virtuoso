@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: 45.77.40.77)
+#   VPS_HOST         VPS hostname (default: VPS_HOST_REDACTED)
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -68,7 +68,7 @@ echo "============================================================"
 echo "🚀 Deploying Resilience Solution to VPS"
 echo "============================================================"
 
-VPS_HOST="linuxuser@45.77.40.77"
+VPS_HOST="linuxuser@VPS_HOST_REDACTED"
 VPS_PATH="/home/linuxuser/trading/Virtuoso_ccxt"
 LOCAL_PATH="/Users/ffv_macmini/Desktop/Virtuoso_ccxt"
 
@@ -364,7 +364,7 @@ echo -e "\n${YELLOW}Step 11: Verifying deployment...${NC}"
 
 # Check system health
 echo "Checking system health endpoint..."
-if curl -s --max-time 5 http://45.77.40.77:8001/api/health/system | grep -q "healthy"; then
+if curl -s --max-time 5 http://VPS_HOST_REDACTED:8001/api/health/system | grep -q "healthy"; then
     echo -e "${GREEN}✅ System health endpoint working${NC}"
 else
     echo -e "${RED}❌ System health endpoint not responding${NC}"
@@ -372,7 +372,7 @@ fi
 
 # Check resilience health
 echo "Checking resilience health endpoint..."
-if curl -s --max-time 5 http://45.77.40.77:8001/api/health/resilience | grep -q "operational"; then
+if curl -s --max-time 5 http://VPS_HOST_REDACTED:8001/api/health/resilience | grep -q "operational"; then
     echo -e "${GREEN}✅ Resilience health endpoint working${NC}"
 else
     echo -e "${RED}❌ Resilience health endpoint not responding${NC}"
@@ -392,8 +392,8 @@ echo -e "${GREEN}✅ Resilience Deployment Complete!${NC}"
 echo -e "============================================================"
 echo ""
 echo "📊 Health Endpoints:"
-echo "  System: http://45.77.40.77:8001/api/health/system"
-echo "  Resilience: http://45.77.40.77:8001/api/health/resilience"
+echo "  System: http://VPS_HOST_REDACTED:8001/api/health/system"
+echo "  Resilience: http://VPS_HOST_REDACTED:8001/api/health/resilience"
 echo ""
 echo "📝 Monitor Logs:"
 echo "  Main service: sudo journalctl -u virtuoso -f"

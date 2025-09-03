@@ -9,7 +9,7 @@ def test_confluence_display(symbol="BTCUSDT"):
     """Test the confluence analysis display."""
     
     # Fetch the analysis
-    url = f"http://45.77.40.77:8003/api/dashboard/confluence-analysis/{symbol}"
+    url = f"http://VPS_HOST_REDACTED:8003/api/dashboard/confluence-analysis/{symbol}"
     response = requests.get(url)
     data = response.json()
     

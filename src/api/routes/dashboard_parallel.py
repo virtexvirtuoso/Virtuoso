@@ -16,12 +16,8 @@ from functools import wraps
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
-# Import pooled cache adapter
-try:
-    from src.core.cache_adapter_pooled import cache_adapter
-except ImportError:
-    from src.api.cache_adapter_direct import DirectCacheAdapter
-    cache_adapter = DirectCacheAdapter()
+# Import direct cache adapter
+from src.api.cache_adapter_direct import cache_adapter, DirectCacheAdapter
 
 # Response cache decorator
 response_cache = {}

@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: 45.77.40.77)
+#   VPS_HOST         VPS hostname (default: VPS_HOST_REDACTED)
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -62,7 +62,7 @@
 echo "🚀 Deploying Enhanced Market Overview Card to VPS..."
 echo "=================================================="
 
-VPS_HOST="linuxuser@45.77.40.77"
+VPS_HOST="linuxuser@VPS_HOST_REDACTED"
 PROJECT_DIR="/home/linuxuser/trading/Virtuoso_ccxt"
 
 # Backup current version
@@ -86,7 +86,7 @@ echo "================================"
 
 # Test market overview data
 echo "1. Testing market overview endpoint:"
-curl -s "http://45.77.40.77:8001/api/dashboard-cached/mobile-data" | python3 -c "
+curl -s "http://VPS_HOST_REDACTED:8001/api/dashboard-cached/mobile-data" | python3 -c "
 import json, sys
 data = json.load(sys.stdin)
 overview = data.get('market_overview', {})
@@ -104,7 +104,7 @@ echo ""
 echo "✅ Deployment Complete!"
 echo ""
 echo "📱 Access the enhanced mobile dashboard at:"
-echo "   http://45.77.40.77:8001/dashboard/mobile"
+echo "   http://VPS_HOST_REDACTED:8001/dashboard/mobile"
 echo ""
 echo "🎯 New Features Added:"
 echo "   • Expandable card (tap to expand/collapse)"

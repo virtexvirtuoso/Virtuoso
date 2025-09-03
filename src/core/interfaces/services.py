@@ -6,7 +6,12 @@ These interfaces enable loose coupling, improved testability, and flexible
 service implementations.
 """
 
-from typing import Protocol, Dict, Any, List, Optional, Union, runtime_checkable
+try:
+    from typing import Protocol, runtime_checkable
+except ImportError:
+    from typing_extensions import Protocol, runtime_checkable
+
+from typing import Dict, Any, List, Optional, Union
 from datetime import datetime
 from abc import ABC, abstractmethod
 import asyncio
@@ -558,6 +563,174 @@ class IReportingService(Protocol):
         ...
 
 
+# Missing Core Service Interfaces (Priority 2)
+
+@runtime_checkable
+class IMarketMonitorService(Protocol):
+    """Interface for market monitoring services."""
+    
+    async def start_monitoring(self, symbols: Optional[List[str]] = None) -> None:
+        """Start monitoring market data for specified symbols."""
+        ...
+    
+    async def stop_monitoring(self) -> None:
+        """Stop all monitoring activities."""
+        ...
+    
+    def get_monitoring_status(self) -> Dict[str, Any]:
+        """Get current monitoring status."""
+        ...
+    
+    def get_monitored_symbols(self) -> List[str]:
+        """Get list of currently monitored symbols."""
+        ...
+    
+    async def get_market_analysis(self, symbol: str) -> Dict[str, Any]:
+        """Get comprehensive market analysis for a symbol."""
+        ...
+    
+    def get_confluence_analyzer(self) -> Any:
+        """Get the confluence analyzer instance."""
+        ...
+    
+    def get_signal_generator(self) -> Any:
+        """Get the signal generator instance."""
+        ...
+    
+    def get_alert_manager(self) -> Any:
+        """Get the alert manager instance."""
+        ...
+
+
+@runtime_checkable
+class IDashboardService(Protocol):
+    """Interface for dashboard integration services."""
+    
+    async def get_dashboard_data(self) -> Dict[str, Any]:
+        """Get comprehensive dashboard data."""
+        ...
+    
+    async def get_signals_data(self) -> List[Dict[str, Any]]:
+        """Get current trading signals."""
+        ...
+    
+    async def get_alerts_data(self) -> List[Dict[str, Any]]:
+        """Get current alerts."""
+        ...
+    
+    async def get_market_overview(self) -> Dict[str, Any]:
+        """Get market overview data."""
+        ...
+    
+    async def get_top_symbols(self, limit: int = 10) -> List[Dict[str, Any]]:
+        """Get top symbols with market data."""
+        ...
+    
+    async def get_confluence_analysis(self, symbol: str) -> Dict[str, Any]:
+        """Get confluence analysis for a specific symbol."""
+        ...
+    
+    async def initialize(self) -> bool:
+        """Initialize the dashboard service."""
+        ...
+
+
+@runtime_checkable
+class ITopSymbolsManagerService(Protocol):
+    """Interface for top symbols management services."""
+    
+    async def get_top_symbols(self, limit: int = 100) -> List[Dict[str, Any]]:
+        """Get top trading symbols by volume/activity."""
+        ...
+    
+    async def get_symbols(self, limit: int = 30) -> List[str]:
+        """Get symbol names only."""
+        ...
+    
+    async def update_symbols(self) -> None:
+        """Update the symbol rankings."""
+        ...
+    
+    def get_symbol_info(self, symbol: str) -> Optional[Dict[str, Any]]:
+        """Get detailed information for a specific symbol."""
+        ...
+
+
+@runtime_checkable
+class IConfluenceAnalyzerService(Protocol):
+    """Interface for confluence analysis services."""
+    
+    async def analyze(self, market_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Perform confluence analysis on market data."""
+        ...
+    
+    async def get_confluence_score(self, symbol: str) -> float:
+        """Get confluence score for a symbol."""
+        ...
+    
+    def get_analysis_components(self) -> List[str]:
+        """Get list of analysis components used."""
+        ...
+    
+    def set_weights(self, weights: Dict[str, float]) -> None:
+        """Set component weights for analysis."""
+        ...
+
+
+@runtime_checkable
+class ICacheService(Protocol):
+    """Interface for caching services."""
+    
+    async def get(self, key: str) -> Optional[Any]:
+        """Get value from cache."""
+        ...
+    
+    async def set(self, key: str, value: Any, ttl: Optional[int] = None) -> None:
+        """Set value in cache with optional TTL."""
+        ...
+    
+    async def delete(self, key: str) -> None:
+        """Delete key from cache."""
+        ...
+    
+    async def clear(self) -> None:
+        """Clear all cache entries."""
+        ...
+    
+    async def exists(self, key: str) -> bool:
+        """Check if key exists in cache."""
+        ...
+    
+    def get_stats(self) -> Dict[str, Any]:
+        """Get cache statistics."""
+        ...
+
+
+@runtime_checkable
+class IAnalysisEngineService(Protocol):
+    """Interface for analysis engine services (Alpha Scanner, Liquidation Detector, etc.)."""
+    
+    async def analyze_symbol(self, symbol: str, market_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Analyze a single symbol."""
+        ...
+    
+    async def analyze_batch(self, symbols: List[str]) -> Dict[str, Dict[str, Any]]:
+        """Analyze multiple symbols in batch."""
+        ...
+    
+    def get_analysis_config(self) -> Dict[str, Any]:
+        """Get current analysis configuration."""
+        ...
+    
+    def update_config(self, config: Dict[str, Any]) -> None:
+        """Update analysis configuration."""
+        ...
+    
+    def get_supported_symbols(self) -> List[str]:
+        """Get list of supported symbols."""
+        ...
+
+
 # Export all interfaces for easy importing
 __all__ = [
     'IAlertService',
@@ -577,6 +750,12 @@ __all__ = [
     'IWebSocketService',
     'IHealthService',
     'IReportingService',
+    'IMarketMonitorService',
+    'IDashboardService',
+    'ITopSymbolsManagerService',
+    'IConfluenceAnalyzerService',
+    'ICacheService',
+    'IAnalysisEngineService',
     'ValidationResult',
     'ServiceHealth'
 ]

@@ -56,5 +56,5 @@ else:
     print("✅ Direct endpoint already exists")
 
 print("\nNew endpoint available at:")
-print("  http://45.77.40.77:8001/api/symbols-direct")
+print("  http://VPS_HOST_REDACTED:8001/api/symbols-direct")
 print("\nThis bypasses the proxy and gets data directly from cache.")

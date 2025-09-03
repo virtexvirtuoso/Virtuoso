@@ -2,7 +2,12 @@
 Data processing interfaces for dependency injection and type safety.
 """
 from abc import ABC, abstractmethod
-from typing import Protocol, Dict, Any, Optional, List, Union, Callable, runtime_checkable
+try:
+    from typing import Protocol, runtime_checkable
+except ImportError:
+    from typing_extensions import Protocol, runtime_checkable
+
+from typing import Dict, Any, Optional, List, Union, Callable
 from datetime import datetime
 import pandas as pd
 

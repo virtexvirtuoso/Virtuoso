@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: 45.77.40.77)
+#   VPS_HOST         VPS hostname (default: VPS_HOST_REDACTED)
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -67,7 +67,7 @@ echo ""
 
 # First ensure server is running
 echo "1. Checking server status..."
-ssh linuxuser@45.77.40.77 'cd /home/linuxuser/trading/Virtuoso_ccxt && pgrep -f "python.*web_server" > /dev/null || (source venv311/bin/activate && nohup python src/web_server.py > web_server.log 2>&1 & echo "Started new server process")'
+ssh linuxuser@VPS_HOST_REDACTED 'cd /home/linuxuser/trading/Virtuoso_ccxt && pgrep -f "python.*web_server" > /dev/null || (source venv311/bin/activate && nohup python src/web_server.py > web_server.log 2>&1 & echo "Started new server process")'
 
 # Wait for server startup
 echo "   Waiting for server to start..."
@@ -75,9 +75,9 @@ sleep 10
 
 echo ""
 echo "2. Testing core endpoints:"
-echo "   Dashboard: $(curl -s -o /dev/null -w "%{http_code}" --max-time 5 http://45.77.40.77:8003/dashboard)"
-echo "   Mobile: $(curl -s -o /dev/null -w "%{http_code}" --max-time 5 http://45.77.40.77:8003/dashboard/mobile)"
-echo "   API Overview: $(curl -s -o /dev/null -w "%{http_code}" --max-time 5 http://45.77.40.77:8003/api/dashboard/overview)"
+echo "   Dashboard: $(curl -s -o /dev/null -w "%{http_code}" --max-time 5 http://VPS_HOST_REDACTED:8003/dashboard)"
+echo "   Mobile: $(curl -s -o /dev/null -w "%{http_code}" --max-time 5 http://VPS_HOST_REDACTED:8003/dashboard/mobile)"
+echo "   API Overview: $(curl -s -o /dev/null -w "%{http_code}" --max-time 5 http://VPS_HOST_REDACTED:8003/api/dashboard/overview)"
 
 echo ""
 echo "3. Testing Market Overview API Performance:"
@@ -85,7 +85,7 @@ echo "3. Testing Market Overview API Performance:"
 # First call (uncached)
 echo -n "   First call (uncached): "
 start_time=$(date +%s.%N)
-response=$(curl -s --max-time 15 http://45.77.40.77:8003/api/market/overview)
+response=$(curl -s --max-time 15 http://VPS_HOST_REDACTED:8003/api/market/overview)
 end_time=$(date +%s.%N)
 duration=$(echo "$end_time - $start_time" | bc)
 
@@ -105,7 +105,7 @@ fi
 sleep 2
 echo -n "   Second call (cached): "
 start_time=$(date +%s.%N)
-response=$(curl -s --max-time 5 http://45.77.40.77:8003/api/market/overview)
+response=$(curl -s --max-time 5 http://VPS_HOST_REDACTED:8003/api/market/overview)
 end_time=$(date +%s.%N)
 duration=$(echo "$end_time - $start_time" | bc)
 
@@ -122,7 +122,7 @@ fi
 echo ""
 echo "4. Exchange Manager Status:"
 # Check if Exchange Manager is working
-response=$(curl -s --max-time 5 http://45.77.40.77:8003/api/market/overview 2>&1)
+response=$(curl -s --max-time 5 http://VPS_HOST_REDACTED:8003/api/market/overview 2>&1)
 if echo "$response" | grep -q "Exchange manager not initialized"; then
     echo "   ❌ Exchange Manager NOT initialized"
 else

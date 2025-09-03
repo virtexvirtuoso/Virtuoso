@@ -22,4 +22,4 @@ async def test_fast_endpoint():
 print("Add this test endpoint to dashboard.py:")
 print(test_route)
 print("\nThen test with:")
-print("curl http://45.77.40.77:8003/api/dashboard/test-fast")
+print("curl http://VPS_HOST_REDACTED:8003/api/dashboard/test-fast")

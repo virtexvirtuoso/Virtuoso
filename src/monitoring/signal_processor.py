@@ -24,6 +24,7 @@ from src.core.formatting import LogFormatter
 from src.core.interpretation.interpretation_manager import InterpretationManager
 
 
+from src.core.cache.confluence_cache_service import confluence_cache_service
 class SignalProcessor:
     """
     Handles signal processing and analysis result interpretation.
@@ -222,6 +223,17 @@ class SignalProcessor:
                 self.logger.info(f"Generated {signal_type} signal for {symbol} with score {confluence_score:.2f} (threshold: {buy_threshold if signal_type == 'BUY' else sell_threshold})")
             else:
                 self.logger.info(f"Generated NEUTRAL signal for {symbol} with score {confluence_score:.2f} in neutral zone (buy: {buy_threshold}, sell: {sell_threshold})")
+
+            
+            # Cache confluence breakdown for mobile dashboard
+            try:
+                cache_success = await confluence_cache_service.cache_confluence_breakdown(symbol, result)
+                if cache_success:
+                    self.logger.debug(f"✅ Cached confluence breakdown for {symbol}")
+                else:
+                    self.logger.warning(f"⚠️ Failed to cache confluence breakdown for {symbol}")
+            except Exception as cache_error:
+                self.logger.error(f"❌ Error caching confluence breakdown for {symbol}: {cache_error}")
 
             # Update metrics
             if self.metrics_manager:

@@ -8,7 +8,7 @@ import time
 import logging
 import asyncio
 from src.core.analysis.confluence import ConfluenceAnalyzer
-from src.core.cache.unified_cache import get_cache
+from src.api.cache_adapter_direct import cache_adapter
 
 router = APIRouter()
 logger = logging.getLogger(__name__)

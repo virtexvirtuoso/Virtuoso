@@ -363,7 +363,7 @@ import asyncio
 import logging
 
 # Import optimized cache adapter
-from src.api.cache_adapter_optimized import optimized_cache_adapter
+from src.api.cache_adapter_direct import cache_adapter
 
 router = APIRouter()
 logger = logging.getLogger(__name__)

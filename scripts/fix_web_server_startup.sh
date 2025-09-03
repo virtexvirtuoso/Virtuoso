@@ -60,11 +60,11 @@ EOF
 
 # Copy fix script to VPS
 echo "📤 Copying fix script to VPS..."
-scp /tmp/main_startup_fix.py linuxuser@45.77.40.77:/tmp/
+scp /tmp/main_startup_fix.py linuxuser@VPS_HOST_REDACTED:/tmp/
 
 # Apply the fix on VPS
 echo "🔨 Applying fix on VPS..."
-ssh linuxuser@45.77.40.77 << 'REMOTE_EOF'
+ssh linuxuser@VPS_HOST_REDACTED << 'REMOTE_EOF'
 cd /home/linuxuser/trading/Virtuoso_ccxt
 
 # Backup current main.py

@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: 45.77.40.77)
+#   VPS_HOST         VPS hostname (default: VPS_HOST_REDACTED)
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -60,11 +60,11 @@
 #############################################################################
 
 # Deploy chart alert and PDF stop loss fixes to VPS
-echo "🚀 Deploying chart alert and PDF stop loss fixes to VPS (45.77.40.77)..."
+echo "🚀 Deploying chart alert and PDF stop loss fixes to VPS (VPS_HOST_REDACTED)..."
 
 # VPS details
 VPS_USER="linuxuser"
-VPS_HOST="45.77.40.77"
+VPS_HOST="VPS_HOST_REDACTED"
 VPS_PATH="/home/linuxuser/trading/Virtuoso_ccxt"
 
 # Files to update

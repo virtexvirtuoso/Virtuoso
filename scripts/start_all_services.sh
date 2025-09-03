@@ -29,7 +29,7 @@
 #   ./start_all_services.sh
 #   
 #   Note: Run from VPS after SSH connection
-#   ssh linuxuser@45.77.40.77
+#   ssh linuxuser@VPS_HOST_REDACTED
 #   cd /home/linuxuser/trading/Virtuoso_ccxt
 #   ./scripts/start_all_services.sh
 #

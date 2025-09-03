@@ -68,8 +68,8 @@ def apply_optimizations():
     
     print("\n✅ Optimization applied successfully!")
     print("\nNext steps:")
-    print("1. Deploy to server: scp src/api/routes/market.py linuxuser@45.77.40.77:/home/linuxuser/trading/Virtuoso_ccxt/src/api/routes/")
-    print("2. Restart server: ssh linuxuser@45.77.40.77 '...'")
+    print("1. Deploy to server: scp src/api/routes/market.py linuxuser@VPS_HOST_REDACTED:/home/linuxuser/trading/Virtuoso_ccxt/src/api/routes/")
+    print("2. Restart server: ssh linuxuser@VPS_HOST_REDACTED '...'")
     
     return True
 

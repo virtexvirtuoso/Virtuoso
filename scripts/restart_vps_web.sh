@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: 45.77.40.77)
+#   VPS_HOST         VPS hostname (default: VPS_HOST_REDACTED)
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -59,4 +59,4 @@
 #
 #############################################################################
 
-ssh linuxuser@45.77.40.77 'bash -c "pkill -f web_server.py; sleep 2; cd /home/linuxuser/trading/Virtuoso_ccxt && PYTHONPATH=/home/linuxuser/trading/Virtuoso_ccxt nohup venv311/bin/python src/web_server.py > logs/web_final.log 2>&1 & sleep 5 && tail -n 30 logs/web_final.log"'
+ssh linuxuser@VPS_HOST_REDACTED 'bash -c "pkill -f web_server.py; sleep 2; cd /home/linuxuser/trading/Virtuoso_ccxt && PYTHONPATH=/home/linuxuser/trading/Virtuoso_ccxt nohup venv311/bin/python src/web_server.py > logs/web_final.log 2>&1 & sleep 5 && tail -n 30 logs/web_final.log"'

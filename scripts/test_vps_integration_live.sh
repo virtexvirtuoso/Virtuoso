@@ -36,7 +36,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: 45.77.40.77)
+#   VPS_HOST         VPS hostname (default: VPS_HOST_REDACTED)
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -63,7 +63,7 @@
 echo "🔄 Testing Live Integration on VPS"
 echo "==================================="
 
-VPS="linuxuser@45.77.40.77"
+VPS="linuxuser@VPS_HOST_REDACTED"
 
 # Create integration test that can work with running service
 ssh $VPS << 'ENDSSH'

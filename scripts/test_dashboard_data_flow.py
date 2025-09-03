@@ -6,7 +6,7 @@ import aiohttp
 import json
 from datetime import datetime
 
-VPS_URL = "http://45.77.40.77:8001"
+VPS_URL = "http://VPS_HOST_REDACTED:8001"
 
 async def test_endpoints():
     """Test all dashboard endpoints"""
