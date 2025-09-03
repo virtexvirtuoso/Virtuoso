@@ -171,10 +171,8 @@ async def gateway_proxy(request: Request, path: str, gateway: APIGateway = Depen
 #     """Dashboard data endpoint via gateway with caching"""
 #     return await gateway.route_request(request)
 
-@router.get("/dashboard/mobile")
-async def mobile_dashboard_via_gateway(request: Request, gateway: APIGateway = Depends(get_gateway)):
-    """Mobile dashboard data endpoint via gateway with caching"""
-    return await gateway.route_request(request)
+# Removed /dashboard/mobile alias route to avoid confusion
+# Use /mobile instead (cleaner URL)
 
 @router.get("/dashboard/signals")
 async def signals_via_gateway(request: Request, gateway: APIGateway = Depends(get_gateway)):

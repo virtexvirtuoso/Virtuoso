@@ -1,6 +1,11 @@
 """Validation service for analysis components."""
 
-from typing import Dict, List, Any, Optional, Protocol, Type
+try:
+    from typing import Protocol, runtime_checkable
+except ImportError:
+    from typing_extensions import Protocol, runtime_checkable
+
+from typing import Dict, List, Any, Optional, Type
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 import logging

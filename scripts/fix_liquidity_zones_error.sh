@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: 45.77.40.77)
+#   VPS_HOST         VPS hostname (default: VPS_HOST_REDACTED)
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -132,14 +132,14 @@ EOF
 
 # Copy and run the fix on VPS
 echo "Copying fix script to VPS..."
-scp /tmp/fix_liquidity_zones.py linuxuser@45.77.40.77:/tmp/
+scp /tmp/fix_liquidity_zones.py linuxuser@VPS_HOST_REDACTED:/tmp/
 
 echo "Running fix on VPS..."
-ssh linuxuser@45.77.40.77 "python /tmp/fix_liquidity_zones.py"
+ssh linuxuser@VPS_HOST_REDACTED "python /tmp/fix_liquidity_zones.py"
 
 # Alternative simpler fix - just add the initialization
 echo "Applying alternative fix..."
-ssh linuxuser@45.77.40.77 << 'REMOTE_FIX'
+ssh linuxuser@VPS_HOST_REDACTED << 'REMOTE_FIX'
 # Search for the error location and add initialization
 python3 << 'PYTHON_FIX'
 import re
@@ -185,12 +185,12 @@ PYTHON_FIX
 REMOTE_FIX
 
 echo "Restarting service to apply changes..."
-ssh linuxuser@45.77.40.77 "sudo systemctl restart virtuoso.service"
+ssh linuxuser@VPS_HOST_REDACTED "sudo systemctl restart virtuoso.service"
 
 echo "Waiting for service to start..."
 sleep 5
 
 echo "Checking logs for errors..."
-ssh linuxuser@45.77.40.77 "sudo journalctl -u virtuoso.service --since '30 seconds ago' | grep -E '(liquidity_zones|ERROR)' | tail -10"
+ssh linuxuser@VPS_HOST_REDACTED "sudo journalctl -u virtuoso.service --since '30 seconds ago' | grep -E '(liquidity_zones|ERROR)' | tail -10"
 
 echo "Fix complete!"

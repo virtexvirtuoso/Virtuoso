@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: 45.77.40.77)
+#   VPS_HOST         VPS hostname (default: VPS_HOST_REDACTED)
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -62,7 +62,7 @@
 echo "Fixing ALL liquidity_zones undefined errors in orderflow_indicators.py"
 
 # Apply comprehensive fix on VPS
-ssh linuxuser@45.77.40.77 << 'REMOTE_FIX'
+ssh linuxuser@VPS_HOST_REDACTED << 'REMOTE_FIX'
 # Fix all incorrect liquidity_zones variable references
 python3 << 'PYTHON_FIX'
 import re

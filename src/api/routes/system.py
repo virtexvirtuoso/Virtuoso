@@ -57,6 +57,14 @@ async def get_system_status(
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+# Monitoring alias route for compatibility with expected /api/monitoring/status endpoint
+@router.get("/monitoring-status")
+async def get_monitoring_status(
+    exchange_manager: ExchangeManager = Depends(get_exchange_manager)
+) -> Dict:
+    """Monitoring alias for system status - provides same data as /status endpoint"""
+    return await get_system_status(exchange_manager)
+
 @router.get("/config")
 async def get_config(
     exchange_manager: ExchangeManager = Depends(get_exchange_manager)

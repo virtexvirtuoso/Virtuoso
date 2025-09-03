@@ -20,7 +20,7 @@
 #
 # Dependencies:
 #   - rsync for efficient file transfer
-#   - SSH access to VPS (45.77.40.77)
+#   - SSH access to VPS (VPS_HOST_REDACTED)
 #   - .rsync-exclude file in project root
 #   - tar/gzip for archive method
 #
@@ -37,7 +37,7 @@
 #   - Git history (.git/)
 #
 # VPS Configuration:
-#   - Host: 45.77.40.77
+#   - Host: VPS_HOST_REDACTED
 #   - User: linuxuser
 #   - Path: ~/trading/Virtuoso_ccxt/
 #
@@ -63,7 +63,7 @@
 echo "📦 Transferring Virtuoso Trading Bot to VPS"
 echo "=========================================="
 
-VPS_IP="45.77.40.77"
+VPS_IP="VPS_HOST_REDACTED"
 VPS_USER="linuxuser"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOCAL_PATH="$SCRIPT_DIR/.."

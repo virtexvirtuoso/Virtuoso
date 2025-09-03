@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: 45.77.40.77)
+#   VPS_HOST         VPS hostname (default: VPS_HOST_REDACTED)
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -65,7 +65,7 @@
 echo "=== Fixing ContinuousAnalysisManager Startup ==="
 echo ""
 
-VPS_HOST="linuxuser@45.77.40.77"
+VPS_HOST="linuxuser@VPS_HOST_REDACTED"
 VPS_PATH="/home/linuxuser/trading/Virtuoso_ccxt"
 
 # Step 1: Copy the fixed main.py
@@ -118,4 +118,4 @@ echo "1. Properly initialized with both required components"
 echo "2. Running analysis every 2 seconds"  
 echo "3. Pushing aggregated data to memcached"
 echo ""
-echo "Check dashboard at: http://45.77.40.77:8001/dashboard/mobile"
+echo "Check dashboard at: http://VPS_HOST_REDACTED:8001/dashboard/mobile"

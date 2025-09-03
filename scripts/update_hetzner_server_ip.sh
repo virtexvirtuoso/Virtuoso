@@ -3,7 +3,7 @@
 # Update all server references to new Hetzner server IP
 # Date: 2025-08-28
 # New Hetzner Server IP: VPS_HOST_REDACTED
-# Old IPs to replace: 45.77.40.77 (Vultr), 174.166.193.148 (Old)
+# Old IPs to replace: VPS_HOST_REDACTED (Vultr), 174.166.193.148 (Old)
 
 set -e
 
@@ -18,7 +18,7 @@ echo -e "${GREEN}Updating Server References to Hetzner${NC}"
 echo -e "${GREEN}========================================${NC}"
 echo ""
 echo -e "${YELLOW}New Server IP: VPS_HOST_REDACTED${NC}"
-echo -e "${YELLOW}Old IPs: 45.77.40.77, 174.166.193.148${NC}"
+echo -e "${YELLOW}Old IPs: VPS_HOST_REDACTED, 174.166.193.148${NC}"
 echo ""
 
 # Backup important files first
@@ -46,7 +46,7 @@ update_ip_in_file() {
 echo -e "\n${YELLOW}Updating shell scripts...${NC}"
 for script in scripts/**/*.sh scripts/*.sh; do
     if [[ -f "$script" ]]; then
-        update_ip_in_file "$script" "45.77.40.77"
+        update_ip_in_file "$script" "VPS_HOST_REDACTED"
         update_ip_in_file "$script" "174.166.193.148"
     fi
 done
@@ -55,7 +55,7 @@ done
 echo -e "\n${YELLOW}Updating Python files...${NC}"
 for pyfile in scripts/**/*.py scripts/*.py src/**/*.py src/*.py *.py; do
     if [[ -f "$pyfile" ]]; then
-        update_ip_in_file "$pyfile" "45.77.40.77"
+        update_ip_in_file "$pyfile" "VPS_HOST_REDACTED"
         update_ip_in_file "$pyfile" "174.166.193.148"
     fi
 done
@@ -64,7 +64,7 @@ done
 echo -e "\n${YELLOW}Updating documentation files...${NC}"
 for doc in *.md docs/*.md; do
     if [[ -f "$doc" ]]; then
-        update_ip_in_file "$doc" "45.77.40.77"
+        update_ip_in_file "$doc" "VPS_HOST_REDACTED"
         update_ip_in_file "$doc" "174.166.193.148"
     fi
 done
@@ -80,7 +80,7 @@ fi
 echo -e "\n${YELLOW}Updating SSH config...${NC}"
 SSH_CONFIG="$HOME/.ssh/config"
 if [[ -f "$SSH_CONFIG" ]]; then
-    if grep -q "45.77.40.77\|174.166.193.148" "$SSH_CONFIG"; then
+    if grep -q "VPS_HOST_REDACTED\|174.166.193.148" "$SSH_CONFIG"; then
         echo -e "${YELLOW}SSH config contains old IPs - updating...${NC}"
         cp "$SSH_CONFIG" "$BACKUP_DIR/ssh_config.bak"
         sed -i '' 's/45\.77\.40\.77/VPS_HOST_REDACTED/g' "$SSH_CONFIG"

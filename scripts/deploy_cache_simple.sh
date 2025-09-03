@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: 45.77.40.77)
+#   VPS_HOST         VPS hostname (default: VPS_HOST_REDACTED)
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -66,7 +66,7 @@ echo "======================================"
 echo "DEPLOYING CACHE OPTIMIZATIONS TO VPS"
 echo "======================================"
 
-VPS="linuxuser@45.77.40.77"
+VPS="linuxuser@VPS_HOST_REDACTED"
 VPS_PATH="/home/linuxuser/trading/Virtuoso_ccxt"
 
 # First, let's just copy the cache directory
@@ -144,4 +144,4 @@ echo "DEPLOYMENT COMPLETE!"
 echo "======================================"
 echo ""
 echo "Cache optimizations deployed to VPS."
-echo "Check status at: http://45.77.40.77:8003/api/cache/metrics"
+echo "Check status at: http://VPS_HOST_REDACTED:8003/api/cache/metrics"

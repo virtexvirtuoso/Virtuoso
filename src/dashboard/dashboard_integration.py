@@ -29,6 +29,28 @@ from src.core.resilience.fallback_provider import get_fallback_provider
 logger = logging.getLogger(__name__)
 
 
+def get_ticker_field(ticker, field_name, default=0):
+    """Get field from ticker with fallback support"""
+    if not ticker:
+        return default
+    
+    # Field mapping for different exchange formats
+    field_map = {
+        'price': ['last', 'lastPrice', 'price'],
+        'volume': ['volume24h', 'baseVolume', 'volume'],
+        'change_24h': ['percentage', 'percent', 'change24h'],
+        'bid': ['bid', 'bidPrice'],
+        'ask': ['ask', 'askPrice']
+    }
+    
+    if field_name in field_map:
+        for possible_field in field_map[field_name]:
+            if possible_field in ticker:
+                return float(ticker.get(possible_field, default))
+    
+    return float(ticker.get(field_name, default))
+
+
 class DashboardIntegrationService:
     """Service that provides real-time trading data to the dashboard."""
     
@@ -197,6 +219,37 @@ class DashboardIntegrationService:
                                     score = float(result['confluence_score'])
                                     components = result.get('components', {})
                                     
+                                    # Generate interpretations for each component
+                                    interpretations = {}
+                                    try:
+                                        from src.core.analysis.interpretation_generator import InterpretationGenerator
+                                        interpreter = InterpretationGenerator()
+                                        
+                                        # Generate interpretations for each component
+                                        for comp_name, comp_data in components.items():
+                                            try:
+                                                interpretation = interpreter.get_component_interpretation(comp_name, comp_data)
+                                                interpretations[comp_name] = interpretation
+                                            except Exception as e:
+                                                self.logger.debug(f"Could not generate interpretation for {comp_name}: {e}")
+                                                interpretations[comp_name] = f"{comp_name}: Score {comp_data}"
+                                        
+                                        # Add overall interpretation
+                                        if score >= 70:
+                                            interpretations['overall'] = f"Strong bullish confluence ({score:.1f}) - Consider long positions"
+                                        elif score >= 55:
+                                            interpretations['overall'] = f"Moderate bullish confluence ({score:.1f}) - Cautiously bullish"
+                                        elif score >= 45:
+                                            interpretations['overall'] = f"Neutral confluence ({score:.1f}) - No clear direction"
+                                        elif score >= 30:
+                                            interpretations['overall'] = f"Moderate bearish confluence ({score:.1f}) - Cautiously bearish"
+                                        else:
+                                            interpretations['overall'] = f"Strong bearish confluence ({score:.1f}) - Consider short positions"
+                                            
+                                    except Exception as e:
+                                        self.logger.debug(f"Could not generate interpretations: {e}")
+                                        interpretations = {'error': 'Interpretations unavailable'}
+                                    
                                     # Store the full formatted analysis if available
                                     formatted_analysis = None
                                     try:
@@ -213,16 +266,59 @@ class DashboardIntegrationService:
                                             weights=weights,
                                             reliability=reliability
                                         )
-                                        formatted_analysis = formatted_table
+                                        # Clean special characters from formatted table
+                                        import re
+                                        formatted_analysis = re.sub(r'[│├─└┌┐┬┴┼╔╗╚╝═║╠╣╦╩╬]', '', formatted_table)
+                                        formatted_analysis = re.sub(r'\s+', ' ', formatted_analysis).strip()
                                     except Exception as e:
                                         self.logger.debug(f"Could not format analysis: {e}")
                                     
+                                    # Determine sentiment based on score
+                                    if score >= 60:
+                                        sentiment = 'BULLISH'
+                                    elif score >= 40:
+                                        sentiment = 'NEUTRAL'
+                                    else:
+                                        sentiment = 'BEARISH'
+                                    
+                                    # Create comprehensive breakdown WITH market data fields
+                                    # Fix: Include price, change_24h, and volume_24h from market_data
+                                    breakdown = {
+                                        'overall_score': score,
+                                        'sentiment': sentiment,
+                                        'reliability': result.get('reliability', 75),
+                                        'components': components,
+                                        'sub_components': results if 'results' in locals() else {},
+                                        'interpretations': interpretations,
+                                        'formatted_analysis': formatted_analysis,
+                                        'timestamp': time.time(),
+                                        # Add missing market data fields for dashboard calculations
+                                        'price': market_data.get('price', 0) if market_data else 0,
+                                        'change_24h': market_data.get('change_24h', market_data.get('price_change_24h', 0)) if market_data else 0,
+                                        'volume_24h': market_data.get('volume_24h', market_data.get('volume', 0)) if market_data else 0
+                                    }
+                                    
+                                    # Store in internal cache
                                     self._confluence_cache[symbol] = {
                                         'score': score,
                                         'components': components,
                                         'timestamp': time.time(),
-                                        'formatted_analysis': formatted_analysis
+                                        'formatted_analysis': formatted_analysis,
+                                        'breakdown': breakdown
                                     }
+                                    
+                                    # Store breakdown in memcached with proper key
+                                    try:
+                                        import aiomcache
+                                        import json
+                                        client = aiomcache.Client('localhost', 11211)
+                                        cache_key = f'confluence:breakdown:{symbol}'
+                                        await client.set(cache_key.encode(), json.dumps(breakdown).encode(), exptime=60)
+                                        await client.close()
+                                        self.logger.info(f"Stored confluence breakdown for {symbol} in cache")
+                                    except Exception as e:
+                                        self.logger.error(f"Failed to store breakdown in cache: {e}")
+                                    
                                     self.logger.info(f"Updated confluence cache for {symbol}: {score:.2f}")
                                     
                                     # Also generate and store full analysis
@@ -582,7 +678,7 @@ class DashboardIntegrationService:
             
             # Fallback to simple score based on price momentum and volume
             ticker = market_data.get('ticker', {})
-            volume = ticker.get('volume', 0)
+            volume = get_ticker_field(ticker, 'volume', 0)
             change_24h = self._calculate_24h_change(market_data)
 
             score = 50.0  # Neutral base
@@ -633,7 +729,7 @@ class DashboardIntegrationService:
             if 'change' in ticker and ticker['change'] is not None:
                 return float(ticker['change'])
 
-            current = ticker.get('last', 0)
+            current = get_ticker_field(ticker, 'price', 0)
             open_price = ticker.get('open', current)
             if open_price > 0:
                 return ((current - open_price) / open_price) * 100
@@ -981,9 +1077,9 @@ class DashboardIntegrationService:
                             
                             symbol_data = {
                                 "symbol": symbol,
-                                "price": ticker.get('last', 0),
+                                "price": get_ticker_field(ticker, 'price', 0),
                                 "confluence_score": round(confluence_score, 2),
-                                "change_24h": ticker.get('percentage', 0),
+                                "change_24h": get_ticker_field(ticker, 'change_24h', 0),
                                 "volume_24h": ticker.get('quoteVolume', 0),
                                 "high_24h": ticker.get('high', 0),
                                 "low_24h": ticker.get('low', 0)

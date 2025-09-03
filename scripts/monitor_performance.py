@@ -10,7 +10,7 @@ import statistics
 from datetime import datetime
 from typing import List, Tuple
 
-BASE_URL = "http://45.77.40.77:8001"
+BASE_URL = "http://VPS_HOST_REDACTED:8001"
 
 async def test_endpoint(session: aiohttp.ClientSession, url: str, name: str) -> Tuple[str, float, int]:
     """Test an endpoint and return metrics"""

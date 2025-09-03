@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: 45.77.40.77)
+#   VPS_HOST         VPS hostname (default: VPS_HOST_REDACTED)
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -78,7 +78,7 @@ while true; do
     echo ""
     
     # Get current stats from VPS
-    ssh linuxuser@45.77.40.77 "
+    ssh linuxuser@VPS_HOST_REDACTED "
         PID=\$(pgrep -f 'python.*main.py' | head -1)
         if [ -z \"\$PID\" ]; then
             echo '❌ Service not running'
@@ -153,7 +153,7 @@ while true; do
     echo ""
     
     echo "📈 Recent Trends (last 5 minutes):"
-    ssh linuxuser@45.77.40.77 "tail -5 /tmp/virtuoso_connections.log 2>/dev/null | tail -5" | while read line; do
+    ssh linuxuser@VPS_HOST_REDACTED "tail -5 /tmp/virtuoso_connections.log 2>/dev/null | tail -5" | while read line; do
         echo "  $line"
     done
     echo ""

@@ -10,7 +10,7 @@ import subprocess
 
 # Get the file content
 result = subprocess.run(
-    ['ssh', 'linuxuser@45.77.40.77', 'cat /home/linuxuser/trading/Virtuoso_ccxt/src/core/exchanges/bybit.py'],
+    ['ssh', 'linuxuser@VPS_HOST_REDACTED', 'cat /home/linuxuser/trading/Virtuoso_ccxt/src/core/exchanges/bybit.py'],
     capture_output=True,
     text=True
 )
@@ -191,7 +191,7 @@ print("Patched file saved as bybit_patched.py")
 
 # Copy to VPS
 copy_result = subprocess.run(
-    ['scp', 'bybit_patched.py', 'linuxuser@45.77.40.77:/home/linuxuser/trading/Virtuoso_ccxt/src/core/exchanges/bybit.py'],
+    ['scp', 'bybit_patched.py', 'linuxuser@VPS_HOST_REDACTED:/home/linuxuser/trading/Virtuoso_ccxt/src/core/exchanges/bybit.py'],
     capture_output=True,
     text=True
 )

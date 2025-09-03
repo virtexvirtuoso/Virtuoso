@@ -22,7 +22,7 @@
 #   - Module-specific logging levels
 #
 # Dependencies:
-#   - SSH access to VPS (45.77.40.77)
+#   - SSH access to VPS (VPS_HOST_REDACTED)
 #   - SSH key authentication configured
 #   - sudo privileges for service restart
 #
@@ -59,7 +59,7 @@ echo "=================================================="
 
 # VPS connection details
 VPS_USER="linuxuser"
-VPS_HOST="45.77.40.77"
+VPS_HOST="VPS_HOST_REDACTED"
 VPS_PATH="/home/linuxuser/trading/Virtuoso_ccxt"
 
 # Files to deploy

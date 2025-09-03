@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: 45.77.40.77)
+#   VPS_HOST         VPS hostname (default: VPS_HOST_REDACTED)
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -69,15 +69,15 @@ echo "📱 Deploying mobile dashboard fixes..."
 
 # Deploy updated cached routes with mobile-data endpoint
 echo "  - Deploying updated dashboard_cached.py..."
-scp src/api/routes/dashboard_cached.py linuxuser@45.77.40.77:/home/linuxuser/trading/Virtuoso_ccxt/src/api/routes/
+scp src/api/routes/dashboard_cached.py linuxuser@VPS_HOST_REDACTED:/home/linuxuser/trading/Virtuoso_ccxt/src/api/routes/
 
 # Deploy updated mobile dashboard HTML
 echo "  - Deploying updated dashboard_mobile_v1.html..."
-scp src/dashboard/templates/dashboard_mobile_v1.html linuxuser@45.77.40.77:/home/linuxuser/trading/Virtuoso_ccxt/src/dashboard/templates/
+scp src/dashboard/templates/dashboard_mobile_v1.html linuxuser@VPS_HOST_REDACTED:/home/linuxuser/trading/Virtuoso_ccxt/src/dashboard/templates/
 
 echo ""
 echo "🔄 Restarting web server..."
-ssh linuxuser@45.77.40.77 'pkill -f "web_server.py" && sleep 2 && cd /home/linuxuser/trading/Virtuoso_ccxt && PYTHONPATH=/home/linuxuser/trading/Virtuoso_ccxt nohup venv311/bin/python src/web_server.py > logs/web_mobile_fix.log 2>&1 & echo "Web server restarted with PID: $!"'
+ssh linuxuser@VPS_HOST_REDACTED 'pkill -f "web_server.py" && sleep 2 && cd /home/linuxuser/trading/Virtuoso_ccxt && PYTHONPATH=/home/linuxuser/trading/Virtuoso_ccxt nohup venv311/bin/python src/web_server.py > logs/web_mobile_fix.log 2>&1 & echo "Web server restarted with PID: $!"'
 
 sleep 5
 
@@ -87,7 +87,7 @@ echo ""
 
 # Test the new cached mobile-data endpoint
 echo "1. Testing /api/dashboard-cached/mobile-data:"
-curl -s http://45.77.40.77:8001/api/dashboard-cached/mobile-data | python3 -c "
+curl -s http://VPS_HOST_REDACTED:8001/api/dashboard-cached/mobile-data | python3 -c "
 import sys, json
 data = json.load(sys.stdin)
 print(f'  Status: {data.get(\"status\")}')
@@ -100,7 +100,7 @@ print(f'  Source: {data.get(\"source\", \"unknown\")}')
 
 echo ""
 echo "2. Testing regular mobile-data (fallback):"
-curl -s http://45.77.40.77:8001/api/dashboard/mobile-data | python3 -c "
+curl -s http://VPS_HOST_REDACTED:8001/api/dashboard/mobile-data | python3 -c "
 import sys, json
 data = json.load(sys.stdin)
 print(f'  Status: {data.get(\"status\")}')
@@ -113,7 +113,7 @@ echo "Mobile Dashboard Fix Deployed!"
 echo "================================"
 echo ""
 echo "📱 Access mobile dashboard at:"
-echo "   http://45.77.40.77:8001/dashboard/mobile"
+echo "   http://VPS_HOST_REDACTED:8001/dashboard/mobile"
 echo ""
 echo "✅ The mobile dashboard should now display:"
 echo "   - Market overview data"

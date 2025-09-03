@@ -1,6 +1,11 @@
 """Core component protocols."""
 
-from typing import Protocol, Dict, Any
+try:
+    from typing import Protocol, runtime_checkable
+except ImportError:
+    from typing_extensions import Protocol, runtime_checkable
+
+from typing import Dict, Any
 
 class Component(Protocol):
     """Basic component interface."""

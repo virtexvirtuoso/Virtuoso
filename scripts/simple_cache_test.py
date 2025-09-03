@@ -10,7 +10,7 @@ from datetime import datetime
 async def test_endpoints():
     """Test both regular and cached endpoints"""
     
-    base_url = "http://45.77.40.77:8001"
+    base_url = "http://VPS_HOST_REDACTED:8001"
     
     # Endpoints to test
     endpoints = [

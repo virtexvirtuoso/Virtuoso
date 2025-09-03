@@ -3,7 +3,7 @@
 import asyncio
 import logging
 from typing import Dict, Any, Optional, List
-from src.analysis.core.confluence import ConfluenceAnalyzer
+from src.core.analysis.confluence import ConfluenceAnalyzer
 
 
 class ConfluenceService:

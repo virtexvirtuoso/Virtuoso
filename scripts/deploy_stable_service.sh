@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: 45.77.40.77)
+#   VPS_HOST         VPS hostname (default: VPS_HOST_REDACTED)
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -63,7 +63,7 @@ echo "🚀 Deploying stable service configuration to VPS..."
 
 # Stop the service and clean up
 echo "1. Stopping service and cleaning up..."
-ssh linuxuser@45.77.40.77 << 'ENDSSH'
+ssh linuxuser@VPS_HOST_REDACTED << 'ENDSSH'
     sudo systemctl stop virtuoso.service
     sudo pkill -9 -f "python.*main.py" || true
     sleep 2
@@ -91,11 +91,11 @@ rsync -avz --exclude='*.pyc' \
     --exclude='reports' \
     --exclude='*.log' \
     src/ scripts/ config/ \
-    linuxuser@45.77.40.77:/home/linuxuser/trading/Virtuoso_ccxt/
+    linuxuser@VPS_HOST_REDACTED:/home/linuxuser/trading/Virtuoso_ccxt/
 
 # Start the service
 echo "3. Starting virtuoso service..."
-ssh linuxuser@45.77.40.77 << 'ENDSSH'
+ssh linuxuser@VPS_HOST_REDACTED << 'ENDSSH'
     cd /home/linuxuser/trading/Virtuoso_ccxt
     
     # Ensure memcached is running
@@ -116,7 +116,7 @@ sleep 5
 
 # Test the API
 echo "Testing confluence scores endpoint..."
-curl -s -m 5 "http://45.77.40.77:8004/api/dashboard/confluence/scores" | python3 -c "
+curl -s -m 5 "http://VPS_HOST_REDACTED:8004/api/dashboard/confluence/scores" | python3 -c "
 import sys, json
 try:
     data = json.load(sys.stdin)
@@ -131,4 +131,4 @@ except:
 
 echo ""
 echo "Deployment complete. Checking final status..."
-ssh linuxuser@45.77.40.77 "sudo systemctl is-active virtuoso.service"
+ssh linuxuser@VPS_HOST_REDACTED "sudo systemctl is-active virtuoso.service"

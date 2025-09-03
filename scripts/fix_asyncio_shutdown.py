@@ -266,7 +266,7 @@ def main():
         print(f"  ✓ {fix}")
     
     print("\nDone! The asyncio shutdown issues should be resolved.")
-    print("Deploy to VPS with: rsync -avz src/ linuxuser@45.77.40.77:/home/linuxuser/trading/Virtuoso_ccxt/src/")
+    print("Deploy to VPS with: rsync -avz src/ linuxuser@VPS_HOST_REDACTED:/home/linuxuser/trading/Virtuoso_ccxt/src/")
     
     return 0
 

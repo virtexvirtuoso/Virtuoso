@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: 45.77.40.77)
+#   VPS_HOST         VPS hostname (default: VPS_HOST_REDACTED)
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -66,10 +66,10 @@ echo
 echo "The SSH key authentication seems to be not set up. Please deploy manually:"
 echo
 echo "1. Copy the updated dashboard_integration.py file to VPS:"
-echo "   scp src/dashboard/dashboard_integration.py root@45.77.40.77:/root/Virtuoso/src/dashboard/"
+echo "   scp src/dashboard/dashboard_integration.py root@VPS_HOST_REDACTED:/root/Virtuoso/src/dashboard/"
 echo
 echo "2. SSH into the VPS:"
-echo "   ssh root@45.77.40.77"
+echo "   ssh root@VPS_HOST_REDACTED"
 echo
 echo "3. Restart the service:"
 echo "   sudo systemctl restart virtuoso"
@@ -81,7 +81,7 @@ echo "5. Monitor the logs for cache updates:"
 echo "   sudo journalctl -u virtuoso -f | grep -E '(confluence|cache)'"
 echo
 echo "6. Test the mobile dashboard:"
-echo "   http://45.77.40.77:8003/dashboard/mobile"
+echo "   http://VPS_HOST_REDACTED:8003/dashboard/mobile"
 echo
 echo "The background caching will:"
 echo "- Update confluence scores every 30 seconds"

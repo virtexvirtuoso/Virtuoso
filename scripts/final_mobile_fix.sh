@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: 45.77.40.77)
+#   VPS_HOST         VPS hostname (default: VPS_HOST_REDACTED)
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -65,7 +65,7 @@ echo "======================================="
 echo ""
 echo "Updating mobile dashboard to use WORKING Fast endpoints..."
 
-VPS_HOST="45.77.40.77"
+VPS_HOST="VPS_HOST_REDACTED"
 VPS_USER="linuxuser"
 
 # Update mobile dashboard to use Fast endpoints which work

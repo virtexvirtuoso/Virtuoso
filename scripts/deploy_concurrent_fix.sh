@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: 45.77.40.77)
+#   VPS_HOST         VPS hostname (default: VPS_HOST_REDACTED)
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -64,7 +64,7 @@ echo "DEPLOYING CONCURRENT STARTUP FIX TO VPS"
 echo "========================================"
 echo ""
 
-VPS="linuxuser@45.77.40.77"
+VPS="linuxuser@VPS_HOST_REDACTED"
 VPS_PATH="/home/linuxuser/trading/Virtuoso_ccxt"
 
 echo "1. Copying fixed main.py to VPS..."
@@ -127,14 +127,14 @@ echo "----------------------------------------"
 # Test API endpoint
 echo "   Testing API on port 8003..."
 sleep 2
-HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 http://45.77.40.77:8003/api/system/health 2>/dev/null || echo "000")
+HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 http://VPS_HOST_REDACTED:8003/api/system/health 2>/dev/null || echo "000")
 if [ "$HTTP_CODE" = "200" ]; then
     echo "   ✓ API responding on port 8003!"
     
     # Get detailed health status
     echo ""
     echo "   API Health Status:"
-    curl -s http://45.77.40.77:8003/api/system/health | python3 -m json.tool 2>/dev/null | head -20 || echo "   Could not parse health response"
+    curl -s http://VPS_HOST_REDACTED:8003/api/system/health | python3 -m json.tool 2>/dev/null | head -20 || echo "   Could not parse health response"
 else
     echo "   ⚠ API not responding yet (HTTP $HTTP_CODE)"
     echo "   Checking service logs for issues..."
@@ -159,5 +159,5 @@ echo "Monitor with:"
 echo "  ssh $VPS 'sudo journalctl -u virtuoso -f'"
 echo ""
 echo "Test endpoints:"
-echo "  curl http://45.77.40.77:8003/api/system/health"
-echo "  curl http://45.77.40.77:8001/"
+echo "  curl http://VPS_HOST_REDACTED:8003/api/system/health"
+echo "  curl http://VPS_HOST_REDACTED:8001/"

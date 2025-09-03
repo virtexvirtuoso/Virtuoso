@@ -10,7 +10,7 @@ async def test_adapter():
         from src.api.cache_adapter_direct import cache_adapter
         print("Using Direct Cache Adapter")
     except ImportError:
-        from src.api.cache_adapter import cache_adapter
+        from src.api.cache_adapter_direct import cache_adapter
         print("Using standard cache adapter")
     
     # Test get_signals

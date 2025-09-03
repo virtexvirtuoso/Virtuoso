@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: 45.77.40.77)
+#   VPS_HOST         VPS hostname (default: VPS_HOST_REDACTED)
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -62,7 +62,7 @@
 echo "🔧 Deploying Comprehensive Market Metrics Fix..."
 echo "==============================================="
 
-VPS_HOST="linuxuser@45.77.40.77"
+VPS_HOST="linuxuser@VPS_HOST_REDACTED"
 PROJECT_DIR="/home/linuxuser/trading/Virtuoso_ccxt"
 
 # Create a service to continuously update market metrics
@@ -288,7 +288,7 @@ echo ""
 echo "🧪 Testing Fixed Metrics..."
 echo "============================"
 
-curl -s "http://45.77.40.77:8001/api/dashboard-cached/mobile-data" | python3 -c "
+curl -s "http://VPS_HOST_REDACTED:8001/api/dashboard-cached/mobile-data" | python3 -c "
 import json, sys
 data = json.load(sys.stdin)
 overview = data.get('market_overview', {})
@@ -316,7 +316,7 @@ ssh $VPS_HOST "sudo systemctl status market-metrics --no-pager | head -10"
 
 echo ""
 echo "📱 View the fixed dashboard at:"
-echo "   http://45.77.40.77:8001/dashboard/mobile"
+echo "   http://VPS_HOST_REDACTED:8001/dashboard/mobile"
 echo ""
 echo "💡 The market-metrics service will continuously update:"
 echo "   • Every 30 seconds with fresh data"

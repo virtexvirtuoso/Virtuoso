@@ -5,7 +5,7 @@ echo "Timestamp: $(date)"
 echo
 
 # Make sure we're targeting the right VPS
-VPS_HOST="linuxuser@45.77.40.77"
+VPS_HOST="linuxuser@VPS_HOST_REDACTED"
 
 echo "1. Checking and restarting services:"
 ssh $VPS_HOST "

@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: 45.77.40.77)
+#   VPS_HOST         VPS hostname (default: VPS_HOST_REDACTED)
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -62,7 +62,7 @@
 echo "🔄 Reverting Mobile Dashboard to Previous Version..."
 echo "===================================================="
 
-VPS_HOST="linuxuser@45.77.40.77"
+VPS_HOST="linuxuser@VPS_HOST_REDACTED"
 PROJECT_DIR="/home/linuxuser/trading/Virtuoso_ccxt"
 
 # First, backup the enhanced version on VPS
@@ -87,16 +87,16 @@ echo "=========================="
 
 # Check for the old market overview structure
 echo "1. Checking for original Market Overview structure:"
-curl -s "http://45.77.40.77:8001/dashboard/mobile" | grep -q "MARKET REGIME" && echo "   ✅ Found original MARKET REGIME label" || echo "   ❌ Original structure not found"
+curl -s "http://VPS_HOST_REDACTED:8001/dashboard/mobile" | grep -q "MARKET REGIME" && echo "   ✅ Found original MARKET REGIME label" || echo "   ❌ Original structure not found"
 
 echo ""
 echo "2. Checking page loads correctly:"
-TITLE=$(curl -s "http://45.77.40.77:8001/dashboard/mobile" | grep -o '<title>.*</title>')
+TITLE=$(curl -s "http://VPS_HOST_REDACTED:8001/dashboard/mobile" | grep -o '<title>.*</title>')
 echo "   Page title: $TITLE"
 
 echo ""
 echo "3. Testing data endpoint:"
-curl -s "http://45.77.40.77:8001/api/dashboard-cached/mobile-data" | python3 -c "
+curl -s "http://VPS_HOST_REDACTED:8001/api/dashboard-cached/mobile-data" | python3 -c "
 import json, sys
 try:
     data = json.load(sys.stdin)
@@ -109,7 +109,7 @@ echo ""
 echo "✅ Reversion Complete!"
 echo ""
 echo "📱 The mobile dashboard has been reverted to the previous version"
-echo "   URL: http://45.77.40.77:8001/dashboard/mobile"
+echo "   URL: http://VPS_HOST_REDACTED:8001/dashboard/mobile"
 echo ""
 echo "💾 Backups created:"
 echo "   • Enhanced version saved locally as: dashboard_mobile_v1_enhanced_backup.html"

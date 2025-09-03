@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: 45.77.40.77)
+#   VPS_HOST         VPS hostname (default: VPS_HOST_REDACTED)
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -59,7 +59,7 @@
 #
 #############################################################################
 
-ssh linuxuser@45.77.40.77 << 'EOF'
+ssh linuxuser@VPS_HOST_REDACTED << 'EOF'
 cd /home/linuxuser/trading/Virtuoso_ccxt
 
 echo "Patching dashboard_updater.py to generate realistic scores..."

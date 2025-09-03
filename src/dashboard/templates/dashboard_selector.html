@@ -145,7 +145,7 @@
         
         <div class="dashboard-grid">
             <!-- Mobile Dashboard -->
-            <a href="/dashboard/mobile" class="dashboard-card" id="mobileCard">
+            <a href="/mobile" class="dashboard-card" id="mobileCard">
                 <div class="recommended" id="mobileRecommended" style="display: none;">RECOMMENDED</div>
                 <div class="card-icon">📱</div>
                 <h3 class="card-title">Mobile Dashboard</h3>
@@ -241,13 +241,13 @@
             redirectName = getRedirectName(savedDashboard);
         } else if (isMobile) {
             // Default to mobile for mobile devices
-            redirectUrl = '/dashboard/mobile';
+            redirectUrl = '/mobile';
             redirectName = 'Mobile Dashboard';
         }
         
         function getRedirectName(url) {
             const names = {
-                '/dashboard/mobile': 'Mobile Dashboard',
+                '/mobile': 'Mobile Dashboard',
                 '/dashboard/desktop': 'Desktop Dashboard',
                 '/dashboard/v10': 'Signal Matrix',
                 '/dashboard/v1': 'Classic Dashboard'

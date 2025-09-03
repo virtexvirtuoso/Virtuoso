@@ -40,7 +40,7 @@
 #
 # Environment Variables:
 #   VIRTUOSO_ENV     Environment (development/staging/production)
-#   VPS_HOST         VPS hostname or IP (default: 45.77.40.77)
+#   VPS_HOST         VPS hostname or IP (default: VPS_HOST_REDACTED)
 #   VPS_USER         VPS username (default: linuxuser)
 #   PROJECT_ROOT     Project root directory
 #   LOG_LEVEL        Logging verbosity (DEBUG/INFO/WARNING/ERROR)
@@ -89,7 +89,7 @@ readonly SCRIPT_VERSION="1.0.0"
 readonly TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 
 # Default configuration
-readonly DEFAULT_VPS_HOST="${VPS_HOST:-45.77.40.77}"
+readonly DEFAULT_VPS_HOST="${VPS_HOST:-VPS_HOST_REDACTED}"
 readonly DEFAULT_VPS_USER="${VPS_USER:-linuxuser}"
 readonly DEFAULT_PROJECT_ROOT="${PROJECT_ROOT:-/Users/ffv_macmini/Desktop/Virtuoso_ccxt}"
 readonly DEFAULT_LOG_LEVEL="${LOG_LEVEL:-INFO}"

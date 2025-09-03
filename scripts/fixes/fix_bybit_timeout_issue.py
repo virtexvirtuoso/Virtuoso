@@ -359,7 +359,7 @@ def main():
     
     print("\nIMPLEMENTATION STEPS:")
     print("-" * 40)
-    print("1. SSH to VPS: ssh linuxuser@45.77.40.77")
+    print("1. SSH to VPS: ssh linuxuser@VPS_HOST_REDACTED")
     print("2. Navigate to: cd /home/linuxuser/trading/Virtuoso_ccxt")
     print("3. Edit: nano src/core/exchanges/bybit.py")
     print("4. Apply the changes shown in the patch above")

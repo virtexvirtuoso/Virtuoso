@@ -11,9 +11,12 @@ import logging
 
 from ..core.interfaces.services import (
     IAlertService, IMetricsService, IInterpretationService,
-    IConfigService, IValidationService, IFormattingService
+    IConfigService, IValidationService, IFormattingService,
+    IMarketMonitorService, IDashboardService, ITopSymbolsManagerService,
+    IConfluenceAnalyzerService
 )
 from ..core.di.container import ServiceContainer
+from ..core.di.service_locator import get_service_locator, resolve_service
 
 logger = logging.getLogger(__name__)
 
@@ -24,8 +27,16 @@ def get_container(request: Request) -> Optional[ServiceContainer]:
 
 
 async def get_alert_service(request: Request) -> Optional[IAlertService]:
-    """Get alert service from DI container (async)."""
+    """Get alert service from DI container or service locator (async)."""
     try:
+        # Try service locator first
+        locator = get_service_locator()
+        if locator:
+            service = await locator.resolve(IAlertService)
+            if service:
+                return service
+        
+        # Fallback to container
         container = get_container(request)
         if container:
             try:
@@ -192,7 +203,109 @@ InterpretationServiceDep = Depends(get_interpretation_service)
 ValidationServiceDep = Depends(get_validation_service)
 FormattingServiceDep = Depends(get_formatting_service)
 
+# New service dependency functions for Phase 2 migration
+
+async def get_market_monitor(request: Request) -> Optional[IMarketMonitorService]:
+    """Get market monitor service from DI container or service locator (async)."""
+    try:
+        # Try service locator first
+        locator = get_service_locator()
+        if locator:
+            service = await locator.resolve(IMarketMonitorService)
+            if service:
+                return service
+        
+        # Fallback to container
+        container = get_container(request)
+        if container:
+            try:
+                return await container.get_service(IMarketMonitorService)
+            except Exception:
+                # Fallback to app state
+                return getattr(request.app.state, 'market_monitor', None)
+        return getattr(request.app.state, 'market_monitor', None)
+    except Exception as e:
+        logger.warning(f"Could not get market monitor service: {e}")
+        return getattr(request.app.state, 'market_monitor', None)
+
+
+async def get_dashboard_service(request: Request) -> Optional[IDashboardService]:
+    """Get dashboard service from DI container or service locator (async)."""
+    try:
+        # Try service locator first
+        locator = get_service_locator()
+        if locator:
+            service = await locator.resolve(IDashboardService)
+            if service:
+                return service
+        
+        # Fallback to container
+        container = get_container(request)
+        if container:
+            try:
+                return await container.get_service(IDashboardService)
+            except Exception:
+                # Fallback to app state
+                return getattr(request.app.state, 'dashboard_integration', None)
+        return getattr(request.app.state, 'dashboard_integration', None)
+    except Exception as e:
+        logger.warning(f"Could not get dashboard service: {e}")
+        return getattr(request.app.state, 'dashboard_integration', None)
+
+
+async def get_top_symbols_service(request: Request) -> Optional[ITopSymbolsManagerService]:
+    """Get top symbols service from DI container or service locator (async)."""
+    try:
+        # Try service locator first
+        locator = get_service_locator()
+        if locator:
+            service = await locator.resolve(ITopSymbolsManagerService)
+            if service:
+                return service
+        
+        # Fallback to container
+        container = get_container(request)
+        if container:
+            try:
+                return await container.get_service(ITopSymbolsManagerService)
+            except Exception:
+                return None
+        return None
+    except Exception as e:
+        logger.warning(f"Could not get top symbols service: {e}")
+        return None
+
+
+async def get_confluence_analyzer(request: Request) -> Optional[IConfluenceAnalyzerService]:
+    """Get confluence analyzer service from DI container or service locator (async)."""
+    try:
+        # Try service locator first
+        locator = get_service_locator()
+        if locator:
+            service = await locator.resolve(IConfluenceAnalyzerService)
+            if service:
+                return service
+        
+        # Fallback to container
+        container = get_container(request)
+        if container:
+            try:
+                return await container.get_service(IConfluenceAnalyzerService)
+            except Exception:
+                return None
+        return None
+    except Exception as e:
+        logger.warning(f"Could not get confluence analyzer service: {e}")
+        return None
+
+
 # Required dependencies
 RequiredAlertServiceDep = Depends(required_alert_service)
 RequiredMetricsServiceDep = Depends(required_metrics_service)
 RequiredConfigServiceDep = Depends(required_config_service)
+
+# New service dependencies for Phase 2
+MarketMonitorDep = Depends(get_market_monitor)
+DashboardServiceDep = Depends(get_dashboard_service)
+TopSymbolsServiceDep = Depends(get_top_symbols_service)
+ConfluenceAnalyzerDep = Depends(get_confluence_analyzer)

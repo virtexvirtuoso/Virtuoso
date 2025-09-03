@@ -18,7 +18,8 @@ from typing import Dict, List, Any, Optional, Callable
 from datetime import datetime
 
 from src.core.exchanges.websocket_manager import WebSocketManager as CoreWebSocketManager
-from src.core.cache.liquidation_cache import liquidation_cache
+# from src.core.cache.liquidation_cache import liquidation_cache  # Module doesn't exist
+liquidation_cache = None  # Placeholder
 
 
 class MonitoringWebSocketManager:

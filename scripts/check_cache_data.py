@@ -18,7 +18,7 @@ async def check_cache_contents():
     print("-" * 80)
     
     # Connect to memcached on VPS (via SSH tunnel if needed)
-    cache_client = aiomcache.Client('45.77.40.77', 11211)
+    cache_client = aiomcache.Client('VPS_HOST_REDACTED', 11211)
     
     # Keys to check
     keys_to_check = [
@@ -95,7 +95,7 @@ async def check_cache_contents():
         
         for endpoint, name in endpoints:
             try:
-                async with session.get(f'http://45.77.40.77:8001{endpoint}') as response:
+                async with session.get(f'http://VPS_HOST_REDACTED:8001{endpoint}') as response:
                     if response.status == 200:
                         data = await response.json()
                         
@@ -154,9 +154,9 @@ async def check_service_logs():
     
     # This would need SSH access to check logs
     print("To check service logs on VPS, run:")
-    print("  ssh linuxuser@45.77.40.77 'tail -n 50 /tmp/phase2_services.log'")
-    print("  ssh linuxuser@45.77.40.77 'tail -n 50 logs/market_service.log'")
-    print("  ssh linuxuser@45.77.40.77 'tail -n 50 logs/analysis_service.log'")
+    print("  ssh linuxuser@VPS_HOST_REDACTED 'tail -n 50 /tmp/phase2_services.log'")
+    print("  ssh linuxuser@VPS_HOST_REDACTED 'tail -n 50 logs/market_service.log'")
+    print("  ssh linuxuser@VPS_HOST_REDACTED 'tail -n 50 logs/analysis_service.log'")
 
 async def main():
     """Run all checks"""
@@ -166,7 +166,7 @@ async def main():
     except Exception as e:
         print(f"\n❌ Error: {e}")
         print("\nNote: Make sure you can connect to VPS memcached on port 11211")
-        print("You may need to set up SSH tunnel: ssh -L 11211:localhost:11211 linuxuser@45.77.40.77")
+        print("You may need to set up SSH tunnel: ssh -L 11211:localhost:11211 linuxuser@VPS_HOST_REDACTED")
 
 if __name__ == "__main__":
     print("\n🔍 Starting Cache Data Investigation...")

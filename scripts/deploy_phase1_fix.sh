@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: 45.77.40.77)
+#   VPS_HOST         VPS hostname (default: VPS_HOST_REDACTED)
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -68,7 +68,7 @@ echo "================================================================"
 echo ""
 
 # Configuration
-VPS_HOST="linuxuser@45.77.40.77"
+VPS_HOST="linuxuser@VPS_HOST_REDACTED"
 VPS_PATH="/home/linuxuser/trading/Virtuoso_ccxt"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 
@@ -319,7 +319,7 @@ cat << 'ROLLBACK' > /tmp/rollback_phase1.sh
 
 echo "🚨 Rolling back Phase 1 changes..."
 
-VPS_HOST="linuxuser@45.77.40.77"
+VPS_HOST="linuxuser@VPS_HOST_REDACTED"
 VPS_PATH="/home/linuxuser/trading/Virtuoso_ccxt"
 TIMESTAMP=$1
 

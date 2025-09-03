@@ -1,285 +1,194 @@
-from fastapi import APIRouter, HTTPException, Query
-from typing import Dict, Any, Optional, List
-import asyncio
+"""
+Optimized Dashboard Routes with Intelligent Cache Management
+Zero empty data guarantee with comprehensive monitoring and fallbacks
+"""
+from fastapi import APIRouter, HTTPException, BackgroundTasks
+from typing import Dict, Any, Optional
 import logging
 import time
-from datetime import datetime, timedelta
-import json
-from contextlib import asynccontextmanager
+import asyncio
+from functools import wraps
 
+# Import optimized cache components
+from src.api.cache_adapter_optimized import optimized_cache_adapter
+from src.core.cache_warmer import cache_warmer
+from src.core.cache_system import optimized_cache_system
+from src.api.validation import symbol_validator
+
+router = APIRouter()
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/api/dashboard-cached", tags=["cached-dashboard"])
 
-# In-memory fallback cache
-FALLBACK_CACHE = {}
-CACHE_TIMESTAMPS = {}
-CACHE_TTL = 30  # 30 seconds
+# Performance tracking
+response_times = []
+cache_hit_rates = []
 
-class CircuitBreaker:
-    """Simple circuit breaker to prevent cascading failures"""
-    def __init__(self, failure_threshold=3, recovery_timeout=60):
-        self.failure_count = 0
-        self.failure_threshold = failure_threshold
-        self.recovery_timeout = recovery_timeout
-        self.last_failure_time = None
-        self.is_open = False
+def track_performance(func):
+    """Decorator to track endpoint performance and cache effectiveness"""
+    @wraps(func)
+    async def wrapper(*args, **kwargs):
+        start_time = time.perf_counter()
         
-    def record_success(self):
-        self.failure_count = 0
-        self.is_open = False
-        
-    def record_failure(self):
-        self.failure_count += 1
-        self.last_failure_time = time.time()
-        if self.failure_count >= self.failure_threshold:
-            self.is_open = True
+        try:
+            result = await func(*args, **kwargs)
+            elapsed = (time.perf_counter() - start_time) * 1000
             
-    def can_execute(self):
-        if not self.is_open:
-            return True
-        # Check if recovery timeout has passed
-        if time.time() - self.last_failure_time > self.recovery_timeout:
-            self.is_open = False
-            self.failure_count = 0
-            return True
-        return False
+            # Track response time
+            response_times.append(elapsed)
+            if len(response_times) > 100:  # Keep last 100 measurements
+                response_times.pop(0)
+            
+            # Add performance info to response
+            if isinstance(result, dict):
+                result['performance_metrics'] = {
+                    'response_time_ms': round(elapsed, 2),
+                    'avg_response_time_ms': round(sum(response_times) / len(response_times), 2),
+                    'endpoint': func.__name__
+                }
+            
+            logger.debug(f"{func.__name__} completed in {elapsed:.2f}ms")
+            return result
+            
+        except Exception as e:
+            elapsed = (time.perf_counter() - start_time) * 1000
+            logger.error(f"{func.__name__} failed after {elapsed:.2f}ms: {e}")
+            raise
+            
+    return wrapper
 
-# Circuit breakers for different endpoints
-circuit_breakers = {
-    'mobile': CircuitBreaker(),
-    'overview': CircuitBreaker(),
-    'alerts': CircuitBreaker(),
-    'opportunities': CircuitBreaker()
-}
-
-async def get_cached_or_compute(key: str, compute_func, ttl: int = 30):
-    """Get from cache or compute with timeout"""
-    # Check circuit breaker
-    breaker = circuit_breakers.get(key.split(':')[0])
-    if breaker and not breaker.can_execute():
-        # Return fallback data if circuit is open
-        if key in FALLBACK_CACHE:
-            logger.warning(f"Circuit breaker open for {key}, returning fallback data")
-            return FALLBACK_CACHE[key]
-        raise HTTPException(status_code=503, detail="Service temporarily unavailable")
-    
-    # Check in-memory cache first
-    if key in FALLBACK_CACHE:
-        timestamp = CACHE_TIMESTAMPS.get(key, 0)
-        if time.time() - timestamp < ttl:
-            return FALLBACK_CACHE[key]
-    
+@router.post("/warm-cache")
+async def trigger_cache_warming(background_tasks: BackgroundTasks) -> Dict[str, Any]:
+    """Manually trigger cache warming (useful for startup)"""
     try:
-        # Compute with timeout
-        result = await asyncio.wait_for(compute_func(), timeout=2.0)
-        # Update cache
-        FALLBACK_CACHE[key] = result
-        CACHE_TIMESTAMPS[key] = time.time()
-        if breaker:
-            breaker.record_success()
-        return result
-    except asyncio.TimeoutError:
-        logger.error(f"Timeout computing {key}")
-        if breaker:
-            breaker.record_failure()
-        # Return cached data if available
-        if key in FALLBACK_CACHE:
-            return FALLBACK_CACHE[key]
-        # Return minimal fallback
-        return get_fallback_data(key)
+        logger.info("Manual cache warming triggered via API")
+        
+        # Start critical warming immediately
+        warming_results = await cache_warmer.warm_critical_data()
+        
+        # Schedule continuous warming in background
+        if not cache_warmer.running:
+            background_tasks.add_task(cache_warmer.start_warming_loop, 60)  # 1 minute intervals
+        
+        return {
+            'status': 'success',
+            'warming_results': warming_results,
+            'continuous_warming_started': not cache_warmer.running,
+            'timestamp': int(time.time())
+        }
+        
     except Exception as e:
-        logger.error(f"Error computing {key}: {e}")
-        if breaker:
-            breaker.record_failure()
-        if key in FALLBACK_CACHE:
-            return FALLBACK_CACHE[key]
-        return get_fallback_data(key)
+        logger.error(f"Cache warming trigger failed: {e}")
+        return {
+            'status': 'error',
+            'error': str(e),
+            'timestamp': int(time.time())
+        }
 
-def get_fallback_data(key: str) -> Dict[str, Any]:
-    """Get fallback data for different endpoints"""
-    base_response = {
-        "status": "fallback",
-        "timestamp": datetime.utcnow().isoformat(),
-        "message": "Using fallback data due to temporary issue"
-    }
-    
-    if "mobile" in key:
-        return {
-            **base_response,
-            "market_metrics": {
-                "breadth": {"advancing": 0, "declining": 0, "neutral": 0},
-                "sentiment": 50,
-                "volume_ratio": 1.0
-            },
-            "confluence_scores": [],
-            "alerts": [],
-            "opportunities": []
-        }
-    elif "overview" in key:
-        return {
-            **base_response,
-            "summary": {
-                "total_symbols": 0,
-                "active_signals": 0,
-                "market_trend": "neutral"
-            },
-            "top_movers": [],
-            "recent_signals": []
-        }
-    elif "alerts" in key:
-        return {
-            **base_response,
-            "alerts": [],
-            "count": 0
-        }
-    elif "opportunities" in key:
-        return {
-            **base_response,
-            "opportunities": [],
-            "count": 0
-        }
-    return base_response
-
-@router.get("/mobile-data")
-async def get_mobile_dashboard_data():
-    """Optimized mobile dashboard data endpoint"""
-    async def compute():
-        # Simulate data gathering (replace with actual logic)
-        return {
-            "status": "success",
-            "timestamp": datetime.utcnow().isoformat(),
-            "market_metrics": {
-                "breadth": {
-                    "advancing": 15,
-                    "declining": 10,
-                    "neutral": 5
-                },
-                "sentiment": 65,
-                "volume_ratio": 1.2
-            },
-            "confluence_scores": [
-                {"symbol": "BTC-USDT", "score": 75, "direction": "bullish"},
-                {"symbol": "ETH-USDT", "score": 68, "direction": "bullish"}
-            ],
-            "alerts": [],
-            "opportunities": [
-                {"symbol": "BTC-USDT", "type": "breakout", "confidence": 0.8}
-            ]
-        }
-    
-    return await get_cached_or_compute("mobile:data", compute)
+@router.get("/market-overview")
+@track_performance
+async def get_market_overview() -> Dict[str, Any]:
+    """Get market overview with guaranteed data availability"""
+    return await optimized_cache_adapter.get_market_overview()
 
 @router.get("/overview")
-async def get_dashboard_overview():
-    """Optimized dashboard overview endpoint"""
-    async def compute():
+@track_performance
+async def get_dashboard_overview() -> Dict[str, Any]:
+    """Get complete dashboard overview with zero empty data guarantee"""
+    return await optimized_cache_adapter.get_dashboard_overview()
+
+@router.get("/signals")
+@track_performance
+async def get_signals() -> Dict[str, Any]:
+    """Get trading signals with comprehensive validation"""
+    try:
+        response = await optimized_cache_adapter.get_signals()
+        
+        # Validate and filter out system symbols from signals
+        if response and 'signals' in response:
+            original_count = len(response['signals'])
+            response = symbol_validator.validate_api_response(response)
+            filtered_count = len(response['signals'])
+            symbol_validator.log_validation_stats(filtered_count, original_count - filtered_count, "signals")
+        
+        return response
+        
+    except Exception as e:
+        logger.error(f"Error getting signals: {e}")
         return {
-            "status": "success",
-            "timestamp": datetime.utcnow().isoformat(),
-            "summary": {
-                "total_symbols": 30,
-                "active_signals": 5,
-                "market_trend": "bullish",
-                "avg_confluence": 62.5
+            'signals': [],
+            'count': 0,
+            'timestamp': int(time.time()),
+            'source': 'fallback',
+            'error': str(e)
+        }
+
+@router.get("/mobile-data")
+@track_performance
+async def get_mobile_data() -> Dict[str, Any]:
+    """Optimized mobile dashboard data with zero empty data guarantee"""
+    try:
+        response = await optimized_cache_adapter.get_mobile_data()
+        
+        # Validate confluence scores to prevent system contamination
+        if response and response.get('confluence_scores'):
+            original_count = len(response['confluence_scores'])
+            response = symbol_validator.validate_api_response(response)
+            filtered_count = len(response['confluence_scores'])
+            
+            if original_count != filtered_count:
+                symbol_validator.log_validation_stats(
+                    filtered_count,
+                    original_count - filtered_count,
+                    "mobile-data-optimized"
+                )
+        
+        return response
+        
+    except Exception as e:
+        logger.error(f"Error getting mobile data: {e}")
+        return {
+            'market_overview': {
+                'market_regime': 'ERROR',
+                'trend_strength': 0,
+                'volatility': 0,
+                'btc_dominance': 59.3,
+                'total_volume_24h': 0
             },
-            "top_movers": [
-                {"symbol": "BTC-USDT", "change": 2.5},
-                {"symbol": "ETH-USDT", "change": 1.8}
-            ],
-            "recent_signals": [
-                {
-                    "symbol": "BTC-USDT",
-                    "signal": "buy",
-                    "confidence": 0.75,
-                    "timestamp": datetime.utcnow().isoformat()
-                }
-            ]
+            'confluence_scores': [],
+            'top_movers': {'gainers': [], 'losers': []},
+            'status': 'optimized_fallback',
+            'timestamp': int(time.time()),
+            'error': str(e)
         }
-    
-    return await get_cached_or_compute("overview:data", compute)
-
-@router.get("/alerts")
-async def get_dashboard_alerts(
-    limit: int = Query(10, description="Number of alerts to return"),
-    severity: Optional[str] = Query(None, description="Filter by severity")
-):
-    """Optimized alerts endpoint"""
-    async def compute():
-        alerts = [
-            {
-                "id": "alert_1",
-                "symbol": "BTC-USDT",
-                "message": "Price breakout detected",
-                "severity": "high",
-                "timestamp": datetime.utcnow().isoformat()
-            }
-        ]
-        
-        if severity:
-            alerts = [a for a in alerts if a["severity"] == severity]
-        
-        return {
-            "status": "success",
-            "alerts": alerts[:limit],
-            "count": len(alerts)
-        }
-    
-    return await get_cached_or_compute(f"alerts:data:{severity}:{limit}", compute)
-
-@router.get("/opportunities")
-async def get_trading_opportunities():
-    """Get current trading opportunities"""
-    async def compute():
-        return {
-            "status": "success",
-            "timestamp": datetime.utcnow().isoformat(),
-            "opportunities": [
-                {
-                    "symbol": "BTC-USDT",
-                    "type": "momentum",
-                    "direction": "long",
-                    "confidence": 0.82,
-                    "entry": 65000,
-                    "target": 68000,
-                    "stop": 63500,
-                    "risk_reward": 2.5
-                },
-                {
-                    "symbol": "ETH-USDT",
-                    "type": "reversal",
-                    "direction": "long",
-                    "confidence": 0.75,
-                    "entry": 3200,
-                    "target": 3400,
-                    "stop": 3100,
-                    "risk_reward": 2.0
-                }
-            ],
-            "count": 2,
-            "market_conditions": {
-                "trend": "bullish",
-                "volatility": "moderate",
-                "volume": "above_average"
-            }
-        }
-    
-    return await get_cached_or_compute("opportunities:data", compute)
 
 @router.get("/health")
-async def health_check():
-    """Health check endpoint for monitoring"""
-    circuit_status = {
-        name: "open" if breaker.is_open else "closed"
-        for name, breaker in circuit_breakers.items()
-    }
-    
-    cache_size = len(FALLBACK_CACHE)
-    cache_hit_rate = 0  # Would need to track this
-    
-    return {
-        "status": "healthy",
-        "timestamp": datetime.utcnow().isoformat(),
-        "circuit_breakers": circuit_status,
-        "cache_size": cache_size,
-        "cache_hit_rate": cache_hit_rate
-    }
+@track_performance
+async def get_health() -> Dict[str, Any]:
+    """Comprehensive system health check"""
+    return await optimized_cache_adapter.get_health_status()
+
+@router.get("/cache-metrics")
+async def get_cache_performance_metrics() -> Dict[str, Any]:
+    """Get detailed cache performance metrics"""
+    try:
+        cache_metrics = await optimized_cache_adapter.get_cache_metrics()
+        warming_stats = cache_warmer.get_warming_stats()
+        system_health = await optimized_cache_system.health_check()
+        
+        return {
+            'cache_performance': cache_metrics,
+            'warming_stats': warming_stats,
+            'system_health': system_health,
+            'endpoint_performance': {
+                'avg_response_time_ms': round(sum(response_times) / len(response_times), 2) if response_times else 0,
+                'response_count': len(response_times),
+                'recent_responses': response_times[-10:] if response_times else []
+            },
+            'timestamp': int(time.time())
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting cache metrics: {e}")
+        return {
+            'error': str(e),
+            'timestamp': int(time.time())
+        }

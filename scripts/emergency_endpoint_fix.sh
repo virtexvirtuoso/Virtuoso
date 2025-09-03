@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: 45.77.40.77)
+#   VPS_HOST         VPS hostname (default: VPS_HOST_REDACTED)
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -63,7 +63,7 @@ echo "🚨 Emergency Endpoint Fix"
 echo "========================"
 
 # Add fast test endpoint
-ssh linuxuser@45.77.40.77 'cat >> /home/linuxuser/trading/Virtuoso_ccxt/src/api/routes/dashboard.py << "EOF"
+ssh linuxuser@VPS_HOST_REDACTED 'cat >> /home/linuxuser/trading/Virtuoso_ccxt/src/api/routes/dashboard.py << "EOF"
 
 @router.get("/mobile-fast")
 async def mobile_dashboard_fast():
@@ -97,7 +97,7 @@ EOF'
 
 # Restart service
 echo "Restarting service..."
-ssh linuxuser@45.77.40.77 'sudo systemctl restart virtuoso.service'
+ssh linuxuser@VPS_HOST_REDACTED 'sudo systemctl restart virtuoso.service'
 
 sleep 10
 
@@ -108,6 +108,6 @@ echo "======================"
 
 for endpoint in "test-fast" "mobile-fast"; do
     echo -n "/api/dashboard/$endpoint: "
-    time=$(timeout 2 curl -w "%{time_total}" -o /dev/null -s http://45.77.40.77:8003/api/dashboard/$endpoint 2>/dev/null || echo "timeout")
+    time=$(timeout 2 curl -w "%{time_total}" -o /dev/null -s http://VPS_HOST_REDACTED:8003/api/dashboard/$endpoint 2>/dev/null || echo "timeout")
     echo "${time}s"
 done

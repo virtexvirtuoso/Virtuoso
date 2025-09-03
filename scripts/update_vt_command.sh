@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: 45.77.40.77)
+#   VPS_HOST         VPS hostname (default: VPS_HOST_REDACTED)
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -276,8 +276,8 @@ EOF
 
 # Deploy to VPS
 echo "Deploying updated VT command..."
-scp /tmp/vt linuxuser@45.77.40.77:/tmp/
-ssh linuxuser@45.77.40.77 "sudo cp /tmp/vt /usr/local/bin/vt && sudo chmod +x /usr/local/bin/vt"
+scp /tmp/vt linuxuser@VPS_HOST_REDACTED:/tmp/
+ssh linuxuser@VPS_HOST_REDACTED "sudo cp /tmp/vt /usr/local/bin/vt && sudo chmod +x /usr/local/bin/vt"
 
 echo "✅ VT command updated to support both services!"
 echo ""

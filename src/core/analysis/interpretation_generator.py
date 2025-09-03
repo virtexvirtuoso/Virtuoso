@@ -5,48 +5,202 @@ Provides rich, context-aware interpretations across different market components.
 
 import logging
 import textwrap
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, List, Optional, Tuple, Union
 import numpy as np
+from src.core.interfaces.services import IInterpretationService, IFormattingService, IValidationService
 
-class InterpretationGenerator:
-    """Generates enhanced market interpretations from confluence analysis results."""
+class InterpretationGenerator(IInterpretationService):
+    """
+    Generates enhanced market interpretations from confluence analysis results.
     
-    def __init__(self):
-        """Initialize the interpretation generator."""
+    Implements IInterpretationService interface with dependency injection support.
+    """
+    
+    def __init__(
+        self, 
+        formatter: Optional[IFormattingService] = None,
+        validator: Optional[IValidationService] = None
+    ):
+        """
+        Initialize the interpretation generator with dependencies.
+        
+        Args:
+            formatter: Formatting service for data presentation
+            validator: Validation service for input validation
+        """
         self.logger = logging.getLogger(__name__)
+        self._formatter = formatter
+        self._validator = validator
     
-    def get_component_interpretation(self, component_name: str, component_data: Dict[str, Any]) -> str:
+    def get_component_interpretation(self, component: str, data: Union[Dict[str, Any], float, int]) -> str:
         """
         Generate enhanced interpretation for a specific component.
         
         Args:
-            component_name: Name of the component (technical, volume, etc.)
-            component_data: The component data containing scores, signals, etc.
+            component: Name of the component (technical, volume, etc.)
+            data: The component data containing scores, signals, etc., or a simple numeric score
             
         Returns:
             str: Enhanced interpretation string
         """
         try:
+            # Handle case where data is just a numeric score (float/int)
+            if isinstance(data, (float, int)):
+                self.logger.debug(f"Component {component} received numeric data: {data}")
+                return self._interpret_numeric_score(component, float(data))
+            
+            # Handle case where data is not a dictionary
+            if not isinstance(data, dict):
+                self.logger.warning(f"Component {component} received unexpected data type: {type(data)}, data={str(data)[:100]}")
+                # For these specific components, if we get non-dict data, fall back to numeric interpretation
+                if component in ['orderflow', 'price_structure', 'sentiment']:
+                    # Try to extract score if possible
+                    if hasattr(data, 'get'):
+                        score = data.get('score', 50)
+                        return self._interpret_numeric_score(component, float(score))
+                return self._interpret_unknown_data(component, data)
+            
             # Call the appropriate interpreter based on component name
-            if component_name == 'technical':
-                return self._interpret_technical(component_data)
-            elif component_name == 'volume':
-                return self._interpret_volume(component_data)
-            elif component_name == 'orderbook':
-                return self._interpret_orderbook(component_data)
-            elif component_name == 'orderflow':
-                return self._interpret_orderflow(component_data)
-            elif component_name == 'sentiment':
-                return self._interpret_sentiment(component_data)
-            elif component_name == 'price_structure':
-                return self._interpret_price_structure(component_data)
+            if component == 'technical':
+                return self._interpret_technical(data)
+            elif component == 'volume':
+                return self._interpret_volume(data)
+            elif component == 'orderbook':
+                return self._interpret_orderbook(data)
+            elif component == 'orderflow':
+                return self._interpret_orderflow(data)
+            elif component == 'sentiment':
+                return self._interpret_sentiment(data)
+            elif component == 'price_structure':
+                return self._interpret_price_structure(data)
             else:
                 # Default fallback if component doesn't have specific handler
-                return self._get_default_interpretation(component_name, component_data)
+                return self._get_default_interpretation(component, data)
         except Exception as e:
-            self.logger.error(f"Error generating interpretation for {component_name}: {str(e)}")
+            self.logger.error(f"Error generating interpretation for {component}: {str(e)}")
             # Provide a reasonable fallback if interpretation fails
-            return self._get_default_interpretation(component_name, component_data)
+            return self._get_default_interpretation(component, data)
+    
+    def _interpret_numeric_score(self, component: str, score: float) -> str:
+        """
+        Generate interpretation for a component when only a numeric score is available.
+        
+        Args:
+            component: Name of the component
+            score: Numeric score (0-100 scale)
+            
+        Returns:
+            str: Basic interpretation based on score ranges
+        """
+        try:
+            # Format component name for display
+            display_name = component.replace('_', ' ').title()
+            
+            # Generate interpretation based on score ranges
+            if score >= 80:
+                strength = "very strong"
+                direction = "bullish" if score > 50 else "bearish"
+                interpretation = f"{display_name} shows {strength} {direction} signal ({score:.1f}). "
+                interpretation += "High confidence reading suggests significant market bias in this direction."
+                
+            elif score >= 70:
+                strength = "strong"
+                direction = "bullish" if score > 50 else "bearish"
+                interpretation = f"{display_name} shows {strength} {direction} signal ({score:.1f}). "
+                interpretation += "Clear directional bias with good conviction."
+                
+            elif score >= 60:
+                strength = "moderate"
+                direction = "bullish" if score > 50 else "bearish"
+                interpretation = f"{display_name} shows {strength} {direction} signal ({score:.1f}). "
+                interpretation += "Directional lean present but not overwhelming."
+                
+            elif score <= 20:
+                strength = "very strong"
+                direction = "bearish"
+                interpretation = f"{display_name} shows {strength} {direction} signal ({score:.1f}). "
+                interpretation += "High confidence reading suggests significant downward bias."
+                
+            elif score <= 30:
+                strength = "strong"
+                direction = "bearish"
+                interpretation = f"{display_name} shows {strength} {direction} signal ({score:.1f}). "
+                interpretation += "Clear bearish bias with good conviction."
+                
+            elif score <= 40:
+                strength = "moderate"
+                direction = "bearish"
+                interpretation = f"{display_name} shows {strength} {direction} signal ({score:.1f}). "
+                interpretation += "Bearish lean present but not overwhelming."
+                
+            else:
+                # Neutral range (40-60)
+                if score > 55:
+                    interpretation = f"{display_name} shows slight bullish bias ({score:.1f}). "
+                    interpretation += "Marginally above neutral with weak directional preference."
+                elif score < 45:
+                    interpretation = f"{display_name} shows slight bearish bias ({score:.1f}). "
+                    interpretation += "Marginally below neutral with weak directional preference."
+                else:
+                    interpretation = f"{display_name} is neutral ({score:.1f}). "
+                    interpretation += "No clear directional bias - market indecision or balance."
+            
+            return interpretation
+            
+        except Exception as e:
+            self.logger.error(f"Error interpreting numeric score for {component}: {str(e)}")
+            return f"{component.replace('_', ' ').title()}: Score {score:.1f} - Unable to generate detailed interpretation"
+    
+    def _interpret_unknown_data(self, component: str, data: Any) -> str:
+        """
+        Handle interpretation when data type is unexpected.
+        
+        Args:
+            component: Name of the component
+            data: Unknown data type
+            
+        Returns:
+            str: Basic fallback interpretation
+        """
+        try:
+            display_name = component.replace('_', ' ').title()
+            
+            # Try to extract any useful information
+            if hasattr(data, '__str__'):
+                data_str = str(data)
+                # Never return the raw string representation - it's not helpful
+                self.logger.warning(f"Component {display_name} returned non-dict data with str: {data_str[:100]}...")
+                # Try to parse common patterns from the string
+                if "score=" in data_str and "interpretation=" in data_str:
+                    # Extract the interpretation part if it's embedded in the string
+                    try:
+                        parts = data_str.split("interpretation=")
+                        if len(parts) > 1:
+                            # Get everything after 'interpretation=' 
+                            # Don't split by comma as interpretation might contain commas
+                            interp_part = parts[1].strip()
+                            # Remove any trailing dictionary markers if present
+                            if interp_part.endswith('}'):
+                                # Find the last occurrence of ', ' before a key like 'divergences='
+                                import re
+                                match = re.search(r'(.*?)(?:,\s*\w+\s*=|,\s*}|\s*})', interp_part)
+                                if match:
+                                    interp_part = match.group(1).strip()
+                            # Remove quotes if present
+                            interp_part = interp_part.strip('"\'')
+                            return interp_part
+                    except Exception as e:
+                        self.logger.debug(f"Failed to extract interpretation from string: {e}")
+                        pass
+                # For components that should have proper interpretations, give a fallback
+                if component in ['orderflow', 'price_structure', 'sentiment']:
+                    return f"{display_name} analysis indicates neutral market conditions (data format issue)"
+            
+            return f"{display_name}: Unable to analyze - unexpected data format ({type(data).__name__})"
+            
+        except Exception as e:
+            self.logger.error(f"Error handling unknown data for {component}: {str(e)}")
+            return f"{component.replace('_', ' ').title()}: Analysis unavailable due to data format issue"
     
     def _interpret_technical(self, data: Dict[str, Any]) -> str:
         """Generate rich interpretation for technical analysis component."""
@@ -104,7 +258,7 @@ class InterpretationGenerator:
             for comp_name, comp_value in components.items():
                 if comp_name.lower() in ['macd', 'adx', 'dmi', 'moving_averages', 'ichimoku', 'supertrend', 'trend', 'ma_cross']:
                     trend_indicators[comp_name] = comp_value
-                elif comp_name.lower() in ['rsi', 'stoch', 'cci', 'mfi', 'williams_r', 'stoch_rsi', 'ultimate_oscillator']:
+                elif comp_name.lower() in ['rsi', 'ao', 'stoch', 'cci', 'mfi', 'williams_r', 'stoch_rsi', 'ultimate_oscillator']:
                     oscillators[comp_name] = comp_value
             
             # Add trend indicator insights
@@ -128,22 +282,63 @@ class InterpretationGenerator:
                     elif ma_cross < 35:
                         message += ". Moving averages showing bearish crossover pattern"
             
-            # Add oscillator insights
+            # Add oscillator insights - prioritize RSI and AO due to their high weights (20% each)
             if oscillators:
+                # Always include RSI interpretation if available (20% weight)
+                if 'rsi' in components:
+                    rsi_value = components['rsi']
+                    if rsi_value > 70:
+                        message += f". RSI indicates overbought conditions ({rsi_value:.1f}), potential reversal zone"
+                    elif rsi_value < 30:
+                        message += f". RSI indicates oversold conditions ({rsi_value:.1f}), potential reversal zone"
+                    elif rsi_value > 60:
+                        message += f". RSI shows bullish momentum without being overbought ({rsi_value:.1f})"
+                    elif rsi_value < 40:
+                        message += f". RSI shows bearish momentum without being oversold ({rsi_value:.1f})"
+                    else:
+                        message += f". RSI in neutral territory ({rsi_value:.1f})"
+                
+                # Always include AO interpretation if available (20% weight)
+                if 'ao' in components:
+                    ao_value = components['ao']
+                    if ao_value > 65:
+                        message += f". AO shows strong bullish momentum ({ao_value:.1f})"
+                        if ao_value > 80:
+                            message += " with potential zero-line crossover or saucer pattern"
+                    elif ao_value < 35:
+                        message += f". AO shows strong bearish momentum ({ao_value:.1f})"
+                        if ao_value < 20:
+                            message += " with potential zero-line crossover or saucer pattern"
+                    elif ao_value > 55:
+                        message += f". AO indicates bullish momentum building ({ao_value:.1f})"
+                    elif ao_value < 45:
+                        message += f". AO indicates bearish momentum building ({ao_value:.1f})"
+                    else:
+                        message += f". AO in neutral territory ({ao_value:.1f})"
+                
+                # Always include strongest oscillator interpretation (for comprehensive analysis)
                 strongest_osc = sorted(oscillators.items(), key=lambda x: x[1], reverse=True)[0]
                 osc_name, osc_value = strongest_osc
                 osc_name = osc_name.upper()
                 
-                if osc_value > 70:
-                    message += f". {osc_name} indicates overbought conditions ({osc_value:.1f}), potential reversal zone"
-                elif osc_value < 30:
-                    message += f". {osc_name} indicates oversold conditions ({osc_value:.1f}), potential reversal zone"
-                elif osc_value > 60:
-                    message += f". {osc_name} shows bullish momentum without being overbought ({osc_value:.1f})"
-                elif osc_value < 40:
-                    message += f". {osc_name} shows bearish momentum without being oversold ({osc_value:.1f})"
-                else:
-                    message += f". {osc_name} in neutral territory ({osc_value:.1f})"
+                # Only add if it's not already covered by RSI or AO interpretations above
+                if osc_name not in ['RSI', 'AO']:
+                    if osc_value > 70:
+                        message += f". {osc_name} indicates overbought conditions ({osc_value:.1f}), potential reversal zone"
+                    elif osc_value < 30:
+                        message += f". {osc_name} indicates oversold conditions ({osc_value:.1f}), potential reversal zone"
+                    elif osc_value > 60:
+                        message += f". {osc_name} shows bullish momentum without being overbought ({osc_value:.1f})"
+                    elif osc_value < 40:
+                        message += f". {osc_name} shows bearish momentum without being oversold ({osc_value:.1f})"
+                    else:
+                        message += f". {osc_name} in neutral territory ({osc_value:.1f})"
+                elif osc_name == 'RSI' or osc_name == 'AO':
+                    # If RSI or AO is the strongest, add emphasis to their existing interpretation
+                    if osc_value > 70 or osc_value < 30:
+                        message += f" (strongest oscillator signal)"
+                    elif osc_value > 60 or osc_value < 40:
+                        message += f" (leading oscillator momentum)"
             
             # Add momentum context
             momentum = components.get('momentum', 50)
@@ -1146,28 +1341,55 @@ class InterpretationGenerator:
         enhanced_message = self._add_probabilistic_context(message, score, component_confidence)
         return enhanced_message
     
-    def _get_default_interpretation(self, component_name: str, data: Dict[str, Any]) -> str:
+    def _get_default_interpretation(self, component_name: str, data: Union[Dict[str, Any], float, int, Any]) -> str:
         """Provide a fallback interpretation for unknown components."""
-        # Try to extract any existing interpretation
-        if isinstance(data, dict):
-            if 'interpretation' in data:
-                interp = data['interpretation']
-                if isinstance(interp, str):
-                    return interp
-                elif isinstance(interp, dict) and 'summary' in interp:
-                    return interp['summary']
+        try:
+            # Handle numeric data (float/int)
+            if isinstance(data, (float, int)):
+                return self._interpret_numeric_score(component_name, float(data))
             
-            # Extract score and determine general leaning
-            score = data.get('score', 50)
-            if score > 60:
-                return f"{component_name.replace('_', ' ').title()} showing bullish indications ({score:.2f})"
-            elif score < 40:
-                return f"{component_name.replace('_', ' ').title()} showing bearish indications ({score:.2f})"
-            else:
-                return f"{component_name.replace('_', ' ').title()} is currently neutral ({score:.2f})"
-        
-        # Extremely basic fallback
-        return f"{component_name.replace('_', ' ').title()}: No detailed interpretation available"
+            # Handle string data that might contain the interpretation
+            if isinstance(data, str):
+                # Check if this is a string representation of a dict with interpretation
+                if "interpretation=" in data:
+                    parts = data.split("interpretation=")
+                    if len(parts) > 1:
+                        interp_text = parts[1].strip()
+                        # Clean up the interpretation text
+                        import re
+                        match = re.search(r'(.*?)(?:,\s*\w+\s*=|,\s*}|\s*}|$)', interp_text)
+                        if match:
+                            interp_text = match.group(1).strip().strip('"\'')
+                            if interp_text:
+                                return interp_text
+                # If we can't extract, use unknown data handler
+                return self._interpret_unknown_data(component_name, data)
+            
+            # Handle dictionary data
+            if isinstance(data, dict):
+                if 'interpretation' in data:
+                    interp = data['interpretation']
+                    if isinstance(interp, str):
+                        return interp
+                    elif isinstance(interp, dict) and 'summary' in interp:
+                        return interp['summary']
+                
+                # Extract score and determine general leaning
+                score = data.get('score', 50)
+                if isinstance(score, (int, float)):
+                    if score > 60:
+                        return f"{component_name.replace('_', ' ').title()} showing bullish indications ({score:.2f})"
+                    elif score < 40:
+                        return f"{component_name.replace('_', ' ').title()} showing bearish indications ({score:.2f})"
+                    else:
+                        return f"{component_name.replace('_', ' ').title()} is currently neutral ({score:.2f})"
+            
+            # Handle any other data type
+            return self._interpret_unknown_data(component_name, data)
+            
+        except Exception as e:
+            self.logger.error(f"Error in default interpretation for {component_name}: {str(e)}")
+            return f"{component_name.replace('_', ' ').title()}: Analysis unavailable due to processing error"
     
     def _analyze_timeframes(self, timeframe_scores: Dict[str, Dict[str, float]]) -> str:
         """Analyze scores across different timeframes for insights."""
@@ -1577,7 +1799,8 @@ class InterpretationGenerator:
             
             return max(55, min(95, base_confidence))  # Clamp to reasonable range
             
-        except Exception:
+        except Exception as e:
+            self.logger.error(f"Failed to calculate confidence score: {str(e)}", exc_info=True)
             return 75.0  # Default moderate confidence
     
     def _get_probability_language(self, probability: float) -> str:
@@ -1604,4 +1827,239 @@ class InterpretationGenerator:
         elif confidence >= 60:
             return "fair"
         else:
-            return "low" 
+            return "low"
+    
+    # Dependency injection helper methods
+    
+    def _validate_input_data(self, data: Any, data_type: str = "component_data") -> bool:
+        """
+        Validate input data using injected validator service.
+        
+        Args:
+            data: Data to validate
+            data_type: Type of data being validated
+            
+        Returns:
+            True if valid, False otherwise
+        """
+        if self._validator is None:
+            # Basic validation if no validator injected
+            return isinstance(data, dict) and len(data) > 0
+        
+        try:
+            # Use injected validator service
+            validation_rules = {
+                'required_fields': ['score'] if data_type == "component_data" else [],
+                'data_type': dict,
+                'min_length': 1
+            }
+            return self._validator.validate_data(data, validation_rules)
+        except Exception as e:
+            self.logger.warning(f"Validation failed for {data_type}: {e}")
+            return False
+    
+    def _format_score(self, score: float, precision: int = 1) -> str:
+        """
+        Format score using injected formatter service.
+        
+        Args:
+            score: Score to format
+            precision: Decimal precision
+            
+        Returns:
+            Formatted score string
+        """
+        if self._formatter is None:
+            # Basic formatting if no formatter injected
+            return f"{score:.{precision}f}"
+        
+        try:
+            return self._formatter.format_number(score, precision, use_thousands_separator=False)
+        except Exception as e:
+            self.logger.warning(f"Formatting failed for score {score}: {e}")
+            return f"{score:.{precision}f}"
+    
+    def _format_percentage(self, value: float, precision: int = 1) -> str:
+        """
+        Format percentage using injected formatter service.
+        
+        Args:
+            value: Value to format as percentage
+            precision: Decimal precision
+            
+        Returns:
+            Formatted percentage string
+        """
+        if self._formatter is None:
+            # Basic formatting if no formatter injected
+            return f"{value:.{precision}f}%"
+        
+        try:
+            # Convert to percentage (0.65 -> 65%)
+            return self._formatter.format_percentage(value / 100, precision)
+        except Exception as e:
+            self.logger.warning(f"Percentage formatting failed for {value}: {e}")
+            return f"{value:.{precision}f}%"
+    
+    # IInterpretationService interface implementation
+    
+    def generate_interpretation(
+        self, 
+        component_name: str, 
+        analysis_data: Dict[str, Any],
+        context: Optional[Dict[str, Any]] = None
+    ) -> str:
+        """
+        Generate interpretation for analysis data (IInterpretationService interface).
+        
+        Args:
+            component_name: Name of the component being analyzed
+            analysis_data: Analysis data to interpret
+            context: Optional context information
+            
+        Returns:
+            Generated interpretation string
+        """
+        return self.get_component_interpretation(component_name, analysis_data)
+    
+    def generate_cross_component_interpretation(
+        self, 
+        components_data: Dict[str, Dict[str, Any]],
+        context: Optional[Dict[str, Any]] = None
+    ) -> List[str]:
+        """
+        Generate cross-component interpretations (IInterpretationService interface).
+        
+        Args:
+            components_data: Data for all components
+            context: Optional context information
+            
+        Returns:
+            List of cross-component insights
+        """
+        return self.generate_cross_component_insights(components_data)
+    
+    def generate_actionable_summary(
+        self, 
+        analysis_results: Dict[str, Any],
+        confluence_score: float,
+        context: Optional[Dict[str, Any]] = None
+    ) -> List[str]:
+        """
+        Generate actionable summary (IInterpretationService interface).
+        
+        Args:
+            analysis_results: Complete analysis results
+            confluence_score: Overall confluence score
+            context: Optional context information
+            
+        Returns:
+            List of actionable insights
+        """
+        # Extract thresholds from context or use defaults
+        buy_threshold = 65
+        sell_threshold = 35
+        
+        if context:
+            buy_threshold = context.get('buy_threshold', 65)
+            sell_threshold = context.get('sell_threshold', 35)
+        
+        return self.generate_actionable_insights(
+            analysis_results, 
+            confluence_score, 
+            buy_threshold, 
+            sell_threshold
+        )
+    
+    # Additional IInterpretationService interface methods
+    
+    def get_market_interpretation(self, analysis_result: Dict[str, Any]) -> str:
+        """Generate interpretation for overall market analysis."""
+        try:
+            # Extract overall score
+            overall_score = analysis_result.get('confluence_score', 50)
+            components = analysis_result.get('components', {})
+            
+            # Generate market-level interpretation
+            if overall_score > 70:
+                sentiment = "strongly bullish"
+            elif overall_score > 60:
+                sentiment = "moderately bullish"
+            elif overall_score < 30:
+                sentiment = "strongly bearish"
+            elif overall_score < 40:
+                sentiment = "moderately bearish"
+            else:
+                sentiment = "neutral"
+            
+            interpretation = f"Market analysis indicates {sentiment} conditions with confluence score of {overall_score:.1f}"
+            
+            # Add component summary
+            if components:
+                strong_components = [name for name, data in components.items() 
+                                   if isinstance(data, dict) and data.get('score', 50) > 65]
+                if strong_components:
+                    interpretation += f". Strong signals from: {', '.join(strong_components)}"
+            
+            return interpretation
+            
+        except Exception as e:
+            self.logger.error(f"Error generating market interpretation: {e}")
+            return "Unable to generate market interpretation"
+    
+    def get_signal_interpretation(self, signal_data: Dict[str, Any]) -> str:
+        """Generate interpretation for trading signals."""
+        try:
+            signal_type = signal_data.get('signal', 'NEUTRAL')
+            score = signal_data.get('score', 50)
+            confidence = signal_data.get('confidence', 'moderate')
+            
+            if signal_type == 'BUY':
+                return f"BUY signal detected with {confidence} confidence (score: {score:.1f})"
+            elif signal_type == 'SELL':
+                return f"SELL signal detected with {confidence} confidence (score: {score:.1f})"
+            else:
+                return f"NEUTRAL signal - no clear directional bias (score: {score:.1f})"
+                
+        except Exception as e:
+            self.logger.error(f"Error generating signal interpretation: {e}")
+            return "Unable to interpret trading signal"
+    
+    def get_indicator_interpretation(self, indicator_name: str, values: Dict[str, float]) -> str:
+        """Generate interpretation for specific indicator values."""
+        try:
+            if indicator_name.lower() == 'rsi':
+                rsi_value = values.get('rsi', 50)
+                if rsi_value > 70:
+                    return f"RSI ({rsi_value:.1f}) indicates overbought conditions"
+                elif rsi_value < 30:
+                    return f"RSI ({rsi_value:.1f}) indicates oversold conditions"
+                else:
+                    return f"RSI ({rsi_value:.1f}) shows neutral momentum"
+            
+            elif indicator_name.lower() == 'macd':
+                macd = values.get('macd', 0)
+                signal = values.get('signal', 0)
+                if macd > signal:
+                    return "MACD shows bullish momentum (above signal line)"
+                else:
+                    return "MACD shows bearish momentum (below signal line)"
+            
+            else:
+                # Generic interpretation
+                return f"{indicator_name} analysis: {', '.join([f'{k}={v:.2f}' for k, v in values.items()])}"
+                
+        except Exception as e:
+            self.logger.error(f"Error interpreting {indicator_name}: {e}")
+            return f"Unable to interpret {indicator_name} indicator"
+    
+    def set_interpretation_config(self, config: Dict[str, Any]) -> None:
+        """Update interpretation configuration."""
+        try:
+            # Store configuration for future use
+            if not hasattr(self, '_config'):
+                self._config = {}
+            self._config.update(config)
+            self.logger.info(f"Updated interpretation config with {len(config)} settings")
+        except Exception as e:
+            self.logger.error(f"Error setting interpretation config: {e}") 

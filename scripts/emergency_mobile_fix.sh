@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: 45.77.40.77)
+#   VPS_HOST         VPS hostname (default: VPS_HOST_REDACTED)
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -61,7 +61,7 @@
 
 # Emergency fix to make mobile dashboard work
 
-ssh linuxuser@45.77.40.77 << 'REMOTE_SCRIPT'
+ssh linuxuser@VPS_HOST_REDACTED << 'REMOTE_SCRIPT'
 cd /home/linuxuser/trading/Virtuoso_ccxt
 
 # Create a simple working endpoint

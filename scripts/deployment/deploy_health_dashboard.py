@@ -336,8 +336,8 @@ def generate_health_dashboard(data: dict, health_status: str) -> str:
     os.system("sudo systemctl restart virtuoso")
     
     print("✅ Health Dashboard deployment complete!")
-    print(f"📊 Access dashboard at: http://45.77.40.77:8003/health?format=html")
-    print(f"📋 JSON API at: http://45.77.40.77:8003/health")
+    print(f"📊 Access dashboard at: http://VPS_HOST_REDACTED:8003/health?format=html")
+    print(f"📋 JSON API at: http://VPS_HOST_REDACTED:8003/health")
     
     # Check service status
     print("\n🔍 Service Status:")

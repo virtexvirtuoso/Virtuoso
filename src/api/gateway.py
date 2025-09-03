@@ -374,11 +374,7 @@ class APIGateway:
                 'cache_ttl': 30,
                 'data_type': 'dashboard'
             },
-            '/api/dashboard/mobile': {
-                'backend': 'primary', 
-                'cache_ttl': 30,
-                'data_type': 'dashboard'
-            },
+            # Removed /api/dashboard/mobile - use /api/mobile instead
             '/api/monitoring/status': {
                 'backend': 'monitoring',
                 'cache_ttl': 10,

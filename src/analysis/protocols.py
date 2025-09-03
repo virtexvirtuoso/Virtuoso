@@ -1,6 +1,11 @@
 """Analysis module protocols."""
 
-from typing import Protocol, Dict, Any, List
+try:
+    from typing import Protocol, runtime_checkable
+except ImportError:
+    from typing_extensions import Protocol, runtime_checkable
+
+from typing import Dict, Any, List
 from datetime import datetime
 import pandas as pd
 

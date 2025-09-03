@@ -69,11 +69,11 @@ print('Fixed early detection data')
     
     print("Or run all at once with:")
     print()
-    print(f'ssh linuxuser@45.77.40.77 "{all_commands}"')
+    print(f'ssh linuxuser@VPS_HOST_REDACTED "{all_commands}"')
     print()
     
     print("Then check status with:")
-    print('ssh linuxuser@45.77.40.77 "sudo systemctl status virtuoso.service"')
+    print('ssh linuxuser@VPS_HOST_REDACTED "sudo systemctl status virtuoso.service"')
 
 if __name__ == "__main__":
     fix_vps_alerts()

@@ -2346,9 +2346,14 @@ class PrettyTableFormatter:
             if isinstance(market_interpretations, list):
                 for interp_data in market_interpretations:
                     if isinstance(interp_data, dict):
-                        display_name = interp_data.get('display_name', interp_data.get('component', 'Unknown')).replace('_', ' ').title()
+                        component_name = interp_data.get('component', '')
+                        display_name = interp_data.get('display_name', component_name.replace('_', ' ').title())
                         interpretation_text = interp_data.get('interpretation', '')
                         
+                        # Skip divergence analysis and enhanced analysis - they get handled separately
+                        if component_name.lower() in ['divergence_analysis', 'enhanced_analysis']:
+                            continue
+                            
                         if interpretation_text:
                             # Wrap long interpretations for clean display
                             wrapped_lines = textwrap.fill(interpretation_text, width=70).split('\n')
@@ -2887,14 +2892,19 @@ class PrettyTableFormatter:
         current_interpretation_lines = []
         enhanced_analysis_text = None
         
+        # Debug logging to show what interpretations we're processing
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.debug(f"Processing {len(interpretations)} interpretation lines for table display")
+        
         for interp_line in interpretations:
             if not interp_line.strip():
                 # Empty line - if we have accumulated interpretation, add it to table
                 if current_component and current_interpretation_lines:
                     full_interpretation = " ".join(current_interpretation_lines)
                     
-                    # Check if this is Enhanced Analysis - handle it specially
-                    if current_component.lower() == "enhanced analysis":
+                    # Check if this is Enhanced Analysis or Divergence Analysis - handle them specially
+                    if current_component.lower() in ["enhanced analysis", "divergence analysis"]:
                         enhanced_analysis_text = full_interpretation
                     else:
                         table.add_row([current_component, full_interpretation])
@@ -2909,8 +2919,8 @@ class PrettyTableFormatter:
                 if current_component and current_interpretation_lines:
                     full_interpretation = " ".join(current_interpretation_lines)
                     
-                    # Check if this is Enhanced Analysis - handle it specially
-                    if current_component.lower() == "enhanced analysis":
+                    # Check if this is Enhanced Analysis or Divergence Analysis - handle them specially
+                    if current_component.lower() in ["enhanced analysis", "divergence analysis"]:
                         enhanced_analysis_text = full_interpretation
                     else:
                         table.add_row([current_component, full_interpretation])
@@ -2943,6 +2953,14 @@ class PrettyTableFormatter:
         # Create section with header
         output = []
         output.append(f"{PrettyTableFormatter.BOLD}Market Interpretations{PrettyTableFormatter.RESET}")
+        
+        # Debug logging to show how many rows are in the table
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.debug(f"Market Interpretations table has {len(table._rows)} rows")
+        for i, row in enumerate(table._rows):
+            logger.debug(f"Row {i+1}: {row[0] if row else 'Empty'}")
+        
         output.append(str(table))
         
         # Add Enhanced Analysis section separately with improved formatting

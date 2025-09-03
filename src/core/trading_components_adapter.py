@@ -28,8 +28,8 @@ class TradingComponentAdapter:
             try:
                 from src.core.exchanges.manager import ExchangeManager
                 from src.data_storage.database import DatabaseClient
-                from src.analysis.core.portfolio import PortfolioAnalyzer
-                from src.analysis.core.confluence import ConfluenceAnalyzer
+                from src.core.analysis.portfolio import PortfolioAnalyzer
+                from src.core.analysis.confluence import ConfluenceAnalyzer
                 from src.validation import AsyncValidationService
                 from src.core.market.top_symbols import TopSymbolsManager
                 from src.core.market.market_data_manager import MarketDataManager

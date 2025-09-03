@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: 45.77.40.77)
+#   VPS_HOST         VPS hostname (default: VPS_HOST_REDACTED)
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -170,10 +170,10 @@ echo ""
 echo "✅ Headers fixed!"
 echo ""
 echo "Deploying to VPS..."
-scp src/core/exchanges/bybit.py linuxuser@45.77.40.77:/home/linuxuser/trading/Virtuoso_ccxt/src/core/exchanges/
+scp src/core/exchanges/bybit.py linuxuser@VPS_HOST_REDACTED:/home/linuxuser/trading/Virtuoso_ccxt/src/core/exchanges/
 
 echo "Restarting service..."
-ssh linuxuser@45.77.40.77 'sudo systemctl restart virtuoso.service'
+ssh linuxuser@VPS_HOST_REDACTED 'sudo systemctl restart virtuoso.service'
 
 echo ""
 echo "✅ Deployment complete!"
