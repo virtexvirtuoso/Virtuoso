@@ -34,7 +34,7 @@ def apply_fixes():
     
     # Create the fix script
     fix_script = f"""
-ssh linuxuser@VPS_HOST_REDACTED << 'EOF'
+ssh linuxuser@5.223.63.4 << 'EOF'
 cd /home/linuxuser/trading/Virtuoso_ccxt
 
 # Backup current file
@@ -62,7 +62,7 @@ EOF
         # Restart the service
         print("\nRestarting service...")
         restart_result = subprocess.run(
-            'ssh linuxuser@VPS_HOST_REDACTED "sudo systemctl restart virtuoso && sleep 5 && sudo systemctl status virtuoso | grep Active"',
+            'ssh linuxuser@5.223.63.4 "sudo systemctl restart virtuoso && sleep 5 && sudo systemctl status virtuoso | grep Active"',
             shell=True,
             capture_output=True,
             text=True

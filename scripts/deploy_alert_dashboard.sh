@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: VPS_HOST_REDACTED)
+#   VPS_HOST         VPS hostname (default: 5.223.63.4)
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -64,7 +64,7 @@
 echo "🚀 Deploying Alert Dashboard Integration to VPS..."
 
 # VPS connection details
-VPS_HOST="linuxuser@VPS_HOST_REDACTED"
+VPS_HOST="linuxuser@5.223.63.4"
 VPS_PATH="/home/linuxuser/trading/Virtuoso_ccxt"
 
 # Step 1: Copy updated dashboard files
@@ -90,7 +90,7 @@ echo "🧪 Testing alert endpoints..."
 # Test statistics endpoint
 echo ""
 echo "Testing alert statistics endpoint..."
-curl -s "http://VPS_HOST_REDACTED:8000/api/alerts/persisted/stats?hours=24" | python3 -c "
+curl -s "http://5.223.63.4:8000/api/alerts/persisted/stats?hours=24" | python3 -c "
 import sys
 import json
 try:
@@ -107,7 +107,7 @@ except:
 # Test list endpoint
 echo ""
 echo "Testing alert list endpoint..."
-ALERT_COUNT=$(curl -s "http://VPS_HOST_REDACTED:8000/api/alerts/persisted/list?hours=24&limit=5" | python3 -c "
+ALERT_COUNT=$(curl -s "http://5.223.63.4:8000/api/alerts/persisted/list?hours=24&limit=5" | python3 -c "
 import sys
 import json
 try:
@@ -177,7 +177,7 @@ echo ""
 echo "🌐 Dashboard Alert Center is ready!"
 echo ""
 echo "📌 Access the Alert Center:"
-echo "  Desktop: http://VPS_HOST_REDACTED:8000/"
+echo "  Desktop: http://5.223.63.4:8000/"
 echo "  Then click on 'Alert Center' in the sidebar under 'Alerts' section"
 echo ""
 echo "🔍 Features available:"

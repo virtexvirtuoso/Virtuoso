@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: VPS_HOST_REDACTED)
+#   VPS_HOST         VPS hostname (default: 5.223.63.4)
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -65,7 +65,7 @@ echo "================================"
 echo ""
 
 # Check cache contents on VPS
-ssh linuxuser@VPS_HOST_REDACTED 'bash -s' << 'EOF'
+ssh linuxuser@5.223.63.4 'bash -s' << 'EOF'
 cd /home/linuxuser/trading/Virtuoso_ccxt
 
 echo "📦 Checking Memcached contents..."
@@ -154,7 +154,7 @@ echo ""
 
 # Check what dashboard sees
 echo "1. Fast endpoint (Phase 3):"
-curl -s http://VPS_HOST_REDACTED:8001/api/fast/overview | python3 -c "
+curl -s http://5.223.63.4:8001/api/fast/overview | python3 -c "
 import sys, json
 try:
     data = json.load(sys.stdin)
@@ -172,7 +172,7 @@ except Exception as e:
 
 echo ""
 echo "2. Regular dashboard:"
-curl -s http://VPS_HOST_REDACTED:8001/api/dashboard/overview | python3 -c "
+curl -s http://5.223.63.4:8001/api/dashboard/overview | python3 -c "
 import sys, json
 try:
     data = json.load(sys.stdin)

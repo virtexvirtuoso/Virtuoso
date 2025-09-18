@@ -5,7 +5,7 @@ import requests
 import json
 
 # Get mobile data
-response = requests.get("http://VPS_HOST_REDACTED:8002/api/dashboard/mobile")
+response = requests.get("http://5.223.63.4:8002/api/dashboard/mobile")
 data = response.json()
 
 confluence_scores = data.get('confluence_scores', [])

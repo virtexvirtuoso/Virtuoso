@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: VPS_HOST_REDACTED)
+#   VPS_HOST         VPS hostname (default: 5.223.63.4)
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -68,7 +68,7 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # Backup configuration
 BACKUP_ROOT="${BACKUP_ROOT:-/Users/ffv_macmini/Desktop/virtuoso_backups}"
-REMOTE_BACKUP_HOST="${REMOTE_BACKUP_HOST:-linuxuser@VPS_HOST_REDACTED}"
+REMOTE_BACKUP_HOST="${REMOTE_BACKUP_HOST:-linuxuser@5.223.63.4}"
 REMOTE_BACKUP_PATH="${REMOTE_BACKUP_PATH:-/home/linuxuser/backups}"
 
 # Colors for output

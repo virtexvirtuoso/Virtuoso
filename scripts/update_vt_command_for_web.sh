@@ -43,9 +43,9 @@ echo "   vt status - Shows status of both services"
 EOF
 
 # Deploy to VPS
-scp /tmp/update_vt_control.sh linuxuser@VPS_HOST_REDACTED:/tmp/
+scp /tmp/update_vt_control.sh linuxuser@5.223.63.4:/tmp/
 
-ssh linuxuser@VPS_HOST_REDACTED << 'REMOTE'
+ssh linuxuser@5.223.63.4 << 'REMOTE'
 chmod +x /tmp/update_vt_control.sh
 /tmp/update_vt_control.sh
 

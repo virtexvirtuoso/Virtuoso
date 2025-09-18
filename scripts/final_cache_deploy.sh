@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: VPS_HOST_REDACTED)
+#   VPS_HOST         VPS hostname (default: 5.223.63.4)
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -64,14 +64,14 @@ echo "================================"
 
 # Deploy all cache files
 echo "Deploying cache files..."
-scp src/api/routes/dashboard_cached.py linuxuser@VPS_HOST_REDACTED:/home/linuxuser/trading/Virtuoso_ccxt/src/api/routes/
-scp src/api/cache_adapter.py linuxuser@VPS_HOST_REDACTED:/home/linuxuser/trading/Virtuoso_ccxt/src/api/
-scp src/api/__init__.py linuxuser@VPS_HOST_REDACTED:/home/linuxuser/trading/Virtuoso_ccxt/src/api/
+scp src/api/routes/dashboard_cached.py linuxuser@5.223.63.4:/home/linuxuser/trading/Virtuoso_ccxt/src/api/routes/
+scp src/api/cache_adapter.py linuxuser@5.223.63.4:/home/linuxuser/trading/Virtuoso_ccxt/src/api/
+scp src/api/__init__.py linuxuser@5.223.63.4:/home/linuxuser/trading/Virtuoso_ccxt/src/api/
 
 # Restart web server
 echo ""
 echo "Restarting web server..."
-ssh linuxuser@VPS_HOST_REDACTED 'bash -s' << 'EOF'
+ssh linuxuser@5.223.63.4 'bash -s' << 'EOF'
 pkill -f "python.*web_server" || true
 pkill -f "uvicorn" || true
 sleep 3
@@ -100,15 +100,15 @@ sleep 2
 
 # Test endpoints
 echo "1. Cache Health:"
-curl -s http://VPS_HOST_REDACTED:8000/api/cache/health | python3 -m json.tool 2>/dev/null | head -n 5
+curl -s http://5.223.63.4:8000/api/cache/health | python3 -m json.tool 2>/dev/null | head -n 5
 
 echo ""
 echo "2. Cached Overview (new):"
-curl -s -w "\nTime: %{time_total}s\n" http://VPS_HOST_REDACTED:8000/api/dashboard-cached/overview 2>/dev/null | tail -n 1
+curl -s -w "\nTime: %{time_total}s\n" http://5.223.63.4:8000/api/dashboard-cached/overview 2>/dev/null | tail -n 1
 
 echo ""
 echo "3. Regular Dashboard:"
-curl -s -w "\nTime: %{time_total}s\n" http://VPS_HOST_REDACTED:8000/api/dashboard/overview 2>/dev/null | tail -n 1
+curl -s -w "\nTime: %{time_total}s\n" http://5.223.63.4:8000/api/dashboard/overview 2>/dev/null | tail -n 1
 
 echo ""
 echo "================================"

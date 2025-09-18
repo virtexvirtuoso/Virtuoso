@@ -16,7 +16,7 @@
 #   dashboard experiences performance degradation or outages.
 #
 # Dependencies:
-#   - SSH access to VPS (VPS_HOST_REDACTED)
+#   - SSH access to VPS (5.223.63.4)
 #   - SSH key authentication configured
 #   - sudo privileges on VPS for service restart
 #   - curl for endpoint testing
@@ -52,15 +52,15 @@ echo "=================================================="
 
 # Deploy optimized routes
 echo -e "\033[0;34m📦 Step 1: Deploying optimized dashboard routes...\033[0m"
-scp src/api/routes/dashboard_optimized.py linuxuser@VPS_HOST_REDACTED:/home/linuxuser/trading/Virtuoso_ccxt/src/api/routes/
+scp src/api/routes/dashboard_optimized.py linuxuser@5.223.63.4:/home/linuxuser/trading/Virtuoso_ccxt/src/api/routes/
 
 # Deploy updated API init
 echo -e "\033[0;34m📦 Step 2: Deploying updated API initialization...\033[0m"
-scp src/api/__init__.py linuxuser@VPS_HOST_REDACTED:/home/linuxuser/trading/Virtuoso_ccxt/src/api/
+scp src/api/__init__.py linuxuser@5.223.63.4:/home/linuxuser/trading/Virtuoso_ccxt/src/api/
 
 # Restart service
 echo -e "\033[0;34m🔄 Step 3: Restarting Virtuoso service...\033[0m"
-ssh linuxuser@VPS_HOST_REDACTED 'sudo systemctl restart virtuoso.service'
+ssh linuxuser@5.223.63.4 'sudo systemctl restart virtuoso.service'
 
 # Wait for service to start
 sleep 5
@@ -72,10 +72,10 @@ echo "Testing endpoints:"
 # Test each endpoint
 for endpoint in "mobile-data" "overview" "alerts" "opportunities" "health"; do
     echo -n "  /api/dashboard-cached/$endpoint: "
-    response=$(curl -s -w "\nHTTP %{http_code} - %{time_total}s" -o /tmp/response.json http://VPS_HOST_REDACTED:8003/api/dashboard-cached/$endpoint 2>/dev/null | tail -1)
+    response=$(curl -s -w "\nHTTP %{http_code} - %{time_total}s" -o /tmp/response.json http://5.223.63.4:8003/api/dashboard-cached/$endpoint 2>/dev/null | tail -1)
     echo "$response"
 done
 
 echo -e "\n\033[0;32m🎉 Emergency deployment complete!\033[0m"
-echo "Monitor with: ssh linuxuser@VPS_HOST_REDACTED 'sudo journalctl -u virtuoso.service -f'"
+echo "Monitor with: ssh linuxuser@5.223.63.4 'sudo journalctl -u virtuoso.service -f'"
 echo "Full test: ./scripts/test_dashboard_performance.sh"

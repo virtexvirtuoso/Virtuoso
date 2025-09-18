@@ -36,7 +36,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: VPS_HOST_REDACTED)
+#   VPS_HOST         VPS hostname (default: 5.223.63.4)
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -63,7 +63,7 @@
 echo "📦 Installing Dependencies on VPS"
 echo "================================="
 
-VPS="linuxuser@VPS_HOST_REDACTED"
+VPS="linuxuser@5.223.63.4"
 
 echo "Installing required Python packages..."
 

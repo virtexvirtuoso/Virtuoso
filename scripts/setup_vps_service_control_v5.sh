@@ -385,7 +385,7 @@ display_summary() {
     
     # Dashboard Access
     if curl -s -o /dev/null -w "%{http_code}" http://localhost:8001/dashboard 2>/dev/null | grep -q "200"; then
-        echo -e "Dashboard:       ${GREEN}● ACCESSIBLE${NC} (http://VPS_HOST_REDACTED:8001/dashboard)"
+        echo -e "Dashboard:       ${GREEN}● ACCESSIBLE${NC} (http://5.223.63.4:8001/dashboard)"
     else
         echo -e "Dashboard:       ${RED}● NOT ACCESSIBLE${NC}"
     fi
@@ -859,7 +859,7 @@ case "$1" in
         echo "Monitors and controls all trading services, processes, and resources"
         echo ""
         echo -e "${BOLD}DASHBOARD ACCESS:${NC}"
-        echo -e "${GREEN}http://VPS_HOST_REDACTED:8001/dashboard${NC} - Main trading dashboard"
+        echo -e "${GREEN}http://5.223.63.4:8001/dashboard${NC} - Main trading dashboard"
         echo ""
         echo -e "${BOLD}QUICK START:${NC}"
         echo "  vt              - Interactive control panel with menu"
@@ -915,11 +915,11 @@ case "$1" in
         echo ""
         echo -e "${BOLD}🌐 NETWORK ENDPOINTS${NC}"
         echo -e "${BOLD}──────────────────${NC}"
-        echo "  Dashboard:      http://VPS_HOST_REDACTED:8001/dashboard"
-        echo "  Mobile:         http://VPS_HOST_REDACTED:8001/mobile"
-        echo "  API Health:     http://VPS_HOST_REDACTED:8001/api/health"
-        echo "  Market Data:    http://VPS_HOST_REDACTED:8001/api/market/overview"
-        echo "  Trading Signals: http://VPS_HOST_REDACTED:8001/api/signals"
+        echo "  Dashboard:      http://5.223.63.4:8001/dashboard"
+        echo "  Mobile:         http://5.223.63.4:8001/mobile"
+        echo "  API Health:     http://5.223.63.4:8001/api/health"
+        echo "  Market Data:    http://5.223.63.4:8001/api/market/overview"
+        echo "  Trading Signals: http://5.223.63.4:8001/api/signals"
         echo ""
         echo -e "${BOLD}🎮 INTERACTIVE FEATURES${NC}"
         echo -e "${BOLD}──────────────────────${NC}"
@@ -1006,7 +1006,7 @@ case "$1" in
         echo "  config, backup          Configuration management"
         echo ""
         echo -e "${GREEN}💡 Run vt help for complete documentation${NC}"
-        echo -e "${GREEN}🌐 Dashboard: http://VPS_HOST_REDACTED:8001/dashboard${NC}"
+        echo -e "${GREEN}🌐 Dashboard: http://5.223.63.4:8001/dashboard${NC}"
         exit 1
         ;;
 esac

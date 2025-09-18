@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: VPS_HOST_REDACTED)
+#   VPS_HOST         VPS hostname (default: 5.223.63.4)
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -59,7 +59,7 @@
 #
 #############################################################################
 
-VPS_HOST="linuxuser@VPS_HOST_REDACTED"
+VPS_HOST="linuxuser@5.223.63.4"
 VPS_DIR="/home/linuxuser/trading/Virtuoso_ccxt"
 LOCAL_DIR="/Users/ffv_macmini/Desktop/Virtuoso_ccxt"
 
@@ -136,7 +136,7 @@ ssh $VPS_HOST "
 
 echo ""
 echo "🎉 Admin Dashboard deployed successfully!"
-echo "📍 Access at: http://VPS_HOST_REDACTED:8003/api/dashboard/admin/login"
+echo "📍 Access at: http://5.223.63.4:8003/api/dashboard/admin/login"
 echo "🔐 Password: xrpsuxcock"
 echo ""
 echo "⚠️  Make sure the Virtuoso app is running on the VPS!"

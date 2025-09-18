@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: VPS_HOST_REDACTED)
+#   VPS_HOST         VPS hostname (default: 5.223.63.4)
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -62,7 +62,7 @@
 # Comprehensive test script for Virtuoso Trading Dashboard
 # Tests all endpoints, performance improvements, and stability
 
-REMOTE_HOST="VPS_HOST_REDACTED"
+REMOTE_HOST="5.223.63.4"
 PORT="8003"
 BASE_URL="http://${REMOTE_HOST}:${PORT}"
 

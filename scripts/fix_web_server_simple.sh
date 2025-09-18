@@ -40,9 +40,9 @@ EOF
 
 # Deploy to VPS
 echo "📤 Deploying to VPS..."
-scp /tmp/start_web_server.py linuxuser@VPS_HOST_REDACTED:/tmp/
+scp /tmp/start_web_server.py linuxuser@5.223.63.4:/tmp/
 
-ssh linuxuser@VPS_HOST_REDACTED << 'REMOTE_EOF'
+ssh linuxuser@5.223.63.4 << 'REMOTE_EOF'
 cd /home/linuxuser/trading/Virtuoso_ccxt
 
 # Kill any existing process on port 8003

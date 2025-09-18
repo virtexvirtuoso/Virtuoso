@@ -11,11 +11,11 @@ echo "==================================================="
 # Copy the fixed template
 echo "📤 Updating mobile dashboard template..."
 scp src/dashboard/templates/dashboard_mobile_v1.html \
-    linuxuser@VPS_HOST_REDACTED:/home/linuxuser/trading/Virtuoso_ccxt/src/dashboard/templates/
+    linuxuser@5.223.63.4:/home/linuxuser/trading/Virtuoso_ccxt/src/dashboard/templates/
 
 # Add cache-busting and restart
 echo "🔄 Restarting with cache-busting..."
-ssh linuxuser@VPS_HOST_REDACTED "
+ssh linuxuser@5.223.63.4 "
     cd /home/linuxuser/trading/Virtuoso_ccxt
     # Add timestamp to force browser refresh
     sed -i '1i<!-- Confluence fix deployed: $(date) -->' src/dashboard/templates/dashboard_mobile_v1.html
@@ -26,7 +26,7 @@ ssh linuxuser@VPS_HOST_REDACTED "
 
 echo ""
 echo "🧪 Testing confluence scores fix..."
-curl -s http://VPS_HOST_REDACTED:8003/api/dashboard-cached/mobile-data | python3 -c "
+curl -s http://5.223.63.4:8003/api/dashboard-cached/mobile-data | python3 -c "
 import sys,json
 try:
     data=json.load(sys.stdin)
@@ -45,7 +45,7 @@ except Exception as e:
 echo ""
 echo "✅ Confluence scores fix deployed!"
 echo ""
-echo "🌐 Test the mobile dashboard at: http://VPS_HOST_REDACTED:8003/dashboard/mobile"
+echo "🌐 Test the mobile dashboard at: http://5.223.63.4:8003/dashboard/mobile"
 echo "🔍 Check browser console for confluence filtering logs"
 echo ""
 echo "📋 Fixed Issues:"

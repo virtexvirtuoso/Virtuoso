@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: VPS_HOST_REDACTED)
+#   VPS_HOST         VPS hostname (default: 5.223.63.4)
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -70,7 +70,7 @@ echo "  - Monitor: 92% smaller (7,699 → 588 lines)"
 echo "  - Performance: ~80% less memory, 30,000+ ops/sec"
 echo ""
 
-VPS="linuxuser@VPS_HOST_REDACTED"
+VPS="linuxuser@5.223.63.4"
 
 # Function to update local
 switch_local() {

@@ -5,7 +5,7 @@
 
 set -e  # Exit on any error
 
-VPS_HOST="linuxuser@VPS_HOST_REDACTED"
+VPS_HOST="linuxuser@5.223.63.4"
 VPS_PATH="/home/linuxuser/trading/Virtuoso_ccxt"
 LOCAL_PATH="/Users/ffv_macmini/Desktop/Virtuoso_ccxt"
 
@@ -69,7 +69,7 @@ echo "🧪 Testing Phase 3 real-time streaming features..."
 # Test 1: Basic mobile endpoint (should work from Phase 2)
 echo ""
 echo "Test 1: Mobile data endpoint (Phase 2 compatibility)..."
-MOBILE_RESPONSE=$(curl -s "http://VPS_HOST_REDACTED:8003/api/dashboard/mobile-data")
+MOBILE_RESPONSE=$(curl -s "http://5.223.63.4:8003/api/dashboard/mobile-data")
 MOBILE_STATUS=$(echo "$MOBILE_RESPONSE" | jq -r '.status // "no_status"')
 CONFLUENCE_COUNT=$(echo "$MOBILE_RESPONSE" | jq '.confluence_scores | length // 0')
 CACHE_SOURCE=$(echo "$MOBILE_RESPONSE" | jq -r '.cache_source // "unknown"')
@@ -83,7 +83,7 @@ echo "  ✓ Response time: ${PERFORMANCE_MS}ms"
 # Test 2: Phase 3 streaming status
 echo ""
 echo "Test 2: Phase 3 streaming status..."
-PHASE3_RESPONSE=$(curl -s "http://VPS_HOST_REDACTED:8003/api/phase3/mobile/status" 2>/dev/null || echo '{"error": "endpoint_not_available"}')
+PHASE3_RESPONSE=$(curl -s "http://5.223.63.4:8003/api/phase3/mobile/status" 2>/dev/null || echo '{"error": "endpoint_not_available"}')
 PHASE3_STATUS=$(echo "$PHASE3_RESPONSE" | jq -r '.status // "error"')
 STREAMING_ACTIVE=$(echo "$PHASE3_RESPONSE" | jq -r '.streaming_manager.active // false')
 CONNECTED_CLIENTS=$(echo "$PHASE3_RESPONSE" | jq -r '.streaming_manager.connected_clients // 0')
@@ -95,7 +95,7 @@ echo "  ✓ Connected clients: $CONNECTED_CLIENTS"
 # Test 3: WebSocket endpoint availability
 echo ""
 echo "Test 3: WebSocket endpoint availability..."
-WS_TEST=$(curl -s -I "http://VPS_HOST_REDACTED:8003/ws/mobile" 2>/dev/null | head -1 || echo "HTTP/1.1 404 Not Found")
+WS_TEST=$(curl -s -I "http://5.223.63.4:8003/ws/mobile" 2>/dev/null | head -1 || echo "HTTP/1.1 404 Not Found")
 if [[ "$WS_TEST" == *"404"* ]]; then
     echo "  ⚠️  WebSocket endpoint not available (expected during startup)"
 else
@@ -105,7 +105,7 @@ fi
 # Test 4: Phase 3 channels info
 echo ""
 echo "Test 4: Phase 3 streaming channels..."
-CHANNELS_RESPONSE=$(curl -s "http://VPS_HOST_REDACTED:8003/api/phase3/mobile/channels" 2>/dev/null || echo '{"error": "endpoint_not_available"}')
+CHANNELS_RESPONSE=$(curl -s "http://5.223.63.4:8003/api/phase3/mobile/channels" 2>/dev/null || echo '{"error": "endpoint_not_available"}')
 TOTAL_CHANNELS=$(echo "$CHANNELS_RESPONSE" | jq -r '.total_channels // 0')
 
 if [ "$TOTAL_CHANNELS" -gt "0" ]; then
@@ -118,7 +118,7 @@ fi
 # Test 5: System health after Phase 3
 echo ""
 echo "Test 5: System health after Phase 3 deployment..."
-HEALTH_RESPONSE=$(curl -s "http://VPS_HOST_REDACTED:8003/health")
+HEALTH_RESPONSE=$(curl -s "http://5.223.63.4:8003/health")
 SYSTEM_HEALTH=$(echo "$HEALTH_RESPONSE" | jq -r '.status // "unknown"')
 
 echo "  ✓ System health: $SYSTEM_HEALTH"
@@ -158,10 +158,10 @@ if [ "$MOBILE_STATUS" = "success" ] && [ "$SYSTEM_HEALTH" = "healthy" ]; then
     echo "  • Multi-channel streaming (confluence, market pulse, signals)"
     echo ""
     echo "🔗 Phase 3 Endpoints:"
-    echo "  • WebSocket: ws://VPS_HOST_REDACTED:8003/ws/mobile"
-    echo "  • Status: http://VPS_HOST_REDACTED:8003/api/phase3/mobile/status"
-    echo "  • Channels: http://VPS_HOST_REDACTED:8003/api/phase3/mobile/channels"
-    echo "  • Clients: http://VPS_HOST_REDACTED:8003/api/phase3/mobile/clients"
+    echo "  • WebSocket: ws://5.223.63.4:8003/ws/mobile"
+    echo "  • Status: http://5.223.63.4:8003/api/phase3/mobile/status"
+    echo "  • Channels: http://5.223.63.4:8003/api/phase3/mobile/channels"
+    echo "  • Clients: http://5.223.63.4:8003/api/phase3/mobile/clients"
     
     echo ""
     echo "⚡ Performance Improvements:"
@@ -171,15 +171,15 @@ if [ "$MOBILE_STATUS" = "success" ] && [ "$SYSTEM_HEALTH" = "healthy" ]; then
     echo "  • Intelligent data prioritization for mobile"
 else
     echo "⏳ Phase 3 deployment in progress - system still initializing"
-    echo "   Monitor with: curl http://VPS_HOST_REDACTED:8003/api/phase3/mobile/status"
+    echo "   Monitor with: curl http://5.223.63.4:8003/api/phase3/mobile/status"
 fi
 
 echo ""
 echo "📊 Monitor Phase 3 real-time streaming:"
-echo "   curl http://VPS_HOST_REDACTED:8003/api/phase3/mobile/status"
+echo "   curl http://5.223.63.4:8003/api/phase3/mobile/status"
 echo ""
 echo "🔍 View detailed logs:"
 echo "   ssh $VPS_HOST 'sudo journalctl -u virtuoso.service -f | grep -i \"phase.*3\\|stream\\|websocket\"'"
 echo ""
 echo "🧪 Test WebSocket connection:"
-echo "   wscat -c ws://VPS_HOST_REDACTED:8003/ws/mobile"
+echo "   wscat -c ws://5.223.63.4:8003/ws/mobile"

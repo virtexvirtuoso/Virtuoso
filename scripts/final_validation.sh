@@ -41,9 +41,9 @@ test_endpoint "Performance metrics" "http://localhost:8002/api/dashboard-unified
 echo ""
 echo "2️⃣ VPS ENDPOINT TESTS"
 echo "---------------------"
-test_endpoint "VPS Unified" "http://VPS_HOST_REDACTED:8002/api/dashboard-unified/unified" "200"
-test_endpoint "VPS Mobile" "http://VPS_HOST_REDACTED:8002/api/dashboard-unified/mobile" "200"
-test_endpoint "VPS Performance" "http://VPS_HOST_REDACTED:8002/api/dashboard-unified/performance" "200"
+test_endpoint "VPS Unified" "http://5.223.63.4:8002/api/dashboard-unified/unified" "200"
+test_endpoint "VPS Mobile" "http://5.223.63.4:8002/api/dashboard-unified/mobile" "200"
+test_endpoint "VPS Performance" "http://5.223.63.4:8002/api/dashboard-unified/performance" "200"
 
 echo ""
 echo "3️⃣ PERFORMANCE CHECK"

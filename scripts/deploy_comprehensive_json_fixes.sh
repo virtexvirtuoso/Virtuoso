@@ -11,11 +11,11 @@ echo "======================================================"
 # Copy the fixed template
 echo "📤 Updating mobile dashboard template with comprehensive fixes..."
 scp src/dashboard/templates/dashboard_mobile_v1.html \
-    linuxuser@VPS_HOST_REDACTED:/home/linuxuser/trading/Virtuoso_ccxt/src/dashboard/templates/
+    linuxuser@5.223.63.4:/home/linuxuser/trading/Virtuoso_ccxt/src/dashboard/templates/
 
 # Restart the web server
 echo "🔄 Restarting web service..."
-ssh linuxuser@VPS_HOST_REDACTED "
+ssh linuxuser@5.223.63.4 "
     cd /home/linuxuser/trading/Virtuoso_ccxt
     sudo systemctl restart virtuoso.service
     sleep 3
@@ -25,11 +25,11 @@ ssh linuxuser@VPS_HOST_REDACTED "
 # Test the endpoints
 echo "🧪 Testing mobile dashboard endpoints..."
 echo "Health check:"
-curl -s http://VPS_HOST_REDACTED:8003/health | python3 -c "import sys,json; data=json.load(sys.stdin); print('✅ Service healthy' if data.get('status') == 'healthy' else '❌ Service unhealthy')" 2>/dev/null || echo "❌ Health check failed"
+curl -s http://5.223.63.4:8003/health | python3 -c "import sys,json; data=json.load(sys.stdin); print('✅ Service healthy' if data.get('status') == 'healthy' else '❌ Service unhealthy')" 2>/dev/null || echo "❌ Health check failed"
 
 echo ""
 echo "Market overview endpoint test:"
-curl -s http://VPS_HOST_REDACTED:8003/api/dashboard-cached/market-overview | python3 -c "
+curl -s http://5.223.63.4:8003/api/dashboard-cached/market-overview | python3 -c "
 import sys,json
 try:
     data=json.load(sys.stdin)
@@ -47,7 +47,7 @@ except:
 echo ""
 echo "✅ Comprehensive JSON fixes deployed!"
 echo ""
-echo "🌐 Test the mobile dashboard at: http://VPS_HOST_REDACTED:8003/mobile"
+echo "🌐 Test the mobile dashboard at: http://5.223.63.4:8003/mobile"
 echo "🔍 Check browser console for debug logs showing data structure"
 echo ""
 echo "📋 Fixed Issues:"

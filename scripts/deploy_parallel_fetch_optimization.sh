@@ -15,7 +15,7 @@ echo ""
 
 # VPS connection details
 VPS_USER="linuxuser"
-VPS_IP="VPS_HOST_REDACTED"
+VPS_IP="5.223.63.4"
 VPS_PATH="/home/linuxuser/trading/Virtuoso_ccxt"
 
 # Files to deploy
@@ -62,7 +62,7 @@ echo "  • NEW: 2-3 seconds with parallel fetch"
 echo "  • BEST: <1 second with bulk fetch"
 echo ""
 echo "🌐 Test the mobile dashboard:"
-echo "  http://VPS_HOST_REDACTED:8003/mobile"
+echo "  http://5.223.63.4:8003/mobile"
 echo ""
 echo "📊 Monitor logs:"
 echo "  ssh ${VPS_USER}@${VPS_IP} 'sudo journalctl -u virtuoso.service -f | grep -E \"Parallel|Bulk|fetch\"'"

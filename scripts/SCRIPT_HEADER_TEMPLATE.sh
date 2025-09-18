@@ -25,7 +25,7 @@
 #   arg2           Description of second argument (optional)
 #
 # Environment Variables:
-#   VPS_HOST       Target VPS hostname (default: VPS_HOST_REDACTED)
+#   VPS_HOST       Target VPS hostname (default: 5.223.63.4)
 #   VPS_USER       VPS username (default: linuxuser)
 #   PROJECT_PATH   Project path on VPS (default: /home/linuxuser/trading/Virtuoso_ccxt)
 #   LOCAL_PATH     Local project path (default: current directory)

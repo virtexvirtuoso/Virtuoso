@@ -18,27 +18,27 @@ echo "📦 Copying fixed files to VPS..."
 
 # Copy the fixed bybit.py file
 echo "  → Copying src/core/exchanges/bybit.py"
-scp src/core/exchanges/bybit.py linuxuser@VPS_HOST_REDACTED:/home/linuxuser/trading/Virtuoso_ccxt/src/core/exchanges/
+scp src/core/exchanges/bybit.py linuxuser@5.223.63.4:/home/linuxuser/trading/Virtuoso_ccxt/src/core/exchanges/
 
 # Copy the fixed monitor_refactored.py file
 echo "  → Copying src/monitoring/monitor_refactored.py"
-scp src/monitoring/monitor_refactored.py linuxuser@VPS_HOST_REDACTED:/home/linuxuser/trading/Virtuoso_ccxt/src/monitoring/
+scp src/monitoring/monitor_refactored.py linuxuser@5.223.63.4:/home/linuxuser/trading/Virtuoso_ccxt/src/monitoring/
 
 echo "✅ Files deployed successfully"
 
 echo "🔄 Restarting VPS service..."
-ssh linuxuser@VPS_HOST_REDACTED "sudo systemctl restart virtuoso.service"
+ssh linuxuser@5.223.63.4 "sudo systemctl restart virtuoso.service"
 
 echo "⏱️  Waiting for service to start..."
 sleep 10
 
 echo "🩺 Checking service status..."
-if ssh linuxuser@VPS_HOST_REDACTED "sudo systemctl is-active virtuoso.service" | grep -q "active"; then
+if ssh linuxuser@5.223.63.4 "sudo systemctl is-active virtuoso.service" | grep -q "active"; then
     echo "✅ Service is running"
 else
     echo "❌ Service failed to start"
     echo "📋 Service logs:"
-    ssh linuxuser@VPS_HOST_REDACTED "sudo journalctl -u virtuoso.service --lines=20 --no-pager"
+    ssh linuxuser@5.223.63.4 "sudo journalctl -u virtuoso.service --lines=20 --no-pager"
     exit 1
 fi
 
@@ -50,7 +50,7 @@ echo "✅ Fixed metrics_tracker NoneType error"
 echo "✅ Service restarted successfully"
 echo ""
 echo "📊 Monitor the system with:"
-echo "   ssh linuxuser@VPS_HOST_REDACTED 'sudo journalctl -u virtuoso.service -f'"
+echo "   ssh linuxuser@5.223.63.4 'sudo journalctl -u virtuoso.service -f'"
 echo ""
 echo "🧪 Test the fixes with:"
-echo "   curl http://VPS_HOST_REDACTED:8003/api/dashboard/data"
+echo "   curl http://5.223.63.4:8003/api/dashboard/data"
