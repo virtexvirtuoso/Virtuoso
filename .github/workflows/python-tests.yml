@@ -35,5 +35,8 @@ jobs:
     - name: Run tests
       env:
         PYTHONPATH: ${{ github.workspace }}
+        VPS_HOST: "test.vps.host"  # Mock VPS host for testing
+        VPS_USER: "testuser"
+        VPS_PATH: "/test/path"
       run: |
         pytest -c config/ci/pytest.ini --verbose 
