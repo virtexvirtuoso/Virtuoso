@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: VPS_HOST_REDACTED)
+#   VPS_HOST         VPS hostname (default: 5.223.63.4)
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -61,12 +61,12 @@
 
 # Script to fix the remote server issues
 
-echo "🔧 Fixing Virtuoso server issues on VPS_HOST_REDACTED..."
+echo "🔧 Fixing Virtuoso server issues on 5.223.63.4..."
 
 # First, ensure the server is properly restarted
 echo "1. Restarting web server to pick up route changes..."
 
-ssh linuxuser@VPS_HOST_REDACTED 'bash -s' << 'ENDSSH'
+ssh linuxuser@5.223.63.4 'bash -s' << 'ENDSSH'
 cd /home/linuxuser/trading/Virtuoso_ccxt
 
 # Kill existing processes more thoroughly
@@ -116,7 +116,7 @@ test_route() {
     local path=$1
     local desc=$2
     echo -n "Testing $desc... "
-    status=$(curl -s -o /dev/null -w "%{http_code}" "http://VPS_HOST_REDACTED:8003$path")
+    status=$(curl -s -o /dev/null -w "%{http_code}" "http://5.223.63.4:8003$path")
     if [ "$status" = "200" ]; then
         echo "✅ OK ($status)"
     else
@@ -132,7 +132,7 @@ test_route "/api/market/overview" "Market Overview API"
 echo ""
 echo "3. Checking API performance..."
 echo -n "Market Overview API response time: "
-time_taken=$(curl -s -o /dev/null -w "%{time_total}" "http://VPS_HOST_REDACTED:8003/api/market/overview")
+time_taken=$(curl -s -o /dev/null -w "%{time_total}" "http://5.223.63.4:8003/api/market/overview")
 echo "${time_taken}s"
 
 if (( $(echo "$time_taken > 5" | bc -l) )); then
@@ -146,6 +146,6 @@ echo ""
 echo "✅ Server fixes applied!"
 echo ""
 echo "Dashboard URLs:"
-echo "  Desktop: http://VPS_HOST_REDACTED:8003/dashboard"
-echo "  Mobile:  http://VPS_HOST_REDACTED:8003/dashboard/mobile"
-echo "  Legacy:  http://VPS_HOST_REDACTED:8003/dashboard/v10"
+echo "  Desktop: http://5.223.63.4:8003/dashboard"
+echo "  Mobile:  http://5.223.63.4:8003/dashboard/mobile"
+echo "  Legacy:  http://5.223.63.4:8003/dashboard/v10"

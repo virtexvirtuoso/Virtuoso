@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: VPS_HOST_REDACTED)
+#   VPS_HOST         VPS hostname (default: 5.223.63.4)
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -62,7 +62,7 @@
 # Quick deployment script - updates only dashboard files
 
 REMOTE_USER="linuxuser"
-REMOTE_HOST="VPS_HOST_REDACTED"
+REMOTE_HOST="5.223.63.4"
 REMOTE_PATH="/home/linuxuser/trading/virtuoso_ccxt"
 
 echo "🚀 Quick Deploy - Dashboard Update"

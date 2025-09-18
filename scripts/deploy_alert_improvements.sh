@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: VPS_HOST_REDACTED)
+#   VPS_HOST         VPS hostname (default: 5.223.63.4)
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -62,7 +62,7 @@
 # Deploy Alert Improvements to VPS
 # Fixes the conflicting data and improves alert formatting
 
-VPS_HOST="linuxuser@VPS_HOST_REDACTED"
+VPS_HOST="linuxuser@5.223.63.4"
 VPS_DIR="/home/linuxuser/trading/Virtuoso_ccxt"
 LOCAL_DIR="/Users/ffv_macmini/Desktop/Virtuoso_ccxt"
 

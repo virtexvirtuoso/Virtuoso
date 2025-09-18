@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: VPS_HOST_REDACTED)
+#   VPS_HOST         VPS hostname (default: 5.223.63.4)
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -96,6 +96,6 @@ scp /tmp/vps_deploy_commands.sh pi:/tmp/vps_deploy_commands.sh
 
 # Execute deployment through pi
 echo "🎯 Executing deployment on VPS through pi..."
-ssh pi "chmod +x /tmp/vps_deploy_commands.sh && scp /tmp/monitor_fixed.py linuxuser@VPS_HOST_REDACTED:/tmp/ && scp /tmp/vps_deploy_commands.sh linuxuser@VPS_HOST_REDACTED:/tmp/ && ssh linuxuser@VPS_HOST_REDACTED 'chmod +x /tmp/vps_deploy_commands.sh && /tmp/vps_deploy_commands.sh'"
+ssh pi "chmod +x /tmp/vps_deploy_commands.sh && scp /tmp/monitor_fixed.py linuxuser@5.223.63.4:/tmp/ && scp /tmp/vps_deploy_commands.sh linuxuser@5.223.63.4:/tmp/ && ssh linuxuser@5.223.63.4 'chmod +x /tmp/vps_deploy_commands.sh && /tmp/vps_deploy_commands.sh'"
 
 echo "✅ Deployment complete!"

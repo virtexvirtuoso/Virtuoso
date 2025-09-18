@@ -12,7 +12,7 @@ set -e
 echo "🚀 Deploying Performance Optimizations to VPS"
 echo "=============================================="
 
-VPS_HOST="linuxuser@VPS_HOST_REDACTED"
+VPS_HOST="linuxuser@5.223.63.4"
 VPS_PATH="/home/linuxuser/trading/Virtuoso_ccxt"
 LOCAL_PATH="/Users/ffv_macmini/Desktop/Virtuoso_ccxt"
 

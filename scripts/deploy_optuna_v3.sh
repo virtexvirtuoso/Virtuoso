@@ -6,7 +6,7 @@
 set -e
 
 # Configuration
-VPS_HOST="linuxuser@VPS_HOST_REDACTED"
+VPS_HOST="linuxuser@5.223.63.4"
 VPS_PROJECT_PATH="/home/linuxuser/trading/Virtuoso_ccxt"
 LOCAL_PROJECT_PATH="/Users/ffv_macmini/Desktop/Virtuoso_ccxt"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
@@ -385,9 +385,9 @@ display_summary() {
     echo -e "${GREEN}✓ Optuna v3.6+ deployed successfully${NC}"
     echo ""
     echo "Access Points:"
-    echo "  - Optuna Dashboard: http://VPS_HOST_REDACTED:8004"
-    echo "  - Main Dashboard: http://VPS_HOST_REDACTED:8003"
-    echo "  - Monitoring API: http://VPS_HOST_REDACTED:8001"
+    echo "  - Optuna Dashboard: http://5.223.63.4:8004"
+    echo "  - Main Dashboard: http://5.223.63.4:8003"
+    echo "  - Monitoring API: http://5.223.63.4:8001"
     echo ""
     echo "Management Commands:"
     echo "  - Start optimization: python3.11 scripts/manage_optuna_optimization.py --start"

@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: VPS_HOST_REDACTED)
+#   VPS_HOST         VPS hostname (default: 5.223.63.4)
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -60,7 +60,7 @@
 #############################################################################
 
 # Transfer script for range volume fix
-# Target: linuxuser@VPS_HOST_REDACTED
+# Target: linuxuser@5.223.63.4
 
 echo "Transferring range volume fix files to VPS..."
 
@@ -74,7 +74,7 @@ FILES=(
 # Transfer each file
 for file in "${FILES[@]}"; do
     echo "Transferring $file..."
-    scp "$file" "linuxuser@VPS_HOST_REDACTED:~/Virtuoso_ccxt/$file"
+    scp "$file" "linuxuser@5.223.63.4:~/Virtuoso_ccxt/$file"
     if [ $? -eq 0 ]; then
         echo "✓ Successfully transferred $file"
     else

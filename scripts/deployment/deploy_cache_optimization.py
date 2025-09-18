@@ -18,7 +18,7 @@ class CacheOptimizationDeployer:
     """Deploy cache optimization fixes to VPS"""
     
     def __init__(self):
-        self.vps_host = "linuxuser@VPS_HOST_REDACTED"
+        self.vps_host = "linuxuser@5.223.63.4"
         self.vps_path = "/home/linuxuser/trading/Virtuoso_ccxt"
         
     async def deploy_fixes(self):

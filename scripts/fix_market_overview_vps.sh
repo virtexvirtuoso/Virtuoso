@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: VPS_HOST_REDACTED)
+#   VPS_HOST         VPS hostname (default: 5.223.63.4)
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -62,7 +62,7 @@
 echo "🔧 Fixing Market Overview Metrics on VPS..."
 echo "==========================================="
 
-VPS_HOST="linuxuser@VPS_HOST_REDACTED"
+VPS_HOST="linuxuser@5.223.63.4"
 PROJECT_DIR="/home/linuxuser/trading/Virtuoso_ccxt"
 
 # Copy the fix script to VPS
@@ -90,7 +90,7 @@ echo "🧪 Testing API endpoints..."
 echo "============================"
 
 echo "1. Testing mobile-data endpoint:"
-curl -s "http://VPS_HOST_REDACTED:8001/api/dashboard-cached/mobile-data" | python3 -c "
+curl -s "http://5.223.63.4:8001/api/dashboard-cached/mobile-data" | python3 -c "
 import json, sys
 data = json.load(sys.stdin)
 overview = data.get('market_overview', {})
@@ -104,7 +104,7 @@ print(f'  ✓ Total Volume: \${overview.get(\"total_volume\", 0):,.0f}')
 
 echo ""
 echo "2. Testing market breadth:"
-curl -s "http://VPS_HOST_REDACTED:8001/api/dashboard-cached/mobile-data" | python3 -c "
+curl -s "http://5.223.63.4:8001/api/dashboard-cached/mobile-data" | python3 -c "
 import json, sys
 data = json.load(sys.stdin)
 if 'market_breadth' in data:
@@ -123,4 +123,4 @@ echo "  2. BTC Dominance: Real data from CoinGecko API"
 echo "  3. Volatility: Calculated from price movements"
 echo "  4. Total Volume: Aggregated from all tickers"
 echo ""
-echo "📱 View at: http://VPS_HOST_REDACTED:8001/dashboard/mobile"
+echo "📱 View at: http://5.223.63.4:8001/dashboard/mobile"

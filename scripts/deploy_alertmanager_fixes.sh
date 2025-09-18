@@ -5,7 +5,7 @@
 
 echo "🚀 Deploying AlertManager fixes to VPS..."
 
-VPS_HOST="linuxuser@VPS_HOST_REDACTED"
+VPS_HOST="linuxuser@5.223.63.4"
 VPS_PROJECT_PATH="/home/linuxuser/trading/Virtuoso_ccxt"
 
 echo "📦 Step 1: Backing up VPS alert components..."

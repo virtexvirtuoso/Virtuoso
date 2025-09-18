@@ -25,7 +25,7 @@ import subprocess
 import sys
 
 # Execute on VPS
-cmd = f'ssh linuxuser@VPS_HOST_REDACTED "cd /home/linuxuser/trading/Virtuoso_ccxt && {patch_content}"'
+cmd = f'ssh linuxuser@5.223.63.4 "cd /home/linuxuser/trading/Virtuoso_ccxt && {patch_content}"'
 
 result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
 

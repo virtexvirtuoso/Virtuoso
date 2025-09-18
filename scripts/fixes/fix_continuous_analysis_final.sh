@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: VPS_HOST_REDACTED)
+#   VPS_HOST         VPS hostname (default: 5.223.63.4)
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -62,7 +62,7 @@
 echo "🔧 Applying final fix for ContinuousAnalysisManager..."
 
 # Create backup
-ssh linuxuser@VPS_HOST_REDACTED "cp /home/linuxuser/trading/Virtuoso_ccxt/src/main.py /home/linuxuser/trading/Virtuoso_ccxt/src/main.py.backup_final"
+ssh linuxuser@5.223.63.4 "cp /home/linuxuser/trading/Virtuoso_ccxt/src/main.py /home/linuxuser/trading/Virtuoso_ccxt/src/main.py.backup_final"
 
 # Create a Python script to apply the fixes
 cat << 'PYTHON' > /tmp/fix_main.py
@@ -97,17 +97,17 @@ print("✅ Fixes applied successfully")
 PYTHON
 
 # Copy and run the fix script on VPS
-scp /tmp/fix_main.py linuxuser@VPS_HOST_REDACTED:/tmp/
-ssh linuxuser@VPS_HOST_REDACTED "python3 /tmp/fix_main.py"
+scp /tmp/fix_main.py linuxuser@5.223.63.4:/tmp/
+ssh linuxuser@5.223.63.4 "python3 /tmp/fix_main.py"
 
 # Validate syntax
 echo "🔍 Validating Python syntax..."
-if ssh linuxuser@VPS_HOST_REDACTED "cd /home/linuxuser/trading/Virtuoso_ccxt && /home/linuxuser/trading/Virtuoso_ccxt/venv311/bin/python -m py_compile src/main.py 2>&1"; then
+if ssh linuxuser@5.223.63.4 "cd /home/linuxuser/trading/Virtuoso_ccxt && /home/linuxuser/trading/Virtuoso_ccxt/venv311/bin/python -m py_compile src/main.py 2>&1"; then
     echo "✅ Python syntax validation passed!"
     
     # Restart service
     echo "🔄 Restarting service..."
-    ssh linuxuser@VPS_HOST_REDACTED "sudo systemctl restart virtuoso.service"
+    ssh linuxuser@5.223.63.4 "sudo systemctl restart virtuoso.service"
     
     # Wait for startup
     echo "⏳ Waiting for service to start..."
@@ -115,19 +115,19 @@ if ssh linuxuser@VPS_HOST_REDACTED "cd /home/linuxuser/trading/Virtuoso_ccxt && 
     
     # Check for success
     echo "📊 Checking if ContinuousAnalysisManager started..."
-    if ssh linuxuser@VPS_HOST_REDACTED "sudo journalctl -u virtuoso.service --since '1 minute ago' | grep -q 'Continuous analysis manager started'"; then
+    if ssh linuxuser@5.223.63.4 "sudo journalctl -u virtuoso.service --since '1 minute ago' | grep -q 'Continuous analysis manager started'"; then
         echo "✅ SUCCESS! ContinuousAnalysisManager is now running!"
     else
         echo "🔍 Checking for warning messages..."
-        ssh linuxuser@VPS_HOST_REDACTED "sudo journalctl -u virtuoso.service --since '1 minute ago' | grep 'ContinuousAnalysisManager' | tail -3"
+        ssh linuxuser@5.223.63.4 "sudo journalctl -u virtuoso.service --since '1 minute ago' | grep 'ContinuousAnalysisManager' | tail -3"
     fi
     
     # Show cache status
     echo -e "\n📝 Testing cache endpoints:"
     echo "Analysis results:"
-    ssh linuxuser@VPS_HOST_REDACTED "curl -s http://localhost:8000/api/analysis/results | head -c 100"
+    ssh linuxuser@5.223.63.4 "curl -s http://localhost:8000/api/analysis/results | head -c 100"
     echo -e "\n"
 else
     echo "❌ Syntax validation failed - restoring backup"
-    ssh linuxuser@VPS_HOST_REDACTED "mv /home/linuxuser/trading/Virtuoso_ccxt/src/main.py.backup_final /home/linuxuser/trading/Virtuoso_ccxt/src/main.py"
+    ssh linuxuser@5.223.63.4 "mv /home/linuxuser/trading/Virtuoso_ccxt/src/main.py.backup_final /home/linuxuser/trading/Virtuoso_ccxt/src/main.py"
 fi

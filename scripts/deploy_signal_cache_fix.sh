@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: VPS_HOST_REDACTED)
+#   VPS_HOST         VPS hostname (default: 5.223.63.4)
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -66,7 +66,7 @@ echo "=== Deploying Signal Cache Fix to VPS ==="
 
 # Configuration
 VPS_USER="linuxuser"
-VPS_HOST="VPS_HOST_REDACTED"
+VPS_HOST="5.223.63.4"
 VPS_PATH="/home/linuxuser/trading/Virtuoso_ccxt"
 
 # Files to deploy
@@ -167,4 +167,4 @@ echo "  ssh ${VPS_USER}@${VPS_HOST}"
 echo "  cd ${VPS_PATH}"
 echo "  python3 scripts/realtime_signal_cache_service.py --demo"
 echo ""
-echo "Dashboard URL: http://VPS_HOST_REDACTED:8501/dashboard"
+echo "Dashboard URL: http://5.223.63.4:8501/dashboard"

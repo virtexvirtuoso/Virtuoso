@@ -13,11 +13,11 @@ def monitor_timeout_improvements(duration_minutes=5):
     print(f"Start time: {datetime.now()}")
     
     # Baseline - get current timeout count
-    cmd_timeout = 'ssh linuxuser@VPS_HOST_REDACTED "sudo journalctl -u virtuoso.service --since \'5 minutes ago\' | grep -c \'Request timeout\'"'
+    cmd_timeout = 'ssh linuxuser@5.223.63.4 "sudo journalctl -u virtuoso.service --since \'5 minutes ago\' | grep -c \'Request timeout\'"'
     result = subprocess.run(cmd_timeout, shell=True, capture_output=True, text=True)
     baseline_timeouts = int(result.stdout.strip() or 0)
     
-    cmd_empty = 'ssh linuxuser@VPS_HOST_REDACTED "sudo journalctl -u virtuoso.service --since \'5 minutes ago\' | grep -c \'Empty DataFrame\'"'
+    cmd_empty = 'ssh linuxuser@5.223.63.4 "sudo journalctl -u virtuoso.service --since \'5 minutes ago\' | grep -c \'Empty DataFrame\'"'
     result = subprocess.run(cmd_empty, shell=True, capture_output=True, text=True)
     baseline_empty = int(result.stdout.strip() or 0)
     
@@ -34,12 +34,12 @@ def monitor_timeout_improvements(duration_minutes=5):
         print(f"\n⏱️  Elapsed: {elapsed_minutes}min")
         
         # Check for new timeouts
-        cmd_recent_timeout = f'ssh linuxuser@VPS_HOST_REDACTED "sudo journalctl -u virtuoso.service --since \'{elapsed_minutes + 1} minutes ago\' | grep \'Request timeout after 10s\'"'
+        cmd_recent_timeout = f'ssh linuxuser@5.223.63.4 "sudo journalctl -u virtuoso.service --since \'{elapsed_minutes + 1} minutes ago\' | grep \'Request timeout after 10s\'"'
         result = subprocess.run(cmd_recent_timeout, shell=True, capture_output=True, text=True)
         recent_timeouts = result.stdout.strip().split('\n') if result.stdout.strip() else []
         
         # Check for empty DataFrames
-        cmd_recent_empty = f'ssh linuxuser@VPS_HOST_REDACTED "sudo journalctl -u virtuoso.service --since \'{elapsed_minutes + 1} minutes ago\' | grep \'Empty DataFrame\'"'
+        cmd_recent_empty = f'ssh linuxuser@5.223.63.4 "sudo journalctl -u virtuoso.service --since \'{elapsed_minutes + 1} minutes ago\' | grep \'Empty DataFrame\'"'
         result = subprocess.run(cmd_recent_empty, shell=True, capture_output=True, text=True)
         recent_empty = result.stdout.strip().split('\n') if result.stdout.strip() else []
         
@@ -65,11 +65,11 @@ def monitor_timeout_improvements(duration_minutes=5):
     print(f"{'='*60}")
     
     # Get final counts
-    cmd_final_timeout = f'ssh linuxuser@VPS_HOST_REDACTED "sudo journalctl -u virtuoso.service --since \'{duration_minutes} minutes ago\' | grep -c \'Request timeout after 10s\'"'
+    cmd_final_timeout = f'ssh linuxuser@5.223.63.4 "sudo journalctl -u virtuoso.service --since \'{duration_minutes} minutes ago\' | grep -c \'Request timeout after 10s\'"'
     result = subprocess.run(cmd_final_timeout, shell=True, capture_output=True, text=True)
     final_timeouts = int(result.stdout.strip() or 0)
     
-    cmd_final_empty = f'ssh linuxuser@VPS_HOST_REDACTED "sudo journalctl -u virtuoso.service --since \'{duration_minutes} minutes ago\' | grep -c \'Empty DataFrame\'"'
+    cmd_final_empty = f'ssh linuxuser@5.223.63.4 "sudo journalctl -u virtuoso.service --since \'{duration_minutes} minutes ago\' | grep -c \'Empty DataFrame\'"'
     result = subprocess.run(cmd_final_empty, shell=True, capture_output=True, text=True)
     final_empty = int(result.stdout.strip() or 0)
     
@@ -85,7 +85,7 @@ def monitor_timeout_improvements(duration_minutes=5):
         print(f"📈 Empty DataFrame change: {empty_change:+.1f}%")
     
     # Check if system is running normally
-    cmd_status = 'ssh linuxuser@VPS_HOST_REDACTED "sudo systemctl is-active virtuoso.service"'
+    cmd_status = 'ssh linuxuser@5.223.63.4 "sudo systemctl is-active virtuoso.service"'
     result = subprocess.run(cmd_status, shell=True, capture_output=True, text=True)
     
     if "active" in result.stdout:

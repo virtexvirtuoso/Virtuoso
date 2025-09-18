@@ -39,7 +39,7 @@ class CacheBridgeFix:
         # Test cache connectivity
         try:
             import aiomcache
-            client = aiomcache.Client('VPS_HOST_REDACTED', 11211)
+            client = aiomcache.Client('5.223.63.4', 11211)
             
             # Check expected cache keys
             cache_keys = ['analysis:signals', 'market:overview', 'market:movers', 'market:tickers']
@@ -484,7 +484,7 @@ async def main():
     logger.info("1. Apply the generated fixes to the VPS codebase")
     logger.info("2. Restart the Virtuoso service: sudo systemctl restart virtuoso.service")
     logger.info("3. Monitor logs: sudo journalctl -u virtuoso.service -f")
-    logger.info("4. Test dashboard endpoint: curl http://VPS_HOST_REDACTED:8003/api/dashboard/data")
+    logger.info("4. Test dashboard endpoint: curl http://5.223.63.4:8003/api/dashboard/data")
     
     return fixes_needed
 

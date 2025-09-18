@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: VPS_HOST_REDACTED)
+#   VPS_HOST         VPS hostname (default: 5.223.63.4)
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -62,7 +62,7 @@
 echo "Fixing dashboard cache push on VPS..."
 
 # Create the cache push module
-ssh linuxuser@VPS_HOST_REDACTED "cat > /home/linuxuser/trading/Virtuoso_ccxt/src/core/cache/dashboard_cache_push.py" << 'EOF'
+ssh linuxuser@5.223.63.4 "cat > /home/linuxuser/trading/Virtuoso_ccxt/src/core/cache/dashboard_cache_push.py" << 'EOF'
 """Dashboard cache push functionality to populate memcached with market data."""
 
 import asyncio
@@ -152,7 +152,7 @@ async def push_complete_market_data(market_data: Dict[str, Any]) -> bool:
 EOF
 
 # Update the dashboard_cache_manager to include the push method
-ssh linuxuser@VPS_HOST_REDACTED "cat >> /home/linuxuser/trading/Virtuoso_ccxt/src/core/dashboard_cache_manager.py" << 'EOF'
+ssh linuxuser@5.223.63.4 "cat >> /home/linuxuser/trading/Virtuoso_ccxt/src/core/dashboard_cache_manager.py" << 'EOF'
 
 # Import the cache pusher
 from src.core.cache.dashboard_cache_push import push_complete_market_data
@@ -162,14 +162,14 @@ dashboard_cache.push_complete_market_data = push_complete_market_data
 EOF
 
 # Restart the service
-ssh linuxuser@VPS_HOST_REDACTED "sudo systemctl restart virtuoso.service"
+ssh linuxuser@5.223.63.4 "sudo systemctl restart virtuoso.service"
 
 echo "✅ Cache push fix deployed. Waiting for service to start..."
 sleep 15
 
 # Check if data is being pushed
 echo "Checking cache population..."
-ssh linuxuser@VPS_HOST_REDACTED "/home/linuxuser/trading/Virtuoso_ccxt/venv311/bin/python -c \"
+ssh linuxuser@5.223.63.4 "/home/linuxuser/trading/Virtuoso_ccxt/venv311/bin/python -c \"
 import asyncio
 import aiomcache
 import json

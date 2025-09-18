@@ -8,10 +8,10 @@ def apply_simple_timeout_fix():
     """Apply simple timeout fix via SSH"""
     
     # Fix 1: Change 15s to 10s timeout
-    cmd1 = '''ssh linuxuser@VPS_HOST_REDACTED "cd /home/linuxuser/trading/Virtuoso_ccxt && sed -i 's/async with asyncio.timeout(15.0):/async with asyncio.timeout(10.0):/g' src/core/exchanges/bybit.py"'''
+    cmd1 = '''ssh linuxuser@5.223.63.4 "cd /home/linuxuser/trading/Virtuoso_ccxt && sed -i 's/async with asyncio.timeout(15.0):/async with asyncio.timeout(10.0):/g' src/core/exchanges/bybit.py"'''
     
     # Fix 2: Update error message
-    cmd2 = '''ssh linuxuser@VPS_HOST_REDACTED "cd /home/linuxuser/trading/Virtuoso_ccxt && sed -i 's/Request timeout after 15s:/Request timeout after 10s:/g' src/core/exchanges/bybit.py"'''
+    cmd2 = '''ssh linuxuser@5.223.63.4 "cd /home/linuxuser/trading/Virtuoso_ccxt && sed -i 's/Request timeout after 15s:/Request timeout after 10s:/g' src/core/exchanges/bybit.py"'''
     
     print("🔧 Applying simple timeout fix...")
     
@@ -29,7 +29,7 @@ def apply_simple_timeout_fix():
     print("✅ Simple timeout fix applied")
     
     # Restart service
-    restart_cmd = 'ssh linuxuser@VPS_HOST_REDACTED "sudo systemctl restart virtuoso.service"'
+    restart_cmd = 'ssh linuxuser@5.223.63.4 "sudo systemctl restart virtuoso.service"'
     restart_result = subprocess.run(restart_cmd, shell=True, capture_output=True, text=True)
     
     if restart_result.returncode != 0:
@@ -39,7 +39,7 @@ def apply_simple_timeout_fix():
     print("✅ Service restarted")
     
     # Check status
-    status_cmd = 'ssh linuxuser@VPS_HOST_REDACTED "sudo systemctl is-active virtuoso.service"'
+    status_cmd = 'ssh linuxuser@5.223.63.4 "sudo systemctl is-active virtuoso.service"'
     status_result = subprocess.run(status_cmd, shell=True, capture_output=True, text=True)
     
     if "active" in status_result.stdout:

@@ -9,7 +9,7 @@ echo "=============================================="
 
 # VPS connection details
 VPS_USER="linuxuser"
-VPS_HOST="VPS_HOST_REDACTED"
+VPS_HOST="5.223.63.4"
 VPS_DIR="/home/linuxuser/trading/Virtuoso_ccxt"
 
 # Critical files that MUST be deployed

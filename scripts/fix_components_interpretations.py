@@ -166,7 +166,7 @@ def main():
         print("1. Deploy to VPS: scp src/main.py vps:/home/linuxuser/trading/Virtuoso_ccxt/src/")
         print("2. Restart services: ssh vps 'sudo systemctl restart virtuoso-trading virtuoso-web'")
         print("3. Wait 30 seconds for cache to populate")
-        print("4. Test: curl http://VPS_HOST_REDACTED:8002/api/dashboard/data | python3 -m json.tool | grep -A5 components")
+        print("4. Test: curl http://5.223.63.4:8002/api/dashboard/data | python3 -m json.tool | grep -A5 components")
     else:
         print("\n❌ Fix failed. Please check the error messages above.")
 

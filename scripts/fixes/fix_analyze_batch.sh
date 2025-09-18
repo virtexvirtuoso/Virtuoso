@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: VPS_HOST_REDACTED)
+#   VPS_HOST         VPS hostname (default: 5.223.63.4)
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -62,10 +62,10 @@
 echo "🔧 Fixing _analyze_batch coroutine issue..."
 
 # Create backup
-ssh linuxuser@VPS_HOST_REDACTED "cp /home/linuxuser/trading/Virtuoso_ccxt/src/main.py /home/linuxuser/trading/Virtuoso_ccxt/src/main.py.backup_analyze"
+ssh linuxuser@5.223.63.4 "cp /home/linuxuser/trading/Virtuoso_ccxt/src/main.py /home/linuxuser/trading/Virtuoso_ccxt/src/main.py.backup_analyze"
 
 # Fix: Remove the first task creation that's not being used
-ssh linuxuser@VPS_HOST_REDACTED << 'ENDSSH'
+ssh linuxuser@5.223.63.4 << 'ENDSSH'
 cd /home/linuxuser/trading/Virtuoso_ccxt
 python3 << 'PYTHON'
 with open('src/main.py', 'r') as f:
@@ -97,12 +97,12 @@ ENDSSH
 
 # Validate syntax
 echo "🔍 Validating Python syntax..."
-if ssh linuxuser@VPS_HOST_REDACTED "cd /home/linuxuser/trading/Virtuoso_ccxt && /home/linuxuser/trading/Virtuoso_ccxt/venv311/bin/python -m py_compile src/main.py 2>&1"; then
+if ssh linuxuser@5.223.63.4 "cd /home/linuxuser/trading/Virtuoso_ccxt && /home/linuxuser/trading/Virtuoso_ccxt/venv311/bin/python -m py_compile src/main.py 2>&1"; then
     echo "✅ Syntax validation passed!"
     
     # Restart service
     echo "🔄 Restarting service..."
-    ssh linuxuser@VPS_HOST_REDACTED "sudo systemctl restart virtuoso.service"
+    ssh linuxuser@5.223.63.4 "sudo systemctl restart virtuoso.service"
     
     # Wait for startup
     echo "⏳ Waiting for service to start..."
@@ -110,18 +110,18 @@ if ssh linuxuser@VPS_HOST_REDACTED "cd /home/linuxuser/trading/Virtuoso_ccxt && 
     
     # Check for the warning
     echo "📊 Checking if coroutine warning is gone..."
-    if ssh linuxuser@VPS_HOST_REDACTED "sudo journalctl -u virtuoso.service --since '1 minute ago' | grep -q 'coroutine.*was never awaited'"; then
+    if ssh linuxuser@5.223.63.4 "sudo journalctl -u virtuoso.service --since '1 minute ago' | grep -q 'coroutine.*was never awaited'"; then
         echo "⚠️ Warning still present - checking logs"
-        ssh linuxuser@VPS_HOST_REDACTED "sudo journalctl -u virtuoso.service --since '30 seconds ago' | grep 'coroutine' | tail -3"
+        ssh linuxuser@5.223.63.4 "sudo journalctl -u virtuoso.service --since '30 seconds ago' | grep 'coroutine' | tail -3"
     else
         echo "✅ No coroutine warnings found!"
     fi
     
     # Check if analysis is working
     echo -e "\n🔍 Checking analysis activity..."
-    ssh linuxuser@VPS_HOST_REDACTED "sudo journalctl -u virtuoso.service --since '30 seconds ago' | grep -E 'analyze_batch|_push_to_unified_cache|analysis.*complete' | tail -5"
+    ssh linuxuser@5.223.63.4 "sudo journalctl -u virtuoso.service --since '30 seconds ago' | grep -E 'analyze_batch|_push_to_unified_cache|analysis.*complete' | tail -5"
     
 else
     echo "❌ Syntax validation failed - restoring backup"
-    ssh linuxuser@VPS_HOST_REDACTED "mv /home/linuxuser/trading/Virtuoso_ccxt/src/main.py.backup_analyze /home/linuxuser/trading/Virtuoso_ccxt/src/main.py"
+    ssh linuxuser@5.223.63.4 "mv /home/linuxuser/trading/Virtuoso_ccxt/src/main.py.backup_analyze /home/linuxuser/trading/Virtuoso_ccxt/src/main.py"
 fi

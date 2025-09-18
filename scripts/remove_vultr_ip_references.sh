@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# Script to remove all references to Vultr IP VPS_HOST_REDACTED from codebase
+# Script to remove all references to Vultr IP 5.223.63.4 from codebase
 # This script will replace with placeholder or remove references
 
-echo "🔍 Removing all references to Vultr IP VPS_HOST_REDACTED..."
+echo "🔍 Removing all references to Vultr IP 5.223.63.4..."
 
 # First, let's find all files with references (excluding backup folders)
 echo "📋 Files containing Vultr IP references:"
@@ -71,7 +71,7 @@ echo ""
 echo "✅ Vultr IP removal complete!"
 echo ""
 echo "📝 Summary of changes:"
-echo "   - Replaced VPS_HOST_REDACTED with YOUR_VPS_IP"
+echo "   - Replaced 5.223.63.4 with YOUR_VPS_IP"
 echo "   - Updated SSH connection strings"
 echo "   - Modified deployment scripts"
 echo "   - Updated documentation"

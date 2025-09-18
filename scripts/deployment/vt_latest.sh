@@ -280,7 +280,7 @@ show_python_processes() {
     local mem_usage=$(ps aux | grep python | grep -v grep | awk '''{ sum+=$4 } END { printf "%.0f", sum }''' 2>/dev/null || echo "0")
     
     # Dashboard link
-    echo -e "║  🌐 Dashboard: http://VPS_HOST_REDACTED:8002/                      ║"
+    echo -e "║  🌐 Dashboard: http://5.223.63.4:8002/                      ║"
     echo -e "║  📊 CPU Usage: ${cpu_usage}%  |  Memory: ${mem_usage}%                   ║"
     echo -e "╚══════════════════════════════════════════════════════════════╝"
     echo -e "${BOLD}📈 Process Summary${NC}"
@@ -763,7 +763,7 @@ display_summary() {
     
     # Dashboard Access
     if curl -s -o /dev/null -w "%{http_code}" http://localhost:8002/ 2>/dev/null | grep -q "200"; then
-        local status_text="✓ ONLINE (VPS_HOST_REDACTED:8002)"
+        local status_text="✓ ONLINE (5.223.63.4:8002)"
         printf "${BOLD}${CYAN}║${NC}  Dashboard Access:    ${BOLD}${CYAN}│${NC} ${GREEN}%38s${NC}${BOLD}${CYAN}║${NC}\n" "$status_text"
     else
         local status_text="● NOT ACCESSIBLE"
@@ -1460,7 +1460,7 @@ case "$1" in
         echo "Monitors and controls all trading services, processes, and resources"
         echo ""
         echo -e "${BOLD}DASHBOARD ACCESS:${NC}"
-        echo -e "${GREEN}http://VPS_HOST_REDACTED:8002/${NC} - Main trading dashboard"
+        echo -e "${GREEN}http://5.223.63.4:8002/${NC} - Main trading dashboard"
         echo ""
         echo -e "${BOLD}QUICK START:${NC}"
         echo "  vt              - Interactive control panel with menu"
@@ -1517,12 +1517,12 @@ case "$1" in
         echo ""
         echo -e "${BOLD}🌐 NETWORK ENDPOINTS${NC}"
         echo -e "${BOLD}──────────────────${NC}"
-        echo "  Dashboard:      http://VPS_HOST_REDACTED:8002/"
+        echo "  Dashboard:      http://5.223.63.4:8002/"
     echo -e "${BOLD}${CYAN}╚═══════════════════════╧══════════════════════════════════════╝${NC}"
-        echo "  Mobile:         http://VPS_HOST_REDACTED:8002/mobile"
-        echo "  API Health:     http://VPS_HOST_REDACTED:8002/health"
-        echo "  Market Data:    http://VPS_HOST_REDACTED:8002/api/dashboard/data"
-        echo "  Trading Signals: http://VPS_HOST_REDACTED:8002/api/dashboard/data"
+        echo "  Mobile:         http://5.223.63.4:8002/mobile"
+        echo "  API Health:     http://5.223.63.4:8002/health"
+        echo "  Market Data:    http://5.223.63.4:8002/api/dashboard/data"
+        echo "  Trading Signals: http://5.223.63.4:8002/api/dashboard/data"
         echo ""
         echo -e "${BOLD}🎮 INTERACTIVE FEATURES${NC}"
         echo -e "${BOLD}──────────────────────${NC}"
@@ -1609,7 +1609,7 @@ case "$1" in
         echo "  config, backup          Configuration management"
         echo ""
         echo -e "${GREEN}💡 Run vt help for complete documentation${NC}"
-        echo -e "${GREEN}🌐 Dashboard: http://VPS_HOST_REDACTED:8002/${NC}"
+        echo -e "${GREEN}🌐 Dashboard: http://5.223.63.4:8002/${NC}"
     echo -e "${BOLD}${CYAN}╚═══════════════════════╧══════════════════════════════════════╝${NC}"
         exit 1
         ;;

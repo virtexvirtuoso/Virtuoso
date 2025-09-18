@@ -12,7 +12,7 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 # VPS Configuration
-VPS_HOST="VPS_HOST_REDACTED"
+VPS_HOST="5.223.63.4"
 VPS_USER="linuxuser"
 VPS_PATH="/home/linuxuser/trading/Virtuoso_ccxt"
 

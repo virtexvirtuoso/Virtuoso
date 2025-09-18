@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: VPS_HOST_REDACTED)
+#   VPS_HOST         VPS hostname (default: 5.223.63.4)
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -72,7 +72,7 @@ echo ""
 echo "1. Market Tickers Endpoint:"
 for i in {1..5}; do
     START=$(date +%s%3N)
-    RESPONSE=$(curl -s -w "\n%{http_code}" http://VPS_HOST_REDACTED:8003/api/market/tickers 2>/dev/null)
+    RESPONSE=$(curl -s -w "\n%{http_code}" http://5.223.63.4:8003/api/market/tickers 2>/dev/null)
     HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
     END=$(date +%s%3N)
     DURATION=$((END - START))
@@ -90,7 +90,7 @@ echo ""
 echo "2. Dashboard Mobile Endpoint:"
 for i in {1..3}; do
     START=$(date +%s%3N)
-    RESPONSE=$(curl -s -w "\n%{http_code}" http://VPS_HOST_REDACTED:8001/api/dashboard/mobile 2>/dev/null)
+    RESPONSE=$(curl -s -w "\n%{http_code}" http://5.223.63.4:8001/api/dashboard/mobile 2>/dev/null)
     HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
     END=$(date +%s%3N)
     DURATION=$((END - START))
@@ -106,7 +106,7 @@ done
 
 echo ""
 echo "3. System Status:"
-ssh linuxuser@VPS_HOST_REDACTED << 'EOF'
+ssh linuxuser@5.223.63.4 << 'EOF'
 echo "   Memcached: $(systemctl is-active memcached)"
 echo "   Memory usage: $(free -h | grep Mem | awk '{print $3 "/" $2}')"
 echo "   CPU load: $(uptime | awk -F'load average:' '{print $2}')"

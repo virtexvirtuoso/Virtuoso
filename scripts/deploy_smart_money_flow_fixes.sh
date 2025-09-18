@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: VPS_HOST_REDACTED)
+#   VPS_HOST         VPS hostname (default: 5.223.63.4)
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -87,7 +87,7 @@ rsync -avz --progress \
     src/analysis/market/interpretation_generator.py \
     src/core/analysis/interpretation_generator.py \
     config/config.yaml \
-    linuxuser@VPS_HOST_REDACTED:/home/linuxuser/trading/Virtuoso_ccxt/
+    linuxuser@5.223.63.4:/home/linuxuser/trading/Virtuoso_ccxt/
 
 if [ $? -eq 0 ]; then
     echo "✅ Files deployed successfully"
@@ -95,7 +95,7 @@ if [ $? -eq 0 ]; then
     # Restart services on VPS
     echo ""
     echo "🔄 Restarting services on VPS..."
-    ssh linuxuser@VPS_HOST_REDACTED << 'REMOTE_EOF'
+    ssh linuxuser@5.223.63.4 << 'REMOTE_EOF'
     cd /home/linuxuser/trading/Virtuoso_ccxt
     
     # Kill existing processes

@@ -138,4 +138,4 @@ echo "Testing dashboard API..."
 ssh vps "curl -s http://localhost:8003/health"
 
 echo "Market Sentiment display fixes deployed successfully!"
-echo "Access the dashboard at: http://VPS_HOST_REDACTED:8003/"
+echo "Access the dashboard at: http://5.223.63.4:8003/"

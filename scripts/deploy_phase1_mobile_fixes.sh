@@ -5,7 +5,7 @@
 
 set -e  # Exit on any error
 
-VPS_HOST="linuxuser@VPS_HOST_REDACTED"
+VPS_HOST="linuxuser@5.223.63.4"
 VPS_PATH="/home/linuxuser/trading/Virtuoso_ccxt"
 LOCAL_PATH="/Users/ffv_macmini/Desktop/Virtuoso_ccxt"
 
@@ -68,15 +68,15 @@ echo "🧪 Testing endpoints..."
 
 # Test the mobile endpoint
 echo "Testing mobile data endpoint..."
-MOBILE_RESPONSE=$(curl -s "http://VPS_HOST_REDACTED:8003/api/dashboard/mobile-data" | jq -r '.status // "no_status"')
+MOBILE_RESPONSE=$(curl -s "http://5.223.63.4:8003/api/dashboard/mobile-data" | jq -r '.status // "no_status"')
 echo "Mobile endpoint status: $MOBILE_RESPONSE"
 
 # Check for SYSTEM_STATUS contamination
-CONFLUENCE_COUNT=$(curl -s "http://VPS_HOST_REDACTED:8003/api/dashboard/mobile-data" | jq '.confluence_scores | length')
+CONFLUENCE_COUNT=$(curl -s "http://5.223.63.4:8003/api/dashboard/mobile-data" | jq '.confluence_scores | length')
 echo "Confluence scores count: $CONFLUENCE_COUNT"
 
 # Check if any system symbols remain
-SYSTEM_SYMBOLS=$(curl -s "http://VPS_HOST_REDACTED:8003/api/dashboard/mobile-data" | jq -r '.confluence_scores[]? | select(.symbol | contains("SYSTEM") or contains("STATUS") or contains("LOADING")) | .symbol' 2>/dev/null || echo "")
+SYSTEM_SYMBOLS=$(curl -s "http://5.223.63.4:8003/api/dashboard/mobile-data" | jq -r '.confluence_scores[]? | select(.symbol | contains("SYSTEM") or contains("STATUS") or contains("LOADING")) | .symbol' 2>/dev/null || echo "")
 
 if [ -n "$SYSTEM_SYMBOLS" ]; then
     echo "⚠️  WARNING: System symbols still detected:"

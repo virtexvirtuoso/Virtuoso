@@ -236,7 +236,7 @@ def main():
         
         # Then test VPS
         print("\n☁️  TESTING VPS ENVIRONMENT")
-        vps_tester = DashboardTester("http://VPS_HOST_REDACTED:8003")
+        vps_tester = DashboardTester("http://5.223.63.4:8003")
         vps_result = vps_tester.run_all_tests()
         
         # Overall result
@@ -249,7 +249,7 @@ def main():
         return 0 if (local_result and vps_result) else 1
     
     elif args.vps:
-        tester = DashboardTester("http://VPS_HOST_REDACTED:8003")
+        tester = DashboardTester("http://5.223.63.4:8003")
     else:
         tester = DashboardTester("http://localhost:8003")
     

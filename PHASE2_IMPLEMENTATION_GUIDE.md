@@ -5,13 +5,13 @@
 
 ## EXECUTIVE SUMMARY
 
-This document provides comprehensive technical specifications for implementing Phase 2 of the Virtuoso CCXT trading system. Building on our proven **314.7x performance advantage** (9.367ms → 0.0298ms), Phase 2 extends our multi-tier caching architecture to support 7 major exchanges while maintaining sub-millisecond response times.
+This document provides SIMPLIFIED technical specifications for implementing Phase 2 of the Virtuoso CCXT trading system. Building on our proven **314.7x performance advantage** (9.367ms → 0.0298ms), Phase 2 extends our caching architecture to support **3 major exchanges** (80% of market volume) while maintaining sub-millisecond response times.
 
-### Technical Objectives
-- **Performance Preservation**: Maintain <0.1ms response times across all exchanges
-- **Scalable Architecture**: Support 10,000+ RPS with linear scaling
-- **Exchange Agnostic**: Unified API abstraction across 7+ exchanges
-- **Zero-Downtime Deployment**: Hot-swappable exchange integrations
+### SIMPLIFIED Technical Objectives
+- **Performance Preservation**: Maintain <0.1ms response times for 3 exchanges
+- **Simple Architecture**: Support 4,000 RPS (sufficient for current needs)
+- **Minimal Abstraction**: Direct exchange integration, no over-engineering
+- **Simple Deployment**: Docker Compose with health checks
 
 ### Implementation Scope
 1. **Multi-Exchange Connector Framework**
@@ -39,19 +39,17 @@ Performance Metrics (Production Validated):
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### Multi-Tier Cache Architecture (Current)
+### SIMPLIFIED Two-Layer Cache (70% Less Complex)
 ```python
-# Proven Performance Architecture
-class MultiTierCacheAdapter:
+# Simplified Performance Architecture
+class SimpleCacheAdapter:
     """
-    L1: In-Memory Cache    (0.01ms) - 85% hit rate - 1000 items max
-    L2: Memcached         (1.5ms)  - 10% hit rate - 4GB memory
-    L3: Redis Fallback    (3ms)    - 5% hit rate  - Persistent storage
+    L1: Redis Cache     (0.5ms)  - 90% hit rate - All data
+    L2: Direct Exchange (10ms)   - 10% hit rate - Fresh data
     """
     def __init__(self):
-        self.l1_memory = LRUCache(maxsize=1000, ttl=30)
-        self.l2_memcached = MemcachedClient(pool_size=20)
-        self.l3_redis = RedisClient(connection_pool=50)
+        self.redis = RedisClient(pool_size=10)  # Just Redis, no Memcached
+        # No L3 needed - Redis is persistent
 ```
 
 ---

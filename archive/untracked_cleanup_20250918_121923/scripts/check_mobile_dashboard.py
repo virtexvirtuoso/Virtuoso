@@ -5,7 +5,7 @@ Check mobile dashboard data quality
 import json
 import urllib.request
 
-url = "http://VPS_HOST_REDACTED:8003/api/dashboard/mobile-data"
+url = "http://5.223.63.4:8003/api/dashboard/mobile-data"
 response = urllib.request.urlopen(url)
 data = json.loads(response.read())
 

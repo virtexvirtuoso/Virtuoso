@@ -18,33 +18,33 @@ echo "📦 Copying fixed files to VPS..."
 
 # Copy the AlertManagerRefactored fixes
 echo "  → Copying src/monitoring/components/alerts/alert_manager_refactored.py"
-scp src/monitoring/components/alerts/alert_manager_refactored.py linuxuser@VPS_HOST_REDACTED:/home/linuxuser/trading/Virtuoso_ccxt/src/monitoring/components/alerts/
+scp src/monitoring/components/alerts/alert_manager_refactored.py linuxuser@5.223.63.4:/home/linuxuser/trading/Virtuoso_ccxt/src/monitoring/components/alerts/
 
 # Copy the dependency injection fixes
 echo "  → Copying src/core/di/registration.py"
-scp src/core/di/registration.py linuxuser@VPS_HOST_REDACTED:/home/linuxuser/trading/Virtuoso_ccxt/src/core/di/
+scp src/core/di/registration.py linuxuser@5.223.63.4:/home/linuxuser/trading/Virtuoso_ccxt/src/core/di/
 
 echo "  → Copying src/monitoring/monitor_refactored.py"
-scp src/monitoring/monitor_refactored.py linuxuser@VPS_HOST_REDACTED:/home/linuxuser/trading/Virtuoso_ccxt/src/monitoring/
+scp src/monitoring/monitor_refactored.py linuxuser@5.223.63.4:/home/linuxuser/trading/Virtuoso_ccxt/src/monitoring/
 
 echo "  → Copying src/main.py"
-scp src/main.py linuxuser@VPS_HOST_REDACTED:/home/linuxuser/trading/Virtuoso_ccxt/src/
+scp src/main.py linuxuser@5.223.63.4:/home/linuxuser/trading/Virtuoso_ccxt/src/
 
 echo "✅ All fixed files deployed successfully"
 
 echo "🔄 Restarting VPS service..."
-ssh linuxuser@VPS_HOST_REDACTED "sudo systemctl restart virtuoso.service"
+ssh linuxuser@5.223.63.4 "sudo systemctl restart virtuoso.service"
 
 echo "⏱️  Waiting for service to start..."
 sleep 15
 
 echo "🩺 Checking service status..."
-if ssh linuxuser@VPS_HOST_REDACTED "sudo systemctl is-active virtuoso.service" | grep -q "active"; then
+if ssh linuxuser@5.223.63.4 "sudo systemctl is-active virtuoso.service" | grep -q "active"; then
     echo "✅ Service is running"
 else
     echo "❌ Service failed to start"
     echo "📋 Service logs:"
-    ssh linuxuser@VPS_HOST_REDACTED "sudo journalctl -u virtuoso.service --lines=30 --no-pager"
+    ssh linuxuser@5.223.63.4 "sudo journalctl -u virtuoso.service --lines=30 --no-pager"
     exit 1
 fi
 
@@ -59,11 +59,11 @@ echo "✅ Fixed metrics_tracker NoneType error"
 echo "✅ Service restarted successfully"
 echo ""
 echo "📊 Monitor the system with:"
-echo "   ssh linuxuser@VPS_HOST_REDACTED 'sudo journalctl -u virtuoso.service -f'"
+echo "   ssh linuxuser@5.223.63.4 'sudo journalctl -u virtuoso.service -f'"
 echo ""
 echo "🧪 Test the system with:"
-echo "   curl http://VPS_HOST_REDACTED:8003/api/dashboard/data"
-echo "   curl http://VPS_HOST_REDACTED:8003/health"
+echo "   curl http://5.223.63.4:8003/api/dashboard/data"
+echo "   curl http://5.223.63.4:8003/health"
 echo ""
 echo "🔍 Check for error resolution:"
-echo "   ssh linuxuser@VPS_HOST_REDACTED 'sudo journalctl -u virtuoso.service --since=\"1 minute ago\" | grep -E \"(ERROR|WARNING|✅|SUCCESS)\"'"
+echo "   ssh linuxuser@5.223.63.4 'sudo journalctl -u virtuoso.service --since=\"1 minute ago\" | grep -E \"(ERROR|WARNING|✅|SUCCESS)\"'"

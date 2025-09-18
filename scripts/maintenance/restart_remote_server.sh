@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: VPS_HOST_REDACTED)
+#   VPS_HOST         VPS hostname (default: 5.223.63.4)
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -61,9 +61,9 @@
 
 # Script to restart the web server on remote host
 
-echo "🔄 Restarting Virtuoso web server on VPS_HOST_REDACTED..."
+echo "🔄 Restarting Virtuoso web server on 5.223.63.4..."
 
-ssh linuxuser@VPS_HOST_REDACTED 'bash -s' << 'ENDSSH'
+ssh linuxuser@5.223.63.4 'bash -s' << 'ENDSSH'
 cd /home/linuxuser/trading/Virtuoso_ccxt
 
 # Kill any existing web server processes
@@ -98,6 +98,6 @@ ENDSSH
 
 echo ""
 echo "🌐 Dashboard URLs:"
-echo "   Desktop: http://VPS_HOST_REDACTED:8003/dashboard"
-echo "   Mobile:  http://VPS_HOST_REDACTED:8003/dashboard/mobile"
-echo "   Legacy:  http://VPS_HOST_REDACTED:8003/dashboard/v10"
+echo "   Desktop: http://5.223.63.4:8003/dashboard"
+echo "   Mobile:  http://5.223.63.4:8003/dashboard/mobile"
+echo "   Legacy:  http://5.223.63.4:8003/dashboard/v10"

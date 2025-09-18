@@ -11,11 +11,11 @@ echo "================================================"
 # Copy the fixed template
 echo "📤 Updating mobile dashboard template..."
 scp src/dashboard/templates/dashboard_mobile_v1.html \
-    linuxuser@VPS_HOST_REDACTED:/home/linuxuser/trading/Virtuoso_ccxt/src/dashboard/templates/
+    linuxuser@5.223.63.4:/home/linuxuser/trading/Virtuoso_ccxt/src/dashboard/templates/
 
 # Restart the web server
 echo "🔄 Restarting web service..."
-ssh linuxuser@VPS_HOST_REDACTED "
+ssh linuxuser@5.223.63.4 "
     cd /home/linuxuser/trading/Virtuoso_ccxt
     sudo systemctl restart virtuoso.service
     sleep 3
@@ -23,4 +23,4 @@ ssh linuxuser@VPS_HOST_REDACTED "
 "
 
 echo "✅ Mobile dashboard regime fix deployed!"
-echo "🌐 Test at: http://VPS_HOST_REDACTED:8003/mobile"
+echo "🌐 Test at: http://5.223.63.4:8003/mobile"
