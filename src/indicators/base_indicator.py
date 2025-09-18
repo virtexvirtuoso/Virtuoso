@@ -208,8 +208,8 @@ class BaseIndicator(ABC):
         self.enable_caching = config.get('caching', {}).get('indicators', {}).get('enabled', True)
         if self.enable_caching:
             try:
-                from src.core.cache.indicator_cache import get_indicator_cache
-                self.cache = get_indicator_cache()
+                from src.core.cache.indicator_cache import get_indicator_cache_sync
+                self.cache = get_indicator_cache_sync()
                 self.logger.debug("Indicator caching enabled")
             except Exception as e:
                 self.logger.warning(f"Failed to initialize indicator cache: {e}")

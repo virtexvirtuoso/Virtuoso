@@ -175,6 +175,34 @@ class MetricsTracker:
             self._stats['error_count'] += 1
             await self._handle_metrics_error(e, "update_metrics")
 
+    async def update_analysis_metrics(self, symbol: str, result: Dict[str, Any]) -> None:
+        """Bridge method to update analysis metrics from monitor.SignalProcessor.
+        Accepts the full analysis result dict and forwards numeric components to MetricsManager.update_analysis_metrics.
+        """
+        try:
+            if not self.metrics_manager:
+                return
+            # Build a compact numeric score map
+            scores: Dict[str, float] = {}
+            # Overall
+            if isinstance(result.get('confluence_score'), (int, float)):
+                scores['confluence_score'] = float(result['confluence_score'])
+            if isinstance(result.get('reliability'), (int, float)):
+                scores['reliability'] = float(result['reliability'])
+            # Components (may be dicts or floats)
+            components = result.get('components', {}) or {}
+            if isinstance(components, dict):
+                for k, v in components.items():
+                    if isinstance(v, (int, float)):
+                        scores[k] = float(v)
+                    elif isinstance(v, dict) and isinstance(v.get('score'), (int, float)):
+                        scores[k] = float(v['score'])
+            # Timestamp
+            scores['timestamp'] = float(time.time())
+            await self.metrics_manager.update_analysis_metrics(symbol, scores)
+        except Exception as e:
+            await self._handle_metrics_error(e, "update_analysis_metrics")
+
     async def check_system_health(self) -> Dict[str, Any]:
         """Check overall system health."""
         try:

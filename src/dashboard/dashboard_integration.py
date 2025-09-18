@@ -211,10 +211,15 @@ class DashboardIntegrationService:
                 # Update confluence scores for each symbol
                 for symbol in symbols:
                     try:
-                        if hasattr(self.monitor, 'market_data_manager') and hasattr(self.monitor, 'confluence_analyzer'):
+                        if hasattr(self.monitor, 'market_data_manager') and hasattr(self.monitor, 'confluence_analyzer') and self.monitor.confluence_analyzer:
                             market_data = await self.monitor.market_data_manager.get_market_data(symbol)
                             if market_data:
-                                result = await self.monitor.confluence_analyzer.analyze(market_data)
+                                # Guard: analyzer may be None or not initialized
+                                try:
+                                    result = await self.monitor.confluence_analyzer.analyze(market_data)
+                                except AttributeError:
+                                    self.logger.warning("confluence_analyzer not initialized; skipping analyze() for now")
+                                    result = None
                                 if result and 'confluence_score' in result:
                                     score = float(result['confluence_score'])
                                     components = result.get('components', {})
@@ -1182,8 +1187,12 @@ class DashboardIntegrationService:
             if hasattr(self.monitor, 'market_data_manager') and hasattr(self.monitor, 'confluence_analyzer'):
                 try:
                     market_data = await self.monitor.market_data_manager.get_market_data(symbol)
-                    if market_data:
-                        result = await self.monitor.confluence_analyzer.analyze(market_data)
+                    if market_data and self.monitor.confluence_analyzer:
+                        try:
+                            result = await self.monitor.confluence_analyzer.analyze(market_data)
+                        except AttributeError:
+                            self.logger.warning("confluence_analyzer not initialized; skipping analyze()")
+                            result = None
                         if result and 'confluence_score' in result:
                             from src.core.formatting.formatter import LogFormatter
                             

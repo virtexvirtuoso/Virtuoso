@@ -179,11 +179,30 @@ class TopSymbolsManager:
                 if not valid_markets:
                     self.logger.error("No valid markets found in static symbols list")
                     return
+
+                # Normalize and cache static symbols to ensure non-empty symbols locally
+                def _norm(sym: str) -> str:
+                    try:
+                        s = (sym or '').upper()
+                        s = s.replace('/', '')
+                        if ':' in s:
+                            s = s.split(':', 1)[0]
+                        return s
+                    except Exception:
+                        return sym
+
+                symbol_strings = [_norm(s) for s in static_symbols if isinstance(s, str)]
+                symbol_strings = [s for s in symbol_strings if s]
+                self._symbols_cache = {
+                    'last_updated': time.time(),
+                    'symbols': symbol_strings
+                }
+                self.logger.info(f"Cached {len(symbol_strings)} static symbols")
             else:
                 # Dynamic selection block
                 self.logger.info("Fetching market data for dynamic symbol selection")
                 try:
-                    raw_markets = await exchange.fetch_market_tickers()
+                    raw_markets = await self._fetch_all_market_tickers(exchange)
                     if not raw_markets:
                         self.logger.error("Empty or invalid market data")
                         return
@@ -199,7 +218,10 @@ class TopSymbolsManager:
                 
                 # Log pre-filtered symbols
                 self.logger.debug(f"Pre-filtered symbol count: {len(raw_markets)}")
-                self.logger.debug(f"Sample raw symbols: {[m.get('symbol','') for m in raw_markets[:5]]}")
+                try:
+                    self.logger.debug(f"Sample raw symbols: {[m.get('symbol','') for m in raw_markets[:5]]}")
+                except Exception:
+                    pass
                 
                 # Sort and limit to max symbols
                 max_symbols = self.market_config.get('max_symbols', 10)
@@ -207,12 +229,12 @@ class TopSymbolsManager:
                 # Fix turnover calculation - Binance uses 'quoteVolume' not 'turnover24h'
                 sorted_markets = sorted(
                     raw_markets,
-                    key=lambda x: float(x.get('quoteVolume', x.get('turnover24h', 0))),
+                    key=lambda x: float(x.get('quoteVolume', x.get('turnover24h', 0) or x.get('turnover', 0) or 0)),
                     reverse=True
                 )[:max_symbols]
 
                 # Log turnover statistics with corrected field
-                total_turnover = sum(float(m.get('quoteVolume', m.get('turnover24h', 0))) for m in raw_markets)
+                total_turnover = sum(float(m.get('quoteVolume', m.get('turnover24h', m.get('turnover', 0)))) for m in raw_markets)
                 for market in sorted_markets:
                     symbol = market.get('symbol', '')
                     # Use quoteVolume as primary field, fallback to turnover24h for other exchanges
@@ -572,9 +594,9 @@ class TopSymbolsManager:
                 
             if exchange:
                 try:
-                    # Try to get tickers from exchange
-                    self.logger.debug("Fetching tickers from exchange")
-                    tickers = await exchange.fetch_market_tickers()
+                    # Try to get tickers from exchange via unified helper
+                    self.logger.debug("Fetching tickers from exchange (unified)")
+                    tickers = await self._fetch_all_market_tickers(exchange)
                     
                     # Process the list of ticker dictionaries
                     for ticker in tickers:
@@ -661,6 +683,88 @@ class TopSymbolsManager:
                 
             # Really last resort - empty list
             return []
+
+    async def _fetch_all_market_tickers(self, exchange) -> List[Dict[str, Any]]:
+        """Unified ticker fetch across implementations.
+        Returns a list of dicts with at least symbol, quoteVolume/turnover fields.
+        """
+        def _normalize_symbol(sym: str) -> str:
+            try:
+                s = (sym or '').upper()
+                # Convert CCXT format 'BTC/USDT' or 'BTC/USDT:USDT' to 'BTCUSDT'
+                s = s.replace('/', '')
+                if ':' in s:
+                    s = s.split(':', 1)[0]
+                return s
+            except Exception:
+                return sym
+        # 1) Prefer CCXT unified bulk method if available
+        try:
+            if hasattr(exchange, 'ccxt') and hasattr(exchange.ccxt, 'fetch_tickers'):
+                all_ticks = await exchange.ccxt.fetch_tickers()
+                normalized = []
+                for sym, t in all_ticks.items():
+                    normalized.append({
+                        'symbol': _normalize_symbol(sym),
+                        'quoteVolume': t.get('quoteVolume') or t.get('baseVolume') or 0,
+                        'turnover24h': t.get('turnover24h') or 0
+                    })
+                if normalized:
+                    return normalized
+        except Exception as e:
+            self.logger.debug(f"CCXT fetch_tickers failed: {e}")
+        # 2) Fall back to exchange implementation method if present
+        try:
+            if hasattr(exchange, 'fetch_market_tickers'):
+                return await exchange.fetch_market_tickers()
+        except Exception as e:
+            self.logger.debug(f"exchange.fetch_market_tickers failed: {e}")
+        # 3) Try generic CCXT per-symbol fallback if needed to seed non-empty set
+        try:
+            symbols = []
+            # Attempt to use exchange.markets if available to gather a small batch
+            if hasattr(exchange, 'markets') and isinstance(exchange.markets, dict) and exchange.markets:
+                # Prefer USDT spot-style pairs first
+                for s in list(exchange.markets.keys()):
+                    if len(symbols) >= 20:
+                        break
+                    if isinstance(s, str) and ('/USDT' in s or s.endswith(':USDT')) and 'PERP' not in s:
+                        symbols.append(s)
+            # As a last attempt, try common majors
+            if not symbols:
+                symbols = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'XRP/USDT', 'ADA/USDT']
+            results: List[Dict[str, Any]] = []
+            if hasattr(exchange, 'fetch_ticker'):
+                # Fetch a small batch sequentially to avoid blowing rate limits
+                for s in symbols[:15]:
+                    try:
+                        t = await exchange.fetch_ticker(s)
+                        if t:
+                            results.append({
+                                'symbol': _normalize_symbol(s),
+                                'quoteVolume': t.get('quoteVolume') or t.get('baseVolume') or 0,
+                                'turnover24h': t.get('turnover24h') or 0
+                            })
+                    except Exception:
+                        continue
+            if results:
+                return results
+        except Exception as e:
+            self.logger.debug(f"ccxt per-symbol fallback failed: {e}")
+        # 4) Last resort: simple Bybit REST
+        try:
+            data = await simple_fetch_tickers(exchange)
+            if data:
+                out = []
+                for sym, t in data.items():
+                    out.append({
+                        'symbol': _normalize_symbol(sym),
+                        'quoteVolume': t.get('volume', 0)
+                    })
+                return out
+        except Exception as e:
+            self.logger.debug(f"simple_fetch_tickers failed: {e}")
+        return []
 
     def _normalize_market_data(self, data: Dict[str, Any], symbol: str) -> Dict[str, Any]:
         """Normalize market data to ensure consistent format regardless of source.

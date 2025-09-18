@@ -6,7 +6,7 @@ system:
   environment: development
   log_level: DEBUG
   reports_dir: ./reports
-  version: 1.0.0  # AMDG - Ad Majorem Dei Gloriam
+  version: 1.0.0
 signal_tracking:
   enabled: false
   api_url: http://localhost:8001/api/signal-tracking
@@ -315,7 +315,7 @@ analysis:
         medium_weight: 0.3
         long_weight: 0.2
       smart_money_flow:
-        swing_length: 25  # Optimized from 50 for performance
+        swing_length: 25
         range_percent: 0.01
         interpolate_missing_cvd: true
       volume_threshold: 1.5
@@ -501,7 +501,7 @@ bitcoin_beta_analysis:
 confluence:
   thresholds:
     buy: 70
-    neutral_buffer: 5  # Buffer zone to prevent signal whipsaws in choppy markets (0 = disabled, >0 = creates neutral zones)
+    neutral_buffer: 5
     sell: 35
   weights:
     components:
@@ -524,13 +524,13 @@ confluence:
         manipulation: 0.08
         di: 0.03
       orderflow:
-        cvd: 0.22               # Increased from 0.20
-        imbalance: 0.13         # Increased from 0.12
-        trade_flow: 0.17        # Increased from 0.15
-        open_interest: 0.15     # Kept same
-        pressure: 0.08          # Kept same
-        liquidity: 0.10         # Kept same
-        smart_money_flow: 0.15  # Adjusted to 0.15 (from 0.20)
+        cvd: 0.22
+        imbalance: 0.13
+        trade_flow: 0.17
+        open_interest: 0.15
+        pressure: 0.08
+        liquidity: 0.1
+        smart_money_flow: 0.15
       price_structure:
         support_resistance: 0.1667
         order_blocks: 0.1667
@@ -654,7 +654,7 @@ exchanges:
       api_secret: ${BYBIT_API_SECRET}
     enabled: true
     primary: true
-    use_ccxt: true
+    use_ccxt: false
     rate_limits:
       requests_per_minute: 1200
       requests_per_second: 20
@@ -907,7 +907,7 @@ monitoring:
     channels:
     - console
     - database
-    cooldown_period: 300
+    cooldown_period: 43200
     cpu_alerts:
       cooldown: 600
       enabled: true
@@ -986,9 +986,6 @@ monitoring:
       min_whale_trades: 5
       trade_alerts_enabled: false
       trade_cooldown: 900
-      # Minimum USD value threshold for alerts (filters out "Normal level" alerts)
-      # Set to 2000000 (2M) to only get "2.0x+ above normal" or higher alerts
-      # Set to 1500000 (1.5M) to get "1.5x above normal" or higher alerts
       alert_threshold_usd: 2000000
     smart_money_detection:
       enabled: true
@@ -1158,11 +1155,9 @@ web_server:
 api:
   port: 8003
   host: 0.0.0.0
-
-# Cache Configuration for Phase 2 - Indicator Caching
 caching:
   enabled: true
-  backend: memcached  # Options: memcached, redis
+  backend: memcached
   memcached:
     host: 127.0.0.1
     port: 11211
@@ -1172,17 +1167,24 @@ caching:
   indicators:
     enabled: true
     ttl:
-      technical: 30      # 30 seconds for RSI, MACD, ATR, etc.
-      orderbook: 2       # 2 seconds for orderbook-based indicators
-      orderflow: 5       # 5 seconds for orderflow indicators
-      volume: 60         # 1 minute for volume indicators
-      sentiment: 300     # 5 minutes for sentiment indicators
-      structure: 300     # 5 minutes for price structure patterns
-      confluence: 15     # 15 seconds for confluence scores
+      technical: 30
+      orderbook: 2
+      orderflow: 5
+      volume: 60
+      sentiment: 300
+      structure: 300
+      confluence: 15
     warmup:
       enabled: true
-      symbols: ['BTCUSDT', 'ETHUSDT', 'SOLUSDT']
-      timeframes: ['1m', '5m', '15m', '1h']
+      symbols:
+      - BTCUSDT
+      - ETHUSDT
+      - SOLUSDT
+      timeframes:
+      - 1m
+      - 5m
+      - 15m
+      - 1h
       on_startup: true
     metrics:
       track_hit_rate: true

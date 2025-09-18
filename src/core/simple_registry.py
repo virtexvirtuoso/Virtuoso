@@ -132,11 +132,11 @@ def register_core_services(config: Dict[str, Any]) -> SimpleRegistry:
     from ..cache_warmer import CacheWarmer
     from ..streaming.realtime_pipeline import RealTimePipeline
     from ..formatting.formatter import OutputFormatter
-    from monitoring.smart_money_detector import SmartMoneyDetector
+    from ...monitoring.smart_money_detector import SmartMoneyDetector
     from ..exchanges.liquidation_collector import LiquidationDataCollector
-    from monitoring.monitor import MarketMonitor
-    from monitoring.alert_manager import AlertManager
-    from monitoring.metrics_manager import MetricsManager
+    from ...monitoring.monitor import MarketMonitor
+    from ...monitoring.alert_manager import AlertManager
+    from ...monitoring.metrics_manager import MetricsManager
     
     # Create instances directly - no factory pattern needed
     exchange_manager = ExchangeManager(config)

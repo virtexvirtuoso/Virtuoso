@@ -12,6 +12,14 @@ class CacheKeys:
     CONFLUENCE_PREFIX = "confluence"
     CONFLUENCE_RESULT = "confluence:result:{symbol}"
     CONFLUENCE_SCORE = "confluence:score:{symbol}"
+    # Add missing breakdown key helper used by services
+    @staticmethod
+    def confluence_breakdown(symbol: str) -> str:
+        return f"confluence:breakdown:{symbol}"
+
+    @staticmethod
+    def confluence_score(symbol: str) -> str:
+        return f"confluence:score:{symbol}"
 
     # Market data cache keys
     MARKET_PREFIX = "market"
