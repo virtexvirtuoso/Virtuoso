@@ -13,7 +13,7 @@ import asyncio
 import logging
 from typing import Dict, Any, Optional
 
-from ..di.container import DIContainer
+from ..di.container import ServiceContainer
 from ..exchanges.bybit import BybitExchange
 from ...api.cache_adapter_direct import DirectCacheAdapter
 
@@ -37,7 +37,7 @@ class ResilientVirtuosoIntegration:
     and integrate them into the system architecture.
     """
     
-    def __init__(self, container: DIContainer):
+    def __init__(self, container: ServiceContainer):
         self.container = container
         self.resilience_manager: Optional[ResilienceManager] = None
         self._resilient_exchanges: Dict[str, Any] = {}
@@ -279,7 +279,7 @@ async def example_integration_with_existing_system():
     # This would be called from your main application initialization
     
     # Get existing DI container (from your main application)
-    container = DIContainer()  # This would be your existing container
+    container = ServiceContainer()  # This would be your existing container
     
     # Create resilience integration
     integration = ResilientVirtuosoIntegration(container)
@@ -357,7 +357,7 @@ async def example_integration_with_existing_system():
         await integration.shutdown()
 
 
-def integrate_with_main_application(container: DIContainer, app_config: Dict[str, Any]) -> ResilientVirtuosoIntegration:
+def integrate_with_main_application(container: ServiceContainer, app_config: Dict[str, Any]) -> ResilientVirtuosoIntegration:
     """
     Integration function to be called from main application startup.
     

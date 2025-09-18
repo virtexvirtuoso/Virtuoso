@@ -3,7 +3,7 @@
 import asyncio
 from typing import Dict, Any, Optional
 import logging
-from src.core.resilience.circuit_breaker import get_circuit_breaker, CircuitOpenError
+from src.core.resilience.circuit_breaker import get_circuit_breaker, CircuitBreakerError
 from src.core.resilience.fallback_provider import get_fallback_provider
 
 logger = logging.getLogger(__name__)
@@ -63,7 +63,7 @@ class ResilientExchangeWrapper:
             
             return data
             
-        except CircuitOpenError:
+        except CircuitBreakerError:
             logger.warning(f"Circuit open for ticker {symbol}, using fallback")
             return await self.fallback_provider.get_ticker_fallback(symbol, exchange)
         except Exception as e:
@@ -90,7 +90,7 @@ class ResilientExchangeWrapper:
             
             return data
             
-        except CircuitOpenError:
+        except CircuitBreakerError:
             logger.warning("Circuit open for market overview, using fallback")
             return await self.fallback_provider.get_market_overview_fallback()
         except Exception as e:

@@ -2221,3 +2221,60 @@ class MarketDataManager:
                 "status": "error",
                 "error": str(e)
             }
+
+    async def fetch_ohlcv(self, symbol: str, timeframe: str = '5m', limit: int = 100) -> Optional[pd.DataFrame]:
+        """Fetch OHLCV data for a symbol.
+
+        Args:
+            symbol: Trading pair symbol (e.g., 'BTC/USDT:USDT')
+            timeframe: Timeframe for candles ('1m', '5m', '15m', '30m', '1h', '4h', '1d')
+            limit: Number of candles to fetch
+
+        Returns:
+            DataFrame with OHLCV data or None if fetch fails
+        """
+        try:
+            self.logger.info(f"Fetching OHLCV data for {symbol} - {timeframe} - {limit} candles")
+
+            # Check cache first
+            cache_key = f"{symbol}_{timeframe}"
+            if cache_key in self._ohlcv_cache:
+                cached_data = self._ohlcv_cache[cache_key]
+                if isinstance(cached_data, dict) and 'data' in cached_data:
+                    df = cached_data['data']
+                    if isinstance(df, pd.DataFrame) and not df.empty:
+                        # Return last 'limit' candles from cache
+                        self.logger.info(f"Returning {min(limit, len(df))} candles from cache for {symbol}")
+                        return df.tail(limit)
+
+            # If not in cache, fetch from exchange
+            exchange = await self.exchange_manager.get_exchange()
+            if not exchange:
+                self.logger.error("Exchange not available for OHLCV fetch")
+                return None
+
+            # Fetch OHLCV data
+            ohlcv_data = await exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
+
+            if not ohlcv_data:
+                self.logger.warning(f"No OHLCV data returned for {symbol}")
+                return None
+
+            # Convert to DataFrame
+            df = pd.DataFrame(ohlcv_data, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+
+            # Convert timestamp to datetime
+            df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+
+            # Cache the data
+            self._ohlcv_cache[cache_key] = {
+                'data': df,
+                'timestamp': datetime.now()
+            }
+
+            self.logger.info(f"Successfully fetched {len(df)} candles for {symbol}")
+            return df
+
+        except Exception as e:
+            self.logger.error(f"Error fetching OHLCV data for {symbol}: {str(e)}")
+            return None

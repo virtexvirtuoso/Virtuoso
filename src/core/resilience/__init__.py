@@ -58,6 +58,7 @@ from .exchange_adapter import (
     create_bybit_resilient_config,
     create_binance_resilient_config
 )
+from .exchange_wrapper import wrap_exchange_manager
 from .cache_adapter import (
     ResilientCacheAdapter,
     CacheResilienceConfig,
@@ -125,6 +126,7 @@ __all__ = [
     'create_resilient_exchange',
     'create_bybit_resilient_config',
     'create_binance_resilient_config',
+    'wrap_exchange_manager',
     
     # Cache Adapter
     'ResilientCacheAdapter',

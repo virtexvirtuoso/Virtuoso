@@ -655,9 +655,10 @@ async def initialize_components():
     
     logger.info("✅ MarketMonitor initialized via DI container")
     
-    # Connect monitor to signal_generator for direct OHLCV cache access
+    # Connect monitor and confluence_analyzer to signal_generator for direct OHLCV cache access
     signal_generator.monitor = market_monitor
-    logger.info("✅ Connected monitor to signal_generator for direct OHLCV cache access")
+    signal_generator.confluence_analyzer = confluence_analyzer
+    logger.info("✅ Connected monitor and confluence_analyzer to signal_generator for direct OHLCV cache access")
 
     # Register configured SignalGenerator in DI container as singleton
     # This ensures that when monitor.py requests SignalGenerator from DI,
@@ -669,8 +670,9 @@ async def initialize_components():
             if existing_instance and existing_instance != signal_generator:
                 # Connect the existing DI instance with our configured connections
                 existing_instance.monitor = market_monitor
+                existing_instance.confluence_analyzer = confluence_analyzer
                 existing_instance.market_data_manager = market_data_manager
-                logger.info("✅ Connected existing DI SignalGenerator instance with monitor and market_data_manager")
+                logger.info("✅ Connected existing DI SignalGenerator instance with monitor, confluence_analyzer, and market_data_manager")
         except Exception as inner_e:
             logger.debug(f"No existing DI SignalGenerator instance found: {inner_e}")
         

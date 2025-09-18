@@ -26,11 +26,18 @@ from .error_handler import SimpleErrorHandler
 from src.core.error.models import ErrorContext, ErrorSeverity
 from src.data.repositories import MarketRepository
 
+# Import cache functionality with safe fallback
+try:
+    from src.core.cache.unified_cache import get_cache
+except ImportError:
+    # Fallback if cache module is not available
+    def get_cache():
+        """Fallback cache implementation"""
+        return None
+
 class DataProcessor:
     """Centralized data processing."""
     
-    def __init__(self):
-        self.logger = logging.getLogger(__name__)
 
     async def process(self, market_data: Dict[str, Any]) -> Dict[str, Any]:
         """Process all market data components."""

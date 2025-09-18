@@ -500,8 +500,8 @@ bitcoin_beta_analysis:
       periods: 336
 confluence:
   thresholds:
-    buy: 55
-    neutral_buffer: 0
+    buy: 70
+    neutral_buffer: 5  # Buffer zone to prevent signal whipsaws in choppy markets (0 = disabled, >0 = creates neutral zones)
     sell: 35
   weights:
     components:
@@ -654,6 +654,7 @@ exchanges:
       api_secret: ${BYBIT_API_SECRET}
     enabled: true
     primary: true
+    use_ccxt: true
     rate_limits:
       requests_per_minute: 1200
       requests_per_second: 20
@@ -796,7 +797,7 @@ market:
     excluded_symbols: []
     market_types:
     - linear
-    max_symbols: 5
+    max_symbols: 15
     min_turnover: 1000000
     min_volume: 50000
     static_symbols:

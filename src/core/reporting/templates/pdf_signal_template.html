@@ -178,6 +178,39 @@
     {% endif %}
 </div>
 
+<!-- Market Interpretations Section -->
+<div class="container mb-5">
+    <h2 class="text-center mb-4">Market Interpretations</h2>
+    {% if analysis_components %}
+    <div class="card">
+        <div class="card-body">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th style="width: 30%;">Component</th>
+                        <th style="width: 15%;">Score</th>
+                        <th style="width: 55%;">Interpretation</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for comp_name, comp_data in analysis_components.items() %}
+                    <tr>
+                        <td><strong>{{ comp_name.replace('_', ' ').title() }}</strong></td>
+                        <td>
+                            <span style="color: {% if comp_data.score >= 70 %}green{% elif comp_data.score >= 40 %}orange{% else %}red{% endif %};">
+                                {{ comp_data.score }}%
+                            </span>
+                        </td>
+                        <td>{{ comp_data.interpretation }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
 <!-- Confluence Analysis Section -->
 <div class="container mb-5">
     <h2 class="text-center mb-4">Confluence Analysis</h2>

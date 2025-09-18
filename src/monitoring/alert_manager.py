@@ -1649,10 +1649,10 @@ class AlertManager:
             return None
 
     async def send_confluence_alert(
-        self, 
-        symbol: str, 
-        confluence_score: float, 
-        components: Dict[str, float], 
+        self,
+        symbol: str,
+        confluence_score: float,
+        components: Dict[str, float],
         results: Dict[str, Any],
         weights: Optional[Dict[str, float]] = None,
         reliability: float = 0.0,
@@ -1667,7 +1667,8 @@ class AlertManager:
         top_weighted_subcomponents: Optional[List[Dict[str, Any]]] = None,  # Top weighted sub-components
         signal_type: Optional[str] = None,  # Add explicit signal_type parameter
         pdf_path: Optional[str] = None,  # Path to PDF report
-        chart_path: Optional[str] = None  # Path to chart image
+        chart_path: Optional[str] = None,  # Path to chart image
+        ohlcv_data: Optional[Any] = None  # OHLCV data for chart generation
     ) -> None:
         """Send formatted confluence alert to Discord with components breakdown.
         
@@ -3588,7 +3589,9 @@ class AlertManager:
                 transaction_id=signal_data.get('transaction_id'),
                 signal_id=signal_data.get('signal_id'),
                 # Pass the explicit signal_type we determined
-                signal_type=signal_type
+                signal_type=signal_type,
+                # Pass OHLCV data for chart generation
+                ohlcv_data=signal_data.get('ohlcv_data')
             )
             self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}][ALERT:{alert_id}] Successfully sent confluence alert for {symbol}")
             
@@ -4892,3 +4895,85 @@ class AlertManager:
                     formatted_orders.append(f"• ASK {size:.2f} @ ${price:.2f} = ${usd_value:,.0f}")
         
         return "\n".join(formatted_orders) if formatted_orders else "• No large orders detected"
+
+
+
+# Trade Parameters Patch for AlertManager
+# This patch adds stop loss and take profit calculation to all signals
+
+def add_trade_parameters_to_signal(self, signal_data):
+    """Add trade parameters (stop_loss, take_profit, position_size) to signal data."""
+
+    # Skip if trade_params already exist
+    if 'trade_params' in signal_data and signal_data['trade_params']:
+        return signal_data
+
+    try:
+        # Get signal details
+        signal_type = signal_data.get('signal_type', 'NEUTRAL')
+        price = signal_data.get('price') or signal_data.get('entry_price', 0)
+        confluence_score = signal_data.get('confluence_score', 50)
+        reliability = signal_data.get('reliability', 0.5)
+
+        # Skip neutral signals
+        if signal_type == 'NEUTRAL' or not price:
+            return signal_data
+
+        # Calculate trade parameters
+        stop_loss_pct = 3.5  # 3.5% stop loss
+        take_profit_pct = 7.0  # 7% take profit (2:1 R/R)
+
+        if signal_type == 'BUY':
+            stop_loss = price * (1 - stop_loss_pct / 100)
+            take_profit = price * (1 + take_profit_pct / 100)
+        elif signal_type == 'SELL':
+            stop_loss = price * (1 + stop_loss_pct / 100)
+            take_profit = price * (1 - take_profit_pct / 100)
+        else:
+            return signal_data
+
+        # Calculate position size (simplified)
+        account_balance = 10000  # Default account balance
+        risk_amount = account_balance * 0.02  # 2% risk
+        stop_distance = abs(price - stop_loss)
+        position_size = risk_amount / stop_distance if stop_distance > 0 else 0
+
+        # Add trade parameters
+        signal_data['trade_params'] = {
+            'entry_price': price,
+            'stop_loss': round(stop_loss, 8),
+            'take_profit': round(take_profit, 8),
+            'position_size': round(position_size, 8),
+            'risk_reward_ratio': 2.0,
+            'risk_percentage': 2.0,
+            'confidence': min(confluence_score / 100, 1.0) if confluence_score else 0.5
+        }
+
+        # Also add at root level for backward compatibility
+        signal_data['stop_loss'] = round(stop_loss, 8)
+        signal_data['take_profit'] = round(take_profit, 8)
+
+        self.logger.debug(f"Added trade parameters to {signal_type} signal for {signal_data.get('symbol')}")
+
+    except Exception as e:
+        self.logger.error(f"Error adding trade parameters: {str(e)}")
+
+    return signal_data
+
+# Monkey-patch the method
+AlertManager.add_trade_parameters_to_signal = add_trade_parameters_to_signal
+
+# Wrap the original send_signal_alert method
+original_send_signal_alert = AlertManager.send_signal_alert
+
+async def patched_send_signal_alert(self, signal_data):
+    """Patched send_signal_alert that adds trade parameters."""
+    # Add trade parameters before sending
+    signal_data = self.add_trade_parameters_to_signal(signal_data)
+    # Call original method
+    return await original_send_signal_alert(signal_data)
+
+# Apply the patch
+AlertManager.send_signal_alert = patched_send_signal_alert
+
+print("✅ Trade parameters patch applied to AlertManager")
