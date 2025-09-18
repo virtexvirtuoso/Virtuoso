@@ -16,6 +16,25 @@ logger = logging.getLogger(__name__)
 
 
 class MarketDataManager:
+    async def fetch_real_open_interest(self, symbol: str) -> Dict:
+        """Fetch real open interest data from exchange"""
+        try:
+            exchange_client = self.exchange_manager.get_primary_exchange()
+            if hasattr(exchange_client, 'fetch_open_interest'):
+                oi_data = await exchange_client.fetch_open_interest(symbol)
+                return {
+                    'current': oi_data.get('openInterest', 0),
+                    'previous': oi_data.get('prevOpenInterest', 0),
+                    'timestamp': oi_data.get('timestamp', int(time.time() * 1000)),
+                    'history': [],  # Exchange API typically doesn't provide history
+                    'is_synthetic': False
+                }
+        except Exception as e:
+            self.logger.warning(f"Failed to fetch real OI for {symbol}: {e}")
+        
+        # Return None if real data unavailable
+        return None
+
     """
     Market Data Manager that implements a hybrid WebSocket + REST API architecture
     for efficient market data fetching while respecting rate limits.
@@ -649,74 +668,16 @@ class MarketDataManager:
                                             
                                     self.logger.debug(f"Using OHLCV data for synthetic OI: price={price}, volume={volume_24h}")
                             
-                            # Generate synthetic OI if we have price and volume
+                            # Don't generate synthetic OI - return None if no real data
                             if price > 0 and volume_24h > 0:
-                                # Use a formula to create realistic OI:
-                                # For futures, OI is often 5-15x daily volume
-                                # Use a conservative multiplier (5x)
-                                synthetic_oi = price * volume_24h * 5.0
-                                
-                                # Create reasonable previous value
-                                previous_oi = synthetic_oi * 0.98
-                                
-                                self.logger.warning(f"FALLBACK: Creating fully synthetic OI data with value {synthetic_oi:.2f}")
-                                
-                                # Create synthetic history
-                                now = int(time.time() * 1000)
-                                history_list = []
-                                
-                                # Create 10 synthetic entries with realistic variations
-                                base_value = synthetic_oi
-                                trend_factor = 0.005  # 0.5% change per step
-                                
-                                for i in range(10):
-                                    # Create timestamps 30 minutes apart going backwards
-                                    fake_timestamp = now - (i * 30 * 60 * 1000)
-                                    
-                                    # Create values with small random variations around a slight trend
-                                    # Adds realism with some randomness but maintains a slight trend
-                                    random_factor = 1.0 + (random.random() - 0.5) * 0.02  # ±1% random variation
-                                    trend_value = base_value * (1.0 - (i * trend_factor))
-                                    fake_value = trend_value * random_factor
-                                    
-                                    # Create the history entry
-                                    entry = {
-                                        'timestamp': fake_timestamp,
-                                        'value': fake_value,
-                                        'symbol': symbol
-                                    }
-                                    history_list.append(entry)
-                                
-                                # Sort by timestamp (newest first)
-                                history_list.sort(key=lambda x: x['timestamp'], reverse=True)
-                                
-                                # Create structured open interest data
-                                market_data['open_interest'] = {
-                                    'current': synthetic_oi,
-                                    'previous': previous_oi,
-                                    'timestamp': now,
-                                    'history': history_list,
-                                    'is_synthetic': True  # Flag to indicate this is synthetic data
-                                }
-                                
-                                # ADDED: Create direct reference to history for easier access
-                                market_data['open_interest_history'] = history_list
-                                
-                                # ADDED: Diagnostic logging for fully synthetic open interest data
-                                self.logger.debug(f"Market data manager: Prepared fully synthetic OI data with {len(history_list)} entries")
-                                if len(history_list) > 0:
-                                    self.logger.debug(f"First fully synthetic history entry: {history_list[0]}")
-                                
-                                # Initialize in cache
-                                if symbol not in self.data_cache:
-                                    self.data_cache[symbol] = {}
-                                
-                                self.data_cache[symbol]['open_interest'] = market_data['open_interest']
-                                # ADDED: Also store direct reference in cache
-                                self.data_cache[symbol]['open_interest_history'] = history_list
-                                self.logger.info(f"Created fully synthetic OI history for {symbol} with {len(history_list)} entries")
+                                self.logger.warning(f"No real OI data available for {symbol}")
+                                market_data['open_interest'] = None
+                                market_data['open_interest_history'] = []
                             else:
                                 self.logger.error(f"FALLBACK FAILED: Could not create synthetic OI - missing price/volume data for {symbol}")
+                                market_data['open_interest'] = None
+                                market_data['open_interest_history'] = []
+                                
             except Exception as e:
                 self.logger.error(f"Error processing open interest data: {str(e)}")
                 self.logger.debug(traceback.format_exc())
@@ -1621,8 +1582,8 @@ class MarketDataManager:
             
         # First ensure we have refreshed data
         try:
-            # Add 'kline' to the components to refresh
-            await self.refresh_components(symbol, components=['ticker', 'orderbook', 'trades', 'kline'])
+            # Add 'kline' and sentiment-related components to refresh
+            await self.refresh_components(symbol, components=['ticker', 'orderbook', 'trades', 'kline', 'long_short_ratio'])
         except Exception as e:
             self.logger.error(f"Error refreshing market data for {symbol}: {str(e)}")
             
@@ -1718,10 +1679,24 @@ class MarketDataManager:
         # If long_short_ratio is present at the top level, add it to sentiment
         if 'long_short_ratio' in self.data_cache[symbol]:
             sentiment['long_short_ratio'] = self.data_cache[symbol]['long_short_ratio']
-        # Add other possible sentiment fields as needed (e.g., funding_rate, liquidations)
-        for key in ['funding_rate', 'liquidations', 'market_mood', 'risk']:
+        
+        # Extract funding_rate from ticker if available
+        if 'ticker' in self.data_cache[symbol] and self.data_cache[symbol]['ticker']:
+            ticker = self.data_cache[symbol]['ticker']
+            if 'funding_rate' in ticker:
+                sentiment['funding_rate'] = {
+                    'rate': float(ticker.get('funding_rate', 0)),
+                    'next_funding_time': int(ticker.get('next_funding_time', time.time() * 1000 + 28800000))
+                }
+                self.logger.debug(f"Extracted funding_rate from ticker: {sentiment['funding_rate']}")
+        
+        # Add other possible sentiment fields as needed (e.g., liquidations, market_mood, risk)
+        # FIX: Also check for 'risk_limits' since that's how it's actually stored
+        for key in ['liquidations', 'market_mood', 'risk', 'risk_limits']:
             if key in self.data_cache[symbol]:
-                sentiment[key] = self.data_cache[symbol][key]
+                # Map risk_limits to risk in sentiment for consistency
+                sentiment_key = 'risk' if key == 'risk_limits' else key
+                sentiment[sentiment_key] = self.data_cache[symbol][key]
         
         # Special handling for open_interest to ensure correct structure
         if 'open_interest' in self.data_cache[symbol]:
@@ -1783,10 +1758,16 @@ class MarketDataManager:
                         'change_24h': 0.0,
                         'timestamp': int(time.time() * 1000)
                     }
-        # Log the sentiment dict for debugging
+        # Enhanced logging for debugging sentiment data population
         self.logger.info(f"get_market_data: Sentiment dict keys: {list(sentiment.keys())}")
         if 'long_short_ratio' in sentiment:
             self.logger.info(f"get_market_data: long_short_ratio: {sentiment['long_short_ratio']}")
+        if 'risk' in sentiment:
+            self.logger.info(f"get_market_data: risk data: {sentiment['risk']}")
+        if 'liquidations' in sentiment:
+            self.logger.info(f"get_market_data: liquidations count: {len(sentiment.get('liquidations', []))}")
+        if 'funding_rate' in sentiment:
+            self.logger.info(f"get_market_data: funding_rate: {sentiment['funding_rate']}")
         market_data['sentiment'] = sentiment
         
         # Ensure OHLCV data is fetched if missing
@@ -2004,31 +1985,10 @@ class MarketDataManager:
                     self.logger.warning(f"FALLBACK: No OI history available for {symbol} during WebSocket update")
                     self.logger.info(f"Creating synthetic OI history for {symbol} starting with value {value}")
                     
-                    # Create 5 synthetic entries with slightly decreasing values and older timestamps
-                    base_timestamp = timestamp
-                    for i in range(5):
-                        # Create timestamps 5 minutes apart going backwards
-                        fake_timestamp = base_timestamp - ((i + 1) * 300000)  # 5 minutes (300,000ms) intervals
-                        
-                        # Create slightly decreasing values (approx 0.5% decrease per entry)
-                        # This creates a more natural-looking history
-                        fake_value = value * (0.995 - (i * 0.005))
-                        
-                        # Create the history entry
-                        entry = {
-                            'timestamp': fake_timestamp,
-                            'value': fake_value,
-                            'symbol': symbol
-                        }
-                        
-                        # Add to history
-                        history.append(entry)
-                    
-                    # Sort history by timestamp descending (most recent first)
-                    history.sort(key=lambda x: x['timestamp'], reverse=True)
-                    
-                    self.logger.warning(f"FALLBACK: Created {len(history)} synthetic OI history entries for {symbol}")
-                    self.logger.debug(f"Synthetic history details: {history}")
+                    # Don't create synthetic entries - use empty history
+                    # Real historical data should come from exchange API
+                    self.logger.debug(f"No historical OI data available for {symbol}")
+                    # Skip synthetic data creation - history remains empty
                 
                 # Add current value to history if timestamp is different from last entry
                 if not history or history[0]['timestamp'] < timestamp:
@@ -2112,7 +2072,8 @@ class MarketDataManager:
                 self.data_cache[symbol] = {}
                 
             if components is None:
-                components = ['ticker', 'orderbook', 'trades', 'kline']
+                # Include sentiment-related components by default
+                components = ['ticker', 'orderbook', 'trades', 'kline', 'long_short_ratio', 'risk_limits']
                 
             # Track new fetches
             fetched_data = {}
@@ -2170,6 +2131,25 @@ class MarketDataManager:
                                 self.logger.warning(f"No OHLCV data returned for {symbol}")
                         except Exception as e:
                             self.logger.error(f"Error fetching OHLCV data for {symbol}: {str(e)}")
+                            self.logger.debug(traceback.format_exc())
+                    
+                    elif component == 'long_short_ratio':
+                        # Fetch long/short ratio
+                        try:
+                            self.logger.info(f"Fetching long_short_ratio for {symbol}")
+                            exchange = await self.exchange_manager.get_primary_exchange()
+                            if exchange and hasattr(exchange, 'fetch_long_short_ratio'):
+                                lsr_data = await exchange.fetch_long_short_ratio(symbol)
+                                if lsr_data:
+                                    self.data_cache[symbol]['long_short_ratio'] = lsr_data
+                                    fetched_data['long_short_ratio'] = lsr_data
+                                    self.logger.info(f"Successfully fetched long_short_ratio for {symbol}: {lsr_data}")
+                                else:
+                                    self.logger.warning(f"No long_short_ratio data returned for {symbol}")
+                            else:
+                                self.logger.warning(f"Exchange doesn't support fetch_long_short_ratio")
+                        except Exception as e:
+                            self.logger.error(f"Error fetching long_short_ratio for {symbol}: {str(e)}")
                             self.logger.debug(traceback.format_exc())
                         
                 except Exception as e:

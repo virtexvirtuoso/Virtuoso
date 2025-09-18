@@ -1255,7 +1255,18 @@
         // Market breadth update function
         function updateMarketBreadth(upCount, downCount) {
             const total = upCount + downCount;
-            if (total === 0) return;
+            
+            // Handle case when no data available
+            if (total === 0) {
+                document.getElementById('marketLabel').textContent = 'No Data';
+                document.getElementById('upCount').textContent = '0';
+                document.getElementById('downCount').textContent = '0';
+                document.getElementById('bullSection').style.width = '50%';
+                document.getElementById('bullSection').textContent = '50%';
+                document.getElementById('bearSection').style.width = '50%';
+                document.getElementById('bearSection').textContent = '50%';
+                return;
+            }
             
             const bullPercent = Math.round((upCount / total) * 100);
             const bearPercent = 100 - bullPercent;
@@ -1940,13 +1951,22 @@
             }
             
             // Market Breadth - Updated with visual display
+            // Check for market_breadth or use gainers/losers from market_overview
             if (data.market_breadth) {
                 const breadth = data.market_breadth;
-                // Use the new updateMarketBreadth function
                 updateMarketBreadth(
                     breadth.up || breadth.up_count || 0,
                     breadth.down || breadth.down_count || 0
                 );
+            } else if (data.gainers !== undefined || data.losers !== undefined) {
+                // Use gainers/losers counts from market_overview
+                updateMarketBreadth(
+                    data.gainers || 0,
+                    data.losers || 0
+                );
+            } else {
+                // Default fallback
+                updateMarketBreadth(0, 0);
             }
             
             // Update regime colors

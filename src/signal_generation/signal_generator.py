@@ -87,15 +87,17 @@ logger = logging.getLogger(__name__)
 class SignalGenerator:
     """Generates trading signals based on analysis results."""
     
-    def __init__(self, config: Dict[str, Any], alert_manager: Optional['AlertManager'] = None):
+    def __init__(self, config: Dict[str, Any], alert_manager: Optional['AlertManager'] = None, market_data_manager=None):
         """Initialize signal generator with configuration settings.
         
         Args:
             config: Configuration dictionary
             alert_manager: Optional alert manager for notifications
+            market_data_manager: Optional market data manager for OHLCV access
         """
         self.config = config
         self.alert_manager = alert_manager
+        self.market_data_manager = market_data_manager
         self.logger = logging.getLogger(__name__ + ".SignalGenerator")
 
         # Custom signal handler for external integrations
@@ -231,6 +233,17 @@ class SignalGenerator:
             # Import here to avoid circular dependency
             from src.data_processing.data_processor import DataProcessor
             self._processor = DataProcessor(self.config)
+            
+            # Pass market_data_manager if available
+            if hasattr(self, 'market_data_manager') and self.market_data_manager:
+                self._processor.market_data_manager = self.market_data_manager
+                self.logger.debug("✅ DEBUG: Passed market_data_manager to DataProcessor")
+            
+            # Pass monitor if available for direct cache access
+            if hasattr(self, 'monitor') and self.monitor:
+                self._processor.monitor = self.monitor
+                self.logger.debug("✅ DEBUG: Passed monitor to DataProcessor")
+                
             await self._processor.initialize()
         return self._processor
 
@@ -2028,3 +2041,625 @@ class SignalGenerator:
                 self.logger.warning(f"No alert manager available for {alert_type}: {message}")
         except Exception as e:
             self.logger.error(f"Error sending alert: {str(e)}")
+
+
+    # ====== RESTORED METHODS FROM BACKUP ======
+
+    async def process_signal(self, signal_data: Dict[str, Any]) -> None:
+        """
+        Process a trading signal and send alerts.
+        
+        This method standardizes and validates the signal data, performs post-processing,
+        and dispatches the signal to the appropriate handlers (alerts, database, etc).
+        
+        Args:
+            signal_data: Dictionary containing the signal data
+        """
+        try:
+            # Generate unique ID for this signal
+            signal_id = str(uuid4())[:8]
+            transaction_id = signal_data.get('transaction_id', 'unknown')
+            
+            self.logger.info(f"[TXN:{transaction_id}] Starting signal processing with signal_id={signal_id}")
+            
+            # Debug log received signal data keys
+            self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] Received signal data keys: {list(signal_data.keys())}")
+            
+            # Standardize field names
+            self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] Standardizing signal data")
+            standardized_data = self._standardize_signal_data(signal_data)
+            
+            # Validate signal data with Pydantic model
+            self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] Validating with Pydantic model")
+            try:
+                validated_data = SignalData(**standardized_data)
+                self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}] Signal data validated for {validated_data.symbol}")
+            except ValidationError as e:
+                self.logger.error(f"[TXN:{transaction_id}][SIG:{signal_id}] Validation error: {str(e)}")
+                raise
+            
+            # Extract key data for processing
+            symbol = validated_data.symbol
+            score = validated_data.score
+            price = validated_data.price
+            components = validated_data.components
+            reliability = validated_data.reliability  # Use the validated reliability
+            
+            # Extract results data from signal_data
+            results = signal_data.get('results', {})
+            
+            # If results is empty but we have a 'debug' field with raw component results, use that
+            if not results and 'debug' in signal_data and 'results' in signal_data['debug']:
+                results = signal_data['debug']['results']
+                self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] Using results from debug.results field")
+                
+            # Determine signal direction
+            direction = signal_data.get('direction', 'NEUTRAL').upper()
+            if score >= self.thresholds['buy']:
+                direction = "BUY"
+            elif score <= self.thresholds['sell']:
+                direction = "SELL"
+            else:
+                # Default to direction from signal data or leave as NEUTRAL
+                pass
+                
+            self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}] Processing {direction} signal for {symbol} with score {score}")
+            standardized_data['signal'] = direction  # Update signal with final direction
+
+            # Get components 
+            self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] Components: {list(components.keys())}")
+            self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] Results: {list(results.keys() if isinstance(results, dict) else [])}")
+            
+            # Generate PDF report if possible
+            self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}] Generating PDF report for {symbol}")
+            pdf_path = None
+            json_path = None
+            
+            try:
+                # Try to get OHLCV data for the symbol
+                ohlcv_data = await self._fetch_ohlcv_data(symbol)
+                
+                if ohlcv_data is not None:
+                    # Generate report with OHLCV data
+                    try:
+                        # Get the coroutine result
+                        result = await self.report_manager.generate_and_attach_report(
+                            signal_data={
+                                'symbol': symbol,
+                                'score': score,
+                                'signal_type': direction,
+                                'price': price,
+                                'components': components,
+                                'results': results,
+                                'reliability': reliability
+                            },
+                            ohlcv_data=ohlcv_data
+                        )
+                        
+                        # Check if we need to await again (double-awaiting pattern)
+                        if asyncio.iscoroutine(result):
+                            result = await result
+                        
+                        # Initialize default values
+                        success = False
+                        pdf_path = None
+                        json_path = None
+                        
+                        # Safely extract tuple values if available
+                        if isinstance(result, tuple):
+                            if len(result) >= 1:
+                                success = result[0]
+                            if len(result) >= 2:
+                                pdf_path = result[1]
+                            if len(result) >= 3:
+                                json_path = result[2]
+                        
+                        # Check if PDF was generated successfully
+                        if success and pdf_path and os.path.exists(pdf_path):
+                            self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}] PDF report generated at {pdf_path}")
+                        else:
+                            self.logger.warning(f"[TXN:{transaction_id}][SIG:{signal_id}] PDF report generation failed or not found")
+                            pdf_path = None
+                    except Exception as e:
+                        self.logger.error(f"[TXN:{transaction_id}][SIG:{signal_id}] Error generating PDF report: {str(e)}")
+                        self.logger.debug(traceback.format_exc())
+                        success = False
+                        pdf_path = None
+                        json_path = None
+                else:
+                    self.logger.warning(f"[TXN:{transaction_id}][SIG:{signal_id}] No OHLCV data found for {symbol}")
+                    
+                    # Generate report without OHLCV data
+                    try:
+                        # Get the coroutine result
+                        result = await self.report_manager.generate_and_attach_report(
+                            signal_data={
+                                'symbol': symbol,
+                                'score': score,
+                                'signal_type': direction,
+                                'price': price,
+                                'components': components,
+                                'results': results,
+                                'reliability': reliability
+                            }
+                        )
+                        
+                        # Check if we need to await again (double-awaiting pattern)
+                        if asyncio.iscoroutine(result):
+                            result = await result
+                        
+                        # Initialize default values
+                        success = False
+                        pdf_path = None
+                        json_path = None
+                        
+                        # Safely extract tuple values if available
+                        if isinstance(result, tuple):
+                            if len(result) >= 1:
+                                success = result[0]
+                            if len(result) >= 2:
+                                pdf_path = result[1]
+                            if len(result) >= 3:
+                                json_path = result[2]
+                        
+                        # Check if PDF was generated successfully
+                        if success and pdf_path and os.path.exists(pdf_path):
+                            self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}] PDF report generated at {pdf_path}")
+                        else:
+                            self.logger.warning(f"[TXN:{transaction_id}][SIG:{signal_id}] PDF report generation failed or not found")
+                            pdf_path = None
+                    except Exception as e:
+                        self.logger.error(f"[TXN:{transaction_id}][SIG:{signal_id}] Error generating PDF report: {str(e)}")
+                        self.logger.debug(traceback.format_exc())
+                        success = False
+                        pdf_path = None
+                        json_path = None
+            except Exception as e:
+                self.logger.error(f"[TXN:{transaction_id}][SIG:{signal_id}] Error generating PDF report: {str(e)}")
+                self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] {traceback.format_exc()}")
+
+            # Send signal alert
+            self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}] Sending confluence alert for {symbol}")
+            
+            # Serialize data for alert sending to avoid JSON serialization issues
+            try:
+                # Prepare data for transmission
+                self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] Serializing data for alert")
+                serialized_components = serialize_for_json(components)
+                serialized_results = serialize_for_json(results)
+                
+                # Generate enhanced formatted data for the signal
+                self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] Generating enhanced formatted data")
+                enhanced_data = self._generate_enhanced_formatted_data(
+                    symbol, 
+                    score, 
+                    serialized_components, 
+                    serialized_results, 
+                    reliability,
+                    self.thresholds['buy'],
+                    self.thresholds['sell']
+                )
+                
+                # Store the enhanced data in standardized_data
+                if enhanced_data:
+                    standardized_data.update(enhanced_data)
+                    self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] Enhanced data added to signal")
+                
+                # Add transaction ID for tracing
+                alert_data = {
+                    'symbol': symbol,
+                    'confluence_score': score,
+                    'components': serialized_components,
+                    'results': serialized_results,
+                    'reliability': reliability if reliability <= 1 else reliability / 100.0,  # Normalize to 0-1 range
+                    'buy_threshold': self.thresholds['buy'],
+                    'sell_threshold': self.thresholds['sell'],
+                    'price': price,
+                    'transaction_id': transaction_id,
+                    'signal_id': signal_id
+                }
+                
+                # Add enhanced formatted data to alert if available
+                if enhanced_data:
+                    alert_data.update(enhanced_data)
+                
+                # COMMENTED OUT: This was causing duplicate reliability calculation
+                # The reliability is already correctly calculated in confluence analysis
+                # Keeping this code for potential future use as a "confidence score" based on component variance
+                # confidence_score = self._calculate_confidence_score(signal_data)
+                
+                # Add PDF path if available for attachment
+                files = None
+                if pdf_path and os.path.exists(pdf_path):
+                    files = [{
+                        'path': pdf_path,
+                        'filename': os.path.basename(pdf_path),
+                        'description': f"Report for {symbol}"
+                    }]
+                    self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] Adding PDF attachment: {pdf_path}")
+                
+                self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] Calling alert_manager.send_confluence_alert")
+                
+                # Add diagnostic logging to check alert data before sending
+                self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] ALERT DATA CHECK - Preparing to send alert:")
+                self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] - Confluence score: {score}")
+                self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] - Influential components count: {len(enhanced_data.get('influential_components', []))}")
+                self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] - Market interpretations count: {len(enhanced_data.get('market_interpretations', []))}")
+                self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] - Top weighted subcomponents count: {len(enhanced_data.get('top_weighted_subcomponents', []))}")
+                self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] - Actionable insights count: {len(enhanced_data.get('actionable_insights', []))}")
+                
+                # Check market interpretations format
+                market_interpretations = enhanced_data.get('market_interpretations', [])
+                if market_interpretations:
+                    self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] - Sample market interpretation: {market_interpretations[0]}")
+                
+                # Check if we have a chart_path from the signal_data
+                chart_path = signal_data.get('chart_path')
+                
+                # Pass top_weighted_subcomponents to the alert manager
+                await self.alert_manager.send_confluence_alert(
+                    symbol=symbol,
+                    confluence_score=score,  # This is validated_data.score
+                    components=serialized_components,
+                    results=serialized_results,
+                    reliability=reliability,  # Use reliability directly without normalization
+                    buy_threshold=self.thresholds['buy'],
+                    sell_threshold=self.thresholds['sell'],
+                    price=price,
+                    transaction_id=transaction_id,
+                    signal_id=signal_id,
+                    influential_components=enhanced_data.get('influential_components'),
+                    market_interpretations=enhanced_data.get('market_interpretations'),
+                    actionable_insights=enhanced_data.get('actionable_insights'),
+                    top_weighted_subcomponents=enhanced_data.get('top_weighted_subcomponents'),
+                    pdf_path=pdf_path,  # Pass the PDF path
+                    chart_path=chart_path  # Pass the chart path if available
+                )
+                
+                # If we have files to attach but couldn't attach them directly through send_confluence_alert,
+                # send them separately through the send_discord_webhook_message method
+                if files and hasattr(self.alert_manager, 'send_discord_webhook_message'):
+                    webhook_message = {
+                        'content': f"📑 PDF report for {symbol} {direction} signal",
+                        'username': "Virtuoso Reports"
+                    }
+                    await self.alert_manager.send_discord_webhook_message(webhook_message, files=files)
+                    self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}] PDF report sent as separate message")
+                
+                self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}] Alert sent successfully for {symbol}")
+            except Exception as e:
+                self.logger.error(f"[TXN:{transaction_id}][SIG:{signal_id}] Error sending confluence alert: {str(e)}")
+                self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] {traceback.format_exc()}")
+                
+                # Try direct send_alert method as fallback
+                try:
+                    if hasattr(self.alert_manager, 'send_alert'):
+                        self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}] Using fallback alert method for {symbol}")
+                        fallback_message = f"{direction} SIGNAL: {symbol} with score {score:.2f}/100"
+                        
+                        # Add transaction info to details
+                        standardized_data['transaction_id'] = transaction_id
+                        standardized_data['signal_id'] = signal_id
+                        
+                        await self.alert_manager.send_alert(
+                            level="INFO",
+                            message=fallback_message,
+                            details=standardized_data
+                        )
+                        self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}] Fallback alert sent for {symbol}")
+                except Exception as e2:
+                    self.logger.error(f"[TXN:{transaction_id}][SIG:{signal_id}] Error in fallback alert: {str(e2)}")
+                    self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] Fallback error traceback: {traceback.format_exc()}")
+            
+            # Send to registered callback if available
+            if self._on_signal_callback:
+                try:
+                    self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}] Notifying external callback")
+                    await self._on_signal_callback(standardized_data)
+                except Exception as e:
+                    self.logger.error(f"[TXN:{transaction_id}][SIG:{signal_id}] Error in signal callback: {str(e)}")
+                    self.logger.debug(traceback.format_exc())
+        except Exception as e:
+            self.logger.error(f"[TXN:{transaction_id}][SIG:{signal_id}] Error processing signal: {str(e)}")
+            self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] {traceback.format_exc()}")
+
+
+    def _standardize_signal_data(self, signal_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Standardize signal data field names to ensure consistency.
+        Normalizes various field naming conventions from different sources.
+        
+        Args:
+            signal_data: Raw signal data with potentially inconsistent field names
+            
+        Returns:
+            Dict with standardized field names
+        """
+        standardized = signal_data.copy()
+        
+        # Score field standardization
+        if 'confluence_score' in standardized and 'score' not in standardized:
+            # This is the preferred case - confluence_score is present, copy to score for backward compatibility
+            standardized['score'] = standardized['confluence_score']
+        elif 'score' in standardized and 'confluence_score' not in standardized:
+            # Old format - copy to confluence_score
+            standardized['confluence_score'] = standardized['score']
+        elif 'score' not in standardized and 'confluence_score' not in standardized:
+            # Default score if both missing
+            standardized['confluence_score'] = 50.0
+            standardized['score'] = standardized['confluence_score']  # Copy from confluence_score
+        
+        # Always ensure both score fields are set to the same value
+        if 'score' in standardized and 'confluence_score' in standardized:
+            # Use confluence_score as the canonical value (changed from using 'score')
+            standardized['score'] = standardized['confluence_score']
+        
+        # Technical/momentum score standardization
+        if 'technical_score' in standardized and 'momentum_score' not in standardized:
+            standardized['momentum_score'] = standardized['technical_score']
+        elif 'momentum_score' in standardized and 'technical_score' not in standardized:
+            standardized['technical_score'] = standardized['momentum_score']
+            
+        # Position/price structure score standardization
+        if 'position_score' in standardized and 'price_structure_score' not in standardized:
+            standardized['price_structure_score'] = standardized['position_score']
+        elif 'price_structure_score' in standardized and 'position_score' not in standardized:
+            standardized['position_score'] = standardized['price_structure_score']
+            
+        # Direction/signal standardization
+        if 'direction' in standardized:
+            direction = standardized['direction'].upper()
+            if direction in ['BUY', 'SELL', 'NEUTRAL'] and 'signal' not in standardized:
+                standardized['signal'] = direction
+        
+        # Ensure components dictionary exists
+        if 'components' not in standardized:
+            standardized['components'] = {}
+            # Try to build components from individual scores
+            component_keys = [
+                ('technical_score', 'technical'), 
+                ('momentum_score', 'technical'),
+                ('volume_score', 'volume'),
+                ('orderflow_score', 'orderflow'),
+                ('orderbook_score', 'orderbook'),
+                ('sentiment_score', 'sentiment'),
+                ('price_structure_score', 'price_structure'),
+                ('position_score', 'price_structure')
+            ]
+            
+            for source_key, target_key in component_keys:
+                if source_key in standardized and standardized.get(source_key) is not None:
+                    standardized['components'][target_key] = standardized[source_key]
+        
+        # FIX: Convert market_interpretations from List[Dict] to List[str] for Pydantic validation
+        if 'market_interpretations' in standardized:
+            interpretations = standardized['market_interpretations']
+            if interpretations and isinstance(interpretations, list):
+                fixed_interpretations = []
+                for item in interpretations:
+                    if isinstance(item, dict):
+                        # Extract string from dict format: {'component': 'technical', 'interpretation': 'Strong signal'}
+                        if 'interpretation' in item:
+                            fixed_interpretations.append(item['interpretation'])
+                        elif 'text' in item:
+                            fixed_interpretations.append(item['text'])
+                        else:
+                            # Fallback: convert dict to string
+                            fixed_interpretations.append(str(item.get('component', 'Unknown')) + ': ' + str(item))
+                    elif isinstance(item, str):
+                        # Already a string, keep as is
+                        fixed_interpretations.append(item)
+                    else:
+                        # Convert any other type to string
+                        fixed_interpretations.append(str(item))
+                standardized['market_interpretations'] = fixed_interpretations
+        
+        
+        return standardized
+
+
+    def _resolve_price(self, signal_data: Dict[str, Any], signal_id: str) -> float:
+        """
+        Resolve price using the centralized utility function.
+        
+        Args:
+            signal_data: Signal data dictionary
+            signal_id: Logging identifier for tracing
+            
+        Returns:
+            Resolved price value or None if not available
+        """
+        symbol = signal_data.get('symbol', 'UNKNOWN')
+        price = resolve_price(signal_data, symbol)
+        
+        if price is not None:
+            self.logger.info(f"[{signal_id}] Resolved price for {symbol}: {price}")
+            return price
+        else:
+            self.logger.warning(f"[{signal_id}] Failed to resolve price for {symbol}")
+            return None
+
+
+    def _calculate_confidence_score(self, signal_data: Dict[str, Any]) -> float:
+        """Calculate confidence score based on component variance.
+        
+        NOTE: This is different from reliability. This calculates a confidence
+        score based on how much the component scores agree with each other.
+        Lower variance = higher confidence.
+        
+        Calculates confidence score (0-100) based on:
+        1. Component agreement (standard deviation of scores)
+        2. Data quality
+        3. Signal strength
+        
+        Returns:
+            float: Confidence score between 0 and 100
+        """
+        try:
+            # Get component scores
+            components = signal_data.get('components', {})
+            if not components:
+                self.logger.warning("No components found for reliability calculation")
+                return 100.0  # Default to full reliability if no components
+                
+            # Calculate standard deviation of scores
+            values = list(components.values())
+            if not values:
+                self.logger.warning("No component values found for reliability calculation")
+                return 100.0
+                
+            std_dev = np.std(values)
+            
+            # Calculate base reliability from standard deviation
+            # Lower std_dev = higher reliability
+            # Max std_dev considered is 50 (gives 0% reliability)
+            base_reliability = max(0.0, 100.0 - (std_dev * 2))
+            
+            # Get signal strength based on deviation from neutral
+            score = signal_data.get('score', 50.0)
+            deviation = abs(score - 50.0)
+            signal_strength = min(100.0, (deviation / 30.0) * 100)
+            
+            # Calculate final reliability
+            # Weight the components:
+            # - Base reliability (component agreement): 70%
+            # - Signal strength: 30%
+            final_reliability = (base_reliability * 0.7) + (signal_strength * 0.3)
+            
+            # Ensure result is in 0-100 range
+            final_reliability = max(0.0, min(100.0, final_reliability))
+            
+            self.logger.debug(f"Calculated reliability: {final_reliability:.2f}% (base: {base_reliability:.2f}%, strength: {signal_strength:.2f}%)")
+            
+            return final_reliability
+            
+        except Exception as e:
+            self.logger.error(f"Error calculating reliability: {str(e)}")
+            self.logger.debug(f"Traceback: {traceback.format_exc()}")
+            return 100.0  # Default to full reliability on error
+
+
+    async def _fetch_ohlcv_data(self, symbol: str, timeframe: str = '1h', limit: int = 50) -> Optional[pd.DataFrame]:
+        """Fetch OHLCV data for a symbol to use in PDF reports.
+        
+        Args:
+            symbol: Trading pair symbol
+            timeframe: Chart timeframe (default: 1h)
+            limit: Number of candles to fetch
+            
+        Returns:
+            DataFrame with OHLCV data or None if error
+        """
+        try:
+            self.logger.debug(f"🔍 DEBUG: Starting OHLCV fetch for {symbol} ({timeframe}, {limit} candles)")
+            
+            # Try to get monitor from confluence_analyzer
+            monitor = None
+            market_data_manager = None
+            
+            if hasattr(self, 'confluence_analyzer') and self.confluence_analyzer:
+                if hasattr(self.confluence_analyzer, 'monitor'):
+                    monitor = self.confluence_analyzer.monitor
+                    self.logger.debug(f"✅ DEBUG: Found monitor via confluence_analyzer")
+                if hasattr(self.confluence_analyzer, 'market_data_manager'):
+                    market_data_manager = self.confluence_analyzer.market_data_manager
+                    self.logger.debug(f"✅ DEBUG: Found market_data_manager via confluence_analyzer")
+            
+            # Check if monitor is available (primary cache source)
+            if monitor:
+                self.logger.debug(f"✅ DEBUG: monitor is available, checking its cache")
+                
+                # Try to get data from monitor's cache
+                if hasattr(monitor, '_ohlcv_cache') and symbol in monitor._ohlcv_cache:
+                    cached_data = monitor._ohlcv_cache[symbol]
+                    self.logger.debug(f"🎯 DEBUG: Found cached OHLCV data in monitor for {symbol}")
+                    
+                    if 'processed' in cached_data:
+                        # Get the appropriate timeframe data
+                        timeframe_map = {
+                            '1m': 'ltf', '5m': 'ltf', '15m': 'mtf',
+                            '30m': 'mtf', '1h': 'base', '4h': 'htf', '1d': 'htf'
+                        }
+                        tf_key = timeframe_map.get(timeframe, 'base')
+                        
+                        if tf_key in cached_data['processed']:
+                            df_data = cached_data['processed'][tf_key]
+                            if isinstance(df_data, pd.DataFrame):
+                                self.logger.debug(f"✨ DEBUG: Using monitor's cached DataFrame with {len(df_data)} candles")
+                                return df_data.tail(limit) if len(df_data) > limit else df_data
+                            else:
+                                self.logger.debug(f"📈 DEBUG: Converting monitor's cached data to DataFrame")
+                                df = pd.DataFrame(df_data)
+                                return df.tail(limit) if len(df) > limit else df
+                else:
+                    self.logger.debug(f"❌ DEBUG: No OHLCV data in monitor cache for {symbol}")
+            
+            # Check if market_data_manager is available (secondary cache source)
+            if market_data_manager:
+                self.logger.debug(f"✅ DEBUG: market_data_manager is available")
+                
+                # Try to get data directly from cache
+                if hasattr(market_data_manager, '_ohlcv_cache'):
+                    cache_keys = list(market_data_manager._ohlcv_cache.keys())
+                    self.logger.debug(f"📊 DEBUG: Checking _ohlcv_cache with {len(cache_keys)} keys")
+                    self.logger.debug(f"📊 DEBUG: Sample keys: {cache_keys[:5] if cache_keys else 'empty'}")
+                    
+                    # Map timeframe to cache keys
+                    timeframe_map = {
+                        '1m': 'ltf', '5m': 'ltf', '15m': 'mtf',
+                        '30m': 'mtf', '1h': 'base', '4h': 'htf', '1d': 'htf'
+                    }
+                    cache_key = timeframe_map.get(timeframe, 'base')
+                    
+                    # Try different key formats (including just symbol for monitor-style cache)
+                    for key_format in [symbol, f"{symbol}_{cache_key}", f"{symbol}_ohlcv_{cache_key}", f"{symbol}_base"]:
+                        if key_format in market_data_manager._ohlcv_cache:
+                            cached_entry = market_data_manager._ohlcv_cache[key_format]
+                            
+                            # Handle different cache formats
+                            if isinstance(cached_entry, dict):
+                                if 'processed' in cached_entry and cache_key in cached_entry['processed']:
+                                    # Monitor-style cache format
+                                    cached_data = cached_entry['processed'][cache_key]
+                                elif 'data' in cached_entry:
+                                    cached_data = cached_entry['data']
+                                else:
+                                    continue
+                            else:
+                                cached_data = cached_entry
+                            
+                            if cached_data is not None:
+                                self.logger.debug(f"🎯 DEBUG: Found cached OHLCV data with key {key_format}")
+                                if isinstance(cached_data, pd.DataFrame):
+                                    self.logger.debug(f"✨ DEBUG: Using cached DataFrame with {len(cached_data)} candles")
+                                    return cached_data.tail(limit) if len(cached_data) > limit else cached_data
+                                else:
+                                    self.logger.debug(f"📈 DEBUG: Converting cached data to DataFrame")
+                                    df = pd.DataFrame(cached_data)
+                                    return df.tail(limit) if len(df) > limit else df
+            else:
+                self.logger.warning(f"⚠️ DEBUG: Neither monitor nor market_data_manager could be found")
+            
+            # Fallback to processor
+            self.logger.debug(f"🔄 DEBUG: Falling back to processor.fetch_ohlcv")
+            processor = await self.processor
+            
+            # Fetch OHLCV data
+            ohlcv_data = await processor.fetch_ohlcv(
+                symbol=symbol,
+                timeframe=timeframe,
+                limit=limit
+            )
+            
+            if ohlcv_data is None or len(ohlcv_data) == 0:
+                self.logger.warning(f"❌ DEBUG: No OHLCV data found for {symbol} from processor")
+                return None
+                
+            self.logger.debug(f"✅ DEBUG: Retrieved {len(ohlcv_data)} OHLCV candles for {symbol} from processor")
+            return ohlcv_data
+            
+        except Exception as e:
+            self.logger.error(f"Error fetching OHLCV data for {symbol}: {str(e)}")
+            self.logger.debug(traceback.format_exc())
+            return None
+

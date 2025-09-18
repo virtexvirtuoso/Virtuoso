@@ -500,7 +500,7 @@ bitcoin_beta_analysis:
       periods: 336
 confluence:
   thresholds:
-    buy: 71
+    buy: 55
     neutral_buffer: 0
     sell: 35
   weights:
@@ -796,7 +796,7 @@ market:
     excluded_symbols: []
     market_types:
     - linear
-    max_symbols: 15
+    max_symbols: 5
     min_turnover: 1000000
     min_volume: 50000
     static_symbols:

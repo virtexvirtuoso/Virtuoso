@@ -681,7 +681,7 @@ class DashboardIntegrationService:
             volume = get_ticker_field(ticker, 'volume', 0)
             change_24h = self._calculate_24h_change(market_data)
 
-            score = 50.0  # Neutral base
+            score = 50.0  # Base score
 
             # Add volume factor
             if volume > 1000000:  # High volume

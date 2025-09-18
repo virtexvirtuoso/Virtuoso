@@ -1303,7 +1303,85 @@ class DataProcessor:
             DataFrame with OHLCV data or None if error
         """
         try:
-            self.logger.debug(f"Fetching OHLCV data for {symbol} ({timeframe}, {limit} candles)")
+            self.logger.debug(f"🔍 DEBUG: DataProcessor.fetch_ohlcv called for {symbol} ({timeframe}, {limit} candles)")
+            
+            # Map timeframe to cache keys
+            timeframe_map = {
+                '1m': 'ltf',   # Low timeframe
+                '5m': 'ltf',
+                '15m': 'mtf',  # Medium timeframe
+                '30m': 'mtf',
+                '1h': 'base',  # Base timeframe
+                '4h': 'htf',   # High timeframe
+                '1d': 'htf'
+            }
+            cache_key = timeframe_map.get(timeframe, 'base')
+            
+            # First, try to get data from monitor if available (primary cache source)
+            monitor = getattr(self, 'monitor', None)
+            if monitor:
+                self.logger.debug(f"📊 DEBUG: monitor available, checking its cache")
+                try:
+                    if hasattr(monitor, '_ohlcv_cache') and symbol in monitor._ohlcv_cache:
+                        cached_entry = monitor._ohlcv_cache[symbol]
+                        self.logger.debug(f"🎯 DEBUG: Found symbol in monitor cache")
+                        
+                        if 'processed' in cached_entry and cache_key in cached_entry['processed']:
+                            cached_data = cached_entry['processed'][cache_key]
+                            self.logger.debug(f"✅ DEBUG: Found {cache_key} data in monitor cache for {symbol}")
+                            
+                            # Ensure it's a DataFrame
+                            if not isinstance(cached_data, pd.DataFrame):
+                                cached_data = pd.DataFrame(cached_data)
+                            
+                            # Return the requested limit
+                            if len(cached_data) > limit:
+                                return cached_data.tail(limit)
+                            return cached_data
+                except Exception as e:
+                    self.logger.debug(f"Could not get cached data from monitor: {e}")
+            
+            # Then try market_data_manager if available (secondary cache source)
+            market_data_manager = getattr(self, 'market_data_manager', None)
+            self.logger.debug(f"📊 DEBUG: market_data_manager available: {market_data_manager is not None}")
+            if market_data_manager:
+                # Try to get cached OHLCV data from market_data_manager
+                try:
+                    # Try different cache key formats (including monitor-style)
+                    for key_format in [symbol, f"{symbol}_{cache_key}", f"{symbol}_ohlcv_{cache_key}"]:
+                        if hasattr(market_data_manager, '_ohlcv_cache'):
+                            cache_keys = list(market_data_manager._ohlcv_cache.keys())
+                            self.logger.debug(f"🔑 DEBUG: Cache has {len(cache_keys)} keys, checking for {key_format}")
+                            if key_format in market_data_manager._ohlcv_cache:
+                                cached_entry = market_data_manager._ohlcv_cache[key_format]
+                                
+                                # Handle different cache formats
+                                cached_data = None
+                                if isinstance(cached_entry, dict):
+                                    if 'processed' in cached_entry and cache_key in cached_entry['processed']:
+                                        # Monitor-style cache format
+                                        cached_data = cached_entry['processed'][cache_key]
+                                    elif 'data' in cached_entry:
+                                        cached_data = cached_entry['data']
+                                else:
+                                    cached_data = cached_entry
+                                
+                                if cached_data is not None:
+                                    self.logger.debug(f"✅ DEBUG: Found cached OHLCV data for {symbol} with key {key_format}")
+                                
+                                    # Ensure it's a DataFrame
+                                    if not isinstance(cached_data, pd.DataFrame):
+                                        cached_data = pd.DataFrame(cached_data)
+                                    
+                                    # Return the requested limit
+                                    if len(cached_data) > limit:
+                                        return cached_data.tail(limit)
+                                    return cached_data
+                except Exception as e:
+                    self.logger.debug(f"Could not get cached data from market_data_manager: {e}")
+            
+            # If no cached data or market_data_manager not available, fetch fresh data
+            self.logger.debug(f"No cached OHLCV data found, fetching from exchange")
             
             # Get the configuration
             config = self.config

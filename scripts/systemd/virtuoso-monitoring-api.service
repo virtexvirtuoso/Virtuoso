@@ -1,0 +1,50 @@
+[Unit]
+Description=Virtuoso Monitoring API
+Documentation=https://github.com/virtuoso/ccxt-trading
+After=network-online.target virtuoso-trading.service
+Requires=virtuoso-trading.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=linuxuser
+Group=linuxuser
+WorkingDirectory=/home/linuxuser/trading/Virtuoso_ccxt
+
+# Environment variables
+EnvironmentFile=/home/linuxuser/trading/Virtuoso_ccxt/.env
+Environment="PYTHONUNBUFFERED=1"
+Environment="PATH=/home/linuxuser/trading/Virtuoso_ccxt/venv311/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="PYTHONPATH=/home/linuxuser/trading/Virtuoso_ccxt"
+Environment="MONITORING_PORT=8001"
+
+# Startup
+ExecStart=/home/linuxuser/trading/Virtuoso_ccxt/venv311/bin/python src/monitoring_api.py
+
+# Process management
+Restart=always
+RestartSec=5
+TimeoutStartSec=30
+TimeoutStopSec=10
+
+# Kill all processes in the control group
+KillMode=control-group
+KillSignal=SIGTERM
+SendSIGKILL=yes
+
+# Resource limits (lightweight monitoring)
+LimitNOFILE=8192
+LimitNPROC=1024
+MemoryMax=512M
+CPUWeight=40
+
+# CPU Affinity - monitoring on core 3
+CPUAffinity=3
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=virtuoso-monitoring
+
+[Install]
+WantedBy=multi-user.target

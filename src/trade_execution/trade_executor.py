@@ -228,15 +228,35 @@ class TradeExecutor:
         # For implementation, we'll use a placeholder that returns random scores
         # In a real implementation, this would call your market analysis system
         
-        # Placeholder implementation - replace with actual analysis
-        import random
-        
-        technical_score = random.uniform(0, 100)
-        volume_score = random.uniform(0, 100)
-        orderflow_score = random.uniform(0, 100)
-        orderbook_score = random.uniform(0, 100)
-        price_structure_score = random.uniform(0, 100)
-        sentiment_score = random.uniform(0, 100)
+        # Use real confluence analyzer for actual analysis
+        try:
+            # Import the real confluence analyzer
+            from src.core.analysis.confluence import ConfluenceAnalyzer
+            
+            # Get or create analyzer instance
+            if not hasattr(self, '_confluence_analyzer'):
+                self._confluence_analyzer = ConfluenceAnalyzer()
+            
+            # Get real market data for analysis
+            market_data = {}
+            if hasattr(self, 'market_data_manager'):
+                market_data = self.market_data_manager.get_market_data(symbol)
+            
+            # Perform real analysis
+            analysis_result = self._confluence_analyzer.analyze(market_data)
+            
+            # Extract scores from real analysis
+            technical_score = analysis_result.get('technical_score', 0) * 100
+            volume_score = analysis_result.get('volume_score', 0) * 100
+            orderflow_score = analysis_result.get('orderflow_score', 0) * 100
+            orderbook_score = analysis_result.get('orderbook_score', 0) * 100
+            price_structure_score = analysis_result.get('price_structure_score', 0) * 100
+            sentiment_score = analysis_result.get('sentiment_score', 0) * 100
+            
+        except Exception as e:
+            self.logger.error(f"Failed to get real confluence scores: {e}")
+            # Return None to indicate analysis failure rather than random data
+            return None
         
         # Weight the dimensions according to current market conditions
         # These weights would normally be dynamically adjusted
