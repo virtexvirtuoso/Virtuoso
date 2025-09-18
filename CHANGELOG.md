@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **[CACHE] Tuple Cache Unwrapping** - Fixed cache value unwrapping for technical indicators
+  - Resolved issue where cached values were returning tuples instead of expected dictionaries
+  - Improved reliability percentage formatting in dashboard displays
+  - Enhanced cache adapter to properly handle nested data structures
+
+- **[STARTUP] Component Initialization** - Improved startup reliability
+  - Added proper error handling for component initialization
+  - Enhanced logging to identify initialization issues
+  - Fixed component dependency resolution order
+
+### Added
+- **[DEBUG] Technical Indicator Debugging Tools**
+  - Created debug script for analyzing technical indicator calculations
+  - Added cache inspection utilities for troubleshooting
+  - Deployment script for indicator cache fixes
+
+### Improved
+- **[CLEANUP] Archive Management** - Systematic file organization
+  - Cleaned up archived files and backup directories
+  - Prepared codebase for roadmap implementation
+  - Reduced repository size by removing redundant backups
+
 ## [2025.09.18] - 2025-09-18
 
 ### Added
