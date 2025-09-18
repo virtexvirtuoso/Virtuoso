@@ -244,3 +244,6 @@ vultr_evidence_package/
 
 # Vultr backup files - Contains API keys and sensitive data
 vultr_backup_files/
+
+# Consolidated Archive Directory - Contains all historical backups and logs
+archived_consolidated/

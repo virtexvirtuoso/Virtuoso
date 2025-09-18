@@ -1,0 +1,77 @@
+# Virtual environments
+venv*/
+venv311/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+.pytest_cache/
+*.egg-info/
+
+# Cache and temp files
+.cache/
+cache/
+*.tmp
+*.temp
+
+# Logs
+logs/
+*.log
+startup_log.txt
+
+# Development files
+node_modules/
+*.old
+*.bak
+.DS_Store
+.vscode/
+.cursor/
+.idea/
+
+# Backups and archives
+backup*/
+backups/
+archive/
+archives/
+archived_consolidated/
+.cleanup_backups/
+
+# Generated files
+analysis_output/
+exports/
+reports/*.html
+reports/*.pdf
+reports/*.json
+test_output/
+test_reports/
+*.png
+*.jpg
+
+# Patches and temp
+*.patch
+*.diff
+
+# Personal configs
+CLAUDE.md
+CLAUDE.local.md
+.claude/
+.env.local
+.env.bak
+
+# Large data files
+*.csv
+*.parquet
+*.db
+*.sqlite
+
+# Jupyter
+.ipynb_checkpoints/
+notebooks/*.ipynb
+
+# Build artifacts
+build/
+dist/

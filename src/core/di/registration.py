@@ -203,7 +203,7 @@ def register_analysis_services(container: ServiceContainer) -> ServiceContainer:
                 config_dict = {}
             return SmartMoneyDetector(config=config_dict)
 
-        container.register_factory("smart_money_detector", create_smart_money_detector, ServiceLifetime.SINGLETON)
+        container.register_factory(SmartMoneyDetector, create_smart_money_detector, ServiceLifetime.SINGLETON)
     except Exception as e:
         logger.warning(f"SmartMoneyDetector not available for registration: {e}")
 
