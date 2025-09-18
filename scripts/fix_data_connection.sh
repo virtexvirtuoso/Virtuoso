@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: 5.223.63.4)
+#   VPS_HOST         VPS hostname (default: ${VPS_HOST})
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -60,7 +60,7 @@
 #############################################################################
 
 # Fix data connection between main service and web server
-VPS_HOST="linuxuser@5.223.63.4"
+VPS_HOST="linuxuser@${VPS_HOST}"
 
 echo "Fixing data connection for mobile dashboard..."
 
@@ -316,4 +316,4 @@ echo ""
 echo "✅ Data connection fix applied!"
 echo ""
 echo "The mobile dashboard should now receive real data."
-echo "Access it at: http://5.223.63.4:8001/dashboard/mobile"
+echo "Access it at: http://${VPS_HOST}:8001/dashboard/mobile"

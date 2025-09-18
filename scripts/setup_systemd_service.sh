@@ -36,7 +36,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: 5.223.63.4)
+#   VPS_HOST         VPS hostname (default: ${VPS_HOST})
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -134,6 +134,6 @@ echo "  sudo systemctl restart virtuoso  # Restart service"
 echo "  sudo systemctl status virtuoso   # Check status"
 echo "  sudo journalctl -u virtuoso -f   # View logs"
 echo ""
-echo "Dashboard accessible at: http://5.223.63.4:8003/dashboard"
+echo "Dashboard accessible at: http://${VPS_HOST}:8003/dashboard"
 echo ""
 echo "🎉 Your trading bot is now running 24/7!"

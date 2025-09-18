@@ -24,7 +24,7 @@
 #   -n, --no-restart  Skip service restart after deployment
 #
 # Environment Variables:
-#   VPS_HOST       Target VPS connection (default: linuxuser@5.223.63.4)
+#   VPS_HOST       Target VPS connection (default: linuxuser@${VPS_HOST})
 #   VPS_DIR        Project directory on VPS (default: /home/linuxuser/trading/Virtuoso_ccxt)
 #   LOCAL_DIR      Local project directory (default: /Users/ffv_macmini/Desktop/Virtuoso_ccxt)
 #
@@ -56,7 +56,7 @@
 #
 #==============================================================================
 
-VPS_HOST="linuxuser@5.223.63.4"
+VPS_HOST="linuxuser@${VPS_HOST}"
 VPS_DIR="/home/linuxuser/trading/Virtuoso_ccxt"
 LOCAL_DIR="/Users/ffv_macmini/Desktop/Virtuoso_ccxt"
 

@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: 5.223.63.4)
+#   VPS_HOST         VPS hostname (default: ${VPS_HOST})
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -62,7 +62,7 @@
 echo "🔧 Deploying Cache Monitor Fix Service..."
 echo "=========================================="
 
-VPS_HOST="linuxuser@5.223.63.4"
+VPS_HOST="linuxuser@${VPS_HOST}"
 PROJECT_DIR="/home/linuxuser/trading/Virtuoso_ccxt"
 
 # Copy the cache monitor fix script
@@ -117,7 +117,7 @@ ssh $VPS_HOST "sudo systemctl status market-metrics --no-pager | head -10"
 
 echo ""
 echo "3️⃣ API Response Test:"
-curl -s "http://5.223.63.4:8001/api/dashboard-cached/mobile-data" | python3 -c "
+curl -s "http://${VPS_HOST}:8001/api/dashboard-cached/mobile-data" | python3 -c "
 import json, sys
 try:
     data = json.load(sys.stdin)
@@ -175,7 +175,7 @@ except Exception as e:
 "
 
 echo ""
-echo "📱 Dashboard URL: http://5.223.63.4:8001/dashboard/mobile"
+echo "📱 Dashboard URL: http://${VPS_HOST}:8001/dashboard/mobile"
 echo ""
 echo "💡 Services Running:"
 echo "   • cache-monitor: Fixes missing fields every 5 seconds"

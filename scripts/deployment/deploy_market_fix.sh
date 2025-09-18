@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: 5.223.63.4)
+#   VPS_HOST         VPS hostname (default: ${VPS_HOST})
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -64,7 +64,7 @@ echo "=============================================="
 
 # Copy the optimized market.py file
 echo "1. Copying optimized market.py..."
-scp src/api/routes/market.py linuxuser@5.223.63.4:/home/linuxuser/trading/Virtuoso_ccxt/src/api/routes/
+scp src/api/routes/market.py linuxuser@${VPS_HOST}:/home/linuxuser/trading/Virtuoso_ccxt/src/api/routes/
 
 if [ $? -eq 0 ]; then
     echo "   ✅ File copied successfully"
@@ -76,7 +76,7 @@ fi
 # Restart the server
 echo ""
 echo "2. Restarting web server..."
-ssh linuxuser@5.223.63.4 'bash -s' << 'ENDSSH'
+ssh linuxuser@${VPS_HOST} 'bash -s' << 'ENDSSH'
 cd /home/linuxuser/trading/Virtuoso_ccxt
 
 # Kill existing process
@@ -100,7 +100,7 @@ sleep 3
 # Test with timing
 echo -n "   Response time: "
 time_start=$(date +%s.%N)
-response=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "http://5.223.63.4:8003/api/market/overview")
+response=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "http://${VPS_HOST}:8003/api/market/overview")
 time_end=$(date +%s.%N)
 duration=$(echo "$time_end - $time_start" | bc)
 
@@ -110,7 +110,7 @@ if [ "$response" = "200" ]; then
     # Test cache
     echo -n "   Cache test: "
     time_start=$(date +%s.%N)
-    response=$(curl -s -o /dev/null -w "%{http_code}" "http://5.223.63.4:8003/api/market/overview")
+    response=$(curl -s -o /dev/null -w "%{http_code}" "http://${VPS_HOST}:8003/api/market/overview")
     time_end=$(date +%s.%N)
     cache_duration=$(echo "$time_end - $time_start" | bc)
     echo "✅ ${cache_duration}s (should be faster)"
@@ -118,7 +118,7 @@ if [ "$response" = "200" ]; then
     # Show response
     echo ""
     echo "4. API Response:"
-    curl -s "http://5.223.63.4:8003/api/market/overview" | python3 -m json.tool | head -30
+    curl -s "http://${VPS_HOST}:8003/api/market/overview" | python3 -m json.tool | head -30
 else
     echo "❌ Failed (Status: $response)"
 fi

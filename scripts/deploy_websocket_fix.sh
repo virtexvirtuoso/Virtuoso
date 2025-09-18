@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: 5.223.63.4)
+#   VPS_HOST         VPS hostname (default: ${VPS_HOST})
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -63,11 +63,11 @@ echo "🔧 Deploying WebSocket timeout fix to VPS..."
 
 # Copy the fix script to VPS
 echo "📤 Copying fix script to VPS..."
-scp scripts/fix_websocket_timeout.py linuxuser@5.223.63.4:/tmp/
+scp scripts/fix_websocket_timeout.py linuxuser@${VPS_HOST}:/tmp/
 
 # Run the fix on VPS
 echo "🔨 Applying WebSocket timeout fix..."
-ssh linuxuser@5.223.63.4 << 'EOF'
+ssh linuxuser@${VPS_HOST} << 'EOF'
 cd /home/linuxuser/trading/Virtuoso_ccxt
 python3 /tmp/fix_websocket_timeout.py
 

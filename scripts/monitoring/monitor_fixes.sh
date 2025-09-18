@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: 5.223.63.4)
+#   VPS_HOST         VPS hostname (default: ${VPS_HOST})
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -60,7 +60,7 @@
 #############################################################################
 
 # Monitor the critical fixes deployed on 2025-08-04
-VPS_HOST="linuxuser@5.223.63.4"
+VPS_HOST="linuxuser@${VPS_HOST}"
 VPS_DIR="/home/linuxuser/trading/Virtuoso_ccxt"
 
 echo "🔍 Monitoring Critical Fixes on VPS"

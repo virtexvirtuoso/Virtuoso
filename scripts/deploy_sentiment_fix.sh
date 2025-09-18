@@ -1,7 +1,7 @@
 #!/bin/bash
 # Deploy sentiment data flow fixes to VPS
 
-VPS_HOST="linuxuser@5.223.63.4"
+VPS_HOST="linuxuser@${VPS_HOST}"
 VPS_DIR="/home/linuxuser/trading/Virtuoso_ccxt"
 
 echo "📊 Deploying Sentiment Data Flow Fixes to VPS..."
@@ -40,5 +40,5 @@ echo "To monitor logs in real-time:"
 echo "  ssh vps 'sudo journalctl -u virtuoso-trading.service -f'"
 echo ""
 echo "To test sentiment data manually:"
-echo "  curl http://5.223.63.4:8003/api/dashboard/data | jq '.sentiment'
+echo "  curl http://${VPS_HOST}:8003/api/dashboard/data | jq '.sentiment'
 "

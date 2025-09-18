@@ -7,7 +7,7 @@ import aiohttp
 import json
 from datetime import datetime
 
-BASE_URL = "http://5.223.63.4:8001"
+BASE_URL = "http://${VPS_HOST}:8001"
 
 async def check_data_flow():
     """Check if all data is flowing correctly"""

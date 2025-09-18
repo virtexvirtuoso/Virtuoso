@@ -11,10 +11,10 @@ def apply_connection_timeout_fix():
     print("🔧 Applying connection timeout fix to PID 103090...")
     
     # First, let's increase the connection timeout from 10s to 15s
-    cmd1 = '''ssh linuxuser@5.223.63.4 "cd /home/linuxuser/trading/Virtuoso_ccxt && sed -i 's/connect=10,/connect=15,/g' src/core/exchanges/bybit.py"'''
+    cmd1 = '''ssh linuxuser@${VPS_HOST} "cd /home/linuxuser/trading/Virtuoso_ccxt && sed -i 's/connect=10,/connect=15,/g' src/core/exchanges/bybit.py"'''
     
     # Also increase total timeout to accommodate
-    cmd2 = '''ssh linuxuser@5.223.63.4 "cd /home/linuxuser/trading/Virtuoso_ccxt && sed -i 's/total=30,/total=35,/g' src/core/exchanges/bybit.py"'''
+    cmd2 = '''ssh linuxuser@${VPS_HOST} "cd /home/linuxuser/trading/Virtuoso_ccxt && sed -i 's/total=30,/total=35,/g' src/core/exchanges/bybit.py"'''
     
     print("📝 Increasing connection timeout: 10s → 15s")
     result1 = subprocess.run(cmd1, shell=True, capture_output=True, text=True)
@@ -30,7 +30,7 @@ def apply_connection_timeout_fix():
     
     # Restart service
     print("🔄 Restarting service...")
-    restart_cmd = 'ssh linuxuser@5.223.63.4 "sudo systemctl restart virtuoso.service"'
+    restart_cmd = 'ssh linuxuser@${VPS_HOST} "sudo systemctl restart virtuoso.service"'
     restart_result = subprocess.run(restart_cmd, shell=True, capture_output=True, text=True)
     
     if restart_result.returncode != 0:
@@ -44,14 +44,14 @@ def apply_connection_timeout_fix():
     time.sleep(5)
     
     # Check status
-    status_cmd = 'ssh linuxuser@5.223.63.4 "sudo systemctl is-active virtuoso.service"'
+    status_cmd = 'ssh linuxuser@${VPS_HOST} "sudo systemctl is-active virtuoso.service"'
     status_result = subprocess.run(status_cmd, shell=True, capture_output=True, text=True)
     
     if "active" in status_result.stdout:
         print("✅ Service is running")
         
         # Get new PID
-        pid_cmd = 'ssh linuxuser@5.223.63.4 "ps aux | grep \'python.*main.py\' | grep -v grep | awk \'{print $2}\'"'
+        pid_cmd = 'ssh linuxuser@${VPS_HOST} "ps aux | grep \'python.*main.py\' | grep -v grep | awk \'{print $2}\'"'
         pid_result = subprocess.run(pid_cmd, shell=True, capture_output=True, text=True)
         new_pid = pid_result.stdout.strip()
         print(f"🆔 New PID: {new_pid}")
@@ -70,7 +70,7 @@ def monitor_connection_errors(minutes=3):
     
     while time.time() - start_time < minutes * 60:
         # Check for connection timeouts in last minute
-        cmd = 'ssh linuxuser@5.223.63.4 "sudo journalctl -u virtuoso.service --since \'1 minute ago\' | grep -c \'Connection timeout\'"'
+        cmd = 'ssh linuxuser@${VPS_HOST} "sudo journalctl -u virtuoso.service --since \'1 minute ago\' | grep -c \'Connection timeout\'"'
         result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
         timeout_count = int(result.stdout.strip() or 0)
         
@@ -83,7 +83,7 @@ def monitor_connection_errors(minutes=3):
         time.sleep(60)  # Check every minute
     
     # Final summary
-    final_cmd = f'ssh linuxuser@5.223.63.4 "sudo journalctl -u virtuoso.service --since \'{minutes} minutes ago\' | grep -c \'Connection timeout\'"'
+    final_cmd = f'ssh linuxuser@${VPS_HOST} "sudo journalctl -u virtuoso.service --since \'{minutes} minutes ago\' | grep -c \'Connection timeout\'"'
     final_result = subprocess.run(final_cmd, shell=True, capture_output=True, text=True)
     final_timeouts = int(final_result.stdout.strip() or 0)
     

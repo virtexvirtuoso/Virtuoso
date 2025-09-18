@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: 5.223.63.4)
+#   VPS_HOST         VPS hostname (default: ${VPS_HOST})
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -66,7 +66,7 @@ echo "=== Deploying Cache Push Fix to VPS ==="
 echo "This fix enables ContinuousAnalysisManager to push data to the unified cache"
 echo ""
 
-VPS_HOST="linuxuser@5.223.63.4"
+VPS_HOST="linuxuser@${VPS_HOST}"
 VPS_PATH="/home/linuxuser/trading/Virtuoso_ccxt"
 
 # Step 1: Copy the updated main.py
@@ -116,4 +116,4 @@ echo "2. Aggregate the results"
 echo "3. Push to memcached keys that dashboards read"
 echo ""
 echo "Check your mobile dashboard - it should now show market data!"
-echo "Dashboard URL: http://5.223.63.4:8080/dashboard/mobile"
+echo "Dashboard URL: http://${VPS_HOST}:8080/dashboard/mobile"

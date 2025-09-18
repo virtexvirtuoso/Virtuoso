@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: 5.223.63.4)
+#   VPS_HOST         VPS hostname (default: ${VPS_HOST})
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -60,11 +60,11 @@
 #############################################################################
 
 # Deploy chart branding update to VPS
-echo "🚀 Deploying chart branding update to VPS (5.223.63.4)..."
+echo "🚀 Deploying chart branding update to VPS (${VPS_HOST})..."
 
 # VPS details
 VPS_USER="linuxuser"
-VPS_HOST="5.223.63.4"
+VPS_HOST="${VPS_HOST}"
 VPS_PATH="/home/linuxuser/trading/Virtuoso_ccxt"
 
 # Files to update

@@ -7,7 +7,7 @@
 echo "🚀 Deploying OHLCV cache connection fix to VPS..."
 
 # VPS connection details
-VPS_HOST="linuxuser@5.223.63.4"
+VPS_HOST="linuxuser@${VPS_HOST}"
 VPS_DIR="/home/linuxuser/trading/Virtuoso_ccxt"
 
 # Colors for output

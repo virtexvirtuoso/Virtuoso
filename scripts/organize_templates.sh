@@ -93,7 +93,7 @@ test_route() {
     local route=$1
     local name=$2
     echo -n "Testing $name ($route): "
-    if curl -s -o /dev/null -w "%{http_code}" "http://5.223.63.4:8002$route" | grep -q "200"; then
+    if curl -s -o /dev/null -w "%{http_code}" "http://${VPS_HOST}:8002$route" | grep -q "200"; then
         echo "✅ OK"
     else
         echo "❌ Failed"

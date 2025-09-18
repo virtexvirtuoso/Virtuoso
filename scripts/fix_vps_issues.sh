@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: 5.223.63.4)
+#   VPS_HOST         VPS hostname (default: ${VPS_HOST})
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -64,7 +64,7 @@ echo "FIXING VPS ISSUES"
 echo "======================================"
 echo ""
 
-VPS="linuxuser@5.223.63.4"
+VPS="linuxuser@${VPS_HOST}"
 VPS_PATH="/home/linuxuser/trading/Virtuoso_ccxt"
 
 echo "1. Fixing Port 8003 Issue - Ensuring FastAPI starts properly"
@@ -230,7 +230,7 @@ echo "----------------------------------------"
 # Test API endpoint
 echo "   Testing API on port 8003..."
 sleep 2
-HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 http://5.223.63.4:8003/api/system/health)
+HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 http://${VPS_HOST}:8003/api/system/health)
 if [ "$HTTP_CODE" = "200" ]; then
     echo "   ✓ API responding on port 8003!"
 else

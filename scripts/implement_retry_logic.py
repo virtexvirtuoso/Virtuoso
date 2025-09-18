@@ -160,7 +160,7 @@ def apply_retry_logic_to_vps():
     print("="*50)
     
     # Create backup first
-    backup_cmd = 'ssh linuxuser@5.223.63.4 "cd /home/linuxuser/trading/Virtuoso_ccxt && cp src/core/exchanges/bybit.py src/core/exchanges/bybit.py.backup_retry_$(date +%Y%m%d_%H%M%S)"'
+    backup_cmd = 'ssh linuxuser@${VPS_HOST} "cd /home/linuxuser/trading/Virtuoso_ccxt && cp src/core/exchanges/bybit.py src/core/exchanges/bybit.py.backup_retry_$(date +%Y%m%d_%H%M%S)"'
     print("📦 Creating backup...")
     result = subprocess.run(backup_cmd, shell=True, capture_output=True, text=True)
     if result.returncode != 0:
@@ -172,7 +172,7 @@ def apply_retry_logic_to_vps():
     patch_file = create_retry_patch()
     
     # Copy patch script to VPS
-    copy_cmd = f'scp {patch_file} linuxuser@5.223.63.4:/tmp/patch_retry_logic.py'
+    copy_cmd = f'scp {patch_file} linuxuser@${VPS_HOST}:/tmp/patch_retry_logic.py'
     print("📤 Copying patch to VPS...")
     result = subprocess.run(copy_cmd, shell=True, capture_output=True, text=True)
     if result.returncode != 0:
@@ -180,7 +180,7 @@ def apply_retry_logic_to_vps():
         return False
     
     # Apply the patch
-    apply_cmd = 'ssh linuxuser@5.223.63.4 "cd /home/linuxuser/trading/Virtuoso_ccxt && ./venv311/bin/python /tmp/patch_retry_logic.py src/core/exchanges/bybit.py"'
+    apply_cmd = 'ssh linuxuser@${VPS_HOST} "cd /home/linuxuser/trading/Virtuoso_ccxt && ./venv311/bin/python /tmp/patch_retry_logic.py src/core/exchanges/bybit.py"'
     print("🔧 Applying retry logic patch...")
     result = subprocess.run(apply_cmd, shell=True, capture_output=True, text=True)
     if result.returncode != 0:
@@ -190,7 +190,7 @@ def apply_retry_logic_to_vps():
     print(result.stdout)
     
     # Restart service
-    restart_cmd = 'ssh linuxuser@5.223.63.4 "sudo systemctl restart virtuoso.service"'
+    restart_cmd = 'ssh linuxuser@${VPS_HOST} "sudo systemctl restart virtuoso.service"'
     print("🔄 Restarting service...")
     result = subprocess.run(restart_cmd, shell=True, capture_output=True, text=True)
     if result.returncode != 0:
@@ -203,14 +203,14 @@ def apply_retry_logic_to_vps():
     time.sleep(5)
     
     # Check status
-    status_cmd = 'ssh linuxuser@5.223.63.4 "sudo systemctl is-active virtuoso.service"'
+    status_cmd = 'ssh linuxuser@${VPS_HOST} "sudo systemctl is-active virtuoso.service"'
     result = subprocess.run(status_cmd, shell=True, capture_output=True, text=True)
     
     if "active" in result.stdout:
         print("✅ Service running with retry logic")
         
         # Get new PID
-        pid_cmd = 'ssh linuxuser@5.223.63.4 "ps aux | grep \'python.*main.py\' | grep -v grep | awk \'{print $2}\'"'
+        pid_cmd = 'ssh linuxuser@${VPS_HOST} "ps aux | grep \'python.*main.py\' | grep -v grep | awk \'{print $2}\'"'
         pid_result = subprocess.run(pid_cmd, shell=True, capture_output=True, text=True)
         new_pid = pid_result.stdout.strip()
         print(f"🆔 New PID: {new_pid}")
@@ -227,7 +227,7 @@ def monitor_retry_effectiveness(pid, duration_minutes=5):
     print(f"PID: {pid}")
     
     # Initial check
-    initial_cmd = 'ssh linuxuser@5.223.63.4 "sudo journalctl -u virtuoso.service --since \'1 minute ago\' | grep -E \'(retry|Retry|Connection timeout|Request timeout)\'"'
+    initial_cmd = 'ssh linuxuser@${VPS_HOST} "sudo journalctl -u virtuoso.service --since \'1 minute ago\' | grep -E \'(retry|Retry|Connection timeout|Request timeout)\'"'
     initial_result = subprocess.run(initial_cmd, shell=True, capture_output=True, text=True)
     
     print("\n📋 Initial retry activity:")
@@ -252,12 +252,12 @@ def monitor_retry_effectiveness(pid, duration_minutes=5):
         elapsed = int((time.time() - start_time) / 60)
         
         # Count retries
-        retry_cmd = f'ssh linuxuser@5.223.63.4 "sudo journalctl -u virtuoso.service --since \'{elapsed} minutes ago\' | grep -c -i retry"'
+        retry_cmd = f'ssh linuxuser@${VPS_HOST} "sudo journalctl -u virtuoso.service --since \'{elapsed} minutes ago\' | grep -c -i retry"'
         retry_result = subprocess.run(retry_cmd, shell=True, capture_output=True, text=True)
         retry_count = int(retry_result.stdout.strip() or 0)
         
         # Count timeouts
-        timeout_cmd = f'ssh linuxuser@5.223.63.4 "sudo journalctl -u virtuoso.service --since \'{elapsed} minutes ago\' | grep -c \'timeout\'"'
+        timeout_cmd = f'ssh linuxuser@${VPS_HOST} "sudo journalctl -u virtuoso.service --since \'{elapsed} minutes ago\' | grep -c \'timeout\'"'
         timeout_result = subprocess.run(timeout_cmd, shell=True, capture_output=True, text=True)
         timeout_count = int(timeout_result.stdout.strip() or 0)
         

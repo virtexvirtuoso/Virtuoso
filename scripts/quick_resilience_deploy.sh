@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: 5.223.63.4)
+#   VPS_HOST         VPS hostname (default: ${VPS_HOST})
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -68,7 +68,7 @@ echo "============================================================"
 echo "🚀 Quick Resilience Deployment to VPS"
 echo "============================================================"
 
-VPS="5.223.63.4"
+VPS="${VPS_HOST}"
 
 # Step 1: Package files locally
 echo -e "\n📦 Creating deployment package..."

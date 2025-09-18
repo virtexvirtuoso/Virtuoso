@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: 5.223.63.4)
+#   VPS_HOST         VPS hostname (default: ${VPS_HOST})
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -70,7 +70,7 @@ echo "🔥 Deploying Priority 1 Dashboard Performance Fixes to VPS"
 echo "=========================================================="
 
 # Configuration
-VPS_HOST="5.223.63.4"
+VPS_HOST="${VPS_HOST}"
 VPS_USER="linuxuser"
 VPS_PROJECT_PATH="/home/linuxuser/trading/Virtuoso_ccxt"
 
@@ -147,8 +147,8 @@ ssh ${VPS_USER}@${VPS_HOST} "
 
 echo -e "${GREEN}🎉 Priority 1 deployment complete!${NC}"
 echo "New optimized endpoints available:"
-echo "  http://5.223.63.4:8003/api/dashboard-stream/mobile-data-stream"  
-echo "  http://5.223.63.4:8003/api/dashboard-stream/overview-stream"
-echo "  http://5.223.63.4:8003/api/dashboard-stream/cache-performance"
+echo "  http://${VPS_HOST}:8003/api/dashboard-stream/mobile-data-stream"  
+echo "  http://${VPS_HOST}:8003/api/dashboard-stream/overview-stream"
+echo "  http://${VPS_HOST}:8003/api/dashboard-stream/cache-performance"
 
 exit 0

@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: 5.223.63.4)
+#   VPS_HOST         VPS hostname (default: ${VPS_HOST})
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -64,7 +64,7 @@ echo "=============================================="
 
 # Copy the fixed web_server.py
 echo "1. Deploying fixed web_server.py..."
-scp src/web_server.py linuxuser@5.223.63.4:/home/linuxuser/trading/Virtuoso_ccxt/src/
+scp src/web_server.py linuxuser@${VPS_HOST}:/home/linuxuser/trading/Virtuoso_ccxt/src/
 
 if [ $? -eq 0 ]; then
     echo "   ✅ File deployed successfully"
@@ -77,7 +77,7 @@ fi
 echo ""
 echo "2. Restarting server with Exchange Manager initialization..."
 
-ssh linuxuser@5.223.63.4 'bash -s' << 'ENDSSH'
+ssh linuxuser@${VPS_HOST} 'bash -s' << 'ENDSSH'
 cd /home/linuxuser/trading/Virtuoso_ccxt
 
 # Kill any existing processes
@@ -116,7 +116,7 @@ sleep 5
 
 # Test the API
 start_time=$(date +%s.%N)
-response=$(curl -s -w "\n%{http_code}" --max-time 10 "http://5.223.63.4:8003/api/market/overview")
+response=$(curl -s -w "\n%{http_code}" --max-time 10 "http://${VPS_HOST}:8003/api/market/overview")
 status_code=$(echo "$response" | tail -1)
 body=$(echo "$response" | head -n -1)
 end_time=$(date +%s.%N)
@@ -132,7 +132,7 @@ if [ "$status_code" = "200" ]; then
     echo ""
     echo "5. Testing cache (should be faster):"
     start_time=$(date +%s.%N)
-    curl -s "http://5.223.63.4:8003/api/market/overview" | python3 -m json.tool | grep -E "(cached|fetch_time)"
+    curl -s "http://${VPS_HOST}:8003/api/market/overview" | python3 -m json.tool | grep -E "(cached|fetch_time)"
     end_time=$(date +%s.%N)
     cache_duration=$(echo "$end_time - $start_time" | bc)
     echo "   Cache response time: ${cache_duration}s"

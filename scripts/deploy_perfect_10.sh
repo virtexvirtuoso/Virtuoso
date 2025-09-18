@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: 5.223.63.4)
+#   VPS_HOST         VPS hostname (default: ${VPS_HOST})
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -69,7 +69,7 @@ echo "  - Mobile confluence scores"
 echo "  - Legacy endpoint data"
 echo ""
 
-VPS_HOST="5.223.63.4"
+VPS_HOST="${VPS_HOST}"
 VPS_USER="linuxuser"
 VPS_PATH="/home/linuxuser/trading/Virtuoso_ccxt"
 

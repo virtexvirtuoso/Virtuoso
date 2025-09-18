@@ -15,7 +15,7 @@ echo ""
 
 # VPS connection details
 VPS_USER="linuxuser"
-VPS_IP="5.223.63.4"
+VPS_IP="${VPS_HOST}"
 VPS_PATH="/home/linuxuser/trading/Virtuoso_ccxt"
 
 # Files to deploy

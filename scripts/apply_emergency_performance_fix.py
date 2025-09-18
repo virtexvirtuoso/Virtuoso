@@ -369,7 +369,7 @@ def main():
     print("\n🚀 Next steps:")
     print("1. Deploy to VPS: ./scripts/deploy_emergency_fixes.sh")
     print("2. Monitor performance: ./scripts/monitor_dashboard_performance.sh")
-    print("3. Check logs: ssh linuxuser@5.223.63.4 'sudo journalctl -u virtuoso.service -f'")
+    print("3. Check logs: ssh linuxuser@${VPS_HOST} 'sudo journalctl -u virtuoso.service -f'")
 
 if __name__ == "__main__":
     main()

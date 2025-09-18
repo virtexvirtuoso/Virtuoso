@@ -12,7 +12,7 @@ def implement_simple_retry():
     print("="*50)
     
     # Create backup
-    backup_cmd = 'ssh linuxuser@5.223.63.4 "cd /home/linuxuser/trading/Virtuoso_ccxt && cp src/core/exchanges/bybit.py src/core/exchanges/bybit.py.backup_retry_$(date +%Y%m%d_%H%M%S)"'
+    backup_cmd = 'ssh linuxuser@${VPS_HOST} "cd /home/linuxuser/trading/Virtuoso_ccxt && cp src/core/exchanges/bybit.py src/core/exchanges/bybit.py.backup_retry_$(date +%Y%m%d_%H%M%S)"'
     print("📦 Creating backup...")
     result = subprocess.run(backup_cmd, shell=True, capture_output=True, text=True)
     if result.returncode != 0:
@@ -78,7 +78,7 @@ def implement_simple_retry():
         f.write(retry_code)
     
     # Copy to VPS
-    copy_cmd = 'scp /tmp/retry_method.py linuxuser@5.223.63.4:/tmp/'
+    copy_cmd = 'scp /tmp/retry_method.py linuxuser@${VPS_HOST}:/tmp/'
     print("📤 Copying retry method to VPS...")
     result = subprocess.run(copy_cmd, shell=True, capture_output=True, text=True)
     if result.returncode != 0:
@@ -86,7 +86,7 @@ def implement_simple_retry():
         return False
     
     # Insert the retry method after _make_request
-    insert_cmd = '''ssh linuxuser@5.223.63.4 "cd /home/linuxuser/trading/Virtuoso_ccxt && awk '/async def _make_request\\(/ {p=1} p && /^[[:space:]]*async def|^[[:space:]]*def/ && !/async def _make_request/ {print \\"\\n\\" ; system(\\"cat /tmp/retry_method.py\\"); p=0} 1' src/core/exchanges/bybit.py > /tmp/bybit_with_retry.py && mv /tmp/bybit_with_retry.py src/core/exchanges/bybit.py"'''
+    insert_cmd = '''ssh linuxuser@${VPS_HOST} "cd /home/linuxuser/trading/Virtuoso_ccxt && awk '/async def _make_request\\(/ {p=1} p && /^[[:space:]]*async def|^[[:space:]]*def/ && !/async def _make_request/ {print \\"\\n\\" ; system(\\"cat /tmp/retry_method.py\\"); p=0} 1' src/core/exchanges/bybit.py > /tmp/bybit_with_retry.py && mv /tmp/bybit_with_retry.py src/core/exchanges/bybit.py"'''
     
     print("🔧 Inserting retry method...")
     result = subprocess.run(insert_cmd, shell=True, capture_output=True, text=True)
@@ -96,13 +96,13 @@ def implement_simple_retry():
         print("🔄 Trying alternative approach...")
         
         # Find line number after _make_request
-        find_line_cmd = 'ssh linuxuser@5.223.63.4 "grep -n \'async def _process_response\' /home/linuxuser/trading/Virtuoso_ccxt/src/core/exchanges/bybit.py | head -1 | cut -d: -f1"'
+        find_line_cmd = 'ssh linuxuser@${VPS_HOST} "grep -n \'async def _process_response\' /home/linuxuser/trading/Virtuoso_ccxt/src/core/exchanges/bybit.py | head -1 | cut -d: -f1"'
         line_result = subprocess.run(find_line_cmd, shell=True, capture_output=True, text=True)
         
         if line_result.returncode == 0 and line_result.stdout.strip():
             line_num = int(line_result.stdout.strip())
             # Insert before _process_response
-            insert_alt_cmd = f'''ssh linuxuser@5.223.63.4 "cd /home/linuxuser/trading/Virtuoso_ccxt && sed -i '{line_num-1} r /tmp/retry_method.py' src/core/exchanges/bybit.py"'''
+            insert_alt_cmd = f'''ssh linuxuser@${VPS_HOST} "cd /home/linuxuser/trading/Virtuoso_ccxt && sed -i '{line_num-1} r /tmp/retry_method.py' src/core/exchanges/bybit.py"'''
             result = subprocess.run(insert_alt_cmd, shell=True, capture_output=True, text=True)
             if result.returncode != 0:
                 print(f"❌ Alternative approach also failed: {result.stderr}")
@@ -115,7 +115,7 @@ def implement_simple_retry():
     
     for method in methods:
         # Replace _make_request with _make_request_with_retry in each method
-        update_cmd = f'''ssh linuxuser@5.223.63.4 "cd /home/linuxuser/trading/Virtuoso_ccxt && sed -i '/{method}/,/async def\\|def/ s/await self._make_request(/await self._make_request_with_retry(/g' src/core/exchanges/bybit.py"'''
+        update_cmd = f'''ssh linuxuser@${VPS_HOST} "cd /home/linuxuser/trading/Virtuoso_ccxt && sed -i '/{method}/,/async def\\|def/ s/await self._make_request(/await self._make_request_with_retry(/g' src/core/exchanges/bybit.py"'''
         result = subprocess.run(update_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
         if result.returncode == 0:
             print(f"   ✅ Updated {method}")
@@ -123,7 +123,7 @@ def implement_simple_retry():
             print(f"   ⚠️  Could not update {method} (may not use _make_request)")
     
     # Restart service
-    restart_cmd = 'ssh linuxuser@5.223.63.4 "sudo systemctl restart virtuoso.service"'
+    restart_cmd = 'ssh linuxuser@${VPS_HOST} "sudo systemctl restart virtuoso.service"'
     print("\n🔄 Restarting service...")
     result = subprocess.run(restart_cmd, shell=True, capture_output=True, text=True)
     if result.returncode != 0:
@@ -136,14 +136,14 @@ def implement_simple_retry():
     time.sleep(5)
     
     # Check status
-    status_cmd = 'ssh linuxuser@5.223.63.4 "sudo systemctl is-active virtuoso.service"'
+    status_cmd = 'ssh linuxuser@${VPS_HOST} "sudo systemctl is-active virtuoso.service"'
     result = subprocess.run(status_cmd, shell=True, capture_output=True, text=True)
     
     if "active" in result.stdout:
         print("✅ Service running with retry logic")
         
         # Get new PID
-        pid_cmd = 'ssh linuxuser@5.223.63.4 "ps aux | grep \'python.*main.py\' | grep -v grep | awk \'{print $2}\'"'
+        pid_cmd = 'ssh linuxuser@${VPS_HOST} "ps aux | grep \'python.*main.py\' | grep -v grep | awk \'{print $2}\'"'
         pid_result = subprocess.run(pid_cmd, shell=True, capture_output=True, text=True)
         new_pid = pid_result.stdout.strip()
         print(f"🆔 New PID: {new_pid}")
@@ -153,7 +153,7 @@ def implement_simple_retry():
         print(f"❌ Service not active: {result.stdout}")
         
         # Check error logs
-        error_cmd = 'ssh linuxuser@5.223.63.4 "sudo journalctl -u virtuoso.service --since \'1 minute ago\' | grep -E \'(ERROR|error|SyntaxError)\' | head -5"'
+        error_cmd = 'ssh linuxuser@${VPS_HOST} "sudo journalctl -u virtuoso.service --since \'1 minute ago\' | grep -E \'(ERROR|error|SyntaxError)\' | head -5"'
         error_result = subprocess.run(error_cmd, shell=True, capture_output=True, text=True)
         if error_result.stdout:
             print("\n❌ Error details:")
@@ -173,11 +173,11 @@ def monitor_retry_activity(pid, duration_minutes=3):
         elapsed = int((time.time() - start_time) / 60)
         
         # Check for retry messages
-        retry_cmd = 'ssh linuxuser@5.223.63.4 "sudo journalctl -u virtuoso.service --since \'30 seconds ago\' | grep -i \'retry\\|retrying\'"'
+        retry_cmd = 'ssh linuxuser@${VPS_HOST} "sudo journalctl -u virtuoso.service --since \'30 seconds ago\' | grep -i \'retry\\|retrying\'"'
         retry_result = subprocess.run(retry_cmd, shell=True, capture_output=True, text=True)
         
         # Check for timeouts
-        timeout_cmd = 'ssh linuxuser@5.223.63.4 "sudo journalctl -u virtuoso.service --since \'30 seconds ago\' | grep -c \'timeout\'"'
+        timeout_cmd = 'ssh linuxuser@${VPS_HOST} "sudo journalctl -u virtuoso.service --since \'30 seconds ago\' | grep -c \'timeout\'"'
         timeout_result = subprocess.run(timeout_cmd, shell=True, capture_output=True, text=True)
         timeout_count = int(timeout_result.stdout.strip() or 0)
         
@@ -196,7 +196,7 @@ def monitor_retry_activity(pid, duration_minutes=3):
         time.sleep(30)  # Check every 30 seconds
     
     # Final check
-    final_cmd = 'ssh linuxuser@5.223.63.4 "sudo journalctl -u virtuoso.service --since \'3 minutes ago\' | grep -c -i retry"'
+    final_cmd = 'ssh linuxuser@${VPS_HOST} "sudo journalctl -u virtuoso.service --since \'3 minutes ago\' | grep -c -i retry"'
     final_result = subprocess.run(final_cmd, shell=True, capture_output=True, text=True)
     retry_count = int(final_result.stdout.strip() or 0)
     

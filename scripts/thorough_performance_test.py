@@ -396,7 +396,7 @@ async def test_vps_endpoints():
     print("\n🌐 Testing VPS Production Endpoints...")
     print("-" * 50)
     
-    vps_url = "http://5.223.63.4:8002"
+    vps_url = "http://${VPS_HOST}:8002"
     endpoints = ["unified", "mobile", "signals", "admin", "performance"]
     
     async with aiohttp.ClientSession() as session:

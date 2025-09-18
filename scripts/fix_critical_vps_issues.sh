@@ -5,7 +5,7 @@ echo "Timestamp: $(date)"
 echo
 
 # Make sure we're targeting the right VPS
-VPS_HOST="linuxuser@5.223.63.4"
+VPS_HOST="linuxuser@${VPS_HOST}"
 
 echo "1. Checking and restarting services:"
 ssh $VPS_HOST "
@@ -32,16 +32,16 @@ echo "2. Testing endpoints after restart:"
 sleep 10
 
 echo "Testing main dashboard..."
-curl -s -w "Main dashboard response time: %{time_total}s\n" -o /dev/null http://5.223.63.4:8003/
+curl -s -w "Main dashboard response time: %{time_total}s\n" -o /dev/null http://${VPS_HOST}:8003/
 
 echo "Testing health endpoint..."
-curl -s -w "Health endpoint response time: %{time_total}s\n" http://5.223.63.4:8003/health | tail -1
+curl -s -w "Health endpoint response time: %{time_total}s\n" http://${VPS_HOST}:8003/health | tail -1
 
 echo "Testing direct Bybit API..."
-curl -s http://5.223.63.4:8003/api/bybit-direct/top-symbols | jq -r '.status // "failed"'
+curl -s http://${VPS_HOST}:8003/api/bybit-direct/top-symbols | jq -r '.status // "failed"'
 
 echo "Testing monitoring endpoint..."
-curl -s -w "Monitoring response time: %{time_total}s\n" http://5.223.63.4:8001/api/monitoring/status | tail -1 || echo "Monitoring still not accessible"
+curl -s -w "Monitoring response time: %{time_total}s\n" http://${VPS_HOST}:8001/api/monitoring/status | tail -1 || echo "Monitoring still not accessible"
 
 echo "3. Cache connectivity test:"
 ssh $VPS_HOST "

@@ -2,8 +2,8 @@
 
 # Update all server references to new Hetzner server IP
 # Date: 2025-08-28
-# New Hetzner Server IP: 5.223.63.4
-# Old IPs to replace: 5.223.63.4 (Vultr), 174.166.193.148 (Old)
+# New Hetzner Server IP: ${VPS_HOST}
+# Old IPs to replace: ${VPS_HOST} (Vultr), 174.166.193.148 (Old)
 
 set -e
 
@@ -17,8 +17,8 @@ echo -e "${GREEN}========================================${NC}"
 echo -e "${GREEN}Updating Server References to Hetzner${NC}"
 echo -e "${GREEN}========================================${NC}"
 echo ""
-echo -e "${YELLOW}New Server IP: 5.223.63.4${NC}"
-echo -e "${YELLOW}Old IPs: 5.223.63.4, 174.166.193.148${NC}"
+echo -e "${YELLOW}New Server IP: ${VPS_HOST}${NC}"
+echo -e "${YELLOW}Old IPs: ${VPS_HOST}, 174.166.193.148${NC}"
 echo ""
 
 # Backup important files first
@@ -30,7 +30,7 @@ BACKUP_DIR="backups/server_update_$(date +%Y%m%d_%H%M%S)"
 update_ip_in_file() {
     local file="$1"
     local old_ip="$2"
-    local new_ip="5.223.63.4"
+    local new_ip="${VPS_HOST}"
     
     if grep -q "$old_ip" "$file"; then
         echo -e "${YELLOW}Updating $file${NC}"
@@ -46,7 +46,7 @@ update_ip_in_file() {
 echo -e "\n${YELLOW}Updating shell scripts...${NC}"
 for script in scripts/**/*.sh scripts/*.sh; do
     if [[ -f "$script" ]]; then
-        update_ip_in_file "$script" "5.223.63.4"
+        update_ip_in_file "$script" "${VPS_HOST}"
         update_ip_in_file "$script" "174.166.193.148"
     fi
 done
@@ -55,7 +55,7 @@ done
 echo -e "\n${YELLOW}Updating Python files...${NC}"
 for pyfile in scripts/**/*.py scripts/*.py src/**/*.py src/*.py *.py; do
     if [[ -f "$pyfile" ]]; then
-        update_ip_in_file "$pyfile" "5.223.63.4"
+        update_ip_in_file "$pyfile" "${VPS_HOST}"
         update_ip_in_file "$pyfile" "174.166.193.148"
     fi
 done
@@ -64,7 +64,7 @@ done
 echo -e "\n${YELLOW}Updating documentation files...${NC}"
 for doc in *.md docs/*.md; do
     if [[ -f "$doc" ]]; then
-        update_ip_in_file "$doc" "5.223.63.4"
+        update_ip_in_file "$doc" "${VPS_HOST}"
         update_ip_in_file "$doc" "174.166.193.148"
     fi
 done
@@ -80,11 +80,11 @@ fi
 echo -e "\n${YELLOW}Updating SSH config...${NC}"
 SSH_CONFIG="$HOME/.ssh/config"
 if [[ -f "$SSH_CONFIG" ]]; then
-    if grep -q "5.223.63.4\|174.166.193.148" "$SSH_CONFIG"; then
+    if grep -q "${VPS_HOST}\|174.166.193.148" "$SSH_CONFIG"; then
         echo -e "${YELLOW}SSH config contains old IPs - updating...${NC}"
         cp "$SSH_CONFIG" "$BACKUP_DIR/ssh_config.bak"
-        sed -i '' 's/45\.77\.40\.77/5.223.63.4/g' "$SSH_CONFIG"
-        sed -i '' 's/174\.166\.193\.148/5.223.63.4/g' "$SSH_CONFIG"
+        sed -i '' 's/45\.77\.40\.77/${VPS_HOST}/g' "$SSH_CONFIG"
+        sed -i '' 's/174\.166\.193\.148/${VPS_HOST}/g' "$SSH_CONFIG"
         echo -e "${GREEN}✓ Updated SSH config${NC}"
     fi
 fi
@@ -95,7 +95,7 @@ echo -e "${GREEN}Update Complete!${NC}"
 echo -e "${GREEN}========================================${NC}"
 echo ""
 echo -e "${YELLOW}Summary:${NC}"
-echo -e "- All scripts updated to use new IP: 5.223.63.4"
+echo -e "- All scripts updated to use new IP: ${VPS_HOST}"
 echo -e "- Backups saved in: $BACKUP_DIR"
 echo -e ""
 echo -e "${YELLOW}Next Steps:${NC}"

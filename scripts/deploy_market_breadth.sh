@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: 5.223.63.4)
+#   VPS_HOST         VPS hostname (default: ${VPS_HOST})
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -63,17 +63,17 @@ echo "🚀 Deploying market breadth updates to VPS..."
 
 # Copy updated files to VPS
 echo "📦 Copying updated files..."
-scp src/api/cache_adapter_direct.py linuxuser@5.223.63.4:/home/linuxuser/trading/Virtuoso_ccxt/src/api/
-scp src/dashboard/templates/dashboard_mobile_v1.html linuxuser@5.223.63.4:/home/linuxuser/trading/Virtuoso_ccxt/src/dashboard/templates/
-scp scripts/add_market_breadth.py linuxuser@5.223.63.4:/home/linuxuser/trading/Virtuoso_ccxt/scripts/
+scp src/api/cache_adapter_direct.py linuxuser@${VPS_HOST}:/home/linuxuser/trading/Virtuoso_ccxt/src/api/
+scp src/dashboard/templates/dashboard_mobile_v1.html linuxuser@${VPS_HOST}:/home/linuxuser/trading/Virtuoso_ccxt/src/dashboard/templates/
+scp scripts/add_market_breadth.py linuxuser@${VPS_HOST}:/home/linuxuser/trading/Virtuoso_ccxt/scripts/
 
 # Run market breadth update on VPS
 echo "📊 Running market breadth data update..."
-ssh linuxuser@5.223.63.4 "cd /home/linuxuser/trading/Virtuoso_ccxt && python scripts/add_market_breadth.py"
+ssh linuxuser@${VPS_HOST} "cd /home/linuxuser/trading/Virtuoso_ccxt && python scripts/add_market_breadth.py"
 
 # Restart web server to pick up changes
 echo "🔄 Restarting web server..."
-ssh linuxuser@5.223.63.4 "sudo systemctl restart virtuoso-web"
+ssh linuxuser@${VPS_HOST} "sudo systemctl restart virtuoso-web"
 
 # Give services time to stabilize
 sleep 3
@@ -82,12 +82,12 @@ sleep 3
 echo "✅ Testing market breadth endpoints..."
 echo ""
 echo "Testing market overview endpoint:"
-curl -s http://5.223.63.4:8080/api/market_overview | python -m json.tool | grep -A5 "market_breadth" || echo "No market breadth data"
+curl -s http://${VPS_HOST}:8080/api/market_overview | python -m json.tool | grep -A5 "market_breadth" || echo "No market breadth data"
 
 echo ""
 echo "Testing mobile data endpoint:"
-curl -s http://5.223.63.4:8080/api/mobile_data | python -m json.tool | head -20
+curl -s http://${VPS_HOST}:8080/api/mobile_data | python -m json.tool | head -20
 
 echo ""
 echo "✅ Deployment complete!"
-echo "📱 Mobile dashboard: http://5.223.63.4:8080/dashboard/mobile"
+echo "📱 Mobile dashboard: http://${VPS_HOST}:8080/dashboard/mobile"

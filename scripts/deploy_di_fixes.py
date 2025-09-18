@@ -198,13 +198,13 @@ def main():
     vps_command = " && ".join(vps_commands)
     
     print("🌐 Deploying to VPS...")
-    if not run_command(f'ssh linuxuser@5.223.63.4 "{vps_command}"', "Executing VPS deployment"):
+    if not run_command(f'ssh linuxuser@${VPS_HOST} "{vps_command}"', "Executing VPS deployment"):
         print("❌ VPS deployment failed")
         return 1
     
     # Verify deployment
     print("🔍 Verifying deployment...")
-    log_command = 'ssh linuxuser@5.223.63.4 "sudo journalctl -u virtuoso.service --since \\"2 minutes ago\\" -n 30 --no-pager"'
+    log_command = 'ssh linuxuser@${VPS_HOST} "sudo journalctl -u virtuoso.service --since \\"2 minutes ago\\" -n 30 --no-pager"'
     
     if run_command(log_command, "Checking service logs", check=False):
         print("✅ Dashboard fixes deployed successfully!")
@@ -216,18 +216,18 @@ def main():
         print("   4. ✅ Fixed cache adapter field mapping with proper fallbacks")
         print("")
         print("🧪 Test the fixes:")
-        print("   curl http://5.223.63.4:8003/api/dashboard/mobile-data")
+        print("   curl http://${VPS_HOST}:8003/api/dashboard/mobile-data")
         print("   Check for non-zero trend_strength, current_volatility, btc_dominance")
         print("   Verify up_count/down_count are not always 0")
         print("   Look for sentiment variety beyond just NEUTRAL")
         print("")
         print("📊 To monitor the service:")
-        print("   ssh linuxuser@5.223.63.4")
+        print("   ssh linuxuser@${VPS_HOST}")
         print("   sudo journalctl -u virtuoso.service -f")
         return 0
     else:
         print("⚠️ Deployment may have issues. Check logs manually:")
-        print("ssh linuxuser@5.223.63.4")
+        print("ssh linuxuser@${VPS_HOST}")
         print("sudo journalctl -u virtuoso.service -f")
         return 1
 

@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 
 # VPS connection details
-VPS_HOST = "5.223.63.4"
+VPS_HOST = "${VPS_HOST}"
 VPS_USER = "linuxuser"
 VPS_DIR = "/home/linuxuser/trading/Virtuoso_ccxt"
 
