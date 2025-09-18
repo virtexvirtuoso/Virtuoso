@@ -37,6 +37,10 @@ venv311/
 .env
 .env.bak
 *.env
+.env.vps
+.env.local
+.env.production
+.env.development
 config/.env
 config/*.env
 *.key
@@ -46,6 +50,9 @@ config/*.env
 *.secret
 *.token
 *.credentials
+*_credentials.json
+config/production.yaml
+config/production.yml
 
 # AI Assistant Instructions
 CLAUDE.md
@@ -247,3 +254,72 @@ vultr_backup_files/
 
 # Consolidated Archive Directory - Contains all historical backups and logs
 archived_consolidated/
+
+# Archive and cleanup directories
+archive/
+archives/
+.cleanup_backups/
+backup_*_*/
+backups/
+
+# BFG Repo-Cleaner reports
+.bfg-report/
+*.bfg-report-*
+
+# VPS specific files
+scripts/*vps*.sh
+scripts/deploy_*.sh
+.ssh/
+ssh_keys/
+*.ppk
+known_hosts
+
+# Deployment and sync files
+scripts/.rsync-exclude
+rsync.log
+deployment.log
+
+# Performance and monitoring data
+performance_metrics/
+monitoring_data/
+metrics/
+*.metrics
+*.benchmark
+
+# Trading data and results
+trading_data/
+trade_history/
+backtest_results/
+signals/
+alerts.db
+positions.db
+
+# Node modules (if any frontend code)
+node_modules/
+
+# System files
+*.pid
+*.seed
+*.pid.lock
+
+# Session and cache files
+sessions/
+*.session
+redis_data/
+memcached_data/
+
+# Docker
+docker-compose.override.yml
+.dockerignore
+*.dockerfile.local
+
+# Terraform (if used for infrastructure)
+*.tfstate
+*.tfstate.*
+.terraform/
+
+# Sensitive documentation
+PHASE*_PRIVATE.md
+*_PRIVATE.md
+INTERNAL_*.md
+SECRET_*.md
