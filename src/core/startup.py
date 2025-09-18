@@ -166,11 +166,11 @@ class Priority2Startup:
             
             # Set and get from cache
             await self.multi_tier_cache.set(test_key, test_value, "test")
-            retrieved = await self.multi_tier_cache.get(test_key, "test")
-            
+            retrieved, cache_layer = await self.multi_tier_cache.get(test_key, "test")
+
             # Clean up
             await self.multi_tier_cache.delete(test_key)
-            
+
             return retrieved is not None and retrieved.get("test") == True
             
         except Exception as e:
