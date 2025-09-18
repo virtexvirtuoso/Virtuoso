@@ -184,66 +184,6 @@ async def get_dashboard_overview() -> Dict[str, Any]:
         logger.error(f"Error getting dashboard overview: {e}")
         raise HTTPException(status_code=500, detail=f"Error getting dashboard overview: {str(e)}")
 
-@router.get("/data")
-async def get_dashboard_data():
-    """Main dashboard data endpoint - FIXED to use working cache adapter"""
-    try:
-        logger.info("FIXED: Using DirectCacheAdapter for dashboard data")
-        
-        # Use the working DirectCacheAdapter instead of broken direct access
-        if USE_DIRECT_CACHE:
-            # This is the working path that accesses real cache data correctly
-            return await direct_cache.get_dashboard_overview()
-        else:
-            # Fallback to integration service
-            integration = get_dashboard_integration()
-            if integration:
-                dashboard_data = await integration.get_dashboard_overview()
-                return dashboard_data
-            else:
-                # Last resort - return minimal working data structure
-                return {
-                    "status": "no_integration",
-                    "summary": {
-                        "total_symbols": 0,
-                        "total_volume": 0,
-                        "total_volume_24h": 0,
-                        "average_change": 0,
-                        "timestamp": int(time.time())
-                    },
-                    "market_regime": "unknown",
-                    "signals": [],
-                    "top_gainers": [],
-                    "top_losers": [],
-                    "momentum": {"gainers": 0, "losers": 0},
-                    "volatility": {"value": 0, "level": "normal"},
-                    "source": "fallback",
-                    "data_source": "no_data"
-                }
-        
-    except Exception as e:
-        logger.error(f"FIXED: Error getting dashboard data: {e}")
-        # Return proper error structure that won't break the frontend
-        return {
-            "status": "error",
-            "summary": {
-                "total_symbols": 0,
-                "total_volume": 0,
-                "total_volume_24h": 0,
-                "average_change": 0,
-                "timestamp": int(time.time())
-            },
-            "market_regime": "error",
-            "signals": [],
-            "top_gainers": [],
-            "top_losers": [],
-            "momentum": {"gainers": 0, "losers": 0},
-            "volatility": {"value": 0, "level": "normal"},
-            "source": "error",
-            "data_source": "error",
-            "error": str(e)
-        }
-
 @router.get(
     "/signals",
     summary="Get Trading Signals",
@@ -727,6 +667,11 @@ async def get_mobile_dashboard_data_direct(request: Request) -> Dict[str, Any]:
                 logger.error(f"Error getting top symbols: {e}")
                 response["status"] = "partial_data"
         
+        # [LSR-FIX] Log LSR data in response
+        if 'results' in confluence_data and 'sentiment' in confluence_data['results']:
+            sentiment_data = confluence_data['results']['sentiment']
+            if 'signals' in sentiment_data and 'long_short_ratio' in sentiment_data['signals']:
+                logger.info(f'[LSR-FIX] Dashboard API returning LSR: {sentiment_data["signals"]["long_short_ratio"]}')
         return response
         
     except Exception as e:
@@ -868,6 +813,11 @@ async def get_mobile_dashboard_data() -> Dict[str, Any]:
                             
                             # If we got good data from main service, return it
                             if response["confluence_scores"]:
+                                # [LSR-FIX] Log LSR data in response
+                                if 'results' in confluence_data and 'sentiment' in confluence_data['results']:
+                                    sentiment_data = confluence_data['results']['sentiment']
+                                    if 'signals' in sentiment_data and 'long_short_ratio' in sentiment_data['signals']:
+                                        logger.info(f'[LSR-FIX] Dashboard API returning LSR: {sentiment_data["signals"]["long_short_ratio"]}')
                                 return response
                                 
         except Exception as e:
@@ -935,6 +885,11 @@ async def get_mobile_dashboard_data() -> Dict[str, Any]:
             except Exception as e:
                 logger.warning(f"Error fetching market data without integration: {e}")
             
+            # [LSR-FIX] Log LSR data in response
+            if 'results' in confluence_data and 'sentiment' in confluence_data['results']:
+                sentiment_data = confluence_data['results']['sentiment']
+                if 'signals' in sentiment_data and 'long_short_ratio' in sentiment_data['signals']:
+                    logger.info(f'[LSR-FIX] Dashboard API returning LSR: {sentiment_data["signals"]["long_short_ratio"]}')
             return response
             
         # Try to get data from integration service with timeout
@@ -1061,6 +1016,11 @@ async def get_mobile_dashboard_data() -> Dict[str, Any]:
             logger.warning(f"Error extracting data from integration: {e}")
             response["status"] = "partial_data"
             
+        # [LSR-FIX] Log LSR data in response
+        if 'results' in confluence_data and 'sentiment' in confluence_data['results']:
+            sentiment_data = confluence_data['results']['sentiment']
+            if 'signals' in sentiment_data and 'long_short_ratio' in sentiment_data['signals']:
+                logger.info(f'[LSR-FIX] Dashboard API returning LSR: {sentiment_data["signals"]["long_short_ratio"]}')
         return response
         
     except Exception as e:
@@ -1893,6 +1853,11 @@ async def get_mobile_beta_dashboard() -> Dict[str, Any]:
             "status": "success"
         }
         
+        # [LSR-FIX] Log LSR data in response
+        if 'results' in confluence_data and 'sentiment' in confluence_data['results']:
+            sentiment_data = confluence_data['results']['sentiment']
+            if 'signals' in sentiment_data and 'long_short_ratio' in sentiment_data['signals']:
+                logger.info(f'[LSR-FIX] Dashboard API returning LSR: {sentiment_data["signals"]["long_short_ratio"]}')
         return response
         
     except Exception as e:

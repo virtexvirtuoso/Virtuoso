@@ -597,37 +597,37 @@ class DatabaseClient:
                 return True
 
             # Check connection with ping
-            logger.info("Checking database connection...")
+            logger.debug("Checking database connection...")
             if not self.client.ping():
                 logger.warning("Database ping failed")
                 return False
-            logger.info("Database ping successful")
+            logger.debug("Database ping successful")
 
             # Try a simple write operation
             try:
-                logger.info("Testing write operation...")
+                logger.debug("Testing write operation...")
                 test_point = Point("health_check")\
                     .tag("type", "test")\
                     .field("value", 1)\
                     .time(datetime.utcnow())
                 self.write_api.write(bucket=self.config.bucket, record=test_point)
-                logger.info("Write operation successful")
+                logger.debug("Write operation successful")
             except Exception as e:
                 logger.error(f"Write operation failed: {str(e)}")
                 return False
 
             # Try a simple query operation
             try:
-                logger.info("Testing query operation...")
+                logger.debug("Testing query operation...")
                 query = f'from(bucket:"{self.config.bucket}") |> range(start: -1m) |> limit(n:1)'
                 self.query_api.query(query=query, org=self.config.org)
-                logger.info("Query operation successful")
+                logger.debug("Query operation successful")
             except Exception as e:
                 logger.error(f"Query operation failed: {str(e)}")
                 return False
 
             # All checks passed
-            logger.info("Database health check passed")
+            logger.debug("Database health check passed")
             return True
 
         except Exception as e:

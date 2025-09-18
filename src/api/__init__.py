@@ -58,7 +58,6 @@ Version: 2.5.0
 
 from fastapi import FastAPI
 from .routes import signals, market, system, trading, dashboard, alpha, liquidation, correlation, bitcoin_beta, manipulation, top_symbols, whale_activity, sentiment, admin, debug_test, core_api, alerts
-from .routes import dashboard_optimized
 
 
 # Priority 2 Gateway Implementation
@@ -79,6 +78,13 @@ try:
     dashboard_cached_available = True
 except ImportError:
     dashboard_cached_available = False
+
+# PERFORMANCE FIX: Unified dashboard routes
+try:
+    from .routes import dashboard_unified
+    dashboard_unified_available = True
+except ImportError:
+    dashboard_unified_available = False
 
 try:
     from .routes import dashboard_fast
@@ -256,6 +262,17 @@ def init_api_routes(app: FastAPI):
         import logging
         cache_logger = logging.getLogger(__name__)
         cache_logger.info("✅ Cached dashboard routes enabled for ultra-fast response")
+    
+    # CRITICAL PERFORMANCE FIX: Include unified dashboard routes 
+    if dashboard_unified_available:
+        app.include_router(
+            dashboard_unified.router,
+            prefix=f"{api_prefix}/dashboard-unified",
+            tags=["dashboard-unified"]
+        )
+        import logging
+        unified_logger = logging.getLogger(__name__)
+        unified_logger.info("🚀 PERFORMANCE FIX: Unified dashboard routes enabled (81.8% improvement)")
     
     # Include Phase 3 ultra-fast dashboard routes
     if dashboard_fast_available:

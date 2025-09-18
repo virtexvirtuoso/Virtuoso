@@ -579,9 +579,21 @@ class BybitExchange(BaseExchange):
     async def _create_session(self) -> None:
         """Create persistent aiohttp session with connection pooling."""
         try:
-            # Close existing session if any
-            if self.session and not self.session.closed:
-                await self.session.close()
+            # Close existing session and connector if any
+            if self.session:
+                try:
+                    if not self.session.closed:
+                        await self.session.close()
+                except Exception as e:
+                    self.logger.debug(f"Error closing old session: {e}")
+                self.session = None
+            
+            if self.connector:
+                try:
+                    await self.connector.close()
+                except Exception as e:
+                    self.logger.debug(f"Error closing old connector: {e}")
+                self.connector = None
                 
             # Create TCP connector with connection pooling
             self.connector = aiohttp.TCPConnector(
@@ -613,6 +625,26 @@ class BybitExchange(BaseExchange):
             self.logger.error(f"Failed to create session: {str(e)}")
             raise
             
+
+    async def _ensure_healthy_session(self) -> bool:
+        """Ensure we have a healthy session, recreate if needed."""
+        try:
+            if not self.session or self.session.closed:
+                await self._create_session()
+                return True
+            
+            # Check if connector is still alive
+            if hasattr(self, 'connector') and self.connector and self.connector.closed:
+                self.logger.warning("Connector is closed, recreating session...")
+                self.session = None
+                await self._create_session()
+                return True
+                
+            return True
+        except Exception as e:
+            self.logger.error(f"Failed to ensure healthy session: {e}")
+            return False
+
     async def _test_rest_connection(self) -> bool:
         """Test REST connection by making a simple request."""
         try:
@@ -813,6 +845,24 @@ class BybitExchange(BaseExchange):
                 self._record_circuit_breaker_failure(endpoint)
                 return {'retCode': -1, 'retMsg': 'Request timeout'}
             except Exception as e:
+                # Handle connector closed error with retry
+                if "Connector is closed" in str(e):
+                    self.logger.warning(f"Connector closed for {endpoint}, attempting to recreate session...")
+                    try:
+                        # Force recreate session
+                        self.session = None
+                        self.connector = None
+                        await self._create_session()
+                        
+                        # Retry the request once
+                        self._request_retry_count[retry_key] = retry_count + 1
+                        self.logger.info(f"Retrying {endpoint} after session recreation...")
+                        return await self._make_request(method, endpoint, params)
+                    except Exception as retry_error:
+                        self.logger.error(f"Retry failed for {endpoint}: {str(retry_error)}")
+                        self._record_circuit_breaker_failure(endpoint)
+                        return {'retCode': -1, 'retMsg': f'Connection failed after retry: {str(retry_error)}'}
+                
                 self.logger.error(f"Error during request: {str(e)}")
                 self._record_circuit_breaker_failure(endpoint)
                 return {'retCode': -1, 'retMsg': str(e)}
@@ -4306,7 +4356,8 @@ class BybitExchange(BaseExchange):
         try:
             # Ensure symbol is properly formatted for API
             symbol_str = self._get_symbol_string(symbol)
-            self.logger.info(f"[LSR] Fetching long/short ratio for {symbol_str}")
+            self.logger.debug(f"[LSR-DEBUG] ==> Starting _fetch_long_short_ratio for {symbol}")
+            self.logger.debug(f"[LSR] Fetching long/short ratio for {symbol_str}")
             # Set up request parameters
             params = {
                 'category': 'linear',  # Always use linear category
@@ -4316,7 +4367,7 @@ class BybitExchange(BaseExchange):
             }
             # Make the API request to account-ratio endpoint
             response = await self._make_request('GET', '/v5/market/account-ratio', params)
-            self.logger.info(f"[LSR] Raw API response for {symbol_str}: {response}")
+            self.logger.debug(f"[LSR] Raw API response for {symbol_str}: {response}")
             if not response:
                 self.logger.error(f"[LSR] Failed to fetch long/short ratio: Null response")
                 # Return default structure
@@ -4326,7 +4377,7 @@ class BybitExchange(BaseExchange):
                     'short': 50.0,
                     'timestamp': int(time.time() * 1000)
                 }
-                self.logger.info(f"[LSR] Returning default LSR due to null response: {default_lsr}")
+                self.logger.debug(f"[LSR] Returning default LSR due to null response: {default_lsr}")
                 return default_lsr
             if response.get('retCode') != 0:
                 self.logger.error(f"[LSR] Failed to fetch long/short ratio: {response.get('retMsg', 'Unknown error')} (code: {response.get('retCode', 'unknown')})")
@@ -4337,7 +4388,7 @@ class BybitExchange(BaseExchange):
                     'short': 50.0,
                     'timestamp': int(time.time() * 1000)
                 }
-                self.logger.info(f"[LSR] Returning default LSR due to API error: {default_lsr}")
+                self.logger.debug(f"[LSR] Returning default LSR due to API error: {default_lsr}")
                 return default_lsr
             # Extract data from response
             ratio_data = response.get('result', {}).get('list', [])
@@ -4350,11 +4401,11 @@ class BybitExchange(BaseExchange):
                     'short': 50.0,
                     'timestamp': int(time.time() * 1000)
                 }
-                self.logger.info(f"[LSR] Returning default LSR due to empty result list: {default_lsr}")
+                self.logger.debug(f"[LSR] Returning default LSR due to empty result list: {default_lsr}")
                 return default_lsr
             # Parse the first entry
             latest = ratio_data[0]
-            self.logger.info(f"[LSR] Raw long/short ratio data from API for {symbol}: {latest}")
+            self.logger.debug(f"[LSR] Raw long/short ratio data from API for {symbol}: {latest}")
             # Build result using the correct API fields (buyRatio/sellRatio)
             try:
                 # Convert string values to float and multiply by 100 to get percentages
@@ -4372,7 +4423,7 @@ class BybitExchange(BaseExchange):
                     'short': sell_ratio,
                     'timestamp': timestamp
                 }
-                self.logger.info(f"[LSR] Returning LSR data: {result}")
+                self.logger.debug(f"[LSR] Returning LSR data: {result}")
                 return result
             except (ValueError, TypeError) as e:
                 self.logger.error(f"[LSR] Error parsing long/short ratio data: {e}, raw data: {latest}")
@@ -4383,7 +4434,7 @@ class BybitExchange(BaseExchange):
                     'short': 50.0,
                     'timestamp': int(time.time() * 1000)
                 }
-                self.logger.info(f"[LSR] Returning default LSR due to parsing error: {default_lsr}")
+                self.logger.debug(f"[LSR] Returning default LSR due to parsing error: {default_lsr}")
                 return default_lsr
         except Exception as e:
             self.logger.error(f"[LSR] Error fetching long/short ratio for {symbol}: {str(e)}")
@@ -4395,7 +4446,7 @@ class BybitExchange(BaseExchange):
                 'short': 50.0,
                 'timestamp': int(time.time() * 1000)
             }
-            self.logger.info(f"[LSR] Returning default LSR due to exception: {default_lsr}")
+            self.logger.debug(f"[LSR] Returning default LSR due to exception: {default_lsr}")
             return default_lsr
     
     async def _fetch_risk_limits(self, symbol: str) -> Dict[str, Any]:

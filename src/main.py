@@ -592,6 +592,10 @@ async def initialize_components():
     market_data_manager = MarketDataManager(config_manager.config, exchange_manager, alert_manager)
     logger.info("✅ MarketDataManager initialized")
     
+    # Connect market_data_manager to signal_generator for OHLCV data access
+    signal_generator.market_data_manager = market_data_manager
+    logger.info("✅ Connected market_data_manager to signal_generator for OHLCV data sharing")
+    
     # Initialize market reporter
     logger.info("Initializing market reporter...")
     market_reporter = MarketReporter(
@@ -651,7 +655,31 @@ async def initialize_components():
     
     logger.info("✅ MarketMonitor initialized via DI container")
     
-    # Initialize alpha opportunity detection (CENTRALIZED)
+    # Connect monitor to signal_generator for direct OHLCV cache access
+    signal_generator.monitor = market_monitor
+    logger.info("✅ Connected monitor to signal_generator for direct OHLCV cache access")
+
+    # Register configured SignalGenerator in DI container as singleton
+    # This ensures that when monitor.py requests SignalGenerator from DI,
+    # it gets the configured instance with all connections
+    try:
+        # First check if there's already a DI instance and connect it too
+        try:
+            existing_instance = await container.get_service(SignalGenerator)
+            if existing_instance and existing_instance != signal_generator:
+                # Connect the existing DI instance with our configured connections
+                existing_instance.monitor = market_monitor
+                existing_instance.market_data_manager = market_data_manager
+                logger.info("✅ Connected existing DI SignalGenerator instance with monitor and market_data_manager")
+        except Exception as inner_e:
+            logger.debug(f"No existing DI SignalGenerator instance found: {inner_e}")
+        
+        # Now register our configured instance as the singleton
+        container.register_instance(SignalGenerator, signal_generator)
+        logger.info("✅ Registered configured SignalGenerator in DI container as singleton")
+    except Exception as e:
+        logger.warning(f"Could not register SignalGenerator in DI container: {e}")
+        # This is not critical - the system will still work but might not share OHLCV cache
     alpha_integration = None
     if ALPHA_ALERTS_DISABLED:
         logger.info("🔴 ALPHA OPPORTUNITY DETECTION DISABLED BY USER REQUEST")
@@ -967,6 +995,7 @@ async def lifespan(app: FastAPI):
         
         # Start background cache updates
         asyncio.create_task(schedule_background_update())
+        asyncio.create_task(schedule_ticker_updates())
         logger.info("Background cache updates scheduled")
         
         # Store components for cache bridge access by capturing them in closure
@@ -1498,12 +1527,13 @@ class ContinuousAnalysisManager:
             )
             logger.info(f"✅ Pushed market overview to cache: {total_symbols} symbols, ${total_volume:,.0f} volume")
             
-            # Push signals summary
-            await self._memcache_client.set(
-                b'analysis:signals',
-                json.dumps(signals_count).encode(),
-                exptime=10
-            )
+            # DISABLED: Don't overwrite proper signals data
+            # This was overwriting the properly structured signals from aggregate_confluence_signals
+            # await self._memcache_client.set(
+            #     b'analysis:signals',
+            #     json.dumps(signals_count).encode(),
+            #     exptime=10
+            # )
             
             # Push market regime
             await self._memcache_client.set(
@@ -1626,13 +1656,13 @@ class ContinuousAnalysisManager:
                 exptime=30
             )
             
-            # Push default signals
-            default_signals = {'strong_buy': 0, 'buy': 0, 'neutral': 0, 'sell': 0, 'strong_sell': 0}
-            await self._memcache_client.set(
-                b'analysis:signals',
-                json.dumps(default_signals).encode(),
-                exptime=10
-            )
+            # DISABLED: Don't overwrite proper signals data
+            # default_signals = {'strong_buy': 0, 'buy': 0, 'neutral': 0, 'sell': 0, 'strong_sell': 0}
+            # await self._memcache_client.set(
+            #     b'analysis:signals',
+            #     json.dumps(default_signals).encode(),
+            #     exptime=10
+            # )
             
             # Push empty movers
             await self._memcache_client.set(
@@ -1687,6 +1717,206 @@ limiter = Limiter(key_func=get_remote_address)
 # Background task queue for heavy operations
 background_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="background_")
 
+
+async def aggregate_confluence_signals():
+    """Aggregate confluence scores into signals for dashboard"""
+    try:
+        import aiomcache
+        import json
+        
+        # Initialize memcache client
+        memcache_client = aiomcache.Client('localhost', 11211, pool_size=2)
+        
+        all_analyses = {}
+        
+        # Get list of top symbols - try multiple sources
+        symbols_list = []
+        
+        # Try to get from top_symbols_manager first
+        if 'top_symbols_manager' in globals():
+            try:
+                symbols = await globals()['top_symbols_manager'].get_top_symbols(limit=30)
+                symbols_list = [s.get('symbol') for s in symbols if s.get('symbol')]
+            except:
+                pass
+        
+        # Fallback to hardcoded list if needed
+        if not symbols_list:
+            symbols_list = [
+                'BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'XRPUSDT',
+                'ADAUSDT', 'AVAXUSDT', 'DOGEUSDT', 'DOTUSDT', 'MATICUSDT',
+                'LINKUSDT', 'UNIUSDT', 'ATOMUSDT', 'LTCUSDT', 'ETCUSDT'
+            ]
+        
+        # Try to get cached ticker data for price information
+        ticker_data = {}
+        try:
+            # First try to get from cache
+            tickers_cache = await memcache_client.get(b'market:tickers')
+            if tickers_cache:
+                tickers = json.loads(tickers_cache.decode())
+                # Convert to dict for easy lookup
+                for ticker in tickers.get('tickers', []):
+                    ticker_data[ticker['symbol']] = ticker
+                logger.debug(f"Got cached ticker data for {len(ticker_data)} symbols")
+            else:
+                # If no cache, try to fetch fresh data
+                await fetch_and_cache_tickers()
+                # Try cache again
+                tickers_cache = await memcache_client.get(b'market:tickers')
+                if tickers_cache:
+                    tickers = json.loads(tickers_cache.decode())
+                    for ticker in tickers.get('tickers', []):
+                        ticker_data[ticker['symbol']] = ticker
+                    logger.debug(f"Got fresh ticker data for {len(ticker_data)} symbols")
+        except Exception as e:
+            logger.debug(f"Could not get ticker data: {e}")
+        
+        # Get breakdown data directly from memcache for each symbol
+        for symbol in symbols_list:
+            try:
+                # Try to get cached breakdown directly
+                cache_key = f'confluence:breakdown:{symbol}'.encode()
+                breakdown_data = await memcache_client.get(cache_key)
+                
+                if breakdown_data:
+                    breakdown = json.loads(breakdown_data.decode())
+                    
+                    # Get ticker info for this symbol
+                    ticker = ticker_data.get(symbol, {})
+                    
+                    # Map breakdown structure to expected format with price data
+                    analysis = {
+                        'symbol': symbol,
+                        'confluence_score': breakdown.get('overall_score', 50),
+                        'components': breakdown.get('components', {}),
+                        'interpretations': breakdown.get('interpretations', {}),
+                        'sub_components': breakdown.get('sub_components', {}),
+                        'signal': breakdown.get('sentiment', 'NEUTRAL'),
+                        'reliability': breakdown.get('reliability', 0),
+                        'timestamp': breakdown.get('timestamp', int(time.time() * 1000)),
+                        'has_breakdown': True,
+                        # Add real price data from ticker (matching cached Bybit format)
+                        'price': ticker.get('price', ticker.get('last', 0)),
+                        'volume_24h': ticker.get('volume_24h_usd', ticker.get('volume', 0)),
+                        'price_change_percent': ticker.get('price_change_percent', ticker.get('percentage', 0)),
+                        'high_24h': ticker.get('high_24h', ticker.get('high', 0)),
+                        'low_24h': ticker.get('low_24h', ticker.get('low', 0)),
+                        'turnover_24h': ticker.get('volume_24h_usd', ticker.get('turnover', 0))
+                    }
+                    all_analyses[symbol] = analysis
+                    logger.debug(f"Got breakdown for {symbol}: components={bool(breakdown.get('components'))}, price=${analysis['price']}")
+            except Exception as e:
+                logger.debug(f"Could not get breakdown for {symbol}: {e}")
+        
+        # Convert to signals format
+        signals_list = []
+        for symbol, analysis in all_analyses.items():
+            # Ensure all required fields are present
+            signal = {
+                'symbol': analysis.get('symbol', symbol),
+                'confluence_score': analysis.get('confluence_score', 50),
+                'components': analysis.get('components', {}),
+                'interpretations': analysis.get('interpretations', {}),
+                'sub_components': analysis.get('sub_components', {}),
+                'signal': analysis.get('signal', 'NEUTRAL'),
+                'reliability': analysis.get('reliability', 0),
+                'timestamp': analysis.get('timestamp', int(time.time() * 1000)),
+                'has_breakdown': analysis.get('has_breakdown', True),
+                'price': analysis.get('price', 0),
+                'volume_24h': analysis.get('volume_24h', 0),
+                'price_change_percent': analysis.get('price_change_percent', 0),
+                'high_24h': analysis.get('high_24h', 0),
+                'low_24h': analysis.get('low_24h', 0),
+                'turnover_24h': analysis.get('turnover_24h', 0)
+            }
+            signals_list.append(signal)
+        
+        # Sort by confluence score
+        signals_list.sort(key=lambda x: x['confluence_score'], reverse=True)
+        
+        # Create signals data
+        signals_data = {
+            'signals': signals_list[:50],  # Top 50 signals
+            'count': len(signals_list),
+            'timestamp': int(time.time()),
+            'source': 'aggregated_confluence'
+        }
+        
+        # Store in cache
+        await memcache_client.set(
+            b'analysis:signals',
+            json.dumps(signals_data).encode(),
+            exptime=120  # Increased from 30 to 120 seconds
+        )
+        
+        logger.info(f"✅ Aggregated {len(signals_list)} confluence signals with components and interpretations")
+
+        # Also generate market movers from the signals
+        try:
+            if signals_list:
+                # Sort for gainers and losers
+                gainers = [s for s in signals_list if s.get('price_change_percent', 0) > 0]
+                losers = [s for s in signals_list if s.get('price_change_percent', 0) < 0]
+                
+                gainers.sort(key=lambda x: x.get('price_change_percent', 0), reverse=True)
+                losers.sort(key=lambda x: x.get('price_change_percent', 0))
+                
+                # Create movers data
+                movers = {
+                    'gainers': gainers[:20],
+                    'losers': losers[:20],
+                    'timestamp': int(time.time())
+                }
+                
+                # Store in cache
+                await memcache_client.set(
+                    b'market:movers',
+                    json.dumps(movers).encode(),
+                    exptime=120
+                )
+                logger.info(f"✅ Generated {len(gainers)} gainers and {len(losers)} losers")
+                
+                # Calculate and store market overview
+                total_volume = sum(s.get('volume_24h', 0) for s in signals_list)
+                avg_change = sum(s.get('price_change_percent', 0) for s in signals_list) / len(signals_list) if signals_list else 0
+                
+                # Determine market regime
+                if len(gainers) > len(losers) * 1.5 and avg_change > 2:
+                    market_regime = "BULLISH"
+                elif len(losers) > len(gainers) * 1.5 and avg_change < -2:
+                    market_regime = "BEARISH"
+                else:
+                    market_regime = "NEUTRAL"
+                
+                market_overview = {
+                    'total_symbols': len(signals_list),
+                    'active_signals': len([s for s in signals_list if s.get('signal') != 'NEUTRAL']),
+                    'market_regime': market_regime,
+                    'trend_strength': abs(len(gainers) - len(losers)) / len(signals_list) * 100 if signals_list else 0,
+                    'volatility': 0,  # Would need calculation
+                    'btc_dominance': 57.9,  # Would need external data
+                    'total_volume_24h': total_volume,
+                    'gainers': len(gainers),
+                    'losers': len(losers),
+                    'timestamp': int(time.time())
+                }
+                
+                await memcache_client.set(
+                    b'market:overview',
+                    json.dumps(market_overview).encode(),
+                    exptime=120
+                )
+                logger.info(f"✅ Generated market overview: {market_regime}")
+        except Exception as e:
+            logger.error(f"Error generating movers/overview: {e}")
+            
+    except Exception as e:
+        logger.error(f"Error aggregating confluence signals: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+
+
 async def update_symbols_cache():
     """Update symbols cache in background"""
     try:
@@ -1700,9 +1930,66 @@ async def update_symbols_cache():
                 "timestamp": datetime.now(timezone.utc).isoformat()
             }
             cache_timestamps["dashboard_symbols"] = time.time()
-            logger.info("Background cache update completed")
+        
+        # Always aggregate confluence signals (even if top_symbols_manager fails)
+        await aggregate_confluence_signals()
+        logger.info("Background cache update completed")
     except Exception as e:
         logger.error(f"Background cache update failed: {e}")
+
+
+async def fetch_and_cache_tickers():
+    """Fetch ticker data from Bybit and cache it"""
+    try:
+        import aiohttp
+        import aiomcache
+        import json
+        
+        url = "https://api.bybit.com/v5/market/tickers"
+        params = {"category": "linear"}
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, params=params, timeout=10) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    if data.get('retCode') == 0:
+                        tickers = data.get('result', {}).get('list', [])
+                        
+                        # Convert to dict for easy lookup
+                        ticker_dict = {}
+                        for ticker in tickers:
+                            symbol = ticker.get('symbol')
+                            if symbol:
+                                ticker_dict[symbol] = {
+                                    'symbol': symbol,
+                                    'price': float(ticker.get('lastPrice', 0)),
+                                    'volume_24h_usd': float(ticker.get('turnover24h', 0)),
+                                    'price_change_percent': float(ticker.get('price24hPcnt', 0)) * 100,
+                                    'high_24h': float(ticker.get('highPrice24h', 0)),
+                                    'low_24h': float(ticker.get('lowPrice24h', 0)),
+                                    'volume': float(ticker.get('volume24h', 0))
+                                }
+                        
+                        # Store in memcache
+                        memcache_client = aiomcache.Client('localhost', 11211)
+                        await memcache_client.set(
+                            b'market:tickers',
+                            json.dumps({'tickers': list(ticker_dict.values())}).encode(),
+                            exptime=300  # 5 minutes
+                        )
+                        logger.info(f"✅ Cached {len(ticker_dict)} tickers from Bybit")
+                        return ticker_dict
+    except Exception as e:
+        logger.error(f"Error fetching tickers: {e}")
+    return {}
+
+
+async def schedule_ticker_updates():
+    """Schedule periodic ticker updates"""
+    while True:
+        await asyncio.sleep(120)  # Update every 2 minutes
+        await fetch_and_cache_tickers()
+
 
 async def schedule_background_update():
     """Schedule periodic background updates"""
@@ -3080,7 +3367,14 @@ async def debug_state():
         
         # If no symbols retrieved, use fallback
         if not symbols_data:
-            fallback_symbols = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT", "AVAXUSDT"]
+            # Load symbols from configuration file
+            try:
+                with open('config/trading_config.json', 'r') as f:
+                    config = json.load(f)
+                    fallback_symbols = config.get('symbols', [])
+            except:
+                fallback_symbols = []  # Empty list if config not available
+                self.logger.error("No symbols configured - please check config/trading_config.json")
             for symbol in fallback_symbols[:5]:
                 symbols_data.append({
                     "symbol": symbol,
@@ -3808,7 +4102,24 @@ async def run_application():
                     await asyncio.sleep(1)  # Check every second
                         
             except asyncio.CancelledError:
-                logger.info("Monitoring task cancelled.")
+                import sys
+                
+                # Enhanced debug logging for monitoring task cancellation
+                frame_info = []
+                frame = sys._getframe()
+                while frame:
+                    frame_info.append(f"{frame.f_code.co_filename}:{frame.f_lineno} in {frame.f_code.co_name}")
+                    frame = frame.f_back
+                    if len(frame_info) > 10:
+                        break
+                
+                logger.error("🚨 MAIN MONITORING TASK CANCELLED - DEBUG INFO:")
+                logger.error(f"Shutdown event set: {shutdown_event.is_set()}")
+                logger.error(f"All running tasks: {len(asyncio.all_tasks())}")
+                logger.error("📚 Cancellation call stack:")
+                for i, frame_str in enumerate(frame_info):
+                    logger.error(f"  {i}: {frame_str}")
+                logger.error("💥 MAIN MONITORING TASK CANCELLED - DEBUGGING ENABLED")
             except Exception as e:
                 logger.error(f"Error during monitoring: {str(e)}")
                 logger.debug(traceback.format_exc())

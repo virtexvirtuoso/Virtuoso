@@ -104,21 +104,15 @@ class CachePopulator:
                             await self.set_cache('market:movers', movers)
                             
                             logger.info(f"✓ Cached {len(tickers)} tickers")
-                except:
-                    # Fallback: Create sample data
-                    sample_tickers = {
-                        'BTCUSDT': {'symbol': 'BTCUSDT', 'price': 113000, 'change_24h': -0.5, 'volume': 1000000000},
-                        'ETHUSDT': {'symbol': 'ETHUSDT', 'price': 4200, 'change_24h': 1.2, 'volume': 500000000},
-                        'SOLUSDT': {'symbol': 'SOLUSDT', 'price': 250, 'change_24h': 3.5, 'volume': 200000000},
-                        'BNBUSDT': {'symbol': 'BNBUSDT', 'price': 700, 'change_24h': -1.8, 'volume': 150000000},
-                        'XRPUSDT': {'symbol': 'XRPUSDT', 'price': 3.2, 'change_24h': 2.1, 'volume': 100000000}
-                    }
-                    await self.set_cache('market:tickers', sample_tickers)
+                except Exception as e:
+                    # No fallback - return empty data if fetch fails
+                    logger.error(f"Failed to fetch real ticker data: {e}")
+                    await self.set_cache('market:tickers', {})
                     await self.set_cache('market:movers', {
-                        'gainers': [v for v in sample_tickers.values() if v['change_24h'] > 0],
-                        'losers': [v for v in sample_tickers.values() if v['change_24h'] < 0]
+                        'gainers': [],
+                        'losers': []
                     })
-                    logger.info("✓ Cached sample ticker data")
+                    logger.warning("✗ No ticker data available - using empty cache")
                     
                 # Create sample signals
                 signals = {

@@ -53,6 +53,10 @@ from .utils.converters import ccxt_time_to_minutes
 from .utils.logging import LoggingUtility
 from .metrics_manager import MetricsManager
 from .health_monitor import HealthMonitor
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 
 class MarketMonitor:
@@ -191,6 +195,9 @@ class MarketMonitor:
         self.interval = self.config.get('interval', 30)  # Default 30 seconds
         self._error_count = 0
         
+        # Maintain symbols attribute for backward compatibility
+        self.symbols = []
+        
         # Initialize timestamp utility
         self.timestamp_utility = TimestampUtility()
         
@@ -245,24 +252,28 @@ class MarketMonitor:
                     try:
                         self.exchange_manager = await self._di_container.get_service(ExchangeManager)
                     except Exception:
+                        logger.error(f"Unhandled exception: {e}", exc_info=True)
                         pass
                         
                 if not self.market_data_manager:
                     try:
                         self.market_data_manager = await self._di_container.get_service(MarketDataManager)
                     except Exception:
+                        logger.error(f"Unhandled exception: {e}", exc_info=True)
                         pass
                         
                 if not self.signal_generator:
                     try:
                         self.signal_generator = await self._di_container.get_service(SignalGenerationService)
                     except Exception:
+                        logger.error(f"Unhandled exception: {e}", exc_info=True)
                         pass
                         
                 if not self.metrics_manager:
                     try:
                         self.metrics_manager = await self._di_container.get_service(MetricsManager)
                     except Exception:
+                        logger.error(f"Unhandled exception: {e}", exc_info=True)
                         pass
                         
             except ImportError:
@@ -461,6 +472,17 @@ class MarketMonitor:
             else:
                 self.logger.info("Monitoring components will initialize on demand when dependencies become available")
             
+            # Initialize symbols for backward compatibility
+            if self.top_symbols_manager:
+                try:
+                    max_symbols = self.config.get('market', {}).get('symbols', {}).get('max_symbols', 15)
+                    self.symbols = await self.top_symbols_manager.get_top_symbols(limit=max_symbols)
+                    if self.symbols:
+                        self.logger.info(f"✅ Initialized with {len(self.symbols)} symbols for backward compatibility")
+                except Exception as e:
+                    self.logger.warning(f"Could not initialize symbols during startup: {e}")
+                    # Not critical - will be populated in monitoring cycle
+            
             # Always return True - we can function with lazy initialization
             return True
             
@@ -576,7 +598,32 @@ class MarketMonitor:
                 await asyncio.sleep(self.interval)
                 
             except asyncio.CancelledError:
-                self.logger.info("Monitoring loop cancelled")
+                import sys
+                import inspect
+                import traceback
+                
+                # Get detailed cancellation information for debugging
+                frame_info = []
+                frame = sys._getframe()
+                while frame:
+                    frame_info.append(f"{frame.f_code.co_filename}:{frame.f_lineno} in {frame.f_code.co_name}")
+                    frame = frame.f_back
+                    if len(frame_info) > 10:  # Limit to prevent spam
+                        break
+                
+                self.logger.error("🚨 MONITORING LOOP CANCELLED - DEBUG INFO:")
+                self.logger.error(f"Current task: {asyncio.current_task()}")
+                self.logger.error(f"All tasks: {len(asyncio.all_tasks())}")
+                self.logger.error("📚 Call stack:")
+                for i, frame_str in enumerate(frame_info):
+                    self.logger.error(f"  {i}: {frame_str}")
+                
+                # Log current loop iteration info
+                if hasattr(self, '_current_cycle_start'):
+                    elapsed = time.time() - self._current_cycle_start
+                    self.logger.error(f"⏱️  Cancelled after {elapsed:.2f}s into current cycle")
+                
+                self.logger.error("💥 MONITORING LOOP CANCELLED - DEBUGGING ENABLED")
                 break
                 
             except asyncio.TimeoutError:
@@ -599,7 +646,9 @@ class MarketMonitor:
     async def _monitoring_cycle(self) -> None:
         """Run a single monitoring cycle."""
         try:
+            self._current_cycle_start = time.time()  # Track cycle start time for debugging
             self.logger.info("=== Starting Monitoring Cycle ===")
+            self.logger.info(f"🔬 DEBUG: Current task ID: {id(asyncio.current_task())}")
             
             # Get symbols to monitor - use get_top_symbols with a limit and timeout handling
             # Get max_symbols from config, default to 15 per config.yaml
@@ -628,6 +677,8 @@ class MarketMonitor:
                 self.logger.warning("Empty symbol list detected!")
                 return
             
+            # Store symbols for backward compatibility with dashboard integration
+            self.symbols = symbols
             self.logger.info(f"Processing {len(symbols)} symbols")
             
             # Process symbols concurrently with controlled concurrency
@@ -690,6 +741,11 @@ class MarketMonitor:
             # Step 3: Process with confluence analyzer
             if self.confluence_analyzer:
                 try:
+                    # [LSR-MONITOR] Log what we're passing to confluence
+                    if 'long_short_ratio' in market_data:
+                        self.logger.info(f'[LSR-MONITOR] Passing LSR to confluence: {market_data["long_short_ratio"]}')
+                    else:
+                        self.logger.warning('[LSR-MONITOR] No LSR in market_data being passed to confluence')
                     analysis_result = await self.confluence_analyzer.analyze(market_data)
                     if analysis_result:
                         # Log confluence score
@@ -779,6 +835,7 @@ class MarketMonitor:
                     overall_status = 'warning'
                     
             except Exception as e:
+                logger.error(f"Unhandled exception: {e}", exc_info=True)
                 components['system_resources'] = {
                     'status': 'error',
                     'message': f'Unable to check system resources: {str(e)}'
@@ -922,7 +979,9 @@ class MarketMonitor:
             report = self._create_market_report(metrics)
             
             # Send report via alert manager
-            await self.alert_manager_component.send_report(report)
+            # Note: send_report method not implemented in current AlertManager
+            # await self.alert_manager_component.send_report(report)
+            self.logger.info(f"Market report generated (send_report not implemented): {len(report)} chars")
             
             self.last_report_time = datetime.now(timezone.utc)
             

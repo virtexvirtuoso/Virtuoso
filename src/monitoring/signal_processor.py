@@ -40,6 +40,7 @@ class SignalProcessor:
         metrics_manager,
         interpretation_manager: InterpretationManager,
         market_data_manager,
+        risk_manager=None,
         logger: Optional[logging.Logger] = None
     ):
         """
@@ -48,16 +49,18 @@ class SignalProcessor:
         Args:
             config: Configuration dictionary with confluence thresholds
             signal_generator: Signal generator instance
-            metrics_manager: Metrics manager for tracking
-            interpretation_manager: Manager for processing interpretations
-            market_data_manager: Market data manager for price retrieval
-            logger: Logger instance
+            metrics_manager: Metrics manager instance
+            interpretation_manager: Interpretation manager instance
+            market_data_manager: Market data manager instance
+            risk_manager: Risk manager instance for trade parameter calculations
+            logger: Optional logger instance
         """
         self.config = config
         self.signal_generator = signal_generator
         self.metrics_manager = metrics_manager
         self.interpretation_manager = interpretation_manager
         self.market_data_manager = market_data_manager
+        self.risk_manager = risk_manager
         self.logger = logger or logging.getLogger(__name__)
         
         # Initialize monitoring thresholds
@@ -267,12 +270,13 @@ class SignalProcessor:
             components = analysis_result.get('components', {})
             results = analysis_result.get('results', {})
             
-            # Get reliability score
-            reliability = analysis_result.get('reliability', 0.5)
+            # Get reliability score (0-100 scale)
+            reliability = analysis_result.get('reliability', 50.0)
             
-            # Check if reliability is less than 100% (1.0), if so, log and return without generating an alert
-            if reliability < 1.0:
-                self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}] Skipping alert for {symbol} due to reliability {reliability*100:.1f}% < 100%")
+            # Only skip if reliability is extremely low (below 30%)
+            # This allows most signals through while filtering out very unreliable ones
+            if reliability < 30.0:
+                self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}] Skipping alert for {symbol} due to low reliability {reliability:.1f}%")
                 return
             
             # Get price information
@@ -308,6 +312,24 @@ class SignalProcessor:
             if 'influential_components' in analysis_result:
                 signal_data['influential_components'] = analysis_result['influential_components']
             
+            # Add OHLCV data for chart generation
+            try:
+                if self.market_data_manager:
+                    # Try to get OHLCV data from market data manager cache
+                    if hasattr(self.market_data_manager, 'data_cache') and symbol in self.market_data_manager.data_cache:
+                        cached_data = self.market_data_manager.data_cache[symbol]
+                        if 'ohlcv' in cached_data and 'ltf' in cached_data['ohlcv']:
+                            signal_data['ohlcv_data'] = cached_data['ohlcv']['ltf']  # Use 5m timeframe data for charts
+                            self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}] Added OHLCV data for chart generation")
+                        else:
+                            self.logger.warning(f"[TXN:{transaction_id}][SIG:{signal_id}] No cached OHLCV data available for {symbol}")
+                    else:
+                        self.logger.warning(f"[TXN:{transaction_id}][SIG:{signal_id}] No data cache entry for {symbol}")
+                else:
+                    self.logger.warning(f"[TXN:{transaction_id}][SIG:{signal_id}] Market data manager not available for OHLCV data")
+            except Exception as e:
+                self.logger.warning(f"[TXN:{transaction_id}][SIG:{signal_id}] Error fetching OHLCV data: {e}")
+            
             # Determine signal type based on thresholds
             signal_type = "NEUTRAL"
             if confluence_score >= buy_threshold:
@@ -337,7 +359,7 @@ class SignalProcessor:
                 
             # Store signal for analysis and generate alert
             try:
-                self.signal_generator.process_signal(signal_data)
+                await self.signal_generator.process_signal(signal_data)
                 self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}] Signal successfully processed for {symbol}")
             except Exception as e:
                 self.logger.error(f"[TXN:{transaction_id}][SIG:{signal_id}] Error processing signal: {str(e)}")
@@ -409,17 +431,24 @@ class SignalProcessor:
     def calculate_trade_parameters(self, symbol: str, price: float, signal_type: str, score: float, reliability: float) -> Dict[str, Any]:
         """
         Calculate trade parameters based on signal data and configuration.
-        
+
         Args:
             symbol: Trading symbol
             price: Current price
             signal_type: Signal type (BUY, SELL, NEUTRAL)
             score: Confluence score (0-100)
             reliability: Signal reliability (0-1)
-            
+
         Returns:
             Dictionary containing trade parameters
         """
+        # Use RiskManager if available for more sophisticated calculations
+        if self.risk_manager:
+            return self._enrich_signal_with_trade_parameters(
+                symbol, price, signal_type, score, reliability
+            )
+
+        # Otherwise fall back to simple percentage-based calculations
         try:
             # Get trading config
             trading_config = self.config.get('trading', {})
@@ -555,6 +584,88 @@ class SignalProcessor:
                 
         except Exception as e:
             self.logger.error(f"Error monitoring sentiment for {symbol}: {str(e)}")
+
+    def _enrich_signal_with_trade_parameters(
+        self,
+        symbol: str,
+        price: float,
+        signal_type: str,
+        confluence_score: float,
+        reliability: float
+    ) -> Dict[str, Any]:
+        """
+        Calculate trade parameters using RiskManager.
+
+        Args:
+            symbol: Trading symbol
+            price: Current price
+            signal_type: Signal type (BUY, SELL, NEUTRAL)
+            confluence_score: Confluence score (0-100)
+            reliability: Signal reliability (0-1)
+
+        Returns:
+            Dict with calculated trade parameters
+        """
+        # Default trade parameters
+        default_params = {
+            'entry_price': price,
+            'stop_loss': None,
+            'take_profit': None,
+            'position_size': None,
+            'position_value_usd': None,
+            'risk_reward_ratio': None,
+            'risk_percentage': None,
+            'risk_amount': None,
+            'confidence': min(confluence_score / 100, 1.0) if confluence_score else 0.5,
+            'timeframe': 'auto'
+        }
+
+        if not self.risk_manager or signal_type == "NEUTRAL" or not price:
+            return default_params
+
+        try:
+            from src.risk.risk_manager import OrderType
+
+            # Get account balance from config
+            trading_config = self.config.get('trading', {})
+            account_balance = trading_config.get('account_balance', 10000)
+
+            # Determine order type
+            order_type = OrderType.BUY if signal_type == "BUY" else OrderType.SELL
+
+            # Calculate stop loss and take profit
+            sl_tp = self.risk_manager.calculate_stop_loss_take_profit(
+                entry_price=price,
+                order_type=order_type
+            )
+
+            # Calculate position size
+            position_info = self.risk_manager.calculate_position_size(
+                account_balance=account_balance,
+                entry_price=price,
+                stop_loss_price=sl_tp['stop_loss_price']
+            )
+
+            # Build trade parameters
+            trade_params = {
+                'entry_price': round(price, 8),
+                'stop_loss': round(sl_tp['stop_loss_price'], 8),
+                'take_profit': round(sl_tp['take_profit_price'], 8),
+                'position_size': round(position_info['position_size_units'], 8),
+                'position_value_usd': round(position_info['position_value_usd'], 2),
+                'risk_reward_ratio': round(sl_tp['risk_reward_ratio'], 2),
+                'risk_percentage': round(position_info['risk_percentage'], 2),
+                'risk_amount': round(position_info['risk_amount_usd'], 2),
+                'confidence': min(confluence_score / 100, 1.0) if confluence_score else 0.5,
+                'timeframe': 'auto'
+            }
+
+            self.logger.debug(f"Calculated trade parameters for {symbol}: {trade_params}")
+            return trade_params
+
+        except Exception as e:
+            self.logger.error(f"Error calculating trade parameters for {symbol}: {str(e)}")
+            return default_params
 
     # Alert handlers
     async def _handle_volume_alert(self, symbol: str, current: Dict[str, Any], previous: float) -> None:

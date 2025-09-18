@@ -131,7 +131,7 @@ class SignalCorrelationCalculator:
                         if isinstance(comp_data, dict):
                             row[signal_type] = comp_data.get("score", 50.0)
                         else:
-                            row[signal_type] = float(comp_data) if comp_data is not None else 50.0
+                            row[signal_type] = float(comp_data) if comp_data is not None else None
                     else:
                         row[signal_type] = 50.0  # Default neutral score
                 
@@ -187,9 +187,9 @@ class SignalCorrelationCalculator:
                             if isinstance(comp_data, dict):
                                 scores.append(comp_data.get("score", 50.0))
                             else:
-                                scores.append(float(comp_data) if comp_data is not None else 50.0)
+                                scores.append(float(comp_data) if comp_data is not None else None)
                     
-                    avg_scores[signal_type] = np.mean(scores) if scores else 50.0
+                    avg_scores[signal_type] = np.mean(scores) if scores else None
                 
                 symbol_averages[symbol] = avg_scores
             
@@ -279,7 +279,7 @@ async def _get_matrix_data_internal(symbols_list: List[str], timeframe: str, inc
                                     else:
                                         # Handle string or numeric signal data
                                         try:
-                                            score = float(signal_data) if signal_data is not None else 50.0
+                                            score = float(signal_data) if signal_data is not None else None
                                         except (ValueError, TypeError):
                                             score = 50.0
                                         
@@ -318,7 +318,7 @@ async def _get_matrix_data_internal(symbols_list: List[str], timeframe: str, inc
                     # Calculate composite score
                     if matrix_data[symbol]:
                         scores = [data["score"] for data in matrix_data[symbol].values() if isinstance(data, dict)]
-                        composite_score = sum(scores) / len(scores) if scores else 50.0
+                        composite_score = sum(scores) / len(scores) if scores else None
                         matrix_data[symbol]["composite_score"] = composite_score
                     else:
                         matrix_data[symbol]["composite_score"] = 50.0
@@ -432,7 +432,7 @@ async def get_signal_confluence_matrix(
                                     else:
                                         # Handle string or numeric signal data
                                         try:
-                                            score = float(signal_data) if signal_data is not None else 50.0
+                                            score = float(signal_data) if signal_data is not None else None
                                         except (ValueError, TypeError):
                                             score = 50.0
                                         
@@ -471,7 +471,7 @@ async def get_signal_confluence_matrix(
                     # Calculate composite score
                     if matrix_data[symbol]:
                         scores = [data["score"] for data in matrix_data[symbol].values() if isinstance(data, dict)]
-                        composite_score = sum(scores) / len(scores) if scores else 50.0
+                        composite_score = sum(scores) / len(scores) if scores else None
                         matrix_data[symbol]["composite_score"] = composite_score
                     else:
                         matrix_data[symbol]["composite_score"] = 50.0

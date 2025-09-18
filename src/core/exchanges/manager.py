@@ -736,24 +736,9 @@ class ExchangeManager:
         return markets
 
     async def fetch_ohlcv(self, symbol: str, timeframe: str, limit: int):
-        """Fetch OHLCV data through primary exchange (with caching)"""
-        cache = get_cache()
-        
-        # Determine if this is recent or historical data
-        is_recent = timeframe in ['1m', '5m', '15m'] and limit <= 100
-        
-        async def compute_ohlcv():
-            exchange = await self.get_primary_exchange()
-            return await exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
-        
-        # Use cache with appropriate TTL
-        return await cache.get_ohlcv(
-            symbol=symbol,
-            timeframe=timeframe,
-            limit=limit,
-            compute_func=compute_ohlcv,
-            is_recent=is_recent
-        )
+        """Fetch OHLCV data through primary exchange"""
+        exchange = await self.get_primary_exchange()
+        return await exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
 
     async def fetch_order_book(self, symbol: str):
         """Fetch order book through primary exchange"""

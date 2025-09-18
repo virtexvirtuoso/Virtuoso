@@ -227,13 +227,8 @@ def register_monitoring_services(container: ServiceContainer) -> ServiceContaine
     logger.info("Registering monitoring services...")
     
     # Alert Service (singleton) - use factory to inject config
-    # Import both original and refactored AlertManager for backward compatibility
-    try:
-        from ...monitoring.components.alerts.alert_manager_refactored import AlertManagerRefactored as AlertManager
-        logger.info("Using AlertManagerRefactored for DI registration")
-    except ImportError:
-        from ...monitoring.alert_manager import AlertManager
-        logger.info("Using original AlertManager for DI registration")
+    from ...monitoring.alert_manager import AlertManager
+    logger.info("Using AlertManager for DI registration")
     from .container import ServiceLifetime
     
     async def create_alert_manager():
@@ -267,20 +262,6 @@ def register_monitoring_services(container: ServiceContainer) -> ServiceContaine
     
     # Also register AlertManager with concrete types for backward compatibility
     container.register_factory(AlertManager, create_alert_manager, ServiceLifetime.SINGLETON)
-    
-    # Register AlertManagerRefactored type for explicit resolution if it exists
-    try:
-        from ...monitoring.components.alerts.alert_manager_refactored import AlertManagerRefactored
-        container.register_factory(AlertManagerRefactored, create_alert_manager, ServiceLifetime.SINGLETON)
-    except ImportError:
-        pass
-    
-    # Register the original AlertManager import path for compatibility
-    try:
-        from ...monitoring.alert_manager import AlertManager as OriginalAlertManager
-        container.register_factory(OriginalAlertManager, create_alert_manager, ServiceLifetime.SINGLETON)
-    except ImportError:
-        pass
     
     # Metrics Service (singleton) - use factory to inject config and alert manager
     from ...monitoring.metrics_manager import MetricsManager
@@ -488,12 +469,8 @@ def register_monitoring_services(container: ServiceContainer) -> ServiceContaine
     # MarketMonitor (singleton) - needs many optional dependencies
     try:
         # Try to import refactored MarketMonitor first for better performance
-        try:
-            from ...monitoring.monitor_refactored import RefactoredMarketMonitor as MarketMonitor
-            logger.info("Using RefactoredMarketMonitor for DI registration")
-        except ImportError:
-            from ...monitoring.monitor import MarketMonitor
-            logger.info("Using original MarketMonitor for DI registration")
+        from ...monitoring.monitor import MarketMonitor
+        logger.info("Using MarketMonitor for DI registration")
         
         from ...core.exchanges.manager import ExchangeManager
         from ...core.market.market_data_manager import MarketDataManager
@@ -605,12 +582,6 @@ def register_monitoring_services(container: ServiceContainer) -> ServiceContaine
         # Register with interface for proper DI resolution
         container.register_factory(IMarketMonitorService, create_market_monitor, ServiceLifetime.SINGLETON)
         
-        # Also register with the RefactoredMarketMonitor type for explicit resolution
-        try:
-            from ...monitoring.monitor_refactored import RefactoredMarketMonitor
-            container.register_factory(RefactoredMarketMonitor, create_market_monitor, ServiceLifetime.SINGLETON)
-        except ImportError:
-            pass
         
         # Register the original MarketMonitor import path for compatibility
         try:

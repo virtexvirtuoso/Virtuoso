@@ -3,7 +3,6 @@ from typing import Dict, Any, Optional, List, Callable, Awaitable, TYPE_CHECKING
 from datetime import datetime, timezone, timedelta
 import aiohttp
 import traceback
-from logging import getLogger
 import time
 from collections import defaultdict, deque
 import os
@@ -24,6 +23,9 @@ import aiofiles
 import numpy as np
 import pandas as pd
 import sqlite3
+
+logger = logging.getLogger(__name__)
+
 
 try:
     from discord import SyncWebhook
@@ -139,7 +141,7 @@ except ImportError:
         AlertType = None
         AlertStatus = None
 
-logger = getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 class AlertManager:
     """Alert manager for monitoring system."""
@@ -154,7 +156,7 @@ class AlertManager:
         self.config = config
         self.database = database
         self.alerts = []
-        self.logger = getLogger(__name__)
+        self.logger = logging.getLogger(__name__)
         self.handlers = []
         self.alert_handlers = {}
         self.webhook = None
@@ -170,13 +172,16 @@ class AlertManager:
         self.alert_formatter = AlertFormatter() 
         self._deduplication_window = 0  # Deduplication disabled (was 5 seconds)
         self._alert_hashes = {}  # Hash -> timestamp mapping for content tracking
+        
+        # Initialize improved throttling system
+        self._init_improved_throttling()
         self._last_liquidation_alert = {}  # Dictionary to track last liquidation alerts by symbol
         self._last_large_order_alert = {}  # Dictionary to track last large order alerts by symbol
         self._last_whale_activity_alert = {}  # Dictionary to track last whale activity alerts by symbol
         self._last_alert = {}  # Dictionary to track last alerts by alert key
         
         # Mock mode for testing
-        self.mock_mode = config.get('monitoring', {}).get('alerts', {}).get('mock_mode', False)
+        self.mock_mode = False  # Mock mode disabled in production
         self.capture_alerts = config.get('monitoring', {}).get('alerts', {}).get('capture_alerts', False)
         if self.capture_alerts:
             self.captured_alerts = []
@@ -1660,7 +1665,9 @@ class AlertManager:
         market_interpretations: Optional[List[Union[str, Dict[str, Any]]]] = None,  # Enhanced data
         actionable_insights: Optional[List[str]] = None,  # Enhanced data
         top_weighted_subcomponents: Optional[List[Dict[str, Any]]] = None,  # Top weighted sub-components
-        signal_type: Optional[str] = None  # Add explicit signal_type parameter
+        signal_type: Optional[str] = None,  # Add explicit signal_type parameter
+        pdf_path: Optional[str] = None,  # Path to PDF report
+        chart_path: Optional[str] = None  # Path to chart image
     ) -> None:
         """Send formatted confluence alert to Discord with components breakdown.
         
@@ -1689,6 +1696,16 @@ class AlertManager:
         txn_id = transaction_id or str(uuid.uuid4())[:8]
         # Use provided signal_id or generate a new one
         sig_id = signal_id or str(uuid.uuid4())[:8]
+        
+        # IMPROVED THROTTLING: Generate alert key for throttling
+        alert_key = f"{symbol}_{signal_type or 'confluence'}_alert"
+        content_for_dedup = f"{symbol}_{confluence_score:.2f}_{str(components)}"
+        
+        # Check improved throttling
+        if not self._check_improved_throttling(alert_key, 'confluence', content_for_dedup):
+            self.logger.info(f"[TXN:{txn_id}][SIG:{sig_id}] Confluence alert for {symbol} throttled")
+            return
+        
         # Generate a unique alert ID
         alert_id = str(uuid.uuid4())[:8]
         
@@ -2189,8 +2206,11 @@ class AlertManager:
                 try:
                     response = webhook.execute()
                     
-                    if response and response.status_code == 200:
-                        self.logger.info(f"[TXN:{txn_id}][SIG:{sig_id}][ALERT:{alert_id}] Successfully sent confluence alert for {symbol}")
+                    if response and response.status_code in [200, 204]:
+                        self.logger.info(f"[TXN:{txn_id}][SIG:{sig_id}][ALERT:{alert_id}] Successfully sent confluence alert for {symbol} (status: {response.status_code})")
+                        
+                        # IMPROVED THROTTLING: Mark alert as sent
+                        self._mark_alert_sent_improved(alert_key, 'confluence', content_for_dedup)
                         
                         # Note: PDF attachment is handled by send_signal_alert() workflow
                         # Skip PDF attachment here to avoid duplicate PDF messages
@@ -2222,6 +2242,7 @@ class AlertManager:
                         retry_delay *= 2  # Exponential backoff
                         continue
                 except Exception as e:
+                    logger.error(f"Unhandled exception: {e}", exc_info=True)
                     # Other unexpected errors
                     self.logger.error(f"[TXN:{txn_id}][SIG:{sig_id}][ALERT:{alert_id}] Unexpected error sending alert (attempt {attempt+1}/{max_retries}): {str(e)}")
                     if attempt < max_retries - 1:
@@ -2234,7 +2255,7 @@ class AlertManager:
                         raise
             
             # Fallback attempt with alternative mechanism if all webhook attempts failed
-            if not response or response.status_code != 200:
+            if not response or response.status_code not in [200, 204]:
                 self.logger.warning(f"[TXN:{txn_id}][SIG:{sig_id}][ALERT:{alert_id}] Trying fallback alert mechanism...")
                 try:
                     # Fallback to regular HTTP post
@@ -2253,8 +2274,8 @@ class AlertManager:
                             json=fallback_data,
                             timeout=30
                         ) as resp:
-                            if resp.status == 200:
-                                self.logger.info(f"[TXN:{txn_id}][SIG:{sig_id}][ALERT:{alert_id}] Successfully sent alert using fallback method")
+                            if resp.status in [200, 204]:
+                                self.logger.info(f"[TXN:{txn_id}][SIG:{sig_id}][ALERT:{alert_id}] Successfully sent alert using fallback method (status: {resp.status})")
                                 
                                 # Note: PDF attachment is handled by send_signal_alert() workflow
                                 # Skip PDF attachment here to avoid duplicate PDF messages
@@ -2273,7 +2294,7 @@ class AlertManager:
             
             # Alert stats tracking (only if we didn't return early from fallback)
             # Count as success if either primary or fallback method succeeded
-            if (response and response.status_code == 200):
+            if (response and response.status_code in [200, 204]):
                 self._alert_stats['total'] = int(self._alert_stats.get('total', 0)) + 1
                 self._alert_stats['sent'] = int(self._alert_stats.get('sent', 0)) + 1
             else:
@@ -2282,6 +2303,7 @@ class AlertManager:
                 self.logger.error(f"Failed to send confluence alert for {symbol}")
             
         except Exception as e:
+            logger.error(f"Unhandled exception: {e}", exc_info=True)
             # Error handling 
             self.logger.error(f"[TXN:{txn_id}][SIG:{sig_id}][ALERT:{alert_id}] Error sending confluence alert for {symbol}: {str(e)}")
             self.logger.debug(f"[TXN:{txn_id}][SIG:{sig_id}][ALERT:{alert_id}] {traceback.format_exc()}")
@@ -2464,6 +2486,114 @@ class AlertManager:
                 return "Expect immediate upward price pressure as liquidated shorts are bought"
             else:
                 return "Minor buying pressure expected from liquidated short positions"
+
+    # ========== IMPROVED THROTTLING METHODS FROM REFACTORED VERSION ==========
+    def _init_improved_throttling(self):
+        """Initialize improved throttling system from refactored version"""
+        # Cooldown periods for different alert types (seconds)
+        self.throttle_cooldowns = {
+            'system': 60,          # System alerts - 1 minute
+            'signal': 300,         # Trading signals - 5 minutes  
+            'whale': 180,          # Whale alerts - 3 minutes
+            'liquidation': 120,    # Liquidation alerts - 2 minutes
+            'confluence': 300,     # Confluence alerts - 5 minutes
+            'default': 60          # Default cooldown
+        }
+        
+        # Deduplication window (seconds)
+        self.throttle_dedup_window = 300  # 5 minutes
+        
+        # Maximum entries to prevent memory growth
+        self.max_throttle_entries = 10000
+        
+        # Storage for tracking sent alerts
+        self._throttle_sent_alerts = {}      # alert_key -> timestamp
+        self._throttle_content_hashes = {}   # hash -> timestamp
+        self._throttle_alert_counts = defaultdict(int)  # alert_type -> count
+        
+        # Cleanup tracking
+        self._throttle_last_cleanup = time.time()
+        self._throttle_cleanup_interval = 3600  # 1 hour
+        
+        self.logger.info("Improved throttling system initialized")
+    
+    def _check_improved_throttling(self, alert_key: str, alert_type: str = 'default', 
+                                  content: Optional[str] = None) -> bool:
+        """
+        Enhanced throttling check with content deduplication.
+        Returns True if alert should be sent, False if throttled.
+        """
+        current_time = time.time()
+        
+        # Get cooldown period for this alert type
+        cooldown = self.throttle_cooldowns.get(alert_type, self.throttle_cooldowns['default'])
+        
+        # Check if alert was recently sent
+        if alert_key in self._throttle_sent_alerts:
+            time_since_last = current_time - self._throttle_sent_alerts[alert_key]
+            if time_since_last < cooldown:
+                self.logger.debug(f"Alert {alert_key} throttled: {time_since_last:.1f}s < {cooldown}s cooldown")
+                return False
+        
+        # Check for duplicate content
+        if content:
+            content_hash = hashlib.md5(content.encode()).hexdigest()
+            if content_hash in self._throttle_content_hashes:
+                time_since_duplicate = current_time - self._throttle_content_hashes[content_hash]
+                if time_since_duplicate < self.throttle_dedup_window:
+                    self.logger.debug(f"Alert throttled as duplicate content (seen {time_since_duplicate:.1f}s ago)")
+                    return False
+        
+        # Periodic cleanup to prevent memory growth
+        if current_time - self._throttle_last_cleanup > self._throttle_cleanup_interval:
+            self._cleanup_throttle_entries()
+        
+        return True
+    
+    def _mark_alert_sent_improved(self, alert_key: str, alert_type: str = 'default', 
+                                 content: Optional[str] = None):
+        """Record alert as sent for future throttling decisions"""
+        current_time = time.time()
+        
+        # Track by key
+        self._throttle_sent_alerts[alert_key] = current_time
+        
+        # Track by content hash
+        if content:
+            content_hash = hashlib.md5(content.encode()).hexdigest()
+            self._throttle_content_hashes[content_hash] = current_time
+        
+        # Update counts
+        self._throttle_alert_counts[alert_type] += 1
+        
+        # Enforce max entries limit
+        if len(self._throttle_sent_alerts) > self.max_throttle_entries:
+            self._cleanup_throttle_entries()
+    
+    def _cleanup_throttle_entries(self):
+        """Remove expired entries to prevent memory growth"""
+        current_time = time.time()
+        
+        # Clean up sent alerts
+        expired_keys = [
+            key for key, timestamp in self._throttle_sent_alerts.items()
+            if current_time - timestamp > max(self.throttle_cooldowns.values())
+        ]
+        for key in expired_keys:
+            del self._throttle_sent_alerts[key]
+        
+        # Clean up content hashes
+        expired_hashes = [
+            h for h, timestamp in self._throttle_content_hashes.items()
+            if current_time - timestamp > self.throttle_dedup_window
+        ]
+        for h in expired_hashes:
+            del self._throttle_content_hashes[h]
+        
+        self._throttle_last_cleanup = current_time
+        
+        if expired_keys or expired_hashes:
+            self.logger.debug(f"Cleaned up {len(expired_keys)} alert keys and {len(expired_hashes)} content hashes")
 
     def _validate_alert_config(self) -> None:
         """Validate the alert configuration.
@@ -2718,6 +2848,7 @@ class AlertManager:
                         continue
                     
                 except Exception as e:
+                    logger.error(f"Unhandled exception: {e}", exc_info=True)
                     # Handle other unexpected errors with full traceback
                     self.logger.error(f"[ALERT:{alert_id}] Unexpected error sending alert (attempt {attempt+1}/{max_retries}): {type(e).__name__}: {str(e)}")
                     self.logger.error(f"[ALERT:{alert_id}] Traceback: {traceback.format_exc()}")
@@ -2979,6 +3110,7 @@ class AlertManager:
                         try:
                             clean_filename = clean_filename.encode('ascii', 'ignore').decode('ascii')
                         except Exception:
+                            logger.error(f"Unhandled exception: {e}", exc_info=True)
                             clean_filename = f"attachment_{file_count}.pdf"
                         
                         with open(file_path, 'rb') as f:
@@ -3047,6 +3179,7 @@ class AlertManager:
                         last_error = f"HTTP {status_code}: {response_text}"
                         
                 except Exception as e:
+                    logger.error(f"Unhandled exception: {e}", exc_info=True)
                     attempt_time = time.time() - attempt_start
                     self.logger.warning(f"[WEBHOOK_DELIVERY:{delivery_id}] Error sending webhook (attempt {attempt+1}/{max_retries}): {str(e)}")
                     self.logger.debug(f"[WEBHOOK_DELIVERY:{delivery_id}] Attempt {attempt + 1} failed in {attempt_time:.2f}s")
@@ -3070,6 +3203,7 @@ class AlertManager:
             return False, {'error': last_error, 'attempts': max_retries, 'total_time': total_time}
             
         except Exception as e:
+            logger.error(f"Unhandled exception: {e}", exc_info=True)
             total_time = time.time() - start_time
             self.logger.error(f"[WEBHOOK_DELIVERY:{delivery_id}] Unexpected error in send_discord_webhook_message: {str(e)}")
             self.logger.error(f"[WEBHOOK_DELIVERY:{delivery_id}] Traceback: {traceback.format_exc()}")
@@ -3078,6 +3212,45 @@ class AlertManager:
             
             return False, {'error': f'Unexpected error: {str(e)}', 'total_time': total_time}
     
+    # ========== IMPROVED SESSION MANAGEMENT FROM REFACTORED VERSION ==========
+    async def _ensure_webhook_session(self):
+        """
+        Ensure aiohttp session exists and is reusable.
+        Improved session management from refactored version.
+        """
+        if not hasattr(self, '_webhook_session') or self._webhook_session is None or self._webhook_session.closed:
+            timeout = aiohttp.ClientTimeout(total=self.webhook_timeout)
+            connector = aiohttp.TCPConnector(
+                limit=100,  # Total connection pool limit
+                limit_per_host=30,  # Per-host connection limit
+                ttl_dns_cache=300  # DNS cache timeout
+            )
+            self._webhook_session = aiohttp.ClientSession(
+                timeout=timeout,
+                connector=connector
+            )
+            self.logger.debug("Created new webhook session with connection pooling")
+    
+    async def _close_webhook_session(self):
+        """Close aiohttp session properly"""
+        if hasattr(self, '_webhook_session') and self._webhook_session and not self._webhook_session.closed:
+            await self._webhook_session.close()
+            self.logger.debug("Closed webhook session")
+    
+    async def cleanup(self):
+        """Clean up resources when shutting down"""
+        try:
+            # Close webhook session
+            await self._close_webhook_session()
+            
+            # Clean up throttle entries
+            self._cleanup_throttle_entries()
+            
+            self.logger.info("AlertManager cleanup completed")
+            
+        except Exception as e:
+            self.logger.error(f"Error during cleanup: {e}")
+
     def _validate_attachment_files(self, files: List[Union[str, Dict[str, Any]]], delivery_id: str) -> List[Dict[str, Any]]:
         """
         Validate file attachments before sending.
@@ -3263,6 +3436,7 @@ class AlertManager:
                 try:
                     self.register_handler('discord')
                 except Exception as e:
+                    logger.error(f"Unhandled exception: {e}", exc_info=True)
                     error_msg = f"Failed to register Discord handler: {str(e)}"
                     self.logger.error(error_msg)
                     result["errors"].append(error_msg)
@@ -3418,8 +3592,17 @@ class AlertManager:
             )
             self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}][ALERT:{alert_id}] Successfully sent confluence alert for {symbol}")
             
+            # IMPROVED THROTTLING: Mark alert as sent (using different variable names for this context)
+            alert_key_2 = f"{symbol}_{signal_data.get('signal_type', 'signal')}_alert" 
+            content_for_dedup_2 = f"{symbol}_{signal_data.get('confluence_score', 0):.2f}"
+            self._mark_alert_sent_improved(alert_key_2, 'signal', content_for_dedup_2)
+            
             # Send high-resolution chart image first if available
+            # Initialize chart_path from signal_data and normalize any file URI scheme
             chart_path = signal_data.get('chart_path')
+            if isinstance(chart_path, str) and chart_path.startswith('file://'):
+                chart_path = chart_path[7:]
+            
             if not chart_path and pdf_path:
                 # Try to extract chart path from signal data
                 chart_path = await self._generate_chart_from_signal_data(signal_data, transaction_id, signal_id)
@@ -3735,7 +3918,7 @@ class AlertManager:
                 try:
                     response = webhook.execute()
                     
-                    if response and response.status_code == 200:
+                    if response and response.status_code in [200, 204]:
                         self.logger.info(f"Alpha opportunity alert sent successfully for {symbol}")
                         break
                     else:
@@ -3760,7 +3943,7 @@ class AlertManager:
                         raise
 
             # Update alert statistics using internal tracking
-            if response and response.status_code == 200:
+            if response and response.status_code in [200, 204]:
                 self._alert_stats['total'] = int(self._alert_stats.get('total', 0)) + 1
                 self._alert_stats['sent'] = int(self._alert_stats.get('sent', 0)) + 1
             else:
@@ -3896,7 +4079,7 @@ class AlertManager:
                 try:
                     response = webhook.execute()
                     
-                    if response and response.status_code == 200:
+                    if response and response.status_code in [200, 204]:
                         self.logger.info(f"Manipulation alert sent successfully for {symbol}: {manipulation_type}")
                         break
                     else:
@@ -3921,7 +4104,7 @@ class AlertManager:
                         raise
 
             # Update alert statistics
-            if response and response.status_code == 200:
+            if response and response.status_code in [200, 204]:
                 self._alert_stats['total'] = int(self._alert_stats.get('total', 0)) + 1
                 self._alert_stats['sent'] = int(self._alert_stats.get('sent', 0)) + 1
             else:
@@ -4114,14 +4297,8 @@ class AlertManager:
                 self.captured_alerts.append(alert_data)
                 self.logger.info(f"[TXN:{txn_id}][ALERT:{alert_id}] Captured trade execution alert for {symbol}")
             
-            # If in mock mode, log but don't actually send
-            if self.mock_mode:
-                self.logger.info(f"[TXN:{txn_id}][ALERT:{alert_id}] MOCK MODE: Would send trade execution alert for {symbol}")
-                self.logger.info(f"[TXN:{txn_id}][ALERT:{alert_id}] Alert content: {title}\n{description_text}")
-                # Update alert stats for mock mode
-                self._alert_stats['total'] = int(self._alert_stats.get('total', 0)) + 1
-                self._alert_stats['sent'] = int(self._alert_stats.get('sent', 0)) + 1
-                return
+            # Mock mode removed - always send real alerts in production
+            # (Mock mode should only be controlled via environment variables in test environments)
             
             # Execute webhook with retry logic (only if not in mock mode)
             max_retries = 3
@@ -4132,7 +4309,7 @@ class AlertManager:
                 try:
                     response = webhook.execute()
                     
-                    if response and response.status_code == 200:
+                    if response and response.status_code in [200, 204]:
                         self.logger.info(f"[TXN:{txn_id}][ALERT:{alert_id}] Successfully sent trade execution alert for {symbol}")
                         break
                     else:
@@ -4157,7 +4334,7 @@ class AlertManager:
                         raise
             
             # Update alert stats
-            if response and response.status_code == 200:
+            if response and response.status_code in [200, 204]:
                 self._alert_stats['total'] = int(self._alert_stats.get('total', 0)) + 1
                 self._alert_stats['sent'] = int(self._alert_stats.get('sent', 0)) + 1
             else:
@@ -4493,6 +4670,7 @@ class AlertManager:
                         self.logger.warning(f"System webhook failed with status {response.status}: {response_text[:200]}")
                         
         except Exception as e:
+            logger.error(f"Unhandled exception: {e}", exc_info=True)
             error_msg = str(e) if str(e) else repr(e)
             error_type = type(e).__name__
             self.logger.error(f"❌ ERROR: Error sending system webhook alert - {error_type}: {error_msg}")

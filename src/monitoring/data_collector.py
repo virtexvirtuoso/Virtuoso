@@ -146,7 +146,9 @@ class DataCollector(MonitoringComponent, DataProvider):
                 self._fetch_ohlcv_all_timeframes(exchange, symbol),
                 self._fetch_orderbook(exchange, symbol),
                 self._fetch_trades(exchange, symbol),
-                self._fetch_ticker(exchange, symbol)
+                self._fetch_ticker(exchange, symbol),
+                self._fetch_long_short_ratio(exchange, symbol),  # Add LSR fetching
+                self._fetch_risk_limits(exchange, symbol)  # Add risk limits fetching
             ]
             
             results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -185,6 +187,23 @@ class DataCollector(MonitoringComponent, DataProvider):
             else:
                 self.logger.error(f"Error fetching ticker for {symbol}: {results[3]}")
                 market_data['ticker'] = None
+            
+            # Add long/short ratio
+            if len(results) > 4 and not isinstance(results[4], Exception):
+                market_data['long_short_ratio'] = results[4]
+                self.logger.info(f"LSR data fetched for {symbol}: {results[4]}")
+            else:
+                if len(results) > 4:
+                    self.logger.error(f"Error fetching LSR for {symbol}: {results[4]}")
+                market_data['long_short_ratio'] = None
+            
+            # Add risk limits
+            if len(results) > 5 and not isinstance(results[5], Exception):
+                market_data['risk_limit'] = results[5]
+            else:
+                if len(results) > 5:
+                    self.logger.error(f"Error fetching risk limits for {symbol}: {results[5]}")
+                market_data['risk_limit'] = None
             
             # Cache the data
             self._cache_data(cache_key, market_data)
@@ -365,6 +384,55 @@ class DataCollector(MonitoringComponent, DataProvider):
             
         except Exception as e:
             self.logger.error(f"Error fetching ticker for {symbol}: {str(e)}")
+            return None
+    
+    @retry_on_error(max_attempts=2, delay=0.5)
+    async def _fetch_long_short_ratio(self, exchange, symbol: str) -> Dict[str, Any]:
+        """Fetch long/short ratio data.
+        
+        Args:
+            exchange: Exchange instance
+            symbol: Trading pair symbol
+            
+        Returns:
+            Long/short ratio dictionary
+        """
+        try:
+            # Check if exchange has the method
+            if hasattr(exchange, 'fetch_long_short_ratio'):
+                lsr = await exchange.fetch_long_short_ratio(symbol)
+                self.logger.info(f"Successfully fetched LSR for {symbol}: {lsr}")
+                return lsr
+            else:
+                self.logger.warning(f"Exchange does not support LSR fetching")
+                return None
+                
+        except Exception as e:
+            self.logger.error(f"Error fetching LSR for {symbol}: {str(e)}")
+            return None
+    
+    @retry_on_error(max_attempts=2, delay=0.5)
+    async def _fetch_risk_limits(self, exchange, symbol: str) -> Dict[str, Any]:
+        """Fetch risk limits data.
+        
+        Args:
+            exchange: Exchange instance
+            symbol: Trading pair symbol
+            
+        Returns:
+            Risk limits dictionary
+        """
+        try:
+            # Check if exchange has the method
+            if hasattr(exchange, 'fetch_risk_limits'):
+                risk_limits = await exchange.fetch_risk_limits(symbol)
+                return risk_limits
+            else:
+                self.logger.debug(f"Exchange does not support risk limits fetching")
+                return None
+                
+        except Exception as e:
+            self.logger.error(f"Error fetching risk limits for {symbol}: {str(e)}")
             return None
     
     def _get_cached_data(self, key: str) -> Optional[Dict[str, Any]]:

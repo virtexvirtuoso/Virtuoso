@@ -8,7 +8,6 @@ import json
 import logging
 import time
 import statistics
-import random
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 import aiomcache
@@ -114,12 +113,12 @@ class EnhancedAnalysisService:
                     'change_24h': ticker.get('change_24h', 0),
                     'volume': ticker.get('volume', 0),
                     'components': {
-                        'technical': round(random.uniform(40, 60), 1),
-                        'volume': round(random.uniform(40, 60), 1),
-                        'orderflow': round(random.uniform(40, 60), 1),
-                        'sentiment': round(random.uniform(40, 60), 1),
-                        'orderbook': round(random.uniform(40, 60), 1),
-                        'price_structure': round(random.uniform(40, 60), 1)
+                        'technical': self._get_real_score(symbol, 'technical'),
+                        'volume': self._get_real_score(symbol, 'volume'),
+                        'orderflow': self._get_real_score(symbol, 'orderflow'),
+                        'sentiment': self._get_real_score(symbol, 'sentiment'),
+                        'orderbook': self._get_real_score(symbol, 'orderbook'),
+                        'price_structure': self._get_real_score(symbol, 'price_structure')
                     },
                     'timestamp': int(time.time())
                 }
@@ -134,6 +133,22 @@ class EnhancedAnalysisService:
         
         # Return top 50 signals
         return signals[:50]
+    
+    def _get_real_score(self, symbol: str, component: str) -> float:
+        """Get real score from actual indicators"""
+        try:
+            # Use real indicator data from cache or direct calculation
+            if hasattr(self, 'cache_client') and self.cache_client:
+                cache_key = f"{symbol}:{component}:score".encode()
+                score_data = asyncio.create_task(self.cache_client.get(cache_key))
+                if score_data:
+                    return float(score_data)
+            
+            # If no cached score, return None (not a fake value)
+            return None
+        except Exception as e:
+            logger.error(f"Error getting {component} score for {symbol}: {e}")
+            return None
     
     def _calculate_signal_score(self, ticker: Dict) -> float:
         """
@@ -172,8 +187,7 @@ class EnhancedAnalysisService:
         elif volume > 1_000_000:   # >1M
             score += 5
         
-        # Add some randomness for realistic variation
-        score += random.uniform(-10, 10)
+        # No random variation - use real data only
         
         # Clamp to 0-100
         return max(0, min(100, score))

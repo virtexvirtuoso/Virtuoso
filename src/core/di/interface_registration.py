@@ -291,10 +291,7 @@ def _register_monitoring_services(container: ServiceContainer, config: Dict[str,
     
     # IAlertService - Singleton (rate limiting, alert history)
     async def create_alert_service():
-        try:
-            from src.monitoring.components.alerts.alert_manager_refactored import AlertManagerRefactored as AlertManager
-        except ImportError:
-            from src.monitoring.alert_manager import AlertManager
+        from src.monitoring.alert_manager import AlertManager
         
         config_service = await container.get_service(IConfigService)
         config_dict = config_service.to_dict() if hasattr(config_service, 'to_dict') else {
@@ -379,10 +376,7 @@ def _register_monitoring_services(container: ServiceContainer, config: Dict[str,
                 async def analyze_symbols(self, symbols): return {'analyzed': len(symbols)}
             return FastMarketMonitor()
         
-        try:
-            from src.monitoring.monitor_refactored import RefactoredMarketMonitor as MarketMonitor
-        except ImportError:
-            from src.monitoring.monitor import MarketMonitor
+        from src.monitoring.monitor import MarketMonitor
         
         # Get configuration
         config_service = await container.get_service(IConfigService)

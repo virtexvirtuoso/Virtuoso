@@ -167,7 +167,7 @@ class LiquidationDetectionEngine:
                                 funding_rate = abs(funding_info['fundingRate']) * 100
                                 funding_stress = min(100, funding_rate / self.funding_rate_stress_threshold * 100)
                                 funding_rate_readings.append(funding_stress)
-                        except:
+                        except Exception as e:
                             pass
                         
                         # Assess liquidity stress from order book
@@ -176,7 +176,7 @@ class LiquidationDetectionEngine:
                             spread = self._calculate_spread_percentage(orderbook)
                             liquidity_stress = min(100, spread * 1000)  # Convert to 0-100 scale
                             liquidity_readings.append(liquidity_stress)
-                        except:
+                        except Exception as e:
                             pass
                         
                     except Exception as e:
@@ -349,7 +349,7 @@ class LiquidationDetectionEngine:
                     try:
                         risk = await self.assess_liquidation_risk(symbol, exchange_id)
                         risk_assessments.append(risk)
-                    except:
+                    except Exception as e:
                         continue
             
             # Look for cascade patterns
@@ -427,7 +427,7 @@ class LiquidationDetectionEngine:
             try:
                 recent_trades = await exchange.fetch_trades(symbol, limit=100)
                 trades = recent_trades or []
-            except:
+            except Exception as e:
                 pass
             
             # Fetch funding rate if available
@@ -436,7 +436,7 @@ class LiquidationDetectionEngine:
                 funding_info = await exchange.fetch_funding_rate(symbol)
                 if funding_info and 'fundingRate' in funding_info:
                     funding_rate = funding_info['fundingRate']
-            except:
+            except Exception as e:
                 pass
             
             return MarketData(
@@ -523,7 +523,7 @@ class LiquidationDetectionEngine:
             best_ask = orderbook['asks'][0][0]
             spread = (best_ask - best_bid) / best_bid * 100
             return spread
-        except:
+        except Exception as e:
             return 1.0
     
     def _calculate_orderbook_imbalance(self, orderbook: Dict) -> float:
@@ -541,7 +541,7 @@ class LiquidationDetectionEngine:
             
             imbalance = (bid_volume - ask_volume) / total_volume
             return imbalance
-        except:
+        except Exception as e:
             return 0.0
     
     def _calculate_rsi(self, prices: pd.Series, period: int = 14) -> pd.Series:

@@ -1905,7 +1905,14 @@ async def get_dashboard_symbols():
         
         # If no symbols retrieved, use fallback
         if not symbols_data:
-            fallback_symbols = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT", "AVAXUSDT"]
+            # Load symbols from configuration file
+            try:
+                with open('config/trading_config.json', 'r') as f:
+                    config = json.load(f)
+                    fallback_symbols = config.get('symbols', [])
+            except:
+                fallback_symbols = []  # Empty list if config not available
+                self.logger.error("No symbols configured - please check config/trading_config.json")
             for symbol in fallback_symbols[:5]:
                 symbols_data.append({
                     "symbol": symbol,
@@ -1932,10 +1939,14 @@ async def get_dashboard_symbols():
         symbols_data = []
         
         # Hardcoded fallback symbols if manager not available
-        fallback_symbols = [
-            "BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT", "AVAXUSDT",
-            "DOGEUSDT", "ADAUSDT", "MATICUSDT", "DOTUSDT", "LINKUSDT"
-        ]
+        # Load symbols from configuration file
+            try:
+                with open('config/trading_config.json', 'r') as f:
+                    config = json.load(f)
+                    fallback_symbols = config.get('symbols', [])
+            except:
+                fallback_symbols = []  # Empty list if config not available
+                self.logger.error("No symbols configured - please check config/trading_config.json")
         
         # Get managers from app state (globals are None until initialized)
         symbols_manager = getattr(app.state, 'top_symbols_manager', None)

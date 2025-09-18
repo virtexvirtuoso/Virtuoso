@@ -506,11 +506,13 @@ class ReportGenerator:
     def _calculate_vwap(self, df: pd.DataFrame, periods: int) -> np.ndarray:
         """
         Calculate VWAP (Volume-Weighted Average Price) for the given period.
-        
+
         Args:
             df: DataFrame with OHLCV data
-            periods: Number of periods to look back (e.g., 1 day = ~1440 minutes)
-            
+            periods: Number of periods to look back:
+                     - Daily VWAP: 24 hours (1440 minutes if 1-minute data, 288 if 5-minute data)
+                     - Weekly VWAP: 7 days (10080 minutes if 1-minute data, 2016 if 5-minute data)
+
         Returns:
             numpy array with VWAP values
         """
@@ -1081,13 +1083,13 @@ class ReportGenerator:
             # Ensure output directory exists
             os.makedirs(output_dir, exist_ok=True)
 
-            # Add Virtuoso branding with trending-up symbol
-            fig.text(0.5, 0.02, 'VIRTUOSO', 
+            # Add Virtuoso branding to bottom right corner
+            fig.text(0.85, 0.02, 'VIRTUOSO',
                     fontsize=12, weight='bold', color='#ff9900',
-                    ha='center', va='bottom',
+                    ha='right', va='bottom',
                     transform=fig.transFigure,
-                    bbox=dict(boxstyle='round,pad=0.3', 
-                             facecolor='#1E1E1E', 
+                    bbox=dict(boxstyle='round,pad=0.3',
+                             facecolor='#1E1E1E',
                              edgecolor='#ff9900',
                              alpha=0.9))
             
@@ -1117,7 +1119,7 @@ class ReportGenerator:
     ) -> Optional[str]:
         """
         Generate a candlestick chart with buy/sell zones using mplfinance.
-        
+
         Args:
             symbol: Trading symbol
             ohlcv_data: DataFrame with OHLCV data (columns: open, high, low, close, volume, timestamp)
@@ -1125,7 +1127,7 @@ class ReportGenerator:
             stop_loss: Stop loss price
             targets: List of target prices with format [{'price': float, 'name': str}]
             output_dir: Directory to save the chart
-            
+
         Returns:
             Path to the saved chart file or None if chart creation failed
         """
@@ -1135,13 +1137,17 @@ class ReportGenerator:
         )
 
         try:
-            # Use temporary directory if none specified
-            if output_dir is None:
-                output_dir = tempfile.mkdtemp()
-                self._log(f"Using temporary directory: {output_dir}")
+            # Always save charts to reports/charts for easy access
+            chart_dir = os.path.join(os.getcwd(), 'reports', 'charts')
 
-            # Create output directory if it doesn't exist
+            # Use provided output_dir for temp work if needed
+            if output_dir is None:
+                output_dir = chart_dir  # Default to charts directory
+                self._log(f"Using charts directory: {output_dir}")
+
+            # Create directories if they don't exist
             os.makedirs(output_dir, exist_ok=True)
+            os.makedirs(chart_dir, exist_ok=True)
 
             # Check if we have actual OHLCV data to work with
             if ohlcv_data is None or ohlcv_data.empty:
@@ -1252,20 +1258,62 @@ class ReportGenerator:
                 # Return None instead of recursively calling _create_simulated_chart
                 return None
                 
-            # Calculate VWAPs if volume data is available
+            # Calculate VWAPs if volume data is available with timeframe detection
             has_vwap = False
             if 'volume' in df.columns and len(df) > 10:  # Need reasonable amount of data for VWAP
                 try:
+                    # Detect timeframe from data
+                    timeframe_str = "1h"  # Default
+                    daily_periods = 24  # Default for hourly data
+                    weekly_periods = 168  # Default for hourly data (7 * 24)
+
+                    if len(df) > 1 and hasattr(df, 'index') and isinstance(df.index, pd.DatetimeIndex):
+                        # Calculate average time difference between candles
+                        time_diffs = df.index.to_series().diff().dropna()
+                        if not time_diffs.empty:
+                            avg_minutes = time_diffs.mean().total_seconds() / 60
+
+                            # Determine timeframe and periods
+                            if avg_minutes < 2:
+                                timeframe_str = "1m"
+                                daily_periods = 1440  # 24 hours * 60 minutes
+                                weekly_periods = 10080  # 7 * 24 * 60
+                            elif avg_minutes < 10:
+                                timeframe_str = "5m"
+                                daily_periods = 288  # 24 hours * 12 (5-min candles per hour)
+                                weekly_periods = 2016  # 7 * 24 * 12
+                            elif avg_minutes < 20:
+                                timeframe_str = "15m"
+                                daily_periods = 96  # 24 hours * 4 (15-min candles per hour)
+                                weekly_periods = 672  # 7 * 24 * 4
+                            elif avg_minutes < 45:
+                                timeframe_str = "30m"
+                                daily_periods = 48  # 24 hours * 2 (30-min candles per hour)
+                                weekly_periods = 336  # 7 * 24 * 2
+                            elif avg_minutes < 120:
+                                timeframe_str = "1h"
+                                daily_periods = 24  # 24 hours
+                                weekly_periods = 168  # 7 * 24
+                            elif avg_minutes < 360:
+                                timeframe_str = "4h"
+                                daily_periods = 6  # 24 hours / 4
+                                weekly_periods = 42  # 7 * 24 / 4
+                            else:
+                                timeframe_str = "1d"
+                                daily_periods = 1  # 1 day
+                                weekly_periods = 7  # 7 days
+
+                            self._log(f"Chart timeframe: {timeframe_str} (avg {avg_minutes:.1f} min between candles)", level=logging.INFO)
+
                     # Check if we have HTF data in metadata for weekly VWAP
                     htf_data = None
                     if hasattr(ohlcv_data, 'metadata') and ohlcv_data.metadata and 'htf_data' in ohlcv_data.metadata:
                         htf_data = ohlcv_data.metadata['htf_data']
                         self._log(f"Found HTF data in metadata for weekly VWAP calculation", level=logging.DEBUG)
-                    
-                    # Calculate daily VWAP using LTF data (primary dataset)
-                    # LTF data is more granular (e.g., 5-minute candles) which is ideal for daily VWAP
-                    self._log(f"Calculating daily VWAP using LTF data", level=logging.DEBUG)
-                    df['daily_vwap'] = self._calculate_vwap(df, periods=min(1440, len(df)))
+
+                    # Calculate daily VWAP using appropriate periods for the timeframe
+                    self._log(f"Calculating daily VWAP using {min(daily_periods, len(df))} periods for {timeframe_str} data", level=logging.DEBUG)
+                    df['daily_vwap'] = self._calculate_vwap(df, periods=min(daily_periods, len(df)))
 
                     # Calculate weekly VWAP using HTF data or fall back to primary data
                     if htf_data is not None and not htf_data.empty:
@@ -1292,17 +1340,17 @@ class ReportGenerator:
                                     df['weekly_vwap'] = resampled_vwap.values
                                 else:
                                     self._log("Primary dataframe doesn't have DatetimeIndex, can't resample HTF VWAP", level=logging.WARNING)
-                                    df['weekly_vwap'] = self._calculate_vwap(df, periods=min(10080, len(df)))
+                                    df['weekly_vwap'] = self._calculate_vwap(df, periods=min(weekly_periods, len(df)))
                             else:
                                 self._log("HTF dataframe doesn't have DatetimeIndex, can't resample VWAP", level=logging.WARNING)
-                                df['weekly_vwap'] = self._calculate_vwap(df, periods=min(10080, len(df)))
+                                df['weekly_vwap'] = self._calculate_vwap(df, periods=min(weekly_periods, len(df)))
                         else:
                             self._log("HTF data missing required columns, falling back to primary dataframe for weekly VWAP", level=logging.WARNING)
-                            df['weekly_vwap'] = self._calculate_vwap(df, periods=min(10080, len(df)))
+                            df['weekly_vwap'] = self._calculate_vwap(df, periods=min(weekly_periods, len(df)))
                     else:
                         # Fall back to calculating weekly VWAP from primary data if no HTF data available
                         self._log("No HTF data available, calculating weekly VWAP from primary dataframe", level=logging.DEBUG)
-                        df['weekly_vwap'] = self._calculate_vwap(df, periods=min(10080, len(df)))
+                        df['weekly_vwap'] = self._calculate_vwap(df, periods=min(weekly_periods, len(df)))
                     
                     has_vwap = True
                     self._log(f"Successfully calculated VWAP values for {symbol}", level=logging.DEBUG)
@@ -1355,10 +1403,13 @@ class ReportGenerator:
                 },
                 "warn_too_much_data": 1000,  # Suppress warning up to 1000 candles
             }
-            
+
             # Add volume parameter only if we have valid volume data
             if has_volume:
                 kwargs["volume"] = True
+                # Make volume panel 1/3 the height of price panel (was 4:1, now 3:1 for smaller volume)
+                kwargs["panel_ratios"] = (3, 1)
+                kwargs["volume_panel"] = 1
 
             # Prepare additional plots for entry, stop loss, and targets
             plots = []
@@ -1542,22 +1593,22 @@ class ReportGenerator:
                 # Stop loss label
                 if stop_loss is not None:
                     stop_pos = (stop_loss - y_min) / (y_max - y_min)
-                ax1.annotate(
+                    ax1.annotate(
                         f"Stop: ${self._format_number(stop_loss)}",
-                    xy=(1.01, stop_pos),
-                    xycoords=("axes fraction", "axes fraction"),
-                    xytext=(1.05, stop_pos),
-                    textcoords="axes fraction",
-                    fontsize=9,
-                    color="#ef4444",
-                    fontweight="bold",
-                    bbox=dict(
-                        facecolor="#0c1a2b",
-                        edgecolor="#ef4444",
-                        boxstyle="round,pad=0.3",
-                        alpha=0.9,
-                    ),
-                )
+                        xy=(1.01, stop_pos),
+                        xycoords=("axes fraction", "axes fraction"),
+                        xytext=(1.05, stop_pos),
+                        textcoords="axes fraction",
+                        fontsize=9,
+                        color="#ef4444",
+                        fontweight="bold",
+                        bbox=dict(
+                            facecolor="#0c1a2b",
+                            edgecolor="#ef4444",
+                            boxstyle="round,pad=0.3",
+                            alpha=0.9,
+                        ),
+                    )
 
                 # Shade area between entry and stop loss if both exist
                 if stop_loss is not None and entry_price is not None:
@@ -1638,24 +1689,38 @@ class ReportGenerator:
             # Adjust layout with specific settings instead of tight_layout
             plt.subplots_adjust(right=0.85, left=0.1, top=0.9, bottom=0.15)
 
-            # Create output filename for REAL data chart
-            timestamp = int(time.time())
-            output_file = os.path.join(
-                output_dir, f"{symbol.replace('/', '_')}_chart_{timestamp}.png"
-            )
+            # Create output filename with more descriptive name
+            from datetime import datetime
+            timestamp_str = datetime.now().strftime('%Y%m%d_%H%M%S')
+            symbol_clean = symbol.replace('/', '_').replace(':', '').lower()
 
-            # Add Virtuoso branding with trending-up symbol
-            fig.text(0.5, 0.02, 'VIRTUOSO', 
+            # Determine signal type for filename
+            signal_type = "neutral"
+            if entry_price and stop_loss:
+                signal_type = "buy" if entry_price > stop_loss else "sell"
+
+            filename = f"{symbol_clean}_{signal_type}_chart_{timestamp_str}.png"
+            output_file = os.path.join(output_dir, filename)
+
+            # Add Virtuoso branding to bottom right corner
+            fig.text(0.85, 0.02, 'VIRTUOSO',
                     fontsize=14, weight='bold', color='#ff9900',
-                    ha='center', va='bottom',
+                    ha='right', va='bottom',
                     transform=fig.transFigure,
-                    bbox=dict(boxstyle='round,pad=0.4', 
-                             facecolor='#1E1E1E', 
+                    bbox=dict(boxstyle='round,pad=0.4',
+                             facecolor='#1E1E1E',
                              edgecolor='#ff9900',
                              alpha=0.9))
-            
+
             # Save the figure with padding for branding
             plt.savefig(output_file, dpi=150, bbox_inches="tight", pad_inches=0.2)
+
+            # Also save to reports/charts directory if not already there
+            if output_dir != chart_dir:
+                chart_file = os.path.join(chart_dir, filename)
+                plt.savefig(chart_file, dpi=150, bbox_inches="tight", pad_inches=0.2)
+                self._log(f"Chart also saved to: {chart_file}")
+
             plt.close(fig)
 
             self._log(f"Real data candlestick chart saved to: {output_file}")
@@ -1948,7 +2013,8 @@ class ReportGenerator:
                     "score": confluence_score,  # CHANGED: Using confluence_score instead of score
                     "price": price,
                     "timestamp": timestamp,
-                    "reliability": reliability,
+                    "reliability": reliability * 100,  # Convert to percentage for template
+                    "analysis_components": signal_data.get("analysis_components", {}),  # Add interpretations
                 }
             )
 
@@ -2020,7 +2086,20 @@ class ReportGenerator:
 
             # Create component chart image
             try:
+                # Get components from either 'components' or 'analysis_components'
                 components = signal_data.get("components", {})
+                analysis_components = signal_data.get("analysis_components", {})
+
+                # Merge analysis_components into components if they exist
+                if analysis_components and isinstance(analysis_components, dict):
+                    # If components is empty, use analysis_components directly
+                    if not components:
+                        components = analysis_components
+                    else:
+                        # Merge analysis_components into components
+                        for key, value in analysis_components.items():
+                            if key not in components:
+                                components[key] = value
 
                 self._log(f"Components type: {type(components)}")
                 self._log(
@@ -2139,7 +2218,8 @@ class ReportGenerator:
                         # Handle different component formats
                         if isinstance(data, dict):
                             score_value = float(data.get("score", 0))
-                            impact = data.get("impact", 0)
+                            # Calculate impact if not provided
+                            impact = data.get("impact", abs(score_value - 50) * 2)
                             interpretation = data.get("interpretation", "")
                         elif isinstance(data, (int, float)) or (
                             hasattr(data, "item") and callable(getattr(data, "item"))
@@ -2390,7 +2470,7 @@ class ReportGenerator:
                 "symbol": symbol,
                 "score": confluence_score,  # CHANGED: Using confluence_score instead of score
                 "score_width_pct": f"{min(max(confluence_score, 0), 100)}%",  # CHANGED: Using confluence_score
-                "reliability": reliability * 100,  # Convert from decimal (0-1) to percentage (0-100)
+                "reliability": reliability * 100,  # Convert to percentage for template display
                 "price": price,
                 "timestamp": formatted_timestamp,
                 "signal_type": signal_type,
@@ -2418,6 +2498,9 @@ class ReportGenerator:
             # Render the HTML template
             try:
                 template = self.env.get_template("trading_report_dark.html")
+
+                # Preserve raw chart path for return values before converting to file:// for HTML
+                raw_candlestick_chart_path = candlestick_chart
 
                 # Fix image paths by ensuring they are absolute and using file:// protocol
                 if candlestick_chart:
@@ -2494,8 +2577,8 @@ class ReportGenerator:
 
                 self._log(f"Trading report generated: HTML: {html_path}, PDF: {pdf_path}, JSON: {json_path}")
                 
-                # Store chart path in a way that can be accessed
-                chart_path = candlestick_chart if candlestick_chart else None
+                # Store filesystem chart path (not file:// URI) so Discord can attach it
+                chart_path = raw_candlestick_chart_path if raw_candlestick_chart_path else None
                 return pdf_path, json_path, chart_path
             except Exception as e:
                 self._log(f"Error generating PDF: {str(e)}", logging.ERROR)
@@ -4487,13 +4570,17 @@ class ReportGenerator:
         )
 
         try:
-            # Use temporary directory if none specified
-            if output_dir is None:
-                output_dir = tempfile.mkdtemp()
-                self._log(f"Using temporary directory: {output_dir}")
+            # Always save charts to reports/charts for easy access
+            chart_dir = os.path.join(os.getcwd(), 'reports', 'charts')
 
-            # Create output directory if it doesn't exist
+            # Use provided output_dir for temp work if needed
+            if output_dir is None:
+                output_dir = chart_dir  # Default to charts directory
+                self._log(f"Using charts directory: {output_dir}")
+
+            # Create directories if they don't exist
             os.makedirs(output_dir, exist_ok=True)
+            os.makedirs(chart_dir, exist_ok=True)
 
             # Determine range of prices to display
             prices = [entry_price]
@@ -4581,7 +4668,7 @@ class ReportGenerator:
                 "style": VIRTUOSO_ENHANCED_STYLE,  # Use enhanced style
                 "figsize": (10, 6),
                 "title": f"{symbol} Price Chart ⚠️ SIMULATED DATA ⚠️",
-                "panel_ratios": (4, 1),
+                "panel_ratios": (3, 1),  # Changed from (4, 1) to (3, 1) for smaller volume panel
                 "volume": True,
                 "volume_panel": 1,
                 "show_nontrading": False,
@@ -4888,28 +4975,42 @@ class ReportGenerator:
 
                 # Add multiple prominent watermarks for simulated charts
                 self._add_simulated_watermarks(fig, ax1)
-                
+
                 # Adjust layout with specific settings instead of tight_layout
                 plt.subplots_adjust(right=0.85, left=0.1, top=0.9, bottom=0.15)
 
-                # Create output filename
-                timestamp = int(time.time())
-                output_file = os.path.join(
-                    output_dir, f"{symbol.replace('/', '_')}_simulated_{timestamp}.png"
-                )
+                # Create output filename with more descriptive name
+                from datetime import datetime
+                timestamp_str = datetime.now().strftime('%Y%m%d_%H%M%S')
+                symbol_clean = symbol.replace('/', '_').replace(':', '').lower()
 
-                # Add Virtuoso branding with trending-up symbol
-                fig.text(0.5, 0.02, 'VIRTUOSO', 
+                # Determine signal type for filename
+                signal_type = "neutral"
+                if entry_price and stop_loss:
+                    signal_type = "buy" if entry_price > stop_loss else "sell"
+
+                filename = f"{symbol_clean}_{signal_type}_simulated_{timestamp_str}.png"
+                output_file = os.path.join(output_dir, filename)
+
+                # Add Virtuoso branding to bottom right corner
+                fig.text(0.85, 0.02, 'VIRTUOSO',
                         fontsize=14, weight='bold', color='#ff9900',
-                        ha='center', va='bottom',
+                        ha='right', va='bottom',
                         transform=fig.transFigure,
-                        bbox=dict(boxstyle='round,pad=0.4', 
-                                 facecolor='#1E1E1E', 
+                        bbox=dict(boxstyle='round,pad=0.4',
+                                 facecolor='#1E1E1E',
                                  edgecolor='#ff9900',
                                  alpha=0.9))
-                
+
                 # Save the figure with padding for branding
                 plt.savefig(output_file, dpi=150, bbox_inches="tight", pad_inches=0.2)
+
+                # Also save to reports/charts directory if not already there
+                if output_dir != chart_dir:
+                    chart_file = os.path.join(chart_dir, filename)
+                    plt.savefig(chart_file, dpi=150, bbox_inches="tight", pad_inches=0.2)
+                    self._log(f"Simulated chart also saved to: {chart_file}")
+
                 plt.close(fig)
 
                 self._log(f"Saved simulated chart: {output_file}")

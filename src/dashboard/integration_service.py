@@ -91,7 +91,7 @@ class DashboardIntegrationService:
     # Signal calculation methods (implement based on your specific logic)
     async def _calculate_momentum_signal(self, components: Dict, signal_data: Dict) -> Dict[str, Any]:
         """Calculate momentum signal from price data."""
-        score = components.get('momentum', {}).get('score', 50.0)
+        score = components.get('momentum', {}).get('score', None)
         return {
             'confidence': float(score),
             'direction': 'bullish' if score > 60 else 'bearish' if score < 40 else 'neutral',
@@ -100,7 +100,7 @@ class DashboardIntegrationService:
     
     async def _calculate_technical_signal(self, components: Dict, signal_data: Dict) -> Dict[str, Any]:
         """Calculate technical analysis signal."""
-        score = components.get('technical', {}).get('score', 50.0)
+        score = components.get('technical', {}).get('score', None)
         return {
             'confidence': float(score),
             'direction': 'bullish' if score > 60 else 'bearish' if score < 40 else 'neutral',
@@ -109,7 +109,7 @@ class DashboardIntegrationService:
     
     async def _calculate_volume_signal(self, components: Dict, signal_data: Dict) -> Dict[str, Any]:
         """Calculate volume-based signal."""
-        score = components.get('volume', {}).get('score', 50.0)
+        score = components.get('volume', {}).get('score', None)
         return {
             'confidence': float(score),
             'direction': 'bullish' if score > 60 else 'bearish' if score < 40 else 'neutral',
@@ -118,7 +118,7 @@ class DashboardIntegrationService:
     
     async def _calculate_orderflow_signal(self, components: Dict, signal_data: Dict) -> Dict[str, Any]:
         """Calculate order flow signal."""
-        score = components.get('orderflow', {}).get('score', 50.0)
+        score = components.get('orderflow', {}).get('score', None)
         return {
             'confidence': float(score),
             'direction': 'bullish' if score > 60 else 'bearish' if score < 40 else 'neutral',
@@ -127,7 +127,7 @@ class DashboardIntegrationService:
     
     async def _calculate_orderbook_signal(self, components: Dict, signal_data: Dict) -> Dict[str, Any]:
         """Calculate order book signal."""
-        score = components.get('orderbook', {}).get('score', 50.0)
+        score = components.get('orderbook', {}).get('score', None)
         return {
             'confidence': float(score),
             'direction': 'bullish' if score > 60 else 'bearish' if score < 40 else 'neutral',
@@ -136,7 +136,7 @@ class DashboardIntegrationService:
     
     async def _calculate_sentiment_signal(self, components: Dict, signal_data: Dict) -> Dict[str, Any]:
         """Calculate sentiment signal."""
-        score = components.get('sentiment', {}).get('score', 50.0)
+        score = components.get('sentiment', {}).get('score', None)
         return {
             'confidence': float(score),
             'direction': 'bullish' if score > 60 else 'bearish' if score < 40 else 'neutral',
@@ -145,7 +145,7 @@ class DashboardIntegrationService:
     
     async def _calculate_price_action_signal(self, components: Dict, signal_data: Dict) -> Dict[str, Any]:
         """Calculate price action signal."""
-        score = components.get('price_action', {}).get('score', 50.0)
+        score = components.get('price_action', {}).get('score', None)
         return {
             'confidence': float(score),
             'direction': 'bullish' if score > 60 else 'bearish' if score < 40 else 'neutral',
@@ -154,7 +154,7 @@ class DashboardIntegrationService:
     
     async def _calculate_beta_signal(self, components: Dict, signal_data: Dict) -> Dict[str, Any]:
         """Calculate beta exposure signal."""
-        score = components.get('beta_exp', {}).get('score', 50.0)
+        score = components.get('beta_exp', {}).get('score', None)
         return {
             'confidence': float(score),
             'direction': 'bullish' if score > 60 else 'bearish' if score < 40 else 'neutral',
@@ -163,7 +163,7 @@ class DashboardIntegrationService:
     
     async def _calculate_confluence_signal(self, components: Dict, signal_data: Dict) -> Dict[str, Any]:
         """Calculate confluence signal."""
-        score = components.get('confluence', {}).get('score', 50.0)
+        score = components.get('confluence', {}).get('score', None)
         return {
             'confidence': float(score),
             'direction': 'bullish' if score > 60 else 'bearish' if score < 40 else 'neutral',
@@ -172,7 +172,7 @@ class DashboardIntegrationService:
     
     async def _calculate_whale_signal(self, components: Dict, signal_data: Dict) -> Dict[str, Any]:
         """Calculate whale activity signal."""
-        score = components.get('whale_act', {}).get('score', 50.0)
+        score = components.get('whale_act', {}).get('score', None)
         return {
             'confidence': float(score),
             'direction': 'bullish' if score > 60 else 'bearish' if score < 40 else 'neutral',
@@ -181,7 +181,7 @@ class DashboardIntegrationService:
     
     async def _calculate_liquidation_signal(self, components: Dict, signal_data: Dict) -> Dict[str, Any]:
         """Calculate liquidation signal."""
-        score = components.get('liquidation', {}).get('score', 50.0)
+        score = components.get('liquidation', {}).get('score', None)
         return {
             'confidence': float(score),
             'direction': 'bullish' if score > 60 else 'bearish' if score < 40 else 'neutral',

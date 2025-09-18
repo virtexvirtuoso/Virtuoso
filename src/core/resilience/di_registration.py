@@ -14,7 +14,7 @@ import logging
 from typing import Dict, Any, Optional, Type
 from dataclasses import dataclass
 
-from ..di.container import DIContainer, ServiceLifetime
+from ..di.container import ServiceContainer as DIContainer, ServiceLifetime
 from ..interfaces.services import IAsyncDisposable
 
 from .circuit_breaker import get_circuit_breaker, CircuitBreakerConfig

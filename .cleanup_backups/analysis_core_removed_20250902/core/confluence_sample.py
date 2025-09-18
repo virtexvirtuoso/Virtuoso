@@ -6,7 +6,7 @@ FOR PRODUCTION USE: Replace this with the actual confluence.py implementation.
 """
 
 # This module imports from the core implementation
-from src.core.analysis.confluence_sample import ConfluenceAnalyzer
+from src.core.analysis.confluence import ConfluenceAnalyzer
 
 # Re-export for compatibility
 __all__ = ['ConfluenceAnalyzer']
