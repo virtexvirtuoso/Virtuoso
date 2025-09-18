@@ -88,19 +88,27 @@ class SignalProcessor:
             return False
 
     async def process_analysis_result(self, symbol: str, result: Dict[str, Any]) -> None:
-        """Process analysis result and generate signals if appropriate."""
+        """
+        Process analysis result and generate signals if appropriate.
+
+        This method implements the complete signal processing workflow including:
+        - Confluence score evaluation
+        - Neutral buffer logic for signal stability
+        - Signal type determination with sticky behavior
+        - Enhanced data formatting and caching
+        """
         try:
             # Generate a transaction ID for tracking this analysis throughout the system
             transaction_id = str(uuid.uuid4())
             signal_id = str(uuid.uuid4())[:8]
             result['transaction_id'] = transaction_id
             result['signal_id'] = signal_id
-            
+
             # Extract key information
             confluence_score = result.get('confluence_score', 0)
             reliability = result.get('reliability', 0)
             components = result.get('components', {})
-            
+
             # Get thresholds from config
             confluence_config = self.config.get('confluence', {})
             threshold_config = confluence_config.get('thresholds', {})
@@ -205,27 +213,25 @@ class SignalProcessor:
             )
             self.logger.info(formatted_table)
             
-            # Generate signal if score meets thresholds
-            self.logger.debug(f"=== Generating Signal ===")
+            # Generate signal if score meets thresholds with neutral buffer logic
+            self.logger.debug(f"=== Generating Signal with Neutral Buffer Logic ===")
             # Store threshold information in result for downstream processing
             result['buy_threshold'] = buy_threshold
             result['sell_threshold'] = sell_threshold
-            
-            # Determine signal type based on thresholds
-            signal_type = "NEUTRAL"
-            if confluence_score >= buy_threshold:
-                signal_type = "BUY"
-            elif confluence_score <= sell_threshold:
-                signal_type = "SELL"
-                
+            result['neutral_buffer'] = neutral_buffer
+
+            # Determine signal type using neutral buffer for sticky signal behavior
+            signal_type = self._determine_signal_with_buffer(
+                confluence_score, buy_threshold, sell_threshold, neutral_buffer, symbol
+            )
             result['signal_type'] = signal_type
-            
+
             # Only pass to signal generator if it's a BUY or SELL signal
             if signal_type in ["BUY", "SELL"]:
                 await self.generate_signal(symbol, result)
                 self.logger.info(f"Generated {signal_type} signal for {symbol} with score {confluence_score:.2f} (threshold: {buy_threshold if signal_type == 'BUY' else sell_threshold})")
             else:
-                self.logger.info(f"Generated NEUTRAL signal for {symbol} with score {confluence_score:.2f} in neutral zone (buy: {buy_threshold}, sell: {sell_threshold})")
+                self.logger.info(f"Generated NEUTRAL signal for {symbol} with score {confluence_score:.2f} in neutral zone (buy: {buy_threshold}, sell: {sell_threshold}, buffer: {neutral_buffer})")
 
             
             # Cache confluence breakdown for mobile dashboard
@@ -245,6 +251,103 @@ class SignalProcessor:
         except Exception as e:
             self.logger.error(f"Error processing analysis result: {str(e)}")
             self.logger.debug(traceback.format_exc())
+
+    def _determine_signal_with_buffer(
+        self,
+        confluence_score: float,
+        buy_threshold: float,
+        sell_threshold: float,
+        neutral_buffer: float,
+        symbol: str
+    ) -> str:
+        """
+        Determine signal type using neutral buffer logic to prevent signal whipsaws.
+
+        The neutral buffer creates "sticky" signals that require stronger moves to change direction,
+        preventing rapid signal flipping in choppy/sideways markets.
+
+        Logic:
+        - BUY Signal: confluence_score >= buy_threshold
+        - SELL Signal: confluence_score <= sell_threshold
+        - NEUTRAL Zone: confluence_score between (sell_threshold + buffer) and (buy_threshold - buffer)
+
+        Buffer Behavior:
+        - If buffer = 0: Classic threshold logic (immediate signal changes)
+        - If buffer > 0: Creates neutral zones around thresholds
+          * Upper neutral zone: (buy_threshold - buffer) to buy_threshold
+          * Lower neutral zone: sell_threshold to (sell_threshold + buffer)
+
+        Example with buy=70, sell=35, buffer=5:
+        - BUY: score >= 70
+        - Upper Neutral: 65 <= score < 70
+        - Middle Neutral: 40 < score < 65
+        - Lower Neutral: 35 < score <= 40
+        - SELL: score <= 35
+
+        Args:
+            confluence_score: Current confluence score (0-100)
+            buy_threshold: BUY signal threshold
+            sell_threshold: SELL signal threshold
+            neutral_buffer: Buffer size to create neutral zones
+            symbol: Trading symbol for logging
+
+        Returns:
+            str: Signal type ("BUY", "SELL", or "NEUTRAL")
+        """
+        try:
+            # Validate inputs
+            if not all(isinstance(x, (int, float)) for x in [confluence_score, buy_threshold, sell_threshold, neutral_buffer]):
+                self.logger.error(f"Invalid numeric inputs for {symbol}: score={confluence_score}, buy={buy_threshold}, sell={sell_threshold}, buffer={neutral_buffer}")
+                return "NEUTRAL"
+
+            # Ensure proper threshold relationship
+            if buy_threshold <= sell_threshold:
+                self.logger.warning(f"Invalid threshold configuration for {symbol}: buy_threshold ({buy_threshold}) must be > sell_threshold ({sell_threshold})")
+                return "NEUTRAL"
+
+            # Calculate buffer zones
+            upper_neutral_zone_start = buy_threshold - neutral_buffer
+            lower_neutral_zone_end = sell_threshold + neutral_buffer
+
+            # Log buffer zones for debugging
+            self.logger.debug(
+                f"[{symbol}] Buffer zones - Score: {confluence_score:.2f} | "
+                f"BUY: >={buy_threshold} | Upper Neutral: {upper_neutral_zone_start:.2f}-{buy_threshold} | "
+                f"Middle Neutral: {lower_neutral_zone_end:.2f}-{upper_neutral_zone_start:.2f} | "
+                f"Lower Neutral: {sell_threshold}-{lower_neutral_zone_end:.2f} | SELL: <={sell_threshold}"
+            )
+
+            # Determine signal type with buffer logic
+            if confluence_score >= buy_threshold:
+                signal_type = "BUY"
+                self.logger.debug(f"[{symbol}] BUY signal: {confluence_score:.2f} >= {buy_threshold} (buy threshold)")
+            elif confluence_score <= sell_threshold:
+                signal_type = "SELL"
+                self.logger.debug(f"[{symbol}] SELL signal: {confluence_score:.2f} <= {sell_threshold} (sell threshold)")
+            else:
+                # In neutral zone - determine which zone for logging
+                if neutral_buffer > 0:
+                    if upper_neutral_zone_start <= confluence_score < buy_threshold:
+                        zone_type = "upper neutral zone"
+                    elif lower_neutral_zone_end < confluence_score < upper_neutral_zone_start:
+                        zone_type = "middle neutral zone"
+                    elif sell_threshold < confluence_score <= lower_neutral_zone_end:
+                        zone_type = "lower neutral zone"
+                    else:
+                        zone_type = "neutral zone"
+
+                    self.logger.debug(f"[{symbol}] NEUTRAL signal: {confluence_score:.2f} in {zone_type} (buffer: {neutral_buffer})")
+                else:
+                    self.logger.debug(f"[{symbol}] NEUTRAL signal: {confluence_score:.2f} between thresholds (no buffer)")
+
+                signal_type = "NEUTRAL"
+
+            return signal_type
+
+        except Exception as e:
+            self.logger.error(f"Error determining signal with buffer for {symbol}: {str(e)}")
+            self.logger.debug(traceback.format_exc())
+            return "NEUTRAL"
 
     async def generate_signal(self, symbol: str, analysis_result: Dict[str, Any]) -> None:
         """Generate trading signal based on analysis results with enhanced validation and tracking."""
@@ -330,12 +433,15 @@ class SignalProcessor:
             except Exception as e:
                 self.logger.warning(f"[TXN:{transaction_id}][SIG:{signal_id}] Error fetching OHLCV data: {e}")
             
-            # Determine signal type based on thresholds
-            signal_type = "NEUTRAL"
-            if confluence_score >= buy_threshold:
-                signal_type = "BUY"
-            elif confluence_score <= sell_threshold:
-                signal_type = "SELL"
+            # Get neutral buffer from config
+            confluence_config = self.config.get('confluence', {})
+            threshold_config = confluence_config.get('thresholds', {})
+            neutral_buffer = float(threshold_config.get('neutral_buffer', 5))
+
+            # Determine signal type using neutral buffer logic for consistency
+            signal_type = self._determine_signal_with_buffer(
+                confluence_score, buy_threshold, sell_threshold, neutral_buffer, symbol
+            )
             
             signal_data['signal_type'] = signal_type
             

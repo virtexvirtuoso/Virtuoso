@@ -191,6 +191,22 @@ def register_analysis_services(container: ServiceContainer) -> ServiceContainer:
     # Register with interface for proper DI resolution
     container.register_factory(IConfluenceAnalyzerService, create_confluence_analyzer, ServiceLifetime.SCOPED)
     
+    # SmartMoneyDetector (singleton) - unlocks 6th analysis dimension
+    try:
+        from ...monitoring.smart_money_detector import SmartMoneyDetector
+
+        async def create_smart_money_detector():
+            try:
+                config_service = await container.get_service(IConfigService)
+                config_dict = config_service.to_dict() if hasattr(config_service, 'to_dict') else {}
+            except Exception:
+                config_dict = {}
+            return SmartMoneyDetector(config=config_dict)
+
+        container.register_factory("smart_money_detector", create_smart_money_detector, ServiceLifetime.SINGLETON)
+    except Exception as e:
+        logger.warning(f"SmartMoneyDetector not available for registration: {e}")
+
     # Liquidation Detector (scoped) - needs exchange manager
     from ...core.analysis.liquidation_detector import LiquidationDetectionEngine
     

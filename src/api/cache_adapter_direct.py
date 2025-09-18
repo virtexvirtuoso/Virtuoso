@@ -328,6 +328,10 @@ class DirectCacheAdapter:
         """Public get method for cache access"""
         return await self._get(key, default)
     
+    async def set(self, key: str, value: Any, ttl: int = 300) -> bool:
+        """Public set method for cache write operations (required for cache warming)"""
+        return await self._set(key, value, ttl)
+    
     async def get_market_overview(self) -> Dict[str, Any]:
         """Get market overview with correct field names"""
         overview = await self._get('market:overview', {})
@@ -517,6 +521,7 @@ class DirectCacheAdapter:
     
     async def get_dashboard_symbols(self) -> Dict[str, Any]:
         """Get symbol data from cache"""
+        # Standardize cache key usage via prefixes
         tickers = await self._get('market:tickers', {})
         signals = await self._get('analysis:signals', {})
         
@@ -550,6 +555,20 @@ class DirectCacheAdapter:
             'source': 'cache',
             'data_source': 'real' if symbols else 'no_data'  # Data source indicator
         }
+
+    # Cache key manager for consistent prefixes (quick-win consolidation)
+    class CacheKeyManager:
+        PREFIXES = {
+            "ticker": "tick:",
+            "orderbook": "ob:",
+            "analysis": "analysis:",
+            "dashboard": "dash:",
+        }
+
+        @classmethod
+        def standardize_key(cls, key_type: str, symbol: str, timeframe: str | None = None) -> str:
+            base = f"{cls.PREFIXES.get(key_type, '')}{symbol.upper()}"
+            return f"{base}:{timeframe}" if timeframe else base
     
     async def get_market_movers(self) -> Dict[str, Any]:
         """Get market movers from cache"""

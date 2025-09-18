@@ -304,6 +304,15 @@ class MarketMonitor:
                 logger=self.logger.getChild('validator')
             )
             
+            # Initialize RiskManager for trade parameter calculations
+            risk_manager = None
+            try:
+                from src.risk.risk_manager import RiskManager
+                risk_manager = RiskManager(self.config)
+                self.logger.info("✅ RiskManager initialized for trade parameter calculations")
+            except Exception as e:
+                self.logger.warning(f"RiskManager initialization failed: {str(e)} - will use fallback calculations")
+
             # Signal Processor - handles analysis processing and signal generation
             if self.signal_generator and self.metrics_manager:
                 self._signal_processor = SignalProcessor(
@@ -312,6 +321,7 @@ class MarketMonitor:
                     metrics_manager=self.metrics_manager,
                     interpretation_manager=getattr(self, 'interpretation_manager', None),
                     market_data_manager=self.market_data_manager,
+                    risk_manager=risk_manager,
                     logger=self.logger.getChild('signal_processor')
                 )
                 self.logger.info("✅ Signal processor initialized successfully")

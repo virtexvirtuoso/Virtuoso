@@ -579,6 +579,16 @@ class BybitExchange(BaseExchange):
     async def _create_session(self) -> None:
         """Create persistent aiohttp session with connection pooling."""
         try:
+            # Rate limit session creation to prevent excessive recreation
+            current_time = time.time()
+            if hasattr(self, '_last_session_creation'):
+                time_since_last = current_time - self._last_session_creation
+                if time_since_last < 5.0:  # Wait at least 5 seconds between sessions
+                    self.logger.debug(f"Throttling session creation - {time_since_last:.1f}s since last")
+                    await asyncio.sleep(2.0)  # Brief delay to reduce churn
+            
+            self._last_session_creation = current_time
+            
             # Close existing session and connector if any
             if self.session:
                 try:
@@ -597,20 +607,22 @@ class BybitExchange(BaseExchange):
                 
             # Create TCP connector with connection pooling
             self.connector = aiohttp.TCPConnector(
-                limit=150,  # Increased total connection pool limit
-                limit_per_host=40,  # Increased per-host connection limit
+                limit=100,  # Reduced total connection pool limit
+                limit_per_host=20,  # Reduced per-host connection limit  
                 ttl_dns_cache=300,  # DNS cache timeout
                 enable_cleanup_closed=True,
-                keepalive_timeout=30  # Close idle connections after 30s
-                # Note: limit_per_host_queue removed for compatibility
+                keepalive_timeout=60,  # Increased keepalive timeout
+                use_dns_cache=True,
+                force_close=False,  # Keep connections alive
+                ssl=False  # Disable SSL verification for stability
             )
             
             # Configure timeouts - increased for large market data responses
             self.timeout = aiohttp.ClientTimeout(
-                total=60,  # Increased for large market ticker responses (~384KB)
-                connect=10,  # Reasonable connection timeout
-                sock_read=50,  # Increased for reading large responses
-                sock_connect=10  # Reasonable socket connection timeout
+                total=90,  # Increased total timeout for stability
+                connect=15,  # Increased connection timeout
+                sock_read=60,  # Increased for reading large responses
+                sock_connect=15  # Increased socket connection timeout
             )
             
             # Create session with connection pooling
@@ -619,7 +631,7 @@ class BybitExchange(BaseExchange):
                 timeout=self.timeout
             )
             
-            self.logger.info("Created persistent session with connection pooling")
+            self.logger.info("✅ Created persistent session with connection pooling")
             
         except Exception as e:
             self.logger.error(f"Failed to create session: {str(e)}")
@@ -846,21 +858,40 @@ class BybitExchange(BaseExchange):
                 return {'retCode': -1, 'retMsg': 'Request timeout'}
             except Exception as e:
                 # Handle connector closed error with retry
-                if "Connector is closed" in str(e):
-                    self.logger.warning(f"Connector closed for {endpoint}, attempting to recreate session...")
+                if "Connector is closed" in str(e) or "Connection pool is closed" in str(e):
+                    self.logger.warning(f"⚠️  WARNING: Connector closed for {endpoint}, attempting to recreate session...")
+                    
+                    # Check retry count to prevent infinite recursion
+                    retry_key = f"{method}_{endpoint}"
+                    if not hasattr(self, '_request_retry_count'):
+                        self._request_retry_count = {}
+                    
+                    retry_count = self._request_retry_count.get(retry_key, 0)
+                    if retry_count >= 3:
+                        self._request_retry_count[retry_key] = 0  # Reset for next time
+                        self.logger.error(f"❌ ERROR: Max retries exceeded for {endpoint}")
+                        self._record_circuit_breaker_failure(endpoint)
+                        return {'retCode': -1, 'retMsg': 'Max connection retries exceeded'}
+                    
                     try:
+                        # Add exponential backoff for retries
+                        backoff_delay = min(2 ** retry_count, 10)  # Cap at 10 seconds
+                        if retry_count > 0:
+                            await asyncio.sleep(backoff_delay)
+                        
                         # Force recreate session
                         self.session = None
                         self.connector = None
                         await self._create_session()
                         
-                        # Retry the request once
+                        # Increment retry count and retry the request
                         self._request_retry_count[retry_key] = retry_count + 1
                         self.logger.info(f"Retrying {endpoint} after session recreation...")
                         return await self._make_request(method, endpoint, params)
                     except Exception as retry_error:
                         self.logger.error(f"Retry failed for {endpoint}: {str(retry_error)}")
                         self._record_circuit_breaker_failure(endpoint)
+                        self._request_retry_count[retry_key] = 0  # Reset
                         return {'retCode': -1, 'retMsg': f'Connection failed after retry: {str(retry_error)}'}
                 
                 self.logger.error(f"Error during request: {str(e)}")

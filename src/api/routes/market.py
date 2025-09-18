@@ -10,6 +10,15 @@ import asyncio
 from src.core.analysis.confluence import ConfluenceAnalyzer
 from src.api.cache_adapter_direct import cache_adapter
 
+# Import cache functionality with safe fallback
+try:
+    from src.core.cache.unified_cache import get_cache
+except ImportError:
+    # Fallback if cache module is not available
+    def get_cache():
+        """Fallback cache implementation"""
+        return None
+
 router = APIRouter()
 logger = logging.getLogger(__name__)
 

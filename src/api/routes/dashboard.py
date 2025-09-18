@@ -25,6 +25,17 @@ except ImportError as e:
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
+# Feature flags and user-friendly errors (Phase 1 quick wins)
+try:
+    from src.api.feature_flags import get_performance_status
+except Exception:
+    get_performance_status = None
+
+try:
+    from src.utils.error_handler import UserFriendlyError
+except Exception:
+    UserFriendlyError = None
+
 # Import our dashboard integration service - Phase 2 with Memcached
 try:
     from src.dashboard.dashboard_proxy_phase2 import get_dashboard_integration
@@ -183,6 +194,17 @@ async def get_dashboard_overview() -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Error getting dashboard overview: {e}")
         raise HTTPException(status_code=500, detail=f"Error getting dashboard overview: {str(e)}")
+
+
+@router.get("/performance/flags")
+async def performance_flags() -> Dict[str, Any]:
+    """Expose performance feature-flag status for verification."""
+    try:
+        if get_performance_status:
+            return get_performance_status()
+        return {"status": "unavailable"}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
 
 @router.get(
     "/signals",
@@ -1224,11 +1246,18 @@ async def get_bybit_direct_symbols():
                             "status": "success"
                         }
                 
-                raise HTTPException(status_code=500, detail="Invalid Bybit API response")
+                # User-friendly error response
+                if UserFriendlyError:
+                    err = UserFriendlyError.format_error("EXCHANGE_CONNECTION_FAILED", exchange="Bybit")
+                    raise HTTPException(status_code=500, detail=err)
+                raise HTTPException(status_code=500, detail={"error": "Invalid Bybit API response"})
                 
     except Exception as e:
         logger.error(f"Error getting direct Bybit data: {e}")
-        raise HTTPException(status_code=500, detail=f"Bybit API error: {str(e)}")
+        if UserFriendlyError:
+            err = UserFriendlyError.format_error("EXCHANGE_CONNECTION_FAILED", exchange="Bybit")
+            raise HTTPException(status_code=500, detail=err)
+        raise HTTPException(status_code=500, detail={"error": str(e)})
 
 @router.get("/api/bybit-direct/symbol/{symbol}")
 async def get_bybit_symbol_detail(symbol: str):

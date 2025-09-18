@@ -876,6 +876,27 @@ class SignalGenerator:
             # No need for separate PDF handling here as AlertManager generates and sends PDFs automatically
             self.logger.info(f"[DIAGNOSTICS] [PDF_GENERATION] [TXN:{transaction_id}][SIG:{signal_id}] PDF generation will be handled by AlertManager for {symbol}")
             
+            # Fetch OHLCV data for chart generation
+            ohlcv_data = None
+            try:
+                if self.market_data_manager:
+                    self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}] Fetching OHLCV data for chart generation")
+                    # Fetch recent OHLCV data (e.g., last 100 candles for 5m timeframe)
+                    ohlcv_data = await self.market_data_manager.fetch_ohlcv(
+                        symbol=symbol,
+                        timeframe='5m',
+                        limit=100
+                    )
+                    if ohlcv_data is not None and not ohlcv_data.empty:
+                        self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}] Successfully fetched {len(ohlcv_data)} OHLCV candles")
+                    else:
+                        self.logger.warning(f"[TXN:{transaction_id}][SIG:{signal_id}] OHLCV data is empty or None")
+                else:
+                    self.logger.warning(f"[TXN:{transaction_id}][SIG:{signal_id}] market_data_manager not available for OHLCV fetch")
+            except Exception as e:
+                self.logger.error(f"[TXN:{transaction_id}][SIG:{signal_id}] Error fetching OHLCV data: {str(e)}")
+                # Continue without OHLCV data - signal will still be sent but without chart
+
             # Create alert data for the alert manager
             alert_data = {
                 'symbol': symbol,
@@ -887,7 +908,8 @@ class SignalGenerator:
                 'sell_threshold': self.thresholds['sell'],
                 'price': price,
                 'transaction_id': transaction_id,
-                'signal_id': signal_id
+                'signal_id': signal_id,
+                'ohlcv_data': ohlcv_data  # Add OHLCV data for chart generation
             }
             
             # Add enhanced formatted data to alert if available
@@ -940,7 +962,8 @@ class SignalGenerator:
                 influential_components=enhanced_data.get('influential_components') if enhanced_data else None,
                 market_interpretations=enhanced_data.get('market_interpretations') if enhanced_data else None,
                 actionable_insights=enhanced_data.get('actionable_insights') if enhanced_data else None,
-                top_weighted_subcomponents=enhanced_data.get('top_weighted_subcomponents') if enhanced_data else None
+                top_weighted_subcomponents=enhanced_data.get('top_weighted_subcomponents') if enhanced_data else None,
+                ohlcv_data=ohlcv_data  # Pass OHLCV data for chart generation
             )
             
             # Log success - PDF attachment is handled automatically by AlertManager
@@ -2251,7 +2274,7 @@ class SignalGenerator:
                     'confluence_score': score,
                     'components': serialized_components,
                     'results': serialized_results,
-                    'reliability': reliability if reliability <= 1 else reliability / 100.0,  # Normalize to 0-1 range
+                    'reliability': reliability,  # Already in 0-1 range
                     'buy_threshold': self.thresholds['buy'],
                     'sell_threshold': self.thresholds['sell'],
                     'price': price,
@@ -2528,15 +2551,16 @@ class SignalGenerator:
             
             # Ensure result is in 0-100 range
             final_reliability = max(0.0, min(100.0, final_reliability))
-            
+
             self.logger.debug(f"Calculated reliability: {final_reliability:.2f}% (base: {base_reliability:.2f}%, strength: {signal_strength:.2f}%)")
-            
-            return final_reliability
+
+            # Return as 0-1 range for consistency across the system
+            return final_reliability / 100.0
             
         except Exception as e:
             self.logger.error(f"Error calculating reliability: {str(e)}")
             self.logger.debug(f"Traceback: {traceback.format_exc()}")
-            return 100.0  # Default to full reliability on error
+            return 1.0  # Default to full reliability on error (0-1 range)
 
 
     async def _fetch_ohlcv_data(self, symbol: str, timeframe: str = '1h', limit: int = 50) -> Optional[pd.DataFrame]:
@@ -2553,17 +2577,39 @@ class SignalGenerator:
         try:
             self.logger.debug(f"🔍 DEBUG: Starting OHLCV fetch for {symbol} ({timeframe}, {limit} candles)")
             
-            # Try to get monitor from confluence_analyzer
+            # Try to get monitor from direct attribute first, then confluence_analyzer
             monitor = None
             market_data_manager = None
             
-            if hasattr(self, 'confluence_analyzer') and self.confluence_analyzer:
+            # Enhanced debug logging for attribute checking
+            self.logger.debug(f"🔍 DEBUG: Checking for monitor and market_data_manager...")
+            self.logger.debug(f"  - Instance ID: {id(self)}")
+            self.logger.debug(f"  - hasattr(self, 'monitor'): {hasattr(self, 'monitor')}")
+            self.logger.debug(f"  - hasattr(self, 'market_data_manager'): {hasattr(self, 'market_data_manager')}")
+            self.logger.debug(f"  - hasattr(self, 'confluence_analyzer'): {hasattr(self, 'confluence_analyzer')}")
+            
+            # Check for direct monitor attribute (set by main.py)
+            if hasattr(self, 'monitor') and self.monitor:
+                monitor = self.monitor
+                self.logger.debug(f"✅ DEBUG: Found monitor via direct attribute (ID: {id(monitor)})")
+            elif hasattr(self, 'confluence_analyzer') and self.confluence_analyzer:
+                self.logger.debug(f"  - Checking confluence_analyzer (ID: {id(self.confluence_analyzer)})")
                 if hasattr(self.confluence_analyzer, 'monitor'):
                     monitor = self.confluence_analyzer.monitor
-                    self.logger.debug(f"✅ DEBUG: Found monitor via confluence_analyzer")
+                    self.logger.debug(f"✅ DEBUG: Found monitor via confluence_analyzer (ID: {id(monitor) if monitor else 'None'})")
+                else:
+                    self.logger.debug(f"  - confluence_analyzer has no monitor attribute")
+            
+            # Check for direct market_data_manager attribute (set by main.py)
+            if hasattr(self, 'market_data_manager') and self.market_data_manager:
+                market_data_manager = self.market_data_manager
+                self.logger.debug(f"✅ DEBUG: Found market_data_manager via direct attribute (ID: {id(market_data_manager)})")
+            elif hasattr(self, 'confluence_analyzer') and self.confluence_analyzer:
                 if hasattr(self.confluence_analyzer, 'market_data_manager'):
                     market_data_manager = self.confluence_analyzer.market_data_manager
-                    self.logger.debug(f"✅ DEBUG: Found market_data_manager via confluence_analyzer")
+                    self.logger.debug(f"✅ DEBUG: Found market_data_manager via confluence_analyzer (ID: {id(market_data_manager) if market_data_manager else 'None'})")
+                else:
+                    self.logger.debug(f"  - confluence_analyzer has no market_data_manager attribute")
             
             # Check if monitor is available (primary cache source)
             if monitor:
@@ -2638,7 +2684,37 @@ class SignalGenerator:
                                     df = pd.DataFrame(cached_data)
                                     return df.tail(limit) if len(df) > limit else df
             else:
+                # Extensive debug logging to understand why references are missing
                 self.logger.warning(f"⚠️ DEBUG: Neither monitor nor market_data_manager could be found")
+                
+                # Log all available attributes on the signal_generator instance
+                self.logger.warning(f"🔍 DEBUG: SignalGenerator attributes check:")
+                self.logger.warning(f"  - hasattr(self, 'monitor'): {hasattr(self, 'monitor')}")
+                self.logger.warning(f"  - self.monitor is None: {getattr(self, 'monitor', 'ATTR_NOT_FOUND') is None}")
+                self.logger.warning(f"  - hasattr(self, 'market_data_manager'): {hasattr(self, 'market_data_manager')}")
+                self.logger.warning(f"  - self.market_data_manager is None: {getattr(self, 'market_data_manager', 'ATTR_NOT_FOUND') is None}")
+                self.logger.warning(f"  - hasattr(self, 'confluence_analyzer'): {hasattr(self, 'confluence_analyzer')}")
+                self.logger.warning(f"  - self.confluence_analyzer is None: {getattr(self, 'confluence_analyzer', 'ATTR_NOT_FOUND') is None}")
+                
+                # If confluence_analyzer exists, check its attributes
+                if hasattr(self, 'confluence_analyzer') and self.confluence_analyzer:
+                    self.logger.warning(f"📊 DEBUG: ConfluenceAnalyzer attributes:")
+                    self.logger.warning(f"  - hasattr(confluence, 'monitor'): {hasattr(self.confluence_analyzer, 'monitor')}")
+                    self.logger.warning(f"  - hasattr(confluence, 'market_data_manager'): {hasattr(self.confluence_analyzer, 'market_data_manager')}")
+                
+                # Log the object ID to track instance
+                self.logger.warning(f"🆔 DEBUG: SignalGenerator instance ID: {id(self)}")
+                
+                # Check if we're in alert generation context
+                import inspect
+                frame = inspect.currentframe()
+                if frame:
+                    calling_function = frame.f_back.f_code.co_name if frame.f_back else "Unknown"
+                    self.logger.warning(f"📍 DEBUG: Called from function: {calling_function}")
+                
+                # List all attributes of the instance
+                attrs = [attr for attr in dir(self) if not attr.startswith('_')]
+                self.logger.warning(f"📦 DEBUG: Available public attributes: {', '.join(attrs[:10])}...")  # First 10 to avoid spam
             
             # Fallback to processor
             self.logger.debug(f"🔄 DEBUG: Falling back to processor.fetch_ohlcv")
