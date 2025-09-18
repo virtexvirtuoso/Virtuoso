@@ -36,7 +36,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: 5.223.63.4)
+#   VPS_HOST         VPS hostname (default: ${VPS_HOST})
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -87,11 +87,11 @@ EOF
 
 # Deploy to VPS
 echo "📤 Deploying to VPS..."
-scp /tmp/virtuoso-web.service linuxuser@5.223.63.4:/tmp/
+scp /tmp/virtuoso-web.service linuxuser@${VPS_HOST}:/tmp/
 
 # Install and enable the service
 echo "📦 Installing service on VPS..."
-ssh linuxuser@5.223.63.4 << 'REMOTE_COMMANDS'
+ssh linuxuser@${VPS_HOST} << 'REMOTE_COMMANDS'
 # Stop any existing web server
 pkill -f 'uvicorn.*web_server' || true
 

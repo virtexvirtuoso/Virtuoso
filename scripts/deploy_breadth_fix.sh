@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: 5.223.63.4)
+#   VPS_HOST         VPS hostname (default: ${VPS_HOST})
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -62,7 +62,7 @@
 echo "🔧 Deploying Market Breadth Naming Fix..."
 echo "========================================="
 
-VPS_HOST="linuxuser@5.223.63.4"
+VPS_HOST="linuxuser@${VPS_HOST}"
 PROJECT_DIR="/home/linuxuser/trading/Virtuoso_ccxt"
 
 # Copy the updated version
@@ -86,4 +86,4 @@ echo "   • Hint text: 'Advancers' → 'Bullish' (more intuitive)"
 echo ""
 echo "🎯 Result: No redundancy, clearer terminology!"
 echo ""
-echo "Access at: http://5.223.63.4:8001/dashboard/mobile"
+echo "Access at: http://${VPS_HOST}:8001/dashboard/mobile"

@@ -1,14 +1,14 @@
 #!/bin/bash
 
-# Update all references from Vultr IP (5.223.63.4) to Hetzner IP (5.223.63.4)
+# Update all references from Vultr IP (${VPS_HOST}) to Hetzner IP (${VPS_HOST})
 # Created: August 29, 2025
 
 echo "=================================================================================="
-echo "Updating all IP references from Vultr (5.223.63.4) to Hetzner (5.223.63.4)"
+echo "Updating all IP references from Vultr (${VPS_HOST}) to Hetzner (${VPS_HOST})"
 echo "=================================================================================="
 
-OLD_IP="5.223.63.4"
-NEW_IP="5.223.63.4"
+OLD_IP="${VPS_HOST}"
+NEW_IP="${VPS_HOST}"
 
 # Count occurrences before update
 echo "Counting occurrences before update..."
@@ -76,4 +76,4 @@ if [ -f ~/.ssh/config ]; then
 fi
 
 echo ""
-echo "✅ All IP references have been updated to Hetzner VPS (5.223.63.4)"
+echo "✅ All IP references have been updated to Hetzner VPS (${VPS_HOST})"

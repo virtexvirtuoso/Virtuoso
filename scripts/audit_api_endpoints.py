@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 
 # VPS Configuration
-VPS_BASE_URL = "http://5.223.63.4:8003"
+VPS_BASE_URL = "http://${VPS_HOST}:8003"
 TIMEOUT = 30  # seconds
 
 class APIAuditor:

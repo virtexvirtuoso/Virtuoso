@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo "🔧 Fixing web server on Hetzner VPS (5.223.63.4)..."
+echo "🔧 Fixing web server on Hetzner VPS (${VPS_HOST})..."
 
 # Create a standalone web server script
 cat << 'PYEOF' > /tmp/start_web_server_standalone.py
@@ -63,10 +63,10 @@ PYEOF
 
 # Deploy to VPS
 echo "📤 Deploying to VPS..."
-scp /tmp/start_web_server_standalone.py linuxuser@5.223.63.4:/tmp/
+scp /tmp/start_web_server_standalone.py linuxuser@${VPS_HOST}:/tmp/
 
 # Execute on VPS
-ssh linuxuser@5.223.63.4 << 'REMOTE_EOF'
+ssh linuxuser@${VPS_HOST} << 'REMOTE_EOF'
 cd /home/linuxuser/trading/Virtuoso_ccxt
 
 # Install the standalone web server
@@ -153,8 +153,8 @@ echo ""
 echo "✅ Fix deployed! Testing external access..."
 echo ""
 echo "🌐 Dashboard URLs:"
-echo "   Desktop: http://5.223.63.4:8003/"
-echo "   Mobile:  http://5.223.63.4:8003/mobile"
+echo "   Desktop: http://${VPS_HOST}:8003/"
+echo "   Mobile:  http://${VPS_HOST}:8003/mobile"
 echo ""
 echo "Testing external health check..."
-curl -s -o /dev/null -w "External Status: %{http_code}\n" http://5.223.63.4:8003/health
+curl -s -o /dev/null -w "External Status: %{http_code}\n" http://${VPS_HOST}:8003/health

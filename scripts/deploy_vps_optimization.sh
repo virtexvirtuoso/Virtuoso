@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Deploy VPS Performance Optimization to Production
-# Optimized for: 4 vCPU, 16GB RAM, 160GB SSD, Singapore VPS (5.223.63.4)
+# Optimized for: 4 vCPU, 16GB RAM, 160GB SSD, Singapore VPS (${VPS_HOST})
 
 set -e
 
@@ -11,7 +11,7 @@ LOCAL_PATH="/Users/ffv_macmini/Desktop/Virtuoso_ccxt"
 
 echo "🚀 Deploying VPS Performance Optimization"
 echo "========================================"
-echo "Target: Singapore VPS (5.223.63.4)"
+echo "Target: Singapore VPS (${VPS_HOST})"
 echo "Specs: 4 vCPU, 16GB RAM, 160GB SSD"
 echo ""
 
@@ -164,10 +164,10 @@ echo "  • Cache: Multi-layer caching with optimized TTLs"
 echo "  • Network: Singapore location optimizations applied"
 echo ""
 echo "🌐 Access URLs:"
-echo "  • Desktop Dashboard: http://5.223.63.4:8003/"
-echo "  • Mobile Dashboard: http://5.223.63.4:8003/mobile"
-echo "  • Health Check: http://5.223.63.4:8003/health"
-echo "  • Monitoring API: http://5.223.63.4:8001/api/monitoring/status"
+echo "  • Desktop Dashboard: http://${VPS_HOST}:8003/"
+echo "  • Mobile Dashboard: http://${VPS_HOST}:8003/mobile"
+echo "  • Health Check: http://${VPS_HOST}:8003/health"
+echo "  • Monitoring API: http://${VPS_HOST}:8001/api/monitoring/status"
 echo ""
 echo "📈 Performance Targets:"
 echo "  • CPU Utilization: 70-80% (Currently: checking...)"

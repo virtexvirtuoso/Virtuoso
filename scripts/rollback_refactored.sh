@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: 5.223.63.4)
+#   VPS_HOST         VPS hostname (default: ${VPS_HOST})
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -67,7 +67,7 @@ echo ""
 echo "This script will revert main.py to use original components"
 echo ""
 
-VPS="linuxuser@5.223.63.4"
+VPS="linuxuser@${VPS_HOST}"
 
 # Function to rollback locally
 rollback_local() {

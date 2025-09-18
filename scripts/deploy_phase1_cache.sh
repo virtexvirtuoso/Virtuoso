@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: 5.223.63.4)
+#   VPS_HOST         VPS hostname (default: ${VPS_HOST})
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -79,7 +79,7 @@ RED='\033[0;31m'
 NC='\033[0m' # No Color
 
 # VPS connection details
-VPS_HOST="5.223.63.4"
+VPS_HOST="${VPS_HOST}"
 VPS_USER="linuxuser"
 VPS_DIR="/home/linuxuser/trading/Virtuoso_ccxt"
 

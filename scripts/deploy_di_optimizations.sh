@@ -6,7 +6,7 @@ echo "🚀 Deploying DI Optimizations to VPS..."
 echo "📊 Target: 100% Overall DI Score with 0.1ms resolution time"
 
 # VPS connection details
-VPS_HOST="linuxuser@5.223.63.4"
+VPS_HOST="linuxuser@${VPS_HOST}"
 VPS_PATH="/home/linuxuser/trading/Virtuoso_ccxt"
 
 echo "📦 Copying optimized DI files to VPS..."
@@ -153,14 +153,14 @@ ENDSSH
 echo ""
 echo "🌐 Testing API endpoints with optimized DI..."
 echo "  • Testing health endpoint..."
-if curl -s "http://5.223.63.4:8001/api/monitoring/status" | grep -q "healthy"; then
+if curl -s "http://${VPS_HOST}:8001/api/monitoring/status" | grep -q "healthy"; then
     echo "  ✅ Health endpoint working"
 else
     echo "  ❌ Health endpoint not responding"
 fi
 
 echo "  • Testing dashboard endpoint..."
-if curl -s "http://5.223.63.4:8003/api/dashboard/data" | grep -q "timestamp"; then
+if curl -s "http://${VPS_HOST}:8003/api/dashboard/data" | grep -q "timestamp"; then
     echo "  ✅ Dashboard endpoint working"
 else
     echo "  ❌ Dashboard endpoint not responding"

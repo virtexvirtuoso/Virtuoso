@@ -151,10 +151,8 @@ class ExchangeFactory:
 
     EXCHANGE_CLASSES = {
         'bybit': BybitExchange,
-        'binance': BinanceExchange,
-        'kraken': KrakenExchange,
-        'kucoin': KuCoinExchange,
-        'okex': OKExExchange,
+        'coinbase': CoinbaseExchange,
+        'hyperliquid': HyperliquidExchange,
         'bitfinex': BitfinexExchange,
         'gateio': GateIOExchange,
         'huobi': HuobiExchange
@@ -205,21 +203,21 @@ class ExchangeFactory:
 
 ### 2. EXCHANGE-SPECIFIC IMPLEMENTATIONS
 
-#### 2.1 Binance Exchange Implementation
+#### 2.1 Coinbase Exchange Implementation
 ```python
-# src/core/exchanges/binance.py
+# src/core/exchanges/coinbase.py
 import aiohttp
 import ccxt.async_support as ccxt
 
-class BinanceExchange(AbstractExchange):
+class CoinbaseExchange(AbstractExchange):
     """
-    High-performance Binance integration
+    High-performance Coinbase integration
     Target: <0.5ms for tickers, <2ms for orderbooks
     """
 
     def __init__(self, config: ExchangeConfig):
         super().__init__(config)
-        self.ccxt_exchange = ccxt.binance({
+        self.ccxt_exchange = ccxt.coinbase({
             'apiKey': config.api_key,
             'secret': config.api_secret,
             'sandbox': config.sandbox,
@@ -245,7 +243,7 @@ class BinanceExchange(AbstractExchange):
 
     async def fetch_ticker(self, symbol: str) -> Dict[str, Any]:
         """Optimized ticker fetch with aggressive caching"""
-        cache_key = f"binance:ticker:{symbol}"
+        cache_key = f"coinbase:ticker:{symbol}"
 
         # Try L1 cache first (target: 0.01ms)
         cached = await self.cache_adapter.get_l1(cache_key)
@@ -268,14 +266,14 @@ class BinanceExchange(AbstractExchange):
             data = await response.json()
 
             # Cache with 15-second TTL for ultra-fast access
-            cache_key = f"binance:ticker:{symbol}"
+            cache_key = f"coinbase:ticker:{symbol}"
             await self.cache_adapter.set_all_layers(cache_key, data, ttl=15)
 
             return data
 
     async def fetch_orderbook(self, symbol: str, limit: int = 20) -> Dict[str, Any]:
         """Optimized orderbook with short-term caching"""
-        cache_key = f"binance:orderbook:{symbol}:{limit}"
+        cache_key = f"coinbase:orderbook:{symbol}:{limit}"
 
         # Check L1/L2 cache (target: <1ms)
         cached = await self.cache_adapter.get_l1_l2(cache_key)
@@ -308,18 +306,20 @@ class BinanceExchange(AbstractExchange):
         self.ccxt_exchange.enableRateLimit = False  # Custom rate limiting
 ```
 
-#### 2.2 Kraken Exchange Implementation
+#### 2.2 Hyperliquid Exchange Implementation
 ```python
-# src/core/exchanges/kraken.py
-class KrakenExchange(AbstractExchange):
+# src/core/exchanges/hyperliquid.py
+class HyperliquidExchange(AbstractExchange):
     """
-    High-performance Kraken integration
+    High-performance Hyperliquid DEX integration
     Special handling for US institutional requirements
     """
 
     def __init__(self, config: ExchangeConfig):
         super().__init__(config)
-        self.ccxt_exchange = ccxt.kraken({
+        # Note: Hyperliquid may need custom implementation
+        # as it's a DEX with different API structure
+        self.api_client = HyperliquidAPIClient({
             'apiKey': config.api_key,
             'secret': config.api_secret,
             'sandbox': config.sandbox,
@@ -337,7 +337,7 @@ class KrakenExchange(AbstractExchange):
 
     async def fetch_ticker(self, symbol: str) -> Dict[str, Any]:
         """Kraken ticker with format normalization"""
-        cache_key = f"kraken:ticker:{symbol}"
+        cache_key = f"hyperliquid:ticker:{symbol}"
 
         cached = await self.cache_adapter.get_l1(cache_key)
         if cached:
@@ -345,37 +345,37 @@ class KrakenExchange(AbstractExchange):
 
         return await self.performance_wrapper(
             'fetch_ticker',
-            self._fetch_ticker_kraken,
+            self._fetch_ticker_hyperliquid,
             symbol
         )
 
-    async def _fetch_ticker_kraken(self, symbol: str) -> Dict[str, Any]:
+    async def _fetch_ticker_hyperliquid(self, symbol: str) -> Dict[str, Any]:
         """Kraken-specific ticker fetch with format normalization"""
         # Kraken uses different symbol format
-        kraken_symbol = self._normalize_symbol_for_kraken(symbol)
+        hyperliquid_symbol = self._normalize_symbol_for_hyperliquid(symbol)
 
         url = f"{self.config.base_url}/0/public/Ticker"
-        params = {'pair': kraken_symbol}
+        params = {'pair': hyperliquid_symbol}
 
         async with self.session.get(url, params=params) as response:
             raw_data = await response.json()
 
             # Normalize Kraken response to standard format
-            normalized_data = self._normalize_kraken_ticker(raw_data, symbol)
+            normalized_data = self._normalize_hyperliquid_ticker(raw_data, symbol)
 
             # Cache with exchange-specific TTL
-            cache_key = f"kraken:ticker:{symbol}"
+            cache_key = f"hyperliquid:ticker:{symbol}"
             await self.cache_adapter.set_all_layers(cache_key, normalized_data, ttl=20)
 
             return normalized_data
 
-    def _normalize_symbol_for_kraken(self, symbol: str) -> str:
+    def _normalize_symbol_for_hyperliquid(self, symbol: str) -> str:
         """Convert standard symbol format to Kraken format"""
         # BTC/USDT -> XBTUSD (Kraken uses XBT for Bitcoin)
         base, quote = symbol.split('/')
 
         # Kraken symbol mappings
-        kraken_mapping = {
+        hyperliquid_mapping = {
             'BTC': 'XBT',
             'USDT': 'USDT',
             'USD': 'USD',
@@ -383,10 +383,10 @@ class KrakenExchange(AbstractExchange):
             # Add more mappings as needed
         }
 
-        kraken_base = kraken_mapping.get(base, base)
-        kraken_quote = kraken_mapping.get(quote, quote)
+        hyperliquid_base = hyperliquid_mapping.get(base, base)
+        hyperliquid_quote = hyperliquid_mapping.get(quote, quote)
 
-        return f"{kraken_base}{kraken_quote}"
+        return f"{hyperliquid_base}{hyperliquid_quote}"
 ```
 
 ### 3. MULTI-EXCHANGE MANAGER
@@ -585,7 +585,7 @@ class ExchangeCacheStrategy:
             'ohlcv_ttl': 60,       # Stable historical data
             'trades_ttl': 5,       # Recent trades cache
         },
-        'kraken': {
+        'hyperliquid': {
             'ticker_ttl': 20,      # More conservative updates
             'orderbook_ttl': 5,    # Lower update frequency
             'ohlcv_ttl': 120,      # More stable data
@@ -1170,11 +1170,11 @@ PHASE2_EXCHANGE_CONFIGS = {
         'priority': 2,
         'enabled': os.getenv('BINANCE_ENABLED', 'false').lower() == 'true'
     },
-    'kraken': {
+    'hyperliquid': {
         'api_key': os.getenv('KRAKEN_API_KEY'),
         'api_secret': os.getenv('KRAKEN_API_SECRET'),
-        'base_url': 'https://api.kraken.com',
-        'websocket_url': 'wss://ws.kraken.com',
+        'base_url': 'https://api.hyperliquid.com',
+        'websocket_url': 'wss://ws.hyperliquid.com',
         'performance_tier': 'premium',
         'rate_limit': 900,
         'priority': 3,

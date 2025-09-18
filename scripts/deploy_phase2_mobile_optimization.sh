@@ -5,7 +5,7 @@
 
 set -e  # Exit on any error
 
-VPS_HOST="linuxuser@5.223.63.4"
+VPS_HOST="linuxuser@${VPS_HOST}"
 VPS_PATH="/home/linuxuser/trading/Virtuoso_ccxt"
 LOCAL_PATH="/Users/ffv_macmini/Desktop/Virtuoso_ccxt"
 
@@ -63,7 +63,7 @@ echo "🧪 Testing Phase 2 optimizations..."
 
 # Test 1: Basic mobile endpoint
 echo "Test 1: Basic mobile data endpoint..."
-MOBILE_RESPONSE=$(curl -s "http://5.223.63.4:8003/api/dashboard/mobile-data")
+MOBILE_RESPONSE=$(curl -s "http://${VPS_HOST}:8003/api/dashboard/mobile-data")
 MOBILE_STATUS=$(echo "$MOBILE_RESPONSE" | jq -r '.status // "no_status"')
 CONFLUENCE_COUNT=$(echo "$MOBILE_RESPONSE" | jq '.confluence_scores | length // 0')
 CACHE_SOURCE=$(echo "$MOBILE_RESPONSE" | jq -r '.cache_source // "unknown"')
@@ -77,7 +77,7 @@ echo "  ✓ Response time: ${PERFORMANCE_MS}ms"
 # Test 2: Performance monitoring endpoint
 echo ""
 echo "Test 2: Phase 2 performance monitoring..."
-PERF_RESPONSE=$(curl -s "http://5.223.63.4:8003/api/dashboard/mobile-performance")
+PERF_RESPONSE=$(curl -s "http://${VPS_HOST}:8003/api/dashboard/mobile-performance")
 MOBILE_CACHE_VALID=$(echo "$PERF_RESPONSE" | jq -r '.mobile_optimization_stats.mobile_cache_valid // false')
 PRIORITY_COMPLETE=$(echo "$PERF_RESPONSE" | jq -r '.priority_warmer_stats.priority_complete // false')
 SYSTEM_HEALTH=$(echo "$PERF_RESPONSE" | jq -r '.system_health // "unknown"')
@@ -89,7 +89,7 @@ echo "  ✓ System health: $SYSTEM_HEALTH"
 # Test 3: Check for system contamination (should be zero)
 echo ""
 echo "Test 3: System contamination check..."
-SYSTEM_SYMBOLS=$(curl -s "http://5.223.63.4:8003/api/dashboard/mobile-data" | jq -r '.confluence_scores[]? | select(.symbol | contains("SYSTEM") or contains("STATUS") or contains("LOADING")) | .symbol' 2>/dev/null || echo "")
+SYSTEM_SYMBOLS=$(curl -s "http://${VPS_HOST}:8003/api/dashboard/mobile-data" | jq -r '.confluence_scores[]? | select(.symbol | contains("SYSTEM") or contains("STATUS") or contains("LOADING")) | .symbol' 2>/dev/null || echo "")
 
 if [ -n "$SYSTEM_SYMBOLS" ]; then
     echo "  ⚠️  WARNING: System symbols detected:"
@@ -102,7 +102,7 @@ fi
 echo ""
 echo "Test 4: Response time analysis..."
 for i in {1..3}; do
-    RESPONSE_TIME=$(curl -w "%{time_total}" -s -o /dev/null "http://5.223.63.4:8003/api/dashboard/mobile-data")
+    RESPONSE_TIME=$(curl -w "%{time_total}" -s -o /dev/null "http://${VPS_HOST}:8003/api/dashboard/mobile-data")
     echo "  Request $i: ${RESPONSE_TIME}s"
 done
 
@@ -122,12 +122,12 @@ if [ "$CONFLUENCE_COUNT" -gt "0" ]; then
     echo "⚡ Performance: ${PERFORMANCE_MS}ms response time"
 else
     echo "⏳ Phase 2 still initializing - priority warming in progress"
-    echo "   Monitor with: curl http://5.223.63.4:8003/api/dashboard/mobile-performance"
+    echo "   Monitor with: curl http://${VPS_HOST}:8003/api/dashboard/mobile-performance"
 fi
 
 echo ""
 echo "📊 Monitor Phase 2 performance:"
-echo "   curl http://5.223.63.4:8003/api/dashboard/mobile-performance"
+echo "   curl http://${VPS_HOST}:8003/api/dashboard/mobile-performance"
 echo ""
 echo "🔍 View logs:"
 echo "   ssh $VPS_HOST 'sudo journalctl -u virtuoso.service -f'"

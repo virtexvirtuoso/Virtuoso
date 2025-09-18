@@ -120,7 +120,7 @@ try:
     print("The system will now:")
     print("1. Write symbols to /tmp/virtuoso_symbols_cache.json")
     print("2. All processes can read from this file")
-    print("3. Available at: http://5.223.63.4:8001/api/symbols-shared")
+    print("3. Available at: http://${VPS_HOST}:8001/api/symbols-shared")
     
 except Exception as e:
     print(f"❌ Error: {e}")

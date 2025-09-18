@@ -10,7 +10,7 @@ def analyze_timeout_patterns():
     """Analyze timeout patterns from VPS logs"""
     
     # Get recent logs
-    cmd = 'ssh linuxuser@5.223.63.4 "sudo journalctl -u virtuoso.service --since \'1 hour ago\' | grep -E \'(timeout|Timeout|ERROR.*Request timeout|Empty DataFrame)\'"'
+    cmd = 'ssh linuxuser@${VPS_HOST} "sudo journalctl -u virtuoso.service --since \'1 hour ago\' | grep -E \'(timeout|Timeout|ERROR.*Request timeout|Empty DataFrame)\'"'
     
     try:
         result = subprocess.run(cmd, shell=True, capture_output=True, text=True)

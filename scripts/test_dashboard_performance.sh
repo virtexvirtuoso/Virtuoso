@@ -36,7 +36,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: 5.223.63.4)
+#   VPS_HOST         VPS hostname (default: ${VPS_HOST})
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -75,7 +75,7 @@ echo "🧪 Dashboard Performance Testing Suite"
 echo "======================================"
 
 # Configuration
-VPS_HOST="${VPS_HOST:-5.223.63.4}"
+VPS_HOST="${VPS_HOST:-${VPS_HOST}}"
 BASE_URL="http://${VPS_HOST}:8003"
 
 # Colors for output

@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: 5.223.63.4)
+#   VPS_HOST         VPS hostname (default: ${VPS_HOST})
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -63,12 +63,12 @@
 # This script fixes the TypeError where MetricsManager is instantiated without required arguments
 
 echo "=== Fixing MetricsManager Dependency Injection Error ==="
-echo "Target: VPS at 5.223.63.4"
+echo "Target: VPS at ${VPS_HOST}"
 echo "Time: $(date)"
 
 # Define VPS connection details
 VPS_USER="linuxuser"
-VPS_HOST="5.223.63.4"
+VPS_HOST="${VPS_HOST}"
 VPS_PATH="/home/linuxuser/trading/Virtuoso_ccxt"
 
 # Create the fix locally first

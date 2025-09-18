@@ -281,9 +281,9 @@ async def verify_issues():
     
     # Test endpoints
     endpoints = [
-        ("Market Overview", "http://5.223.63.4:8002/api/dashboard/market-overview"),
-        ("Dashboard Data", "http://5.223.63.4:8002/api/dashboard/data"),
-        ("Mobile Data", "http://5.223.63.4:8002/api/dashboard/mobile"),
+        ("Market Overview", "http://${VPS_HOST}:8002/api/dashboard/market-overview"),
+        ("Dashboard Data", "http://${VPS_HOST}:8002/api/dashboard/data"),
+        ("Mobile Data", "http://${VPS_HOST}:8002/api/dashboard/mobile"),
     ]
     
     for name, url in endpoints:
@@ -324,7 +324,7 @@ async def main():
         print("1. Deploy to VPS: scp src/main.py vps:/home/linuxuser/trading/Virtuoso_ccxt/src/")
         print("2. Restart services: ssh vps 'sudo systemctl restart virtuoso-trading virtuoso-web'")
         print("3. Wait 1 minute for cache to populate")
-        print("4. Test: curl http://5.223.63.4:8002/api/dashboard/data")
+        print("4. Test: curl http://${VPS_HOST}:8002/api/dashboard/data")
     else:
         print("\n❌ Fix failed. Please check the error messages above.")
 

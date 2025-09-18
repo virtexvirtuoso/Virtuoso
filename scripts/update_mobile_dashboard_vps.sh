@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: 5.223.63.4)
+#   VPS_HOST         VPS hostname (default: ${VPS_HOST})
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -63,7 +63,7 @@ echo "📱 Updating Mobile Dashboard on VPS"
 echo "=================================="
 
 # VPS connection details
-VPS_IP="5.223.63.4"
+VPS_IP="${VPS_HOST}"
 VPS_USER="linuxuser"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOCAL_FILE="$SCRIPT_DIR/../src/dashboard/templates/dashboard_mobile_v1.html"

@@ -876,7 +876,7 @@ class TestLiveSystemMonitoring:
         """Test production health endpoints respond correctly"""
         base_urls = [
             'http://localhost:8003',  # Local
-            'http://5.223.63.4:8003'  # Production VPS
+            'http://${VPS_HOST}:8003'  # Production VPS
         ]
 
         for base_url in base_urls:
@@ -908,7 +908,7 @@ class TestLiveSystemMonitoring:
     async def test_production_performance_metrics(self):
         """Test production system meets performance targets"""
         # Connect to production monitoring API
-        monitoring_url = "http://5.223.63.4:8001/api/monitoring/metrics"
+        monitoring_url = "http://${VPS_HOST}:8001/api/monitoring/metrics"
 
         async with aiohttp.ClientSession() as session:
             async with session.get(monitoring_url) as response:
@@ -946,7 +946,7 @@ class TestLiveSystemMonitoring:
     @pytest.mark.asyncio
     async def test_production_data_quality(self):
         """Test production data quality and consistency"""
-        dashboard_url = "http://5.223.63.4:8003/api/dashboard/data"
+        dashboard_url = "http://${VPS_HOST}:8003/api/dashboard/data"
 
         async with aiohttp.ClientSession() as session:
             async with session.get(dashboard_url) as response:

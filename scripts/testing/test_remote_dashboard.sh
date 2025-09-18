@@ -36,7 +36,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: 5.223.63.4)
+#   VPS_HOST         VPS hostname (default: ${VPS_HOST})
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -60,7 +60,7 @@
 
 # Test script for Virtuoso dashboard on remote server
 
-REMOTE_HOST="5.223.63.4"
+REMOTE_HOST="${VPS_HOST}"
 PORT="8003"
 
 echo "🧪 Testing Virtuoso Dashboard on ${REMOTE_HOST}:${PORT}"

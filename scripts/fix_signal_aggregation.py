@@ -130,7 +130,7 @@ async def main():
         print("\n📝 Next steps:")
         print("1. Deploy to VPS: ./scripts/deploy_signal_aggregation_fix.sh")
         print("2. Restart services: ssh vps 'sudo systemctl restart virtuoso-trading virtuoso-web'")
-        print("3. Test: curl http://5.223.63.4:8003/api/dashboard/data")
+        print("3. Test: curl http://${VPS_HOST}:8003/api/dashboard/data")
     else:
         print("\n❌ Fix failed. Please check the error messages above.")
 

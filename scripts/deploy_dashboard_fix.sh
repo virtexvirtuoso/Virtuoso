@@ -18,7 +18,7 @@ ssh vps "sudo systemctl restart virtuoso-web.service"
 echo "Dashboard display fixes deployed!"
 echo ""
 echo "Testing dashboard data..."
-curl -s http://5.223.63.4:8002/api/dashboard/data | python3 -c "
+curl -s http://${VPS_HOST}:8002/api/dashboard/data | python3 -c "
 import json, sys
 data = json.load(sys.stdin)
 mo = data.get('market_overview', {})
@@ -27,4 +27,4 @@ print(f'API Response: Gainers={mo.get("gainers", 0)}, Losers={mo.get("losers", 0
 
 echo ""
 echo "✅ Dashboard should now display market sentiment correctly!"
-echo "🌐 View at: http://5.223.63.4:8002/"
+echo "🌐 View at: http://${VPS_HOST}:8002/"

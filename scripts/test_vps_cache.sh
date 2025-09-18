@@ -36,7 +36,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: 5.223.63.4)
+#   VPS_HOST         VPS hostname (default: ${VPS_HOST})
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -61,7 +61,7 @@
 echo "Testing cache deployment on VPS..."
 echo ""
 
-ssh linuxuser@5.223.63.4 << 'EOF'
+ssh linuxuser@${VPS_HOST} << 'EOF'
 cd /home/linuxuser/trading/Virtuoso_ccxt
 /home/linuxuser/trading/Virtuoso_ccxt/venv311/bin/python << 'PYTHON'
 import asyncio

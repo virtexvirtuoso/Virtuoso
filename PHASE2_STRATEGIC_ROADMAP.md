@@ -46,27 +46,23 @@ Performance Tier Classification:
 
 ### 2. MULTI-EXCHANGE DOMINANCE STRATEGY
 
-#### SIMPLIFIED Exchange Strategy (Focus on 80% of Volume)
-1. **Binance** - 40% of global volume (integration priority: HIGH)
-2. **Bybit** - 30% of derivatives volume (✅ COMPLETE)
-3. **OKEx** - 10% of global volume (integration priority: MEDIUM)
+#### SIMPLIFIED Exchange Strategy (Focus on Innovation & Volume)
+1. **Bybit** - Leading derivatives exchange (✅ COMPLETE)
+2. **Coinbase** - US regulated, institutional gateway (integration priority: HIGH)
+3. **Hyperliquid** - Next-gen DEX, onchain perps leader (integration priority: HIGH)
 
-#### Deferred Exchanges (Not Critical)
-- Kraken, KuCoin, Bitfinex, Gate.io, Huobi represent <20% combined volume
-- Can be added later if demand justifies complexity
+#### Why These 3 Exchanges
+- **Bybit**: Proven integration, excellent API, derivatives focus
+- **Coinbase**: US compliance, institutional liquidity, fiat onramps
+- **Hyperliquid**: Cutting-edge DeFi, highest onchain perps volume, innovation leader
 
 #### Exchange Selection Criteria Matrix
 ```
 Exchange    │ Volume   │ API Quality │ Latency │ Fees │ Priority │ Status
 ──────────────────────────────────────────────────────────────────────
 Bybit       │ ████████ │ ████████   │ ███████ │ ████ │ COMPLETE │ ✅ LIVE
-Binance     │ ██████████│ ████████   │ ████████│ ███  │ HIGH     │ 🟡 PLANNED
-Kraken      │ ██████   │ ███████    │ ██████  │ ████ │ HIGH     │ 🟡 PLANNED
-KuCoin      │ █████    │ ██████     │ █████   │ ████ │ MEDIUM   │ 🔴 FUTURE
-OKEx        │ ███████  │ ███████    │ ██████  │ ███  │ MEDIUM   │ 🔴 FUTURE
-Bitfinex    │ ████     │ ██████     │ █████   │ ██   │ LOW      │ 🔴 FUTURE
-Gate.io     │ ███      │ █████      │ ████    │ ████ │ LOW      │ 🔴 FUTURE
-Huobi       │ ████     │ █████      │ ████    │ ███  │ LOW      │ 🔴 FUTURE
+Coinbase    │ ███████  │ █████████  │ ██████  │ ███  │ HIGH     │ 🟡 Q1 2025
+Hyperliquid │ ██████   │ ██████████ │ █████   │ ██   │ HIGH     │ 🟡 Q1 2025
 ```
 
 ---

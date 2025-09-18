@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: 5.223.63.4)
+#   VPS_HOST         VPS hostname (default: ${VPS_HOST})
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -65,7 +65,7 @@ echo "========================================="
 
 # VPS connection details
 VPS_USER="linuxuser"
-VPS_HOST="5.223.63.4"
+VPS_HOST="${VPS_HOST}"
 VPS_PATH="/home/linuxuser/trading/Virtuoso_ccxt"
 
 # Step 1: Copy service files
@@ -169,10 +169,10 @@ sleep 10
 
 # Test health endpoint
 echo "Testing /api/bitcoin-beta/health..."
-curl -s http://5.223.63.4:8080/api/bitcoin-beta/health | python3 -m json.tool | head -10
+curl -s http://${VPS_HOST}:8080/api/bitcoin-beta/health | python3 -m json.tool | head -10
 
 echo -e "\nTesting /api/bitcoin-beta/realtime..."
-curl -s http://5.223.63.4:8080/api/bitcoin-beta/realtime | python3 -m json.tool | head -20
+curl -s http://${VPS_HOST}:8080/api/bitcoin-beta/realtime | python3 -m json.tool | head -20
 
 # Step 5: Final status check
 echo -e "\n[5/5] Final Status Check"
@@ -195,9 +195,9 @@ echo "  - bitcoin-beta-data.service (Data collection)"
 echo "  - bitcoin-beta-calculator.service (Beta calculations)"
 echo ""
 echo "API Endpoints:"
-echo "  - http://5.223.63.4:8080/api/bitcoin-beta/health"
-echo "  - http://5.223.63.4:8080/api/bitcoin-beta/realtime"
-echo "  - http://5.223.63.4:8080/api/bitcoin-beta/history/{symbol}"
+echo "  - http://${VPS_HOST}:8080/api/bitcoin-beta/health"
+echo "  - http://${VPS_HOST}:8080/api/bitcoin-beta/realtime"
+echo "  - http://${VPS_HOST}:8080/api/bitcoin-beta/history/{symbol}"
 echo ""
 echo "Monitor logs with:"
 echo "  ssh vps 'sudo journalctl -u bitcoin-beta-data -f'"

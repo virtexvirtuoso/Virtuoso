@@ -37,7 +37,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: 5.223.63.4)
+#   VPS_HOST         VPS hostname (default: ${VPS_HOST})
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -69,7 +69,7 @@ echo ""
 
 # VPS connection details
 VPS_USER="linuxuser"
-VPS_HOST="5.223.63.4"
+VPS_HOST="${VPS_HOST}"
 VPS_PATH="/home/linuxuser/trading/Virtuoso_ccxt"
 
 # Colors for output
@@ -234,7 +234,7 @@ echo -e "✅ PHASE 2 DEPLOYMENT COMPLETE!"
 echo -e "==================================================${NC}"
 echo ""
 echo "Next steps:"
-echo "1. Test dashboard endpoint: curl http://5.223.63.4:8001/api/dashboard/cache-stats"
+echo "1. Test dashboard endpoint: curl http://${VPS_HOST}:8001/api/dashboard/cache-stats"
 echo "2. Monitor performance: ssh vps 'tail -f /home/linuxuser/trading/Virtuoso_ccxt/logs/app.log'"
 echo "3. Check Memcached stats: ssh vps 'echo stats | nc localhost 11211'"
 echo ""

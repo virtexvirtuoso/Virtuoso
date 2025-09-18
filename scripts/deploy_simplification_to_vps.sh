@@ -16,7 +16,7 @@ echo -e "${BLUE}Starting Architecture Simplification Deployment to VPS...${NC}"
 
 # Configuration
 VPS_USER="linuxuser"
-VPS_HOST="5.223.63.4"
+VPS_HOST="${VPS_HOST}"
 VPS_PATH="/home/linuxuser/trading/Virtuoso_ccxt"
 LOCAL_PATH="/Users/ffv_macmini/Desktop/Virtuoso_ccxt"
 
@@ -231,9 +231,9 @@ echo "- Expected 40-60% performance improvement"
 echo "- ~30% more functionality now available"
 echo ""
 echo -e "${BLUE}Monitoring URLs:${NC}"
-echo "- Health: http://5.223.63.4:8003/health"
-echo "- Dashboard: http://5.223.63.4:8003/"
-echo "- Mobile: http://5.223.63.4:8003/mobile"
+echo "- Health: http://${VPS_HOST}:8003/health"
+echo "- Dashboard: http://${VPS_HOST}:8003/"
+echo "- Mobile: http://${VPS_HOST}:8003/mobile"
 echo ""
 echo -e "${YELLOW}Monitor the system for the next hour to ensure stability${NC}"
 

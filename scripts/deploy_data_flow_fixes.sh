@@ -6,7 +6,7 @@ echo "🚀 Deploying Data Flow Fixes to VPS"
 echo "=========================================="
 
 # VPS connection details
-VPS_HOST="linuxuser@5.223.63.4"
+VPS_HOST="linuxuser@${VPS_HOST}"
 VPS_DIR="/home/linuxuser/trading/Virtuoso_ccxt"
 
 # Files to deploy
@@ -63,7 +63,7 @@ REMOTE_COMMANDS
 echo ""
 echo "🌐 Testing production endpoints..."
 echo "  Testing unified endpoint..."
-STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://5.223.63.4:8002/api/dashboard-unified/unified)
+STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://${VPS_HOST}:8002/api/dashboard-unified/unified)
 if [ "$STATUS" = "200" ]; then
     echo "  ✓ Unified endpoint active (HTTP $STATUS)"
 else
@@ -82,7 +82,7 @@ echo "  • Expected: 81.8% performance improvement"
 echo "  • Expected: $94,000/year cost savings"
 echo ""
 echo "Production URLs:"
-echo "  • Dashboard: http://5.223.63.4:8002/"
-echo "  • Mobile: http://5.223.63.4:8002/mobile"
-echo "  • Performance: http://5.223.63.4:8002/api/dashboard-unified/performance"
+echo "  • Dashboard: http://${VPS_HOST}:8002/"
+echo "  • Mobile: http://${VPS_HOST}:8002/mobile"
+echo "  • Performance: http://${VPS_HOST}:8002/api/dashboard-unified/performance"
 echo ""

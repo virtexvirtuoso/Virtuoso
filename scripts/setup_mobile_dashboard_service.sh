@@ -36,7 +36,7 @@
 #
 # Environment Variables:
 #   PROJECT_ROOT     Trading system root directory
-#   VPS_HOST         VPS hostname (default: 5.223.63.4)
+#   VPS_HOST         VPS hostname (default: ${VPS_HOST})
 #   VPS_USER         VPS username (default: linuxuser)
 #
 # Output:
@@ -61,7 +61,7 @@
 echo "📱 Setting up Mobile Dashboard Service on VPS..."
 echo "=============================================="
 
-VPS_HOST="linuxuser@5.223.63.4"
+VPS_HOST="linuxuser@${VPS_HOST}"
 PROJECT_DIR="/home/linuxuser/trading/Virtuoso_ccxt"
 
 # Create systemd service file
@@ -134,4 +134,4 @@ echo "✅ Mobile Dashboard Service Setup Complete!"
 echo ""
 echo "📊 The service will update market data every 60 seconds"
 echo "🔍 Check logs with: ssh $VPS_HOST 'sudo journalctl -u mobile-dashboard-updater -f'"
-echo "📱 Access dashboard at: http://5.223.63.4:8001/dashboard/mobile"
+echo "📱 Access dashboard at: http://${VPS_HOST}:8001/dashboard/mobile"
