@@ -1812,9 +1812,18 @@ class PrettyTableFormatter:
         score_color = PrettyTableFormatter._get_score_color(confluence_score)
         overall_status = "BULLISH" if confluence_score >= 60 else "NEUTRAL" if confluence_score >= 40 else "BEARISH"
         
-        reliability_pct = reliability * 100
-        reliability_color = PrettyTableFormatter.GREEN if reliability >= 0.8 else PrettyTableFormatter.YELLOW if reliability >= 0.5 else PrettyTableFormatter.RED
-        reliability_status = "HIGH" if reliability >= 0.8 else "MEDIUM" if reliability >= 0.5 else "LOW"
+        # Normalize reliability input to 0-1 range to avoid 10000% displays
+        try:
+            raw_rel = float(reliability)
+        except Exception:
+            raw_rel = 0.0
+        # If the value looks like a percentage (e.g., 75 or 92.5), convert to 0-1
+        normalized_rel = raw_rel / 100.0 if raw_rel > 1.0 else raw_rel
+        # Clamp to [0,1] to prevent overflows
+        normalized_rel = max(0.0, min(1.0, normalized_rel))
+        reliability_pct = normalized_rel * 100
+        reliability_color = PrettyTableFormatter.GREEN if normalized_rel >= 0.8 else PrettyTableFormatter.YELLOW if normalized_rel >= 0.5 else PrettyTableFormatter.RED
+        reliability_status = "HIGH" if normalized_rel >= 0.8 else "MEDIUM" if normalized_rel >= 0.5 else "LOW"
         
         output.append(f"Overall Score: {score_color}{confluence_score:.2f}{PrettyTableFormatter.RESET} ({overall_status})")
         output.append(f"Reliability: {reliability_color}{reliability_pct:.0f}%{PrettyTableFormatter.RESET} ({reliability_status})")
@@ -2220,9 +2229,16 @@ class PrettyTableFormatter:
         score_color = PrettyTableFormatter._get_score_color(confluence_score)
         overall_status = "BULLISH" if confluence_score >= 60 else "NEUTRAL" if confluence_score >= 40 else "BEARISH"
         
-        reliability_pct = reliability * 100
-        reliability_color = PrettyTableFormatter.GREEN if reliability >= 0.8 else PrettyTableFormatter.YELLOW if reliability >= 0.5 else PrettyTableFormatter.RED
-        reliability_status = "HIGH" if reliability >= 0.8 else "MEDIUM" if reliability >= 0.5 else "LOW"
+        # Normalize reliability input to 0-1 range to avoid 10000% displays
+        try:
+            raw_rel = float(reliability)
+        except Exception:
+            raw_rel = 0.0
+        normalized_rel = raw_rel / 100.0 if raw_rel > 1.0 else raw_rel
+        normalized_rel = max(0.0, min(1.0, normalized_rel))
+        reliability_pct = normalized_rel * 100
+        reliability_color = PrettyTableFormatter.GREEN if normalized_rel >= 0.8 else PrettyTableFormatter.YELLOW if normalized_rel >= 0.5 else PrettyTableFormatter.RED
+        reliability_status = "HIGH" if normalized_rel >= 0.8 else "MEDIUM" if normalized_rel >= 0.5 else "LOW"
         
         output.append(f"Overall Score: {score_color}{confluence_score:.2f}{PrettyTableFormatter.RESET} ({overall_status})")
         output.append(f"Reliability: {reliability_color}{reliability_pct:.0f}%{PrettyTableFormatter.RESET} ({reliability_status})")
