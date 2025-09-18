@@ -19,9 +19,10 @@ logger = logging.getLogger(__name__)
 class NamingMapper:
     """
     Central naming mapper to handle all naming conversions in the system.
-    
+
     This class provides bidirectional mapping between different naming conventions
     and ensures data flows correctly between components regardless of naming differences.
+    Includes symbol normalization to handle BTC/USDT vs BTCUSDT format inconsistencies.
     """
     
     # Master mapping dictionary - single source of truth
@@ -231,11 +232,76 @@ class NamingMapper:
     def get_sentiment_components(self) -> list:
         """
         Get the list of sentiment components in canonical form.
-        
+
         Returns:
             List of sentiment component names
         """
         return self.COMPONENT_MAPPINGS['sentiment']['default_components']
+
+    def normalize_symbol(self, symbol: str, target_format: str = 'exchange') -> str:
+        """
+        Normalize symbol format for consistency across the system.
+
+        Args:
+            symbol: Symbol to normalize (e.g., 'BTC/USDT', 'BTCUSDT', 'btc-usdt')
+            target_format: Target format ('exchange' for BTCUSDT, 'ccxt' for BTC/USDT)
+
+        Returns:
+            Normalized symbol string
+        """
+        if not symbol:
+            return symbol
+
+        symbol = symbol.upper().strip()
+
+        # Handle common separators
+        if '/' in symbol:
+            # CCXT format: BTC/USDT -> BTCUSDT (exchange format)
+            if target_format == 'exchange':
+                return symbol.replace('/', '')
+            else:
+                return symbol  # Already in CCXT format
+        elif '-' in symbol:
+            # Hyphen format: BTC-USDT -> BTCUSDT or BTC/USDT
+            parts = symbol.split('-')
+            if target_format == 'exchange':
+                return ''.join(parts)
+            else:
+                return '/'.join(parts)
+        else:
+            # Exchange format: BTCUSDT -> BTC/USDT (CCXT format)
+            if target_format == 'ccxt':
+                # Common crypto pairs - add more as needed
+                common_quotes = ['USDT', 'USDC', 'USD', 'BTC', 'ETH', 'BNB']
+                for quote in common_quotes:
+                    if symbol.endswith(quote) and len(symbol) > len(quote):
+                        base = symbol[:-len(quote)]
+                        return f"{base}/{quote}"
+                # If no common quote found, return as-is
+                return symbol
+            else:
+                return symbol  # Already in exchange format
+
+    def normalize_cache_key(self, key_template: str, symbol: str, **kwargs) -> str:
+        """
+        Generate a normalized cache key with consistent symbol format.
+
+        Args:
+            key_template: Template with placeholders (e.g., "market:data:{symbol}:{timeframe}")
+            symbol: Symbol to normalize
+            **kwargs: Additional parameters for the template
+
+        Returns:
+            Normalized cache key
+        """
+        normalized_symbol = self.normalize_symbol(symbol, target_format='exchange')
+        kwargs['symbol'] = normalized_symbol
+
+        try:
+            return key_template.format(**kwargs)
+        except KeyError as e:
+            logger.warning(f"Missing parameter for cache key template '{key_template}': {e}")
+            return key_template
     
     def map_exchange_response(self, response: Dict[str, Any], exchange: str) -> Dict[str, Any]:
         """
@@ -319,8 +385,37 @@ def normalize_dict(data: Dict[str, Any], context: Optional[str] = None) -> Dict[
 def get_sentiment_components() -> list:
     """
     Get the canonical list of sentiment components.
-    
+
     Returns:
         List of sentiment component names
     """
     return naming_mapper.get_sentiment_components()
+
+
+def normalize_symbol(symbol: str, target_format: str = 'exchange') -> str:
+    """
+    Global function to normalize symbol format.
+
+    Args:
+        symbol: Symbol to normalize
+        target_format: Target format ('exchange' or 'ccxt')
+
+    Returns:
+        Normalized symbol
+    """
+    return naming_mapper.normalize_symbol(symbol, target_format)
+
+
+def normalize_cache_key(key_template: str, symbol: str, **kwargs) -> str:
+    """
+    Global function to generate normalized cache key.
+
+    Args:
+        key_template: Cache key template
+        symbol: Symbol to normalize
+        **kwargs: Additional template parameters
+
+    Returns:
+        Normalized cache key
+    """
+    return naming_mapper.normalize_cache_key(key_template, symbol, **kwargs)

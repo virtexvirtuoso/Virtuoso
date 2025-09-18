@@ -1,0 +1,769 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cache Metrics Dashboard - Virtuoso CCXT</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #333;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            color: white;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .metric-card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .metric-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 35px rgba(0,0,0,0.15);
+        }
+
+        .metric-card h3 {
+            color: #5a67d8;
+            margin-bottom: 15px;
+            font-size: 1.3rem;
+            display: flex;
+            align-items: center;
+        }
+
+        .metric-card h3::before {
+            content: '';
+            width: 4px;
+            height: 20px;
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            margin-right: 10px;
+            border-radius: 2px;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-left: 10px;
+        }
+
+        .status-healthy { background: #48bb78; }
+        .status-warning { background: #ed8936; }
+        .status-error { background: #f56565; }
+
+        .metric-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            padding: 8px 0;
+            border-bottom: 1px solid #edf2f7;
+        }
+
+        .metric-row:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+        }
+
+        .metric-label {
+            font-weight: 500;
+            color: #4a5568;
+        }
+
+        .metric-value {
+            font-weight: 600;
+            color: #2d3748;
+        }
+
+        .metric-value.success { color: #38a169; }
+        .metric-value.warning { color: #d69e2e; }
+        .metric-value.error { color: #e53e3e; }
+
+        .chart-container {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+        }
+
+        .chart-title {
+            color: #5a67d8;
+            margin-bottom: 20px;
+            font-size: 1.4rem;
+            text-align: center;
+        }
+
+        .hit-rate-chart {
+            display: flex;
+            justify-content: space-around;
+            align-items: end;
+            height: 200px;
+            margin: 20px 0;
+        }
+
+        .hit-rate-bar {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 0 10px;
+        }
+
+        .bar {
+            width: 60px;
+            border-radius: 8px 8px 0 0;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .bar.l1 { background: linear-gradient(180deg, #4c51bf, #667eea); }
+        .bar.l2 { background: linear-gradient(180deg, #38a169, #48bb78); }
+        .bar.l3 { background: linear-gradient(180deg, #d69e2e, #ed8936); }
+        .bar.miss { background: linear-gradient(180deg, #e53e3e, #f56565); }
+
+        .bar-label {
+            margin-top: 10px;
+            font-weight: 600;
+            color: #4a5568;
+            text-align: center;
+        }
+
+        .bar-percentage {
+            position: absolute;
+            top: -25px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-weight: 600;
+            color: #2d3748;
+            font-size: 0.9rem;
+        }
+
+        .performance-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .latency-indicator {
+            display: flex;
+            align-items: center;
+            margin: 5px 0;
+        }
+
+        .latency-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+
+        .latency-excellent { background: #38a169; }
+        .latency-good { background: #d69e2e; }
+        .latency-poor { background: #e53e3e; }
+
+        .controls {
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .btn {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            margin: 0 10px;
+            transition: all 0.3s ease;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn.danger {
+            background: linear-gradient(45deg, #e53e3e, #f56565);
+        }
+
+        .btn.danger:hover {
+            box-shadow: 0 5px 15px rgba(229, 62, 62, 0.4);
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3498db;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-left: 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .last-updated {
+            text-align: center;
+            color: white;
+            margin-top: 20px;
+            opacity: 0.8;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 15px;
+            }
+
+            .header h1 {
+                font-size: 2rem;
+            }
+
+            .metrics-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .hit-rate-chart {
+                height: 150px;
+            }
+
+            .bar {
+                width: 45px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Cache Metrics Dashboard</h1>
+            <p>Multi-Tier Cache Performance Monitor (L1/L2/L3)</p>
+        </div>
+
+        <div class="controls">
+            <button class="btn" onclick="refreshMetrics()">
+                <span id="refresh-text">Refresh Metrics</span>
+                <span id="refresh-loading" class="loading" style="display: none;"></span>
+            </button>
+            <button class="btn" onclick="runBenchmark()">
+                <span id="benchmark-text">Run Performance Test</span>
+                <span id="benchmark-loading" class="loading" style="display: none;"></span>
+            </button>
+            <button class="btn danger" onclick="clearCache()">Clear Cache</button>
+        </div>
+
+        <div class="metrics-grid">
+            <div class="metric-card">
+                <h3>L1 Memory Cache <span id="l1-status" class="status-indicator"></span></h3>
+                <div id="l1-metrics">
+                    <div class="metric-row">
+                        <span class="metric-label">Status:</span>
+                        <span class="metric-value" id="l1-status-text">Loading...</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="metric-card">
+                <h3>L2 Memcached <span id="l2-status" class="status-indicator"></span></h3>
+                <div id="l2-metrics">
+                    <div class="metric-row">
+                        <span class="metric-label">Status:</span>
+                        <span class="metric-value" id="l2-status-text">Loading...</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="metric-card">
+                <h3>L3 Redis <span id="l3-status" class="status-indicator"></span></h3>
+                <div id="l3-metrics">
+                    <div class="metric-row">
+                        <span class="metric-label">Status:</span>
+                        <span class="metric-value" id="l3-status-text">Loading...</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="metric-card">
+                <h3>Overall Performance</h3>
+                <div id="overall-metrics">
+                    <div class="metric-row">
+                        <span class="metric-label">Total Hit Rate:</span>
+                        <span class="metric-value" id="overall-hit-rate">Loading...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="chart-container">
+            <h3 class="chart-title">Cache Hit Rate Distribution</h3>
+            <div class="hit-rate-chart" id="hit-rate-chart">
+                <div class="hit-rate-bar">
+                    <div class="bar l1" id="l1-bar" style="height: 0px;">
+                        <div class="bar-percentage" id="l1-percentage">0%</div>
+                    </div>
+                    <div class="bar-label">L1 Memory</div>
+                </div>
+                <div class="hit-rate-bar">
+                    <div class="bar l2" id="l2-bar" style="height: 0px;">
+                        <div class="bar-percentage" id="l2-percentage">0%</div>
+                    </div>
+                    <div class="bar-label">L2 Memcached</div>
+                </div>
+                <div class="hit-rate-bar">
+                    <div class="bar l3" id="l3-bar" style="height: 0px;">
+                        <div class="bar-percentage" id="l3-percentage">0%</div>
+                    </div>
+                    <div class="bar-label">L3 Redis</div>
+                </div>
+                <div class="hit-rate-bar">
+                    <div class="bar miss" id="miss-bar" style="height: 0px;">
+                        <div class="bar-percentage" id="miss-percentage">0%</div>
+                    </div>
+                    <div class="bar-label">Cache Miss</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="performance-grid">
+            <div class="metric-card">
+                <h3>Performance Benchmark</h3>
+                <div id="performance-metrics">
+                    <div class="metric-row">
+                        <span class="metric-label">L1 Latency:</span>
+                        <span class="metric-value" id="l1-latency">Not tested</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">L2 Latency:</span>
+                        <span class="metric-value" id="l2-latency">Not tested</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">L3 Latency:</span>
+                        <span class="metric-value" id="l3-latency">Not tested</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="metric-card">
+                <h3>System Health</h3>
+                <div id="health-metrics">
+                    <div class="metric-row">
+                        <span class="metric-label">Cache Status:</span>
+                        <span class="metric-value" id="cache-health">Loading...</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Available Layers:</span>
+                        <span class="metric-value" id="available-layers">Loading...</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Uptime:</span>
+                        <span class="metric-value" id="uptime">Loading...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="last-updated">
+            Last updated: <span id="last-updated">Never</span>
+        </div>
+    </div>
+
+    <script>
+        let metricsData = {};
+        let autoRefreshInterval;
+
+        // Initialize dashboard
+        document.addEventListener('DOMContentLoaded', function() {
+            refreshMetrics();
+            // Auto-refresh every 30 seconds
+            autoRefreshInterval = setInterval(refreshMetrics, 30000);
+        });
+
+        async function refreshMetrics() {
+            showLoading('refresh');
+            try {
+                // Fetch all metrics
+                const [overview, hitRates, health] = await Promise.all([
+                    fetch('/api/cache-metrics/overview').then(r => r.json()),
+                    fetch('/api/cache-metrics/hit-rates').then(r => r.json()),
+                    fetch('/api/cache-metrics/health').then(r => r.json())
+                ]);
+
+                metricsData = { overview, hitRates, health };
+                updateMetricsDisplay();
+
+            } catch (error) {
+                console.error('Error fetching metrics:', error);
+                showError('Failed to fetch metrics');
+            } finally {
+                hideLoading('refresh');
+            }
+        }
+
+        async function runBenchmark() {
+            showLoading('benchmark');
+            try {
+                const performance = await fetch('/api/cache-metrics/performance').then(r => r.json());
+                updatePerformanceDisplay(performance);
+            } catch (error) {
+                console.error('Error running benchmark:', error);
+                showError('Failed to run benchmark');
+            } finally {
+                hideLoading('benchmark');
+            }
+        }
+
+        async function clearCache() {
+            if (confirm('Are you sure you want to clear all cache layers?')) {
+                try {
+                    await fetch('/api/cache-metrics/clear?layer=all', { method: 'POST' });
+                    alert('Cache cleared successfully');
+                    refreshMetrics();
+                } catch (error) {
+                    console.error('Error clearing cache:', error);
+                    alert('Failed to clear cache');
+                }
+            }
+        }
+
+        function updateMetricsDisplay() {
+            const { overview, hitRates, health } = metricsData;
+
+            // Update L1 metrics
+            updateL1Metrics(overview.cache_layers.l1_memory);
+
+            // Update L2 metrics
+            updateL2Metrics(overview.cache_layers.l2_memcached);
+
+            // Update L3 metrics
+            updateL3Metrics(overview.cache_layers.l3_redis);
+
+            // Update overall metrics
+            updateOverallMetrics(overview.overall_stats);
+
+            // Update hit rate chart
+            updateHitRateChart(hitRates.hit_rate_breakdown);
+
+            // Update health metrics
+            updateHealthMetrics(health);
+
+            // Update timestamp
+            document.getElementById('last-updated').textContent = new Date().toLocaleString();
+        }
+
+        function updateL1Metrics(l1Data) {
+            const statusIndicator = document.getElementById('l1-status');
+            const statusText = document.getElementById('l1-status-text');
+            const metricsContainer = document.getElementById('l1-metrics');
+
+            if (l1Data.error) {
+                statusIndicator.className = 'status-indicator status-error';
+                statusText.textContent = 'Error';
+                statusText.className = 'metric-value error';
+                return;
+            }
+
+            statusIndicator.className = 'status-indicator status-healthy';
+            statusText.textContent = 'Connected';
+            statusText.className = 'metric-value success';
+
+            metricsContainer.innerHTML = `
+                <div class="metric-row">
+                    <span class="metric-label">Type:</span>
+                    <span class="metric-value">${l1Data.type || 'Unknown'}</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">Size:</span>
+                    <span class="metric-value">${l1Data.size || 0} / ${l1Data.max_size || 0}</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">Capacity:</span>
+                    <span class="metric-value">${(l1Data.capacity_usage || 0).toFixed(1)}%</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">Hit Rate:</span>
+                    <span class="metric-value ${getHitRateClass(l1Data.hit_rate)}">${(l1Data.hit_rate || 0).toFixed(1)}%</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">Evictions:</span>
+                    <span class="metric-value">${l1Data.evictions || 0}</span>
+                </div>
+            `;
+        }
+
+        function updateL2Metrics(l2Data) {
+            const statusIndicator = document.getElementById('l2-status');
+            const statusText = document.getElementById('l2-status-text');
+            const metricsContainer = document.getElementById('l2-metrics');
+
+            if (l2Data.status !== 'connected') {
+                statusIndicator.className = 'status-indicator status-error';
+                statusText.textContent = l2Data.status || 'Error';
+                statusText.className = 'metric-value error';
+                metricsContainer.innerHTML = `
+                    <div class="metric-row">
+                        <span class="metric-label">Error:</span>
+                        <span class="metric-value error">${l2Data.error || 'Connection failed'}</span>
+                    </div>
+                `;
+                return;
+            }
+
+            statusIndicator.className = 'status-indicator status-healthy';
+            statusText.textContent = 'Connected';
+            statusText.className = 'metric-value success';
+
+            metricsContainer.innerHTML = `
+                <div class="metric-row">
+                    <span class="metric-label">Host:</span>
+                    <span class="metric-value">${l2Data.host}:${l2Data.port}</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">Set Latency:</span>
+                    <span class="metric-value ${getLatencyClass(l2Data.set_latency_ms, 10)}">${l2Data.set_latency_ms}ms</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">Get Latency:</span>
+                    <span class="metric-value ${getLatencyClass(l2Data.get_latency_ms, 10)}">${l2Data.get_latency_ms}ms</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">Pool Size:</span>
+                    <span class="metric-value">${l2Data.pool_size}</span>
+                </div>
+            `;
+        }
+
+        function updateL3Metrics(l3Data) {
+            const statusIndicator = document.getElementById('l3-status');
+            const statusText = document.getElementById('l3-status-text');
+            const metricsContainer = document.getElementById('l3-metrics');
+
+            if (l3Data.status !== 'connected') {
+                statusIndicator.className = 'status-indicator status-error';
+                statusText.textContent = l3Data.status || 'Error';
+                statusText.className = 'metric-value error';
+                metricsContainer.innerHTML = `
+                    <div class="metric-row">
+                        <span class="metric-label">Error:</span>
+                        <span class="metric-value error">${l3Data.error || 'Connection failed'}</span>
+                    </div>
+                `;
+                return;
+            }
+
+            statusIndicator.className = 'status-indicator status-healthy';
+            statusText.textContent = 'Connected';
+            statusText.className = 'metric-value success';
+
+            metricsContainer.innerHTML = `
+                <div class="metric-row">
+                    <span class="metric-label">Host:</span>
+                    <span class="metric-value">${l3Data.host}:${l3Data.port}</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">Set Latency:</span>
+                    <span class="metric-value ${getLatencyClass(l3Data.set_latency_ms, 5)}">${l3Data.set_latency_ms}ms</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">Get Latency:</span>
+                    <span class="metric-value ${getLatencyClass(l3Data.get_latency_ms, 5)}">${l3Data.get_latency_ms}ms</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">Memory:</span>
+                    <span class="metric-value">${l3Data.memory_usage}</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">Clients:</span>
+                    <span class="metric-value">${l3Data.connected_clients}</span>
+                </div>
+            `;
+        }
+
+        function updateOverallMetrics(overallData) {
+            const metricsContainer = document.getElementById('overall-metrics');
+            const hitRateElement = document.getElementById('overall-hit-rate');
+
+            const hitRate = overallData.overall_hit_rate || 0;
+            hitRateElement.textContent = `${hitRate.toFixed(1)}%`;
+            hitRateElement.className = `metric-value ${getHitRateClass(hitRate)}`;
+
+            metricsContainer.innerHTML = `
+                <div class="metric-row">
+                    <span class="metric-label">Total Hit Rate:</span>
+                    <span class="metric-value ${getHitRateClass(hitRate)}">${hitRate.toFixed(1)}%</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">Total Hits:</span>
+                    <span class="metric-value">${overallData.total_hits || 0}</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">Total Misses:</span>
+                    <span class="metric-value">${overallData.total_misses || 0}</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">Promotions:</span>
+                    <span class="metric-value">${overallData.promotions || 0}</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">Evictions:</span>
+                    <span class="metric-value">${overallData.evictions || 0}</span>
+                </div>
+            `;
+        }
+
+        function updateHitRateChart(hitRateData) {
+            const maxHeight = 150; // Maximum bar height in pixels
+
+            // Find the maximum percentage for scaling
+            const maxPercentage = Math.max(
+                hitRateData.l1_hits.percentage,
+                hitRateData.l2_hits.percentage,
+                hitRateData.l3_hits.percentage,
+                hitRateData.cache_misses.percentage
+            );
+
+            const scale = maxHeight / Math.max(maxPercentage, 1);
+
+            // Update bars
+            updateBar('l1', hitRateData.l1_hits.percentage, scale);
+            updateBar('l2', hitRateData.l2_hits.percentage, scale);
+            updateBar('l3', hitRateData.l3_hits.percentage, scale);
+            updateBar('miss', hitRateData.cache_misses.percentage, scale);
+        }
+
+        function updateBar(barId, percentage, scale) {
+            const bar = document.getElementById(`${barId}-bar`);
+            const percentageElement = document.getElementById(`${barId}-percentage`);
+
+            bar.style.height = `${percentage * scale}px`;
+            percentageElement.textContent = `${percentage.toFixed(1)}%`;
+        }
+
+        function updateHealthMetrics(healthData) {
+            const healthElement = document.getElementById('cache-health');
+            const layersElement = document.getElementById('available-layers');
+            const uptimeElement = document.getElementById('uptime');
+
+            healthElement.textContent = healthData.status || 'Unknown';
+            healthElement.className = `metric-value ${healthData.status === 'healthy' ? 'success' : 'warning'}`;
+
+            if (healthData.redundancy) {
+                layersElement.textContent = `${healthData.redundancy.available_layers}/${healthData.redundancy.minimum_required}`;
+                layersElement.className = `metric-value ${healthData.redundancy.available_layers >= healthData.redundancy.minimum_required ? 'success' : 'error'}`;
+            }
+
+            if (metricsData.overview && metricsData.overview.overall_stats) {
+                const uptime = metricsData.overview.overall_stats.uptime_seconds || 0;
+                uptimeElement.textContent = formatUptime(uptime);
+            }
+        }
+
+        function updatePerformanceDisplay(performanceData) {
+            if (performanceData.benchmark_results) {
+                const results = performanceData.benchmark_results;
+
+                if (results.l1_performance) {
+                    document.getElementById('l1-latency').textContent =
+                        `${results.l1_performance.avg_latency_ms.toFixed(3)}ms`;
+                }
+
+                if (results.l2_performance) {
+                    document.getElementById('l2-latency').textContent =
+                        `${results.l2_performance.avg_latency_ms.toFixed(3)}ms`;
+                }
+
+                if (results.l3_performance) {
+                    document.getElementById('l3-latency').textContent =
+                        `${results.l3_performance.avg_latency_ms.toFixed(3)}ms`;
+                }
+            }
+        }
+
+        function formatUptime(seconds) {
+            const days = Math.floor(seconds / 86400);
+            const hours = Math.floor((seconds % 86400) / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+
+            if (days > 0) {
+                return `${days}d ${hours}h ${minutes}m`;
+            } else if (hours > 0) {
+                return `${hours}h ${minutes}m`;
+            } else {
+                return `${minutes}m`;
+            }
+        }
+
+        function getHitRateClass(rate) {
+            if (rate >= 95) return 'success';
+            if (rate >= 80) return 'warning';
+            return 'error';
+        }
+
+        function getLatencyClass(latency, threshold) {
+            if (latency <= threshold) return 'success';
+            if (latency <= threshold * 2) return 'warning';
+            return 'error';
+        }
+
+        function showLoading(type) {
+            document.getElementById(`${type}-text`).style.display = 'none';
+            document.getElementById(`${type}-loading`).style.display = 'inline-block';
+        }
+
+        function hideLoading(type) {
+            document.getElementById(`${type}-text`).style.display = 'inline';
+            document.getElementById(`${type}-loading`).style.display = 'none';
+        }
+
+        function showError(message) {
+            alert(message);
+        }
+    </script>
+</body>
+</html>

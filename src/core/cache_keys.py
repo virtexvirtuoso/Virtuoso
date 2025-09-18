@@ -1,8 +1,14 @@
 """
-Cache Keys and TTL Configuration
+Cache Keys and TTL Configuration with Symbol Normalization
 """
 
 from enum import Enum
+try:
+    from .naming_mapper import normalize_symbol
+except ImportError:
+    # Fallback for standalone usage
+    def normalize_symbol(symbol: str, target_format: str = 'exchange') -> str:
+        return symbol.upper().replace('/', '') if target_format == 'exchange' else symbol
 
 
 class CacheKeys:
@@ -15,11 +21,33 @@ class CacheKeys:
     # Add missing breakdown key helper used by services
     @staticmethod
     def confluence_breakdown(symbol: str) -> str:
-        return f"confluence:breakdown:{symbol}"
+        normalized_symbol = normalize_symbol(symbol, 'exchange')
+        return f"confluence:breakdown:{normalized_symbol}"
 
     @staticmethod
     def confluence_score(symbol: str) -> str:
-        return f"confluence:score:{symbol}"
+        normalized_symbol = normalize_symbol(symbol, 'exchange')
+        return f"confluence:score:{normalized_symbol}"
+
+    @staticmethod
+    def market_data(symbol: str, timeframe: str) -> str:
+        normalized_symbol = normalize_symbol(symbol, 'exchange')
+        return f"market:data:{normalized_symbol}:{timeframe}"
+
+    @staticmethod
+    def signal_data(symbol: str) -> str:
+        normalized_symbol = normalize_symbol(symbol, 'exchange')
+        return f"signal:data:{normalized_symbol}"
+
+    @staticmethod
+    def ohlcv_data(symbol: str, timeframe: str) -> str:
+        normalized_symbol = normalize_symbol(symbol, 'exchange')
+        return f"ohlcv:data:{normalized_symbol}:{timeframe}"
+
+    @staticmethod
+    def alert_data(symbol: str) -> str:
+        normalized_symbol = normalize_symbol(symbol, 'exchange')
+        return f"alert:data:{normalized_symbol}"
 
     # Market data cache keys
     MARKET_PREFIX = "market"

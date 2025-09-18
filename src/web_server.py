@@ -107,7 +107,14 @@ async def serve_education():
     alt_path = project_root / "src" / "dashboard" / "templates" / "education_financial_independence.html"
     if alt_path.exists():
         return FileResponse(str(alt_path))
-    return {"message": "Education page not found"}
+
+@app.get("/cache-metrics")
+async def serve_cache_metrics_dashboard():
+    """Serve cache metrics dashboard"""
+    template_path = project_root / "src" / "dashboard" / "templates" / "cache_metrics_dashboard.html"
+    if template_path.exists():
+        return FileResponse(str(template_path))
+    return {"message": "Cache metrics dashboard not found"}
 
 @app.get("/api/docs")
 async def serve_api_docs():

@@ -57,7 +57,7 @@ Version: 2.5.0
 """
 
 from fastapi import FastAPI
-from .routes import signals, market, system, trading, dashboard, alpha, liquidation, correlation, bitcoin_beta, manipulation, top_symbols, whale_activity, sentiment, admin, debug_test, core_api, alerts
+from .routes import signals, market, system, trading, dashboard, alpha, liquidation, correlation, bitcoin_beta, manipulation, top_symbols, whale_activity, sentiment, admin, debug_test, core_api, alerts, cache_metrics
 
 
 # Priority 2 Gateway Implementation
@@ -101,6 +101,9 @@ direct_cache_available = False
 
 def init_api_routes(app: FastAPI):
     """Initialize all API routes for the application."""
+    import logging
+    logger = logging.getLogger(__name__)
+
     # Create API prefix
     api_prefix = "/api"
     
@@ -215,6 +218,13 @@ def init_api_routes(app: FastAPI):
         prefix=f"{api_prefix}/alerts",
         tags=["alerts"]
     )
+
+    # Include cache metrics routes
+    app.include_router(
+        cache_metrics.router,
+        prefix=f"{api_prefix}/cache-metrics",
+        tags=["cache-metrics"]
+    )
     
     # Include admin dashboard routes at /admin
     app.include_router(
@@ -302,6 +312,22 @@ def init_api_routes(app: FastAPI):
         app.include_router(health.router, prefix="/api/health", tags=["health"])
     except ImportError:
         pass
+
+    # Include configuration wizard routes
+    try:
+        from .routes import configuration
+        app.include_router(configuration.router, tags=["configuration"])
+        logger.info("✅ Configuration wizard routes enabled")
+    except ImportError as e:
+        logger.warning(f"Configuration wizard routes not available: {e}")
+
+    # Include documentation platform routes
+    try:
+        from .routes import documentation
+        app.include_router(documentation.router, tags=["documentation"])
+        logger.info("✅ Documentation platform routes enabled")
+    except ImportError as e:
+        logger.warning(f"Documentation platform routes not available: {e}")
     
     # Include Priority 2 Gateway Routes
     if gateway_available:
