@@ -4,6 +4,7 @@ import os
 import sys
 import json
 from datetime import datetime
+import pytest
 
 # Configure logging
 logging.basicConfig(
@@ -22,8 +23,11 @@ try:
     logger.info("Successfully imported MarketReporter")
 except ImportError as e:
     logger.error(f"Error importing MarketReporter: {e}")
-    sys.exit(1)
+    MarketReporter = None
 
+@pytest.mark.asyncio
+@pytest.mark.skipif(MarketReporter is None,
+                   reason="MarketReporter not available in CI environment")
 async def test_bybit_enhancements():
     """Test the enhanced Bybit API integration."""
     try:
