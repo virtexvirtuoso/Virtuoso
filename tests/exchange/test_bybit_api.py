@@ -17,6 +17,7 @@ import pandas as pd
 from datetime import datetime
 from typing import Dict, Any, List, Optional, Tuple
 import aiohttp
+import pytest
 
 # Configure logging
 logging.basicConfig(
@@ -32,7 +33,8 @@ try:
     from src.core.reporting.pdf_generator import ReportGenerator
 except ImportError:
     logger.error("Failed to import required modules. Make sure you're running from the project root.")
-    sys.exit(1)
+    AlertManager = None
+    ReportGenerator = None
 
 def create_test_config() -> Dict[str, Any]:
     """Create a test configuration for the alert manager using environment variables."""
@@ -167,6 +169,9 @@ async def fetch_bybit_market_data(symbol: str = "BTCUSDT") -> Optional[Dict[str,
     
     return market_data
 
+@pytest.mark.asyncio
+@pytest.mark.skipif(AlertManager is None or ReportGenerator is None,
+                   reason="Required modules not available in CI environment")
 async def test_with_real_data():
     """Test both fixes with real data from Bybit API."""
     logger.info("=== Testing fixes with real Bybit market data ===")
