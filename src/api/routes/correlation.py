@@ -130,11 +130,11 @@ class SignalCorrelationCalculator:
                     if signal_type in components:
                         comp_data = components[signal_type]
                         if isinstance(comp_data, dict):
-                            row[signal_type] = comp_data.get("score", 50.0)
+                            row[signal_type] = comp_data.get("score", 0.0)
                         else:
                             row[signal_type] = float(comp_data) if comp_data is not None else None
                     else:
-                        row[signal_type] = 50.0  # Default neutral score
+                        row[signal_type] = 0.0  # Default zero score
                 
                 df_data.append(row)
             
@@ -186,7 +186,7 @@ class SignalCorrelationCalculator:
                         if signal_type in components:
                             comp_data = components[signal_type]
                             if isinstance(comp_data, dict):
-                                scores.append(comp_data.get("score", 50.0))
+                                scores.append(comp_data.get("score", 0.0))
                             else:
                                 scores.append(float(comp_data) if comp_data is not None else None)
                     
@@ -273,7 +273,7 @@ async def _get_matrix_data_internal(symbols_list: List[str], timeframe: str, inc
                                     # Handle both dict and string/numeric signal data
                                     if isinstance(signal_data, dict):
                                         matrix_data[symbol][signal_type] = {
-                                            "score": float(signal_data.get("confidence", 50.0)),
+                                            "score": float(signal_data.get("confidence", 0.0)),
                                             "direction": signal_data.get("direction", "neutral"),
                                             "strength": signal_data.get("strength", "medium")
                                         }
@@ -282,10 +282,10 @@ async def _get_matrix_data_internal(symbols_list: List[str], timeframe: str, inc
                                         try:
                                             score = float(signal_data) if signal_data is not None else None
                                         except (ValueError, TypeError):
-                                            score = 50.0
+                                            score = 0.0
                                         
-                                        direction = "bullish" if score > 60 else "bearish" if score < 40 else "neutral"
-                                        strength = "strong" if score > 70 or score < 30 else "medium"
+                                        direction = "bullish" if score > 60 else "bearish" if score < 40 else "none" if score == 0 else "neutral"
+                                        strength = "strong" if score > 70 or score < 30 else "none" if score == 0 else "medium"
                                         
                                         matrix_data[symbol][signal_type] = {
                                             "score": score,
@@ -293,40 +293,40 @@ async def _get_matrix_data_internal(symbols_list: List[str], timeframe: str, inc
                                             "strength": strength
                                         }
                                 else:
-                                    # Default neutral signal
+                                    # Default zero signal
                                     matrix_data[symbol][signal_type] = {
-                                        "score": 50.0,
-                                        "direction": "neutral", 
-                                        "strength": "medium"
+                                        "score": 0.0,
+                                        "direction": "none",
+                                        "strength": "none"
                                     }
                         else:
-                            # confluence_signals is not a dict, create default signals
+                            # confluence_signals is not a dict, use zero values
                             for signal_type in SIGNAL_TYPES:
                                 matrix_data[symbol][signal_type] = {
-                                    "score": 50.0,
-                                    "direction": "neutral", 
-                                    "strength": "medium"
+                                    "score": 0.0,
+                                    "direction": "none",
+                                    "strength": "none"
                                 }
                     else:
-                        # No signal data found, create default signals
+                        # No signal data found, use zero values
                         for signal_type in SIGNAL_TYPES:
                             matrix_data[symbol][signal_type] = {
-                                "score": 50.0,
-                                "direction": "neutral", 
-                                "strength": "medium"
+                                "score": 0.0,
+                                "direction": "none",
+                                "strength": "none"
                             }
                     
                     # Calculate composite score
                     if matrix_data[symbol]:
                         scores = [data["score"] for data in matrix_data[symbol].values() if isinstance(data, dict)]
-                        composite_score = sum(scores) / len(scores) if scores else None
+                        composite_score = sum(scores) / len(scores) if scores else 0.0
                         matrix_data[symbol]["composite_score"] = composite_score
                     else:
-                        matrix_data[symbol]["composite_score"] = 50.0
+                        matrix_data[symbol]["composite_score"] = 0.0
                         
             except Exception as e:
-                logger.warning(f"Error getting dashboard data: {e}, falling back to mock data")
-                integration = None  # Force fallback to mock data
+                logger.warning(f"Error getting dashboard data: {e}, data unavailable")
+                integration = None  # No fallback available"
         
         if not integration:
             # CRITICAL: Mock data removed - real implementation required
@@ -410,7 +410,7 @@ async def get_signal_confluence_matrix(
                                     # Handle both dict and string/numeric signal data
                                     if isinstance(signal_data, dict):
                                         matrix_data[symbol][signal_type] = {
-                                            "score": float(signal_data.get("confidence", 50.0)),
+                                            "score": float(signal_data.get("confidence", 0.0)),
                                             "direction": signal_data.get("direction", "neutral"),
                                             "strength": signal_data.get("strength", "medium")
                                         }
@@ -419,10 +419,10 @@ async def get_signal_confluence_matrix(
                                         try:
                                             score = float(signal_data) if signal_data is not None else None
                                         except (ValueError, TypeError):
-                                            score = 50.0
+                                            score = 0.0
                                         
-                                        direction = "bullish" if score > 60 else "bearish" if score < 40 else "neutral"
-                                        strength = "strong" if score > 70 or score < 30 else "medium"
+                                        direction = "bullish" if score > 60 else "bearish" if score < 40 else "none" if score == 0 else "neutral"
+                                        strength = "strong" if score > 70 or score < 30 else "none" if score == 0 else "medium"
                                         
                                         matrix_data[symbol][signal_type] = {
                                             "score": score,
@@ -430,40 +430,40 @@ async def get_signal_confluence_matrix(
                                             "strength": strength
                                         }
                                 else:
-                                    # Default neutral signal
+                                    # Default zero signal
                                     matrix_data[symbol][signal_type] = {
-                                        "score": 50.0,
-                                        "direction": "neutral", 
-                                        "strength": "medium"
+                                        "score": 0.0,
+                                        "direction": "none",
+                                        "strength": "none"
                                     }
                         else:
-                            # confluence_signals is not a dict, create default signals
+                            # confluence_signals is not a dict, use zero values
                             for signal_type in SIGNAL_TYPES:
                                 matrix_data[symbol][signal_type] = {
-                                    "score": 50.0,
-                                    "direction": "neutral", 
-                                    "strength": "medium"
+                                    "score": 0.0,
+                                    "direction": "none",
+                                    "strength": "none"
                                 }
                     else:
-                        # No signal data found, create default signals
+                        # No signal data found, use zero values
                         for signal_type in SIGNAL_TYPES:
                             matrix_data[symbol][signal_type] = {
-                                "score": 50.0,
-                                "direction": "neutral", 
-                                "strength": "medium"
+                                "score": 0.0,
+                                "direction": "none",
+                                "strength": "none"
                             }
                     
                     # Calculate composite score
                     if matrix_data[symbol]:
                         scores = [data["score"] for data in matrix_data[symbol].values() if isinstance(data, dict)]
-                        composite_score = sum(scores) / len(scores) if scores else None
+                        composite_score = sum(scores) / len(scores) if scores else 0.0
                         matrix_data[symbol]["composite_score"] = composite_score
                     else:
-                        matrix_data[symbol]["composite_score"] = 50.0
+                        matrix_data[symbol]["composite_score"] = 0.0
                         
             except Exception as e:
-                logger.warning(f"Error getting dashboard data: {e}, falling back to mock data")
-                integration = None  # Force fallback to mock data
+                logger.warning(f"Error getting dashboard data: {e}, data unavailable")
+                integration = None  # No fallback available"
         
         if not integration:
             # CRITICAL: Mock data removed - real implementation required
