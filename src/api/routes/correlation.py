@@ -12,6 +12,7 @@ import json
 import os
 
 # Import analysis components
+from src.core.market.market_data_manager import DataUnavailableError
 try:
     from src.dashboard.dashboard_integration import get_dashboard_integration
 except ImportError:
@@ -328,25 +329,9 @@ async def _get_matrix_data_internal(symbols_list: List[str], timeframe: str, inc
                 integration = None  # Force fallback to mock data
         
         if not integration:
-            # Fallback to mock data when dashboard integration is not available
-            logger.warning("Dashboard integration not available, using mock data")
-            for symbol in symbols_list:
-                matrix_data[symbol] = {}
-                for signal_type in SIGNAL_TYPES:
-                    # Generate realistic mock data
-                    score = np.random.uniform(30, 85)
-                    direction = "bullish" if score > 60 else "bearish" if score < 40 else "neutral"
-                    strength = "strong" if score > 70 or score < 30 else "medium"
-                    
-                    matrix_data[symbol][signal_type] = {
-                        "score": round(score, 1),
-                        "direction": direction,
-                        "strength": strength
-                    }
-                
-                # Calculate composite score
-                scores = [data["score"] for data in matrix_data[symbol].values()]
-                matrix_data[symbol]["composite_score"] = sum(scores) / len(scores)
+            # CRITICAL: Mock data removed - real implementation required
+            logger.error("Dashboard integration not available and mock data removed")
+            raise DataUnavailableError("Correlation matrix data unavailable - dashboard integration required")
         
         # Calculate correlations if requested
         correlations = {}
@@ -481,25 +466,9 @@ async def get_signal_confluence_matrix(
                 integration = None  # Force fallback to mock data
         
         if not integration:
-            # Fallback to mock data when dashboard integration is not available
-            logger.warning("Dashboard integration not available, using mock data")
-            for symbol in symbols_list:
-                matrix_data[symbol] = {}
-                for signal_type in SIGNAL_TYPES:
-                    # Generate realistic mock data
-                    score = np.random.uniform(30, 85)
-                    direction = "bullish" if score > 60 else "bearish" if score < 40 else "neutral"
-                    strength = "strong" if score > 70 or score < 30 else "medium"
-                    
-                    matrix_data[symbol][signal_type] = {
-                        "score": round(score, 1),
-                        "direction": direction,
-                        "strength": strength
-                    }
-                
-                # Calculate composite score
-                scores = [data["score"] for data in matrix_data[symbol].values()]
-                matrix_data[symbol]["composite_score"] = sum(scores) / len(scores)
+            # CRITICAL: Mock data removed - real implementation required
+            logger.error("Dashboard integration not available and mock data removed")
+            raise DataUnavailableError("Correlation matrix data unavailable - dashboard integration required")
         
         # Calculate correlations if requested
         correlations = {}
