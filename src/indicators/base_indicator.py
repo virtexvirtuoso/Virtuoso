@@ -404,6 +404,8 @@ class BaseIndicator(ABC):
             return await self.calculate(market_data)
         
         # Use the cache with appropriate TTL
+        # Ensure cache instance is ready (handle accidental coroutine assignment)
+        await self._ensure_cache_ready()
         result = await self.cache.get_indicator(
             indicator_type=indicator_type,
             symbol=symbol,
@@ -413,6 +415,33 @@ class BaseIndicator(ABC):
         )
         
         return result
+
+    async def _ensure_cache_ready(self) -> None:
+        """Ensure that self.cache is an initialized cache instance, not a coroutine.
+        
+        Some code paths may accidentally assign the async factory coroutine to
+        self.cache. This guard awaits and replaces it with the concrete cache
+        instance to avoid attribute errors at runtime.
+        """
+        try:
+            # If cache was disabled, nothing to do
+            if not self.enable_caching:
+                return
+            # If cache is a coroutine (e.g., result of calling an async factory without awaiting), await it
+            import asyncio as _asyncio
+            if _asyncio.iscoroutine(self.cache):
+                self.cache = await self.cache
+            # If cache is uninitialized singleton, try to initialize lazily
+            if hasattr(self.cache, 'initialize') and hasattr(self.cache, '_initialized'):
+                try:
+                    if not getattr(self.cache, '_initialized', False):
+                        await self.cache.initialize()
+                except Exception:
+                    # Best-effort; fallback to using as-is
+                    pass
+        except Exception:
+            # Never fail analysis due to cache readiness; leave cache as-is
+            pass
         
     async def calculate_score(self, market_data: Dict[str, Any]) -> float:
         """Calculate main indicator score.
