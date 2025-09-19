@@ -11,6 +11,7 @@ from src.core.models.liquidation import (
     LiquidationRisk, CascadeAlert, LiquidationMonitorRequest, LeverageMetrics,
     LiquidationSeverity, MarketStressLevel
 )
+from src.core.market.market_data_manager import DataUnavailableError
 from src.core.analysis.liquidation_detector import LiquidationDetectionEngine
 from src.core.exchanges.manager import ExchangeManager
 
@@ -107,48 +108,9 @@ async def get_active_liquidation_alerts(
     """
     
     try:
-        # Return empty list for now to prevent timeout
-        # TODO: Implement proper liquidation detection when exchange connections are stable
-        import time
-        
-        # Create mock liquidation events for testing
-        mock_events = []
-        symbols = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT']
-        severities = [LiquidationSeverity.LOW, LiquidationSeverity.MEDIUM, LiquidationSeverity.HIGH]
-        
-        for i, symbol in enumerate(symbols[:limit]):
-            if i < len(severities):
-                severity = severities[i]
-            else:
-                severity = LiquidationSeverity.MEDIUM
-                
-            # Skip if severity is below minimum
-            severity_order = {
-                LiquidationSeverity.LOW: 1,
-                LiquidationSeverity.MEDIUM: 2,
-                LiquidationSeverity.HIGH: 3,
-                LiquidationSeverity.CRITICAL: 4
-            }
-            
-            if severity_order[severity] < severity_order[min_severity]:
-                continue
-            
-            mock_event = LiquidationEvent(
-                id=f"liq_{symbol}_{i}",
-                symbol=symbol,
-                exchange="binance",
-                side="long" if i % 2 == 0 else "short",
-                size=1000000.0 * (i + 1),
-                price=50000.0 - (i * 1000),
-                timestamp=int(time.time() * 1000) - (i * 60000),
-                severity=severity,
-                cascade_probability=0.3 + (i * 0.1),
-                affected_symbols=[symbol],
-                market_impact=0.05 + (i * 0.01)
-            )
-            mock_events.append(mock_event)
-        
-        return mock_events
+        # CRITICAL: Mock data removed - real implementation required
+        logger.error("Liquidation alerts not implemented - mock data removed")
+        raise DataUnavailableError("Liquidation detection unavailable - real implementation required")
         
     except Exception as e:
         logger.error(f"Error in get_active_liquidation_alerts: {e}")
