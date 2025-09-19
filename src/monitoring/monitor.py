@@ -749,14 +749,15 @@ class MarketMonitor:
                 return
             
             # Step 3: Process with confluence analyzer
-            if self.confluence_analyzer:
+            analyzer = getattr(self, 'confluence_analyzer', None)
+            if analyzer and hasattr(analyzer, 'analyze') and callable(getattr(analyzer, 'analyze')):
                 try:
                     # [LSR-MONITOR] Log what we're passing to confluence
                     if 'long_short_ratio' in market_data:
                         self.logger.info(f'[LSR-MONITOR] Passing LSR to confluence: {market_data["long_short_ratio"]}')
                     else:
                         self.logger.warning('[LSR-MONITOR] No LSR in market_data being passed to confluence')
-                    analysis_result = await self.confluence_analyzer.analyze(market_data)
+                    analysis_result = await analyzer.analyze(market_data)
                     if analysis_result:
                         # Log confluence score
                         confluence_score = analysis_result.get('confluence_score', 0)

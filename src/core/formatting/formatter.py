@@ -860,8 +860,14 @@ class LogFormatter:
             reliability_color = AnalysisFormatter.RED
             reliability_status = "LOW"
             
-        # Convert reliability to percentage
-        reliability_pct = reliability * 100
+        # Normalize and convert reliability to percentage to avoid 10000% displays
+        try:
+            raw_rel = float(reliability)
+        except Exception:
+            raw_rel = 0.0
+        normalized_rel = raw_rel / 100.0 if raw_rel > 1.0 else raw_rel
+        normalized_rel = max(0.0, min(1.0, normalized_rel))
+        reliability_pct = normalized_rel * 100
         reliability_text = f"RELIABILITY: {reliability_color}{reliability_pct:.0f}%{AnalysisFormatter.RESET} ({reliability_status})"
         reliability_padding = table_width - len(reliability_text) - 2 + len(reliability_color) + len(AnalysisFormatter.RESET)
         header += f"\n║ {AnalysisFormatter.BOLD}{reliability_text}{' ' * reliability_padding}║"
