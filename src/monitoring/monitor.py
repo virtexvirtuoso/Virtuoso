@@ -1107,8 +1107,15 @@ class MarketMonitor:
                 self.logger.warning(f"Signal processor not available for {symbol}")
             
             # Update metrics
-            if self.metrics_tracker:
+            if self.metrics_tracker and hasattr(self.metrics_tracker, 'update_analysis_metrics'):
                 await self.metrics_tracker.update_analysis_metrics(symbol, result)
+            elif self.metrics_manager:
+                # Fallback for environments where MetricsTracker lacks the bridge method
+                try:
+                    await self.metrics_manager.update_analysis_metrics(symbol, result)
+                except Exception:
+                    # Ensure metrics failures never break the analysis pipeline
+                    self.logger.debug(traceback.format_exc())
 
         except Exception as e:
             self.logger.error(f"Error processing analysis result: {str(e)}")
