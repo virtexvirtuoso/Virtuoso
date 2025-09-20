@@ -1841,15 +1841,26 @@ class PrettyTableFormatter:
             contributions = []
             if weights:
                 for component, score in components.items():
+                    # Coerce dict component values to numeric scores safely
+                    try:
+                        numeric_score = score.get('score', score) if isinstance(score, dict) else score
+                        numeric_score = float(numeric_score) if numeric_score is not None else 50.0
+                    except Exception:
+                        numeric_score = 50.0
                     weight = weights.get(component, 0)
-                    contribution = score * weight
-                    contributions.append((component, score, weight, contribution))
+                    contribution = numeric_score * weight
+                    contributions.append((component, numeric_score, weight, contribution))
             else:
                 # Estimate equal weights if not provided
                 weight = 1.0 / max(len(components), 1)
                 for component, score in components.items():
-                    contribution = score * weight
-                    contributions.append((component, score, weight, contribution))
+                    try:
+                        numeric_score = score.get('score', score) if isinstance(score, dict) else score
+                        numeric_score = float(numeric_score) if numeric_score is not None else 50.0
+                    except Exception:
+                        numeric_score = 50.0
+                    contribution = numeric_score * weight
+                    contributions.append((component, numeric_score, weight, contribution))
             
             # Sort by contribution (descending)
             contributions.sort(key=lambda x: x[3], reverse=True)
