@@ -21,8 +21,8 @@ class ErrorSeverity(Enum):
 class ErrorContext:
     """Context information for errors."""
     
-    component: str
-    operation: str
+    component: str = "unknown"
+    operation: str = "unknown"
     timestamp: datetime = field(default_factory=datetime.utcnow)
     details: Dict[str, Any] = field(default_factory=dict)
     severity: ErrorSeverity = ErrorSeverity.MEDIUM

@@ -6,7 +6,7 @@ import time
 from typing import Dict, List, Any, Callable, Optional
 import pandas as pd
 import traceback
-import random
+from src.core.error.unified_exceptions import DataUnavailableError
 
 from src.core.exchanges.rate_limiter import BybitRateLimiter
 from src.core.exchanges.websocket_manager import WebSocketManager
@@ -397,6 +397,14 @@ class MarketDataManager:
                         'v5/market/recent-trade',
                         lambda: self.exchange_manager.fetch_trades(symbol, limit=1000)
                     )
+                    # Fallback: if no trades via primary path, try direct exchange (e.g., Bybit) fetch
+                    if not trades_data:
+                        try:
+                            exchange = await self.exchange_manager.get_primary_exchange()
+                            if exchange and hasattr(exchange, 'fetch_trades'):
+                                trades_data = await exchange.fetch_trades(symbol, limit=1000) or []
+                        except Exception:
+                            trades_data = trades_data or []
                     if trades_data:
                         self.data_cache[symbol]['trades'] = trades_data
                         self.last_full_refresh[symbol]['components']['trades'] = current_time
@@ -1593,18 +1601,12 @@ class MarketDataManager:
             'timestamp': int(time.time() * 1000)  # Required by validation
         }
         
-        # Always initialize ticker to avoid NoneType errors in validation
-        if 'ticker' not in self.data_cache[symbol] or self.data_cache[symbol]['ticker'] is None:
-            self.logger.warning(f"Ticker data missing for {symbol}, initializing with defaults")
-            self.data_cache[symbol]['ticker'] = {
-                'bid': 0,
-                'ask': 0,
-                'last': 0,
-                'high': 0,
-                'low': 0,
-                'volume': 0,
-                'timestamp': int(time.time() * 1000)
-            }
+        # Require real ticker data; do not synthesize defaults
+        if 'ticker' not in self.data_cache[symbol] or not self.data_cache[symbol]['ticker']:
+            raise DataUnavailableError(
+                message=f"No ticker data available for {symbol}",
+                data_type="ticker"
+            )
             
         # Include basic market data components
         market_data['ticker'] = self.data_cache[symbol].get('ticker')
@@ -1657,7 +1659,15 @@ class MarketDataManager:
                             self.data_cache[symbol]['ohlcv'] = timeframes
                             self.data_cache[symbol]['kline'] = timeframes  # Store under both keys
                         self.logger.info(f"Fetched and stored OHLCV data for {symbol}: {len(timeframes)} timeframes")
+                    else:
+                        raise DataUnavailableError(
+                            message=f"No OHLCV data available for {symbol}",
+                            data_type="ohlcv"
+                        )
                 except Exception as e:
+                    # Surface explicit unavailability, log others
+                    if isinstance(e, DataUnavailableError):
+                        raise
                     self.logger.error(f"Error fetching OHLCV data: {str(e)}")
                     self.logger.debug(traceback.format_exc())
         
@@ -1783,8 +1793,13 @@ class MarketDataManager:
                         self.data_cache[symbol]['kline'] = timeframes  # Store under both keys
                     self.logger.info(f"Successfully fetched OHLCV data for {symbol}")
                 else:
-                    self.logger.warning(f"Failed to fetch OHLCV data for {symbol}")
+                    raise DataUnavailableError(
+                        message=f"Failed to fetch OHLCV data for {symbol}",
+                        data_type="ohlcv"
+                    )
             except Exception as e:
+                if isinstance(e, DataUnavailableError):
+                    raise
                 self.logger.error(f"Error fetching OHLCV data for {symbol}: {str(e)}")
                 import traceback
                 self.logger.debug(traceback.format_exc())
