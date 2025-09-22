@@ -148,7 +148,7 @@
                         </tr>
                         <tr>
                             <th>Reliability:</th>
-                            <td>{{ (reliability * 100)|float|round(0) }}%</td>
+                            <td>{% set rel = reliability if reliability >= 0 else 0 %}{% set rel = 100 if rel > 100 else rel %}{{ rel|float|round(0) }}%</td>
                         </tr>
                     </table>
                 </div>

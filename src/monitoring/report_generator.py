@@ -300,6 +300,14 @@ class ReportGenerator:
             score = signal.get('score', signal.get('confluence_score', 0))
             signal_type = signal.get('signal', 'UNKNOWN').upper()
             reliability = signal.get('reliability', 100)
+            # Normalize reliability: allow both 0-1 and 0-100 inputs
+            try:
+                rel_raw = float(reliability)
+            except Exception:
+                rel_raw = 100.0
+            rel_norm = rel_raw / 100.0 if rel_raw > 1.0 else rel_raw
+            rel_norm = max(0.0, min(1.0, rel_norm))
+            reliability = rel_norm * 100.0
             price = signal.get('price', 0)
             
             # Create PDF document
