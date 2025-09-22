@@ -19,7 +19,8 @@ class MarketDataManager:
     async def fetch_real_open_interest(self, symbol: str) -> Dict:
         """Fetch real open interest data from exchange"""
         try:
-            exchange_client = self.exchange_manager.get_primary_exchange()
+            # get_primary_exchange is async; ensure we await it to obtain the client
+            exchange_client = await self.exchange_manager.get_primary_exchange()
             if hasattr(exchange_client, 'fetch_open_interest'):
                 oi_data = await exchange_client.fetch_open_interest(symbol)
                 return {
