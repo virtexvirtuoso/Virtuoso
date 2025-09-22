@@ -26,6 +26,7 @@ from collections import defaultdict
 from src.core.base_component import BaseComponent
 
 # Load environment variables from .env file
+from src.core.market.market_data_manager import DataUnavailableError
 load_dotenv()
 
 from .base import (
@@ -175,7 +176,7 @@ class BybitExchange(BaseExchange):
         
         # Set testnet mode - check environment variable first, then config file
         testnet_env = os.getenv('BYBIT_TESTNET', '').lower() in ('true', '1', 'yes')
-        self.testnet = testnet_env or self.exchange_config.get('testnet', False)
+        self.testnet = testnet_env or self.exchange_config.get("data_unavailable", False)
         
         # Initialize rate limits
         self.rate_limits = self.RATE_LIMITS.copy()
@@ -192,8 +193,8 @@ class BybitExchange(BaseExchange):
         
         # Set endpoints based on testnet mode
         if self.testnet:
-            self.rest_endpoint = self.exchange_config.get('testnet_endpoint', 'https://api-testnet.bybit.com')
-            self.ws_endpoint = self.exchange_config['websocket'].get('testnet_endpoint', 'wss://stream-testnet.bybit.com/v5/public')
+            self.rest_endpoint = self.exchange_config.get("data_unavailable", 'https://api-testnet.bybit.com')
+            self.ws_endpoint = self.exchange_config['websocket'].get("data_unavailable", 'wss://stream-testnet.bybit.com/v5/public')
         else:
             self.rest_endpoint = self.exchange_config.get('rest_endpoint', 'https://api.bybit.com')
             self.ws_endpoint = self.exchange_config['websocket'].get('mainnet_endpoint', 'wss://stream.bybit.com/v5/public')
@@ -680,7 +681,7 @@ class BybitExchange(BaseExchange):
                     raise
                 
                 # Exponential backoff with jitter
-                wait_time = min(2 ** attempt + random.uniform(0, 1), 10)
+                wait_time = min(2 ** attempt + 1, 10)
                 self.logger.warning(f"Retry {attempt + 1}/{max_retries} for {endpoint} after {wait_time:.1f}s: {str(e)}")
                 await asyncio.sleep(wait_time)
                 
@@ -1074,8 +1075,8 @@ class BybitExchange(BaseExchange):
                 return False
 
             # Get the correct endpoint from config
-            if self.config.get('testnet', False):
-                ws_url = ws_config.get('testnet_endpoint')
+            if self.config.get("data_unavailable", False):
+                ws_url = ws_config.get("data_unavailable")
                 self.logger.debug(f"Using testnet WebSocket endpoint: {ws_url}")
             else:
                 ws_url = ws_config.get('mainnet_endpoint')
@@ -4609,6 +4610,62 @@ class BybitExchange(BaseExchange):
         """
         return await self._fetch_ticker(symbol)
 
+    async def fetch_open_interest(self, symbol: str) -> Dict[str, Any]:
+        """Fetch current open interest for a symbol using Bybit v5 API with ticker fallback.
+        
+        Args:
+            symbol: Trading pair symbol
+        
+        Returns:
+            Dict with fields: symbol, openInterest, timestamp
+        """
+        try:
+            api_symbol = self._convert_to_exchange_symbol(symbol)
+            # First try to read from ticker if it contains open interest
+            try:
+                ticker = await self._fetch_ticker(symbol)
+                if ticker and ('openInterest' in ticker or 'open_interest' in ticker or 'open_interest_value' in ticker):
+                    oi_value = ticker.get('openInterest', ticker.get('open_interest', ticker.get('open_interest_value', 0)))
+                    return {
+                        'symbol': symbol,
+                        'openInterest': float(oi_value) if oi_value is not None else 0.0,
+                        'timestamp': int(ticker.get('timestamp', int(time.time() * 1000)))
+                    }
+            except Exception:
+                # Soft-fail and proceed to API endpoint
+                pass
+            
+            # Query Bybit v5 open-interest endpoint
+            params = {
+                'category': 'linear',
+                'symbol': api_symbol
+            }
+            response = await self._make_request('GET', '/v5/market/open-interest', params=params)
+            data_list = (response or {}).get('result', {}).get('list', [])
+            if data_list:
+                latest = data_list[0]
+                oi_raw = latest.get('openInterest', latest.get('open_interest', 0))
+                ts_raw = latest.get('timestamp', int(time.time() * 1000))
+                return {
+                    'symbol': symbol,
+                    'openInterest': float(oi_raw) if oi_raw is not None else 0.0,
+                    'timestamp': int(ts_raw)
+                }
+            # Default structure if no data
+            self.logger.warning(f"Open interest list empty for {symbol}")
+            return {
+                'symbol': symbol,
+                'openInterest': 0.0,
+                'timestamp': int(time.time() * 1000)
+            }
+        except Exception as e:
+            self.logger.warning(f"Failed to fetch open interest for {symbol}: {e}")
+            return {
+                'symbol': symbol,
+                'openInterest': 0.0,
+                'timestamp': int(time.time() * 1000)
+            }
+
     def _convert_to_exchange_symbol(self, symbol: str) -> str:
         """Convert local symbol format to exchange symbol format
         
@@ -4747,6 +4804,100 @@ class BybitExchange(BaseExchange):
     async def fetch_ticker(self, symbol: str) -> dict:
         """Alias for _fetch_ticker to maintain compatibility with other exchange implementations."""
         return await self._fetch_ticker(symbol)
+
+    async def fetch_tickers(self, category: str = 'linear') -> List[Dict[str, Any]]:
+        """Fetch ALL tickers for dynamic symbol selection.
+
+        This method fetches all available tickers from Bybit in a single API call,
+        enabling proper dynamic symbol selection instead of falling back to
+        hardcoded symbol lists.
+
+        Args:
+            category: Market category ('linear' for perpetual futures, 'spot' for spot trading)
+
+        Returns:
+            List of dictionaries containing ticker data with normalized symbols and volume info
+        """
+        try:
+            self.logger.info(f"🔍 DEBUG: BybitExchange.fetch_tickers() called with category='{category}'")
+
+            # Use the same _make_request method as fetch_ticker, but without symbol parameter
+            response = await self._make_request('GET', '/v5/market/tickers', {
+                'category': category
+            })
+
+            self.logger.info(f"🔍 DEBUG: fetch_tickers API response - retCode: {response.get('retCode') if response else 'None'}")
+
+            # Check if response is valid
+            if not response or 'result' not in response:
+                self.logger.error("❌ DEBUG: fetch_tickers - No result in response")
+                return []
+
+            # Check for API errors
+            if response.get('retCode') != 0:
+                self.logger.error(f"❌ DEBUG: fetch_tickers - API error: {response.get('retCode')} - {response.get('retMsg')}")
+                return []
+
+            # Get the ticker list
+            ticker_list = response.get('result', {}).get('list', [])
+            self.logger.info(f"🔍 DEBUG: fetch_tickers - Got {len(ticker_list)} raw tickers from API")
+
+            if not ticker_list:
+                self.logger.warning("⚠️ DEBUG: fetch_tickers - Empty ticker list from API")
+                return []
+
+            # Normalize the ticker data for top_symbols compatibility
+            normalized_tickers = []
+            usdt_pairs = 0
+
+            for ticker in ticker_list:
+                try:
+                    symbol = ticker.get('symbol', '')
+                    if not symbol:
+                        continue
+
+                    # Focus on USDT pairs for consistency with existing logic
+                    if symbol.endswith('USDT'):
+                        usdt_pairs += 1
+
+                        # Extract volume data - Bybit provides both volume24h and turnover24h
+                        volume24h = self.safe_float(ticker, 'volume24h') or 0
+                        turnover24h = self.safe_float(ticker, 'turnover24h') or 0
+
+                        # Use turnover24h as quoteVolume for consistency with top_symbols logic
+                        normalized_ticker = {
+                            'symbol': symbol,  # Keep Bybit format (e.g., 'BTCUSDT')
+                            'quoteVolume': turnover24h,  # Use turnover as quote volume
+                            'baseVolume': volume24h,     # Use volume as base volume
+                            'turnover24h': turnover24h,  # Keep original field
+                            'lastPrice': self.safe_float(ticker, 'lastPrice') or 0,
+                            'volume24h': volume24h,
+                            'priceChangePercent': self.safe_float(ticker, 'priceChangePercent') or 0
+                        }
+
+                        normalized_tickers.append(normalized_ticker)
+
+                except Exception as e:
+                    self.logger.debug(f"Error processing ticker {ticker.get('symbol', 'unknown')}: {e}")
+                    continue
+
+            self.logger.info(f"✅ DEBUG: fetch_tickers SUCCESS - Returning {len(normalized_tickers)} normalized tickers ({usdt_pairs} USDT pairs)")
+
+            # Log sample of returned data for debugging
+            if normalized_tickers:
+                sample_symbols = [t['symbol'] for t in normalized_tickers[:10]]
+                sample_volumes = [f"{t['symbol']}:{int(t['quoteVolume'])}" for t in normalized_tickers[:5]]
+                self.logger.info(f"✅ DEBUG: fetch_tickers - Sample symbols: {sample_symbols}")
+                self.logger.info(f"✅ DEBUG: fetch_tickers - Sample volumes: {sample_volumes}")
+
+            return normalized_tickers
+
+        except Exception as e:
+            self.logger.error(f"❌ DEBUG: fetch_tickers FAILED - Exception: {e}")
+            self.logger.error(f"❌ DEBUG: fetch_tickers - Error type: {type(e).__name__}")
+            import traceback
+            self.logger.debug(f"❌ DEBUG: fetch_tickers - Traceback: {traceback.format_exc()}")
+            return []
 
     async def fetch_open_interest_history(self, symbol: str, interval: str = '5min', limit: int = 200) -> Dict[str, Any]:
         """Fetch historical open interest data for a symbol.
@@ -5047,8 +5198,8 @@ class BybitWebSocket:
                 
             # Get WebSocket URL from config
             ws_config = self.config.get('websocket', {})
-            if self.config.get('testnet', False):
-                ws_url = ws_config.get('testnet_endpoint', 'wss://stream-testnet.bybit.com/v5/public/linear')
+            if self.config.get("data_unavailable", False):
+                ws_url = ws_config.get("data_unavailable", 'wss://stream-testnet.bybit.com/v5/public/linear')
             else:
                 ws_url = ws_config.get('mainnet_endpoint', 'wss://stream.bybit.com/v5/public/linear')
                 
