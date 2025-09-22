@@ -2559,6 +2559,19 @@ class PrettyTableFormatter:
                     summarized = _summarize_signals(component_data['signals'])
                     if summarized:
                         interpretation = summarized
+                else:
+                    # Check if component_data itself contains dict-valued signal fields (Price Structure pattern)
+                    potential_signals = {}
+                    for key, value in component_data.items():
+                        if key not in ['score', 'enhanced_interpretation', 'interpretation', 'reliability', 'components'] and isinstance(value, dict):
+                            # This looks like a signal dict (e.g., support_resistance, order_blocks)
+                            potential_signals[key] = value
+
+                    if potential_signals:
+                        # Found signal-like dictionaries at top level - summarize them
+                        summarized = _summarize_signals(potential_signals)
+                        if summarized:
+                            interpretation = summarized
                 
                 if interpretation:
                     # Wrap long interpretations
