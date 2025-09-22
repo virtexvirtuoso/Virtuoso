@@ -212,7 +212,7 @@ class AnalysisFormatter:
         )
         
         # Add signal notice if above threshold (preserve existing logic)
-        if score >= 70:
+        if score is not None and score >= 70:
             signal_type = "BULLISH" if score > 50 else "BEARISH"
             formatted_output += f"\nSIGNAL GENERATED: {signal_type} with {score:.2f} score\n"
         else:
@@ -809,10 +809,10 @@ class LogFormatter:
             sell_threshold = 40.0  # Default sell threshold
         
         # Determine overall market bias using the thresholds from config
-        if confluence_score >= buy_threshold:
+        if confluence_score is not None and confluence_score >= buy_threshold:
             overall_status = "BULLISH"
             overall_color = AnalysisFormatter.GREEN
-        elif confluence_score >= sell_threshold:
+        elif confluence_score is not None and confluence_score >= sell_threshold:
             overall_status = "NEUTRAL"
             overall_color = AnalysisFormatter.YELLOW
         else:
@@ -1728,7 +1728,9 @@ class PrettyTableFormatter:
     @staticmethod
     def _get_score_color(score):
         """Get color based on score value."""
-        if score >= 70:
+        if score is None:
+            return PrettyTableFormatter.YELLOW  # Default to yellow for None values
+        elif score >= 70:
             return PrettyTableFormatter.GREEN
         elif score >= 45:
             return PrettyTableFormatter.YELLOW
@@ -1816,7 +1818,7 @@ class PrettyTableFormatter:
         
         # Overall score and reliability
         score_color = PrettyTableFormatter._get_score_color(confluence_score)
-        overall_status = "BULLISH" if confluence_score >= 60 else "NEUTRAL" if confluence_score >= 40 else "BEARISH"
+        overall_status = "BULLISH" if confluence_score is not None and confluence_score >= 60 else "NEUTRAL" if confluence_score is not None and confluence_score >= 40 else "BEARISH"
         
         # Normalize reliability input to 0-1 range to avoid 10000% displays
         try:
@@ -1831,7 +1833,8 @@ class PrettyTableFormatter:
         reliability_color = PrettyTableFormatter.GREEN if normalized_rel >= 0.8 else PrettyTableFormatter.YELLOW if normalized_rel >= 0.5 else PrettyTableFormatter.RED
         reliability_status = "HIGH" if normalized_rel >= 0.8 else "MEDIUM" if normalized_rel >= 0.5 else "LOW"
         
-        output.append(f"Overall Score: {score_color}{confluence_score:.2f}{PrettyTableFormatter.RESET} ({overall_status})")
+        score_display = "N/A" if confluence_score is None else f"{confluence_score:.2f}"
+        output.append(f"Overall Score: {score_color}{score_display}{PrettyTableFormatter.RESET} ({overall_status})")
         output.append(f"Reliability: {reliability_color}{reliability_pct:.0f}%{PrettyTableFormatter.RESET} ({reliability_status})")
         output.append("")
         
@@ -2010,9 +2013,9 @@ class PrettyTableFormatter:
         insights = []
         
         # Overall stance
-        if confluence_score >= 60:
+        if confluence_score is not None and confluence_score >= 60:
             insights.append("BULLISH STANCE: Consider long positions with proper risk management")
-        elif confluence_score >= 40:
+        elif confluence_score is not None and confluence_score >= 40:
             insights.append("NEUTRAL STANCE: Range-bound conditions likely - consider mean-reversion strategies")
         else:
             insights.append("BEARISH STANCE: Consider short positions or avoid long exposure")
@@ -2042,9 +2045,9 @@ class PrettyTableFormatter:
                 insights.append(f"WEAKNESS: {comp_name} shows concerning bearish signals")
         
         # Timing insights
-        if confluence_score >= 55:
+        if confluence_score is not None and confluence_score >= 55:
             insights.append("TIMING: Bullish momentum building; favorable for trend-following entries")
-        elif confluence_score <= 45:
+        elif confluence_score is not None and confluence_score <= 45:
             insights.append("TIMING: Bearish pressure increasing; consider defensive positioning")
         else:
             insights.append("TIMING: Mixed signals; wait for clearer directional confirmation")
@@ -2244,7 +2247,7 @@ class PrettyTableFormatter:
         
         # Overall score and reliability
         score_color = PrettyTableFormatter._get_score_color(confluence_score)
-        overall_status = "BULLISH" if confluence_score >= 60 else "NEUTRAL" if confluence_score >= 40 else "BEARISH"
+        overall_status = "BULLISH" if confluence_score is not None and confluence_score >= 60 else "NEUTRAL" if confluence_score is not None and confluence_score >= 40 else "BEARISH"
         
         # Normalize reliability input to 0-1 range to avoid 10000% displays
         try:
@@ -2257,7 +2260,8 @@ class PrettyTableFormatter:
         reliability_color = PrettyTableFormatter.GREEN if normalized_rel >= 0.8 else PrettyTableFormatter.YELLOW if normalized_rel >= 0.5 else PrettyTableFormatter.RED
         reliability_status = "HIGH" if normalized_rel >= 0.8 else "MEDIUM" if normalized_rel >= 0.5 else "LOW"
         
-        output.append(f"Overall Score: {score_color}{confluence_score:.2f}{PrettyTableFormatter.RESET} ({overall_status})")
+        score_display = "N/A" if confluence_score is None else f"{confluence_score:.2f}"
+        output.append(f"Overall Score: {score_color}{score_display}{PrettyTableFormatter.RESET} ({overall_status})")
         output.append(f"Reliability: {reliability_color}{reliability_pct:.0f}%{PrettyTableFormatter.RESET} ({reliability_status})")
         output.append("")
         
@@ -2371,6 +2375,45 @@ class PrettyTableFormatter:
         logger = logging.getLogger(__name__)
         logger.debug(f"_format_enhanced_interpretations called with results keys: {list(results.keys()) if results else 'None'}")
         
+        # Helper: summarize dict-valued signals into readable narrative
+        def _summarize_signals(signals_dict):
+            try:
+                parts = []
+                for raw_name, raw_value in signals_dict.items():
+                    display = raw_name.replace('_', ' ').title()
+                    # Dict-valued signal → extract common fields
+                    if isinstance(raw_value, dict):
+                        signal_text = str(
+                            raw_value.get('signal')
+                            or raw_value.get('trend')
+                            or raw_value.get('state')
+                            or raw_value.get('direction')
+                            or 'neutral'
+                        ).replace('_', ' ')
+                        bias = raw_value.get('bias')
+                        strength = raw_value.get('strength')
+                        interp = raw_value.get('interpretation')
+                        details = []
+                        if isinstance(strength, (str, int, float)) and str(strength).strip():
+                            details.append(str(strength).replace('_', ' '))
+                        if isinstance(bias, (str,)) and bias and bias.lower() != 'neutral':
+                            details.append(bias)
+                        detail_str = f" ({', '.join(details)})" if details else ""
+                        part = f"{display}: {signal_text}{detail_str}"
+                        if isinstance(interp, str) and interp.strip():
+                            part += f" - {interp.strip()}"
+                        parts.append(part)
+                    else:
+                        # Simple value (number/string)
+                        parts.append(f"{display}: {raw_value}")
+                return "; ".join(parts)
+            except Exception:
+                # Fallback to simple join if anything goes wrong
+                try:
+                    return ", ".join(f"{k}={v}" for k, v in signals_dict.items())
+                except Exception:
+                    return ""
+        
         # PRIORITY 1: Check if market_interpretations field exists (from enhanced data generation)
         if results and isinstance(results, dict) and 'market_interpretations' in results:
             market_interpretations = results['market_interpretations']
@@ -2435,9 +2478,9 @@ class PrettyTableFormatter:
                         logger.debug(f"Found dict interpretation.summary for {component_name}")
                 elif 'signals' in component_data:
                     signals = component_data['signals']
-                    if signals:
-                        interpretation = ", ".join(f"{k}={v}" for k, v in signals.items())
-                        logger.debug(f"Built interpretation from signals for {component_name}")
+                    if signals and isinstance(signals, dict):
+                        interpretation = _summarize_signals(signals)
+                        logger.debug(f"Built summarized interpretation from dict-valued signals for {component_name}")
                 
                 if interpretation:
                     raw_interpretations.append({
@@ -2511,6 +2554,11 @@ class PrettyTableFormatter:
                         interpretation = interp
                     elif isinstance(interp, dict) and 'summary' in interp:
                         interpretation = interp['summary']
+                elif 'signals' in component_data and isinstance(component_data['signals'], dict):
+                    # Safety net: narrate signals directly when no explicit interpretation provided
+                    summarized = _summarize_signals(component_data['signals'])
+                    if summarized:
+                        interpretation = summarized
                 
                 if interpretation:
                     # Wrap long interpretations
@@ -2603,12 +2651,14 @@ class PrettyTableFormatter:
                     break
         
         # Overall stance with enhanced logic
-        if confluence_score >= buy_threshold:
+        if confluence_score is not None and confluence_score >= buy_threshold:
             insights.append(f"  • BULLISH BIAS: Score ({confluence_score:.2f}) above buy threshold - consider long positions")
-        elif confluence_score >= sell_threshold:
+        elif confluence_score is not None and confluence_score >= sell_threshold:
             insights.append(f"  • NEUTRAL STANCE: Range-bound conditions likely - consider mean-reversion strategies")
-        else:
+        elif confluence_score is not None:
             insights.append(f"  • BEARISH BIAS: Score ({confluence_score:.2f}) below sell threshold - avoid long exposure")
+        else:
+            insights.append(f"  • NO DATA: Score unavailable - insufficient data for analysis")
         
         # Risk assessment from components and results
         risk_assessment_added = False
@@ -2661,9 +2711,9 @@ class PrettyTableFormatter:
                         insights.append("  • KEY LEVELS: Strong bid liquidity cluster")
         
         # Strategy recommendations
-        if confluence_score >= buy_threshold:
+        if confluence_score is not None and confluence_score >= buy_threshold:
             insights.append("  • STRATEGY: Monitor for pullbacks to key support levels for entry opportunities")
-        elif confluence_score >= sell_threshold:
+        elif confluence_score is not None and confluence_score >= sell_threshold:
             insights.append("  • STRATEGY: Monitor for further confirmation before implementing directional strategies")
         else:
             insights.append("  • STRATEGY: Wait for trend reversal signals before considering long positions")
