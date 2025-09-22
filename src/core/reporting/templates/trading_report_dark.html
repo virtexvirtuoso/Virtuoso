@@ -372,12 +372,14 @@
             </div>
             <div class="summary-item">
                 <div class="label">Reliability</div>
-                {% if reliability >= 75 %}
-                    <div class="value reliability-high">{{ reliability|format_number }}%</div>
-                {% elif reliability >= 50 %}
-                    <div class="value reliability-medium">{{ reliability|format_number }}%</div>
+                {% set rel_value = reliability if reliability >= 0 else 0 %}
+                {% set rel_value = 100 if rel_value > 100 else rel_value %}
+                {% if rel_value >= 75 %}
+                    <div class="value reliability-high">{{ rel_value|format_number }}%</div>
+                {% elif rel_value >= 50 %}
+                    <div class="value reliability-medium">{{ rel_value|format_number }}%</div>
                 {% else %}
-                    <div class="value reliability-low">{{ reliability|format_number }}%</div>
+                    <div class="value reliability-low">{{ rel_value|format_number }}%</div>
                 {% endif %}
             </div>
         </div>

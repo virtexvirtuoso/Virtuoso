@@ -1544,51 +1544,49 @@ class ReportGenerator:
                 ]
                 ax1.legend(handles=legend_elements, loc='upper left', fontsize=9, framealpha=0.7, facecolor='#0c1a2b')
 
-
-                # Add labels with improved styling
-                entry_pos = None  # Initialize to prevent undefined variable error
-                if entry_price is not None:
-                    # Calculate normalized position for entry price
-                    entry_pos = (entry_price - y_min) / (y_max - y_min)
-                    
-                    # Get position bounds safely - handling different return types
-                    position = ax1.get_position()
-                    if hasattr(position, 'bounds'):
-                        # In some versions, bounds is a tuple of 4 values
-                        try:
-                            bounds = position.bounds
-                            if isinstance(bounds, tuple) and len(bounds) == 4:
-                                ax1_x_pos, ax1_y_pos, ax1_width, ax1_height = bounds
-                            else:
-                                self._log(f"Unexpected bounds format: {bounds}", logging.WARNING)
-                                ax1_x_pos = ax1_y_pos = 0
-                        except Exception as e:
-                            self._log(f"Error unpacking figure bounds: {str(e)}", logging.WARNING)
+            # Always add trade overlays/labels regardless of VWAP availability
+            # Add labels with improved styling
+            entry_pos = None  # Initialize to prevent undefined variable error
+            if entry_price is not None:
+                # Calculate normalized position for entry price
+                entry_pos = (entry_price - y_min) / (y_max - y_min)
+                
+                # Get position bounds safely - handling different return types
+                position = ax1.get_position()
+                if hasattr(position, 'bounds'):
+                    # In some versions, bounds is a tuple of 4 values
+                    try:
+                        bounds = position.bounds
+                        if isinstance(bounds, tuple) and len(bounds) == 4:
+                            ax1_x_pos, ax1_y_pos, ax1_width, ax1_height = bounds
+                        else:
+                            self._log(f"Unexpected bounds format: {bounds}", logging.WARNING)
                             ax1_x_pos = ax1_y_pos = 0
-                    else:
-                        # Fall back to direct attribute access
-                        ax1_x_pos = getattr(position, 'x0', 0)
-                        ax1_y_pos = getattr(position, 'y0', 0)
-                
+                    except Exception as e:
+                        self._log(f"Error unpacking figure bounds: {str(e)}", logging.WARNING)
+                        ax1_x_pos = ax1_y_pos = 0
+                else:
+                    # Fall back to direct attribute access
+                    ax1_x_pos = getattr(position, 'x0', 0)
+                    ax1_y_pos = getattr(position, 'y0', 0)
+            
                 if entry_pos is not None:
-
-                
                     ax1.annotate(
                         f"Entry: ${self._format_number(entry_price)}",
-                    xy=(1.01, entry_pos),
-                    xycoords=("axes fraction", "axes fraction"),
-                    xytext=(1.05, entry_pos),
-                    textcoords="axes fraction",
-                    fontsize=9,
-                    color="#10b981",
-                    fontweight="bold",
-                    bbox=dict(
-                        facecolor="#0c1a2b",
-                        edgecolor="#3b82f6",
-                        boxstyle="round,pad=0.3",
-                        alpha=0.9,
-                    ),
-                )
+                        xy=(1.01, entry_pos),
+                        xycoords=("axes fraction", "axes fraction"),
+                        xytext=(1.05, entry_pos),
+                        textcoords="axes fraction",
+                        fontsize=9,
+                        color="#10b981",
+                        fontweight="bold",
+                        bbox=dict(
+                            facecolor="#0c1a2b",
+                            edgecolor="#3b82f6",
+                            boxstyle="round,pad=0.3",
+                            alpha=0.9,
+                        ),
+                    )
 
                 # Stop loss label
                 if stop_loss is not None:
@@ -2005,6 +2003,18 @@ class ReportGenerator:
             )
             reliability = signal_data.get("reliability", 0.5)
 
+            # Normalize reliability to 0-1 range regardless of upstream format
+            try:
+                rel_raw = float(reliability)
+            except Exception:
+                rel_raw = 0.5
+            rel_norm = rel_raw / 100.0 if rel_raw > 1.0 else rel_raw
+            if rel_norm < 0.0:
+                rel_norm = 0.0
+            if rel_norm > 1.0:
+                rel_norm = 1.0
+            reliability_pct = rel_norm * 100.0
+
             # Add basic data to context
             context.update(
                 {
@@ -2013,7 +2023,7 @@ class ReportGenerator:
                     "score": confluence_score,  # CHANGED: Using confluence_score instead of score
                     "price": price,
                     "timestamp": timestamp,
-                    "reliability": reliability * 100,  # Convert to percentage for template
+                    "reliability": reliability_pct,  # Already normalized percentage for template
                     "analysis_components": signal_data.get("analysis_components", {}),  # Add interpretations
                 }
             )
@@ -2025,8 +2035,20 @@ class ReportGenerator:
 
                     # Get trade parameters if available
                     trade_params = signal_data.get("trade_params", {})
-                    entry_price = trade_params.get("entry_price", None) or signal_data.get("entry_price", None)
+                    entry_price = (
+                        trade_params.get("entry_price", None)
+                        or signal_data.get("entry_price", None)
+                        or signal_data.get("price", None)
+                    )
                     stop_loss = trade_params.get("stop_loss", None) or signal_data.get("stop_loss", None)
+
+                    # Provide a sensible default stop if missing
+                    sig_type = (signal_data.get("signal_type", "NEUTRAL") or "NEUTRAL").upper()
+                    if stop_loss is None and entry_price:
+                        if sig_type in ["BUY", "LONG", "BULLISH"]:
+                            stop_loss = entry_price * 0.97  # ~3% risk
+                        elif sig_type in ["SELL", "SHORT", "BEARISH"]:
+                            stop_loss = entry_price * 1.03
                     targets = trade_params.get("targets", None) or signal_data.get("targets", None)
                     
                     # Ensure targets are always available - generate defaults if none provided
@@ -2186,6 +2208,12 @@ class ReportGenerator:
             # Create confluence analysis image if text is provided
             try:
                 confluence_text = signal_data.get("confluence_analysis", None)
+                if not confluence_text:
+                    # Fallbacks to maintain confluence narrative in PDFs
+                    if isinstance(signal_data.get("breakdown"), dict):
+                        confluence_text = signal_data.get("breakdown", {}).get("formatted_analysis")
+                    if not confluence_text:
+                        confluence_text = signal_data.get("formatted_analysis")
                 if confluence_text and isinstance(confluence_text, str):
                     self._log("Creating confluence analysis image from text")
                     confluence_analysis_image = self._create_confluence_image(
@@ -2303,7 +2331,11 @@ class ReportGenerator:
                 self._log(f"Processing market interpretations for {symbol}", level=logging.DEBUG)
                 
                 # Process market interpretations using centralized InterpretationManager
-                raw_interpretations = signal_data.get("market_interpretations", signal_data.get("insights", []))
+                raw_interpretations = (
+                    signal_data.get("market_interpretations")
+                    or signal_data.get("insights")
+                    or (signal_data.get("breakdown", {}).get("interpretations") if isinstance(signal_data.get("breakdown"), dict) else None)
+                )
                 actionable_insights = signal_data.get("actionable_insights", [])
                 
                 # Use InterpretationManager to process and standardize interpretations
@@ -2335,14 +2367,58 @@ class ReportGenerator:
                         self._log(f"Processed {len(insights)} interpretations for PDF", level=logging.DEBUG)
                     else:
                         self._log("No market interpretations found", level=logging.DEBUG)
+                        # Last-resort: derive brief insights from formatted analysis text
+                        fa_text = signal_data.get("formatted_analysis")
+                        if not fa_text and isinstance(signal_data.get("breakdown"), dict):
+                            fa_text = signal_data.get("breakdown", {}).get("formatted_analysis")
+                        if isinstance(fa_text, str) and fa_text:
+                            for line in fa_text.splitlines():
+                                s = line.strip()
+                                if s.startswith("•") or s.startswith("-"):
+                                    insights.append(s.lstrip("•-").strip())
+                                    if len(insights) >= 6:
+                                        break
                 
                 except Exception as e:
                     self._log(f"Error processing interpretations with InterpretationManager: {e}", level=logging.ERROR)
                     # Fallback to original processing
                     insights = raw_interpretations if isinstance(raw_interpretations, list) else []
                 
-                if insights and isinstance(insights[0], dict) and 'interpretation' in insights[0]:
-                    insights = [item.get('interpretation', '') for item in insights]
+                # Normalize insights to a list of plain strings for the template
+                try:
+                    if insights:
+                        normalized_insights = []
+                        for item in insights:
+                            if isinstance(item, str):
+                                if item.strip():
+                                    normalized_insights.append(item.strip())
+                                continue
+                            if isinstance(item, dict):
+                                text = (
+                                    item.get('interpretation')
+                                    or item.get('interpretation_text')
+                                    or item.get('text')
+                                    or item.get('summary')
+                                )
+                                comp = (
+                                    item.get('display_name')
+                                    or item.get('component_name')
+                                    or item.get('component')
+                                )
+                                if text:
+                                    normalized_insights.append(f"{comp + ': ' if comp else ''}{text}")
+                                continue
+                            # Fallback for objects with attributes
+                            text = getattr(item, 'interpretation_text', None) or getattr(item, 'text', None)
+                            comp = getattr(item, 'component_name', None)
+                            if text:
+                                normalized_insights.append(f"{(comp + ': ') if comp else ''}{text}")
+
+                        # Replace only if we built something useful
+                        if normalized_insights:
+                            insights = normalized_insights
+                except Exception:
+                    pass
             except Exception as e:
                 self._log(f"Error extracting insights: {str(e)}", logging.ERROR)
                 self._log(traceback.format_exc(), logging.DEBUG)
@@ -2470,7 +2546,7 @@ class ReportGenerator:
                 "symbol": symbol,
                 "score": confluence_score,  # CHANGED: Using confluence_score instead of score
                 "score_width_pct": f"{min(max(confluence_score, 0), 100)}%",  # CHANGED: Using confluence_score
-                "reliability": reliability * 100,  # Convert to percentage for template display
+                "reliability": reliability_pct,  # Use normalized percentage for template display
                 "price": price,
                 "timestamp": formatted_timestamp,
                 "signal_type": signal_type,
@@ -4347,6 +4423,15 @@ class ReportGenerator:
             confluence_score = signal_data.get('confluence_score', signal_data.get('score', 50))
             signal_type = signal_data.get('signal', 'NEUTRAL').upper()
             reliability = signal_data.get('reliability', 1.0)
+            try:
+                rel_raw = float(reliability)
+            except Exception:
+                rel_raw = 1.0
+            rel_norm = rel_raw / 100.0 if rel_raw > 1.0 else rel_raw
+            if rel_norm < 0.0:
+                rel_norm = 0.0
+            if rel_norm > 1.0:
+                rel_norm = 1.0
             price = signal_data.get('price', 0)
             
             # Format timestamp
@@ -4359,7 +4444,7 @@ class ReportGenerator:
             html_content = html_content.replace('{{SYMBOL}}', symbol)
             html_content = html_content.replace('{{SCORE}}', f"{confluence_score:.2f}")  # CHANGED: Use confluence_score
             html_content = html_content.replace('{{SIGNAL_TYPE}}', signal_type)
-            html_content = html_content.replace('{{RELIABILITY}}', f"{reliability * 100:.2f}")  # Convert from decimal to percentage
+            html_content = html_content.replace('{{RELIABILITY}}', f"{rel_norm * 100:.2f}")
             html_content = html_content.replace('{{PRICE}}', f"{price:.4f}")
             html_content = html_content.replace('{{TIMESTAMP}}', timestamp_str)
             
@@ -4408,6 +4493,15 @@ class ReportGenerator:
             confluence_score = signal_data.get('confluence_score', signal_data.get('score', 50))
             signal_type = signal_data.get('signal', 'NEUTRAL').upper()
             reliability = signal_data.get('reliability', 1.0)
+            try:
+                rel_raw = float(reliability)
+            except Exception:
+                rel_raw = 1.0
+            rel_norm = rel_raw / 100.0 if rel_raw > 1.0 else rel_raw
+            if rel_norm < 0.0:
+                rel_norm = 0.0
+            if rel_norm > 1.0:
+                rel_norm = 1.0
             price = signal_data.get('price', 0)
             
             # Format timestamp
@@ -4441,7 +4535,7 @@ class ReportGenerator:
                     <p><strong>Symbol:</strong> {symbol}</p>
                     <p><strong>Signal Type:</strong> <span class="{signal_type.lower()}">{signal_type}</span></p>
                     <p><strong>Score:</strong> {confluence_score:.2f}</p>
-                    <p><strong>Reliability:</strong> {reliability * 100:.2f}%</p>
+                    <p><strong>Reliability:</strong> {rel_norm * 100:.2f}%</p>
                     <p><strong>Price:</strong> {price:.4f}</p>
                     
                     <h2>Components</h2>
