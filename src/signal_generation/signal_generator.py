@@ -2154,7 +2154,12 @@ class SignalGenerator:
                                 'price': price,
                                 'components': components,
                                 'results': results,
-                                'reliability': reliability
+                                'reliability': reliability,
+                                # Pass through enriched narrative data when available
+                                'market_interpretations': signal_data.get('market_interpretations'),
+                                'actionable_insights': signal_data.get('actionable_insights'),
+                                'influential_components': signal_data.get('influential_components'),
+                                'top_weighted_subcomponents': signal_data.get('top_weighted_subcomponents')
                             },
                             ohlcv_data=ohlcv_data
                         )
@@ -2203,7 +2208,12 @@ class SignalGenerator:
                                 'price': price,
                                 'components': components,
                                 'results': results,
-                                'reliability': reliability
+                                'reliability': reliability,
+                                # Pass through enriched narrative data when available
+                                'market_interpretations': signal_data.get('market_interpretations'),
+                                'actionable_insights': signal_data.get('actionable_insights'),
+                                'influential_components': signal_data.get('influential_components'),
+                                'top_weighted_subcomponents': signal_data.get('top_weighted_subcomponents')
                             }
                         )
                         
