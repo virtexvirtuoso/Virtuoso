@@ -33,6 +33,7 @@ import time
 import traceback
 import uuid
 from datetime import datetime, timezone, timedelta
+import numpy as np
 from typing import Dict, List, Any, Optional, Callable
 from pathlib import Path
 
@@ -426,6 +427,22 @@ class MarketMonitor:
         """Initialize all monitoring components asynchronously."""
         try:
             self.logger.info("Initializing monitoring components...")
+
+            # CRITICAL: Validate core dependencies before proceeding
+            missing_deps = []
+            if not self.exchange_manager:
+                missing_deps.append("exchange_manager")
+            if not self.alert_manager:
+                missing_deps.append("alert_manager")
+            if not self.top_symbols_manager:
+                missing_deps.append("top_symbols_manager")
+
+            if missing_deps:
+                error_msg = f"🚨 CRITICAL: MarketMonitor missing required dependencies: {missing_deps} - cannot initialize monitoring"
+                self.logger.error(error_msg)
+                return False
+
+            self.logger.info("✅ Core dependencies validated successfully")
             
             # Try to create components, but don't fail if dependencies are missing
             try:
@@ -701,7 +718,27 @@ class MarketMonitor:
             
             # Process all symbols concurrently
             tasks = [process_symbol_with_semaphore(symbol) for symbol in symbols]
-            await asyncio.gather(*tasks, return_exceptions=True)
+            self.logger.info(f"📋 Created {len(tasks)} tasks for symbol processing")
+
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+
+            # Enhanced result validation to detect both exceptions AND silent failures
+            exceptions = [r for r in results if isinstance(r, Exception)]
+            none_results = [i for i, r in enumerate(results) if r is None]
+            successful_tasks = len(results) - len(exceptions) - len(none_results)
+
+            if exceptions:
+                self.logger.error(f"❌ {len(exceptions)} tasks failed with exceptions:")
+                for i, exc in enumerate(exceptions):
+                    self.logger.error(f"  Task {i}: {exc}")
+
+            if none_results:
+                self.logger.error(f"⚠️ {len(none_results)} tasks completed but did no work (silent failures)")
+
+            if successful_tasks > 0:
+                self.logger.info(f"✅ {successful_tasks} symbol processing tasks completed successfully")
+            else:
+                self.logger.error("🚨 NO TASKS COMPLETED SUCCESSFULLY - SYSTEM MALFUNCTION DETECTED")
             
             # Mark first cycle as completed
             if not self.first_cycle_completed:
@@ -721,16 +758,21 @@ class MarketMonitor:
             self.logger.error(traceback.format_exc())  # Changed from debug to error level
             raise  # Re-raise to ensure proper error handling in the main loop
     
-    @handle_monitoring_error()
+    @handle_monitoring_error(reraise=True)
     async def _process_symbol(self, symbol: str) -> None:
         """Process a single symbol through the monitoring pipeline."""
+        # Debug log at the very start
+        self.logger.debug(f"🚀 _process_symbol called for {symbol}")
+
         if not self.exchange_manager:
-            self.logger.error("Exchange manager not available")
-            return
-        
+            error_msg = f"🚨 CRITICAL: Exchange manager not available for {symbol} - system misconfigured"
+            self.logger.error(error_msg)
+            raise RuntimeError(error_msg)
+
         try:
             # Extract symbol string
             symbol_str = symbol['symbol'] if isinstance(symbol, dict) and 'symbol' in symbol else symbol
+            self.logger.debug(f"📊 Processing symbol_str: {symbol_str}")
             
             self.logger.debug(f"Processing symbol: {symbol_str}")
             
@@ -780,10 +822,201 @@ class MarketMonitor:
                 await self.metrics_tracker.update_symbol_metrics(symbol_str, market_data)
             else:
                 self.logger.warning(f"⚠️  Metrics tracker not initialized, skipping metrics update for {symbol_str}")
+
+            # Step 7: Manipulation detection and alerting
+            try:
+                from .manipulation_detector import ManipulationDetector
+                detector = getattr(self, '_manipulation_detector', None)
+                if detector is None:
+                    detector = ManipulationDetector(self.config, logger=self.logger.getChild('manipulation'))
+                    self._manipulation_detector = detector
+                alert = await detector.analyze_market_data(symbol_str, market_data)
+                if alert and self.alert_manager:
+                    await self.alert_manager.send_alert(
+                        level="warning" if alert.severity in ("medium", "high") else "info",
+                        message=f"🚨 Manipulation signal on {symbol_str}: {alert.description}",
+                        details={
+                            "type": "manipulation",
+                            "symbol": symbol_str,
+                            "manipulation_type": alert.manipulation_type,
+                            "confidence": alert.confidence_score,
+                            "metrics": alert.metrics,
+                            "severity": alert.severity,
+                        },
+                        throttle=True,
+                    )
+            except Exception as e:
+                self.logger.error(f"Manipulation detection error for {symbol_str}: {str(e)}")
+
+            # Step 8: Whale activity detection and alerting
+            try:
+                self.logger.debug(f"🔍 About to call whale detection for {symbol_str}")
+                await self._analyze_and_alert_whale_activity(symbol_str, market_data)
+                self.logger.debug(f"✅ Whale detection completed for {symbol_str}")
+            except Exception as e:
+                self.logger.error(f"Whale detection error for {symbol_str}: {str(e)}")
             
         except Exception as e:
             self.logger.error(f"Error processing symbol {symbol}: {str(e)}")
             self.logger.debug(traceback.format_exc())
+
+    async def _analyze_and_alert_whale_activity(self, symbol: str, market_data: Dict[str, Any]) -> None:
+        """Analyze whale accumulation/distribution and emit alerts via AlertManager.
+
+        Minimal, reliable port of legacy logic with thresholds from config.
+        """
+        # Debug log to confirm whale detection is being called
+        self.logger.debug(f"🐋 Whale detection called for {symbol}")
+
+        # Config
+        config = self.config.get('monitoring', {}).get('whale_activity', {})
+        if not config.get('enabled', True):
+            return
+        if not self.alert_manager:
+            return
+
+        orderbook = market_data.get('orderbook') or {}
+        ticker = market_data.get('ticker') or {}
+        current_price = float(ticker.get('last') or 0)
+        bids = orderbook.get('bids') or []
+        asks = orderbook.get('asks') or []
+        if current_price <= 0 or not bids or not asks:
+            return
+
+        # Compute whale threshold from order sizes
+        try:
+            bid_sizes = [float(level[1]) for level in bids if len(level) >= 2]
+            ask_sizes = [float(level[1]) for level in asks if len(level) >= 2]
+            all_sizes = bid_sizes + ask_sizes
+            if not all_sizes:
+                return
+            mean_size = float(np.mean(all_sizes))
+            std_size = float(np.std(all_sizes))
+            whale_threshold = mean_size + (2.0 * std_size)
+        except Exception:
+            return
+
+        whale_bids = [lvl for lvl in bids if len(lvl) >= 2 and float(lvl[1]) >= whale_threshold]
+        whale_asks = [lvl for lvl in asks if len(lvl) >= 2 and float(lvl[1]) >= whale_threshold]
+        whale_bid_volume = sum(float(lvl[1]) for lvl in whale_bids)
+        whale_ask_volume = sum(float(lvl[1]) for lvl in whale_asks)
+        total_bid_volume = sum(float(lvl[1]) for lvl in bids)
+        total_ask_volume = sum(float(lvl[1]) for lvl in asks)
+
+        bid_usd = whale_bid_volume * current_price
+        ask_usd = whale_ask_volume * current_price
+        net_volume = whale_bid_volume - whale_ask_volume
+        net_usd = net_volume * current_price
+
+        bid_pct = (whale_bid_volume / total_bid_volume) if total_bid_volume > 0 else 0.0
+        ask_pct = (whale_ask_volume / total_ask_volume) if total_ask_volume > 0 else 0.0
+        total_whale_vol = whale_bid_volume + whale_ask_volume
+        if total_whale_vol > 0:
+            bid_ratio = whale_bid_volume / total_whale_vol
+            ask_ratio = whale_ask_volume / total_whale_vol
+            imbalance = abs(bid_ratio - ask_ratio)
+        else:
+            imbalance = 0.0
+
+        accumulation_threshold = float(config.get('accumulation_threshold', 1_000_000))
+        distribution_threshold = float(config.get('distribution_threshold', 1_000_000))
+        imbalance_threshold = float(config.get('imbalance_threshold', 0.2))
+        min_order_count = int(config.get('min_order_count', 4))
+        market_percentage = float(config.get('market_percentage', 0.02))
+
+        current_time = time.time()
+        if not hasattr(self, '_last_whale_alert'):
+            self._last_whale_alert = {}
+        cooldown = int(config.get('cooldown', 900))
+        last_time = float(self._last_whale_alert.get(symbol, 0))
+        if current_time - last_time < cooldown:
+            return
+
+        # Trade-based context if present
+        trades = market_data.get('trades') or []
+        whale_trades_count = 0
+        whale_buy_volume = 0.0
+        whale_sell_volume = 0.0
+        trade_imbalance = 0.0
+        if trades:
+            recent_cutoff = current_time - 1800
+            for t in trades:
+                ts = float(t.get('timestamp') or t.get('time') or 0) / (1000.0 if (t.get('timestamp') and t.get('timestamp') > 1e12) else 1.0)
+                if ts and ts < recent_cutoff:
+                    continue
+                size = float(t.get('amount') or t.get('size') or 0)
+                price = float(t.get('price') or current_price)
+                side = (t.get('side') or '').lower()
+                if size <= 0:
+                    continue
+                # slightly lower threshold for trades
+                if size >= (whale_threshold / 2.0):
+                    whale_trades_count += 1
+                    if side == 'buy':
+                        whale_buy_volume += size
+                    elif side == 'sell':
+                        whale_sell_volume += size
+            total_trade_vol = whale_buy_volume + whale_sell_volume
+            if total_trade_vol > 0:
+                trade_imbalance = (whale_buy_volume - whale_sell_volume) / total_trade_vol
+
+        # Significant conditions
+        significant_acc = (
+            net_usd > accumulation_threshold and
+            len(whale_bids) >= min_order_count and
+            bid_pct > market_percentage and
+            imbalance > imbalance_threshold
+        )
+        significant_dist = (
+            net_usd < -distribution_threshold and
+            len(whale_asks) >= min_order_count and
+            ask_pct > market_percentage and
+            imbalance > imbalance_threshold
+        )
+
+        if not significant_acc and not significant_dist:
+            return
+
+        subtype = 'accumulation' if significant_acc else 'distribution'
+        details = {
+            'type': 'whale_activity',
+            'subtype': subtype,
+            'symbol': symbol,
+            'data': {
+                'whale_bid_volume': whale_bid_volume,
+                'whale_ask_volume': whale_ask_volume,
+                'whale_bid_usd': bid_usd,
+                'whale_ask_usd': ask_usd,
+                'net_volume': net_volume,
+                'net_usd_value': net_usd,
+                'imbalance': imbalance,
+                'threshold': whale_threshold,
+                'bid_percentage': bid_pct,
+                'ask_percentage': ask_pct,
+                'whale_bid_orders': len(whale_bids),
+                'whale_ask_orders': len(whale_asks),
+                'current_price': current_price,
+                'whale_trades_count': whale_trades_count,
+                'whale_buy_volume': whale_buy_volume,
+                'whale_sell_volume': whale_sell_volume,
+                'trade_imbalance': trade_imbalance,
+            }
+        }
+
+        emoji = '🐋📈' if subtype == 'accumulation' else '🐋📉'
+        msg = (
+            f"{emoji} Whale {subtype.title()} detected on {symbol} | "
+            f"Whale bids: {len(whale_bids)}, asks: {len(whale_asks)} | "
+            f"Net USD: ${abs(net_usd):,.0f} | Imbalance: {imbalance:.0%}"
+        )
+
+        await self.alert_manager.send_alert(
+            level='warning',
+            message=msg,
+            details=details,
+            throttle=True,
+        )
+        self._last_whale_alert[symbol] = current_time
     
     async def _check_system_health(self) -> Dict[str, Any]:
         """Check system health using metrics tracker with fallback."""

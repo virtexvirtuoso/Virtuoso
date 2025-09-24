@@ -225,7 +225,7 @@ try:
     # Try optimized logging first
     from src.utils.optimized_logging import configure_optimized_logging
     configure_optimized_logging(
-        log_level="DEBUG",  # Enable DEBUG mode for detailed logging
+        log_level=os.getenv("LOG_LEVEL", "INFO"),
         enable_async=True,
         enable_structured=False,
         enable_compression=True,
@@ -266,6 +266,8 @@ alert_manager = None
 market_reporter = None
 health_monitor = None
 validation_service = None
+container = None
+service_locator = None
 market_data_manager = None
 _service_scope = None  # For proper resource management
 
@@ -448,40 +450,72 @@ async def cleanup_all_components():
         if sessions_closed > 0 or connectors_closed > 0:
             logger.info(f"Closed {sessions_closed} aiohttp sessions and {connectors_closed} connectors")
         
-        # Cancel all remaining tasks with better error handling
+        # Cancel only appropriate tasks - avoid cancelling critical monitoring and server tasks
         current_task = asyncio.current_task()
-        tasks = [task for task in asyncio.all_tasks() if not task.done() and task != current_task]
-        
-        if tasks:
-            logger.info(f"Cancelling {len(tasks)} remaining tasks...")
-            
-            # Cancel all tasks
-            for task in tasks:
+        all_tasks = [task for task in asyncio.all_tasks() if not task.done() and task != current_task]
+
+        # Define critical tasks that should NOT be cancelled during normal cleanup
+        critical_task_names = {
+            'monitoring_main', 'monitoring_main_restart', 'web_server',
+            'monitor_start_', 'monitoring_monitor', 'web_server_monitor',
+            'resilient_monitor_start', 'monitor_start_attempt_'
+        }
+
+        # Separate critical from non-critical tasks
+        critical_tasks = []
+        regular_tasks = []
+
+        for task in all_tasks:
+            task_name = task.get_name()
+            is_critical = any(critical_name in task_name for critical_name in critical_task_names)
+
+            if is_critical:
+                critical_tasks.append(task)
+                logger.debug(f"Preserving critical task: {task_name}")
+            else:
+                regular_tasks.append(task)
+
+        # Only cancel non-critical tasks during regular cleanup
+        if regular_tasks:
+            logger.info(f"Cancelling {len(regular_tasks)} non-critical tasks (preserving {len(critical_tasks)} critical tasks)...")
+
+            # Cancel non-critical tasks only
+            for task in regular_tasks:
                 if not task.done():
+                    logger.debug(f"Cancelling non-critical task: {task.get_name()}")
                     task.cancel()
-            
-            # Wait for tasks to complete cancellation with timeout
+
+            # Wait for non-critical tasks to complete cancellation with timeout
             try:
                 # Give tasks a chance to handle their cancellation
                 done, pending = await asyncio.wait(
-                    tasks, 
+                    regular_tasks,
                     timeout=3.0,
                     return_when=asyncio.ALL_COMPLETED
                 )
-                
+
                 if pending:
-                    logger.warning(f"{len(pending)} tasks did not complete cancellation within timeout")
-                    # Force cancel any remaining tasks
+                    logger.warning(f"{len(pending)} non-critical tasks did not complete cancellation within timeout")
+                    # Force cancel any remaining non-critical tasks
                     for task in pending:
                         if not task.done():
+                            logger.debug(f"Force cancelling: {task.get_name()}")
                             task.cancel()
-                            
-                logger.info(f"Successfully cancelled {len(tasks)} tasks")
-                
+
+                logger.info(f"Successfully cancelled {len(regular_tasks)} non-critical tasks")
+
             except Exception as e:
                 logger.warning(f"Error during task cancellation: {e}")
         else:
-            logger.info("No remaining tasks to cancel")
+            logger.info("No non-critical tasks to cancel")
+
+        # Log remaining critical tasks for monitoring
+        if critical_tasks:
+            logger.info(f"Preserved {len(critical_tasks)} critical tasks:")
+            for task in critical_tasks:
+                logger.info(f"  - {task.get_name()}: {task}")
+
+        # Note: Critical tasks (monitoring, web server) will continue running
         
         # Force garbage collection to clean up any remaining references
         gc.collect()
@@ -634,26 +668,74 @@ async def initialize_components():
     
     # Get MarketMonitor from DI container (automatically resolves all dependencies)
     market_monitor = await container.get_service(MarketMonitor)
-    
-    # Store important components that DI container may not have handled
+
+    # Enhanced dependency validation and injection with detailed logging
+    missing_deps = []
+    fixed_deps = []
+
+    # Critical dependencies first
     if hasattr(market_monitor, 'exchange_manager') and not market_monitor.exchange_manager:
-        market_monitor.exchange_manager = exchange_manager
-    if hasattr(market_monitor, 'database_client') and not market_monitor.database_client:
-        market_monitor.database_client = database_client
-    if hasattr(market_monitor, 'portfolio_analyzer') and not market_monitor.portfolio_analyzer:
-        market_monitor.portfolio_analyzer = portfolio_analyzer
-    if hasattr(market_monitor, 'confluence_analyzer') and not market_monitor.confluence_analyzer:
-        market_monitor.confluence_analyzer = confluence_analyzer
+        if exchange_manager:
+            market_monitor.exchange_manager = exchange_manager
+            fixed_deps.append("exchange_manager")
+        else:
+            missing_deps.append("exchange_manager")
+
+    if hasattr(market_monitor, 'alert_manager') and not market_monitor.alert_manager:
+        if alert_manager:
+            market_monitor.alert_manager = alert_manager
+            fixed_deps.append("alert_manager")
+        else:
+            missing_deps.append("alert_manager")
+
     if hasattr(market_monitor, 'top_symbols_manager') and not market_monitor.top_symbols_manager:
-        market_monitor.top_symbols_manager = top_symbols_manager
+        if top_symbols_manager:
+            market_monitor.top_symbols_manager = top_symbols_manager
+            fixed_deps.append("top_symbols_manager")
+        else:
+            missing_deps.append("top_symbols_manager")
+
+    # Other dependencies
+    if hasattr(market_monitor, 'database_client') and not market_monitor.database_client:
+        if database_client:
+            market_monitor.database_client = database_client
+            fixed_deps.append("database_client")
+
+    if hasattr(market_monitor, 'portfolio_analyzer') and not market_monitor.portfolio_analyzer:
+        if portfolio_analyzer:
+            market_monitor.portfolio_analyzer = portfolio_analyzer
+            fixed_deps.append("portfolio_analyzer")
+
+    if hasattr(market_monitor, 'confluence_analyzer') and not market_monitor.confluence_analyzer:
+        if confluence_analyzer:
+            market_monitor.confluence_analyzer = confluence_analyzer
+            fixed_deps.append("confluence_analyzer")
+
     if hasattr(market_monitor, 'market_data_manager') and not market_monitor.market_data_manager:
-        market_monitor.market_data_manager = market_data_manager
+        if market_data_manager:
+            market_monitor.market_data_manager = market_data_manager
+            fixed_deps.append("market_data_manager")
+
     if hasattr(market_monitor, 'signal_generator') and not market_monitor.signal_generator:
-        market_monitor.signal_generator = signal_generator
+        if signal_generator:
+            market_monitor.signal_generator = signal_generator
+            fixed_deps.append("signal_generator")
+
     if hasattr(market_monitor, 'liquidation_detector') and not market_monitor.liquidation_detector:
-        market_monitor.liquidation_detector = liquidation_detector
-    
-    logger.info("✅ MarketMonitor initialized via DI container")
+        if liquidation_detector:
+            market_monitor.liquidation_detector = liquidation_detector
+            fixed_deps.append("liquidation_detector")
+
+    # Report dependency injection results
+    if fixed_deps:
+        logger.info(f"✅ Fixed missing dependencies via fallback: {fixed_deps}")
+
+    if missing_deps:
+        error_msg = f"🚨 CRITICAL: MarketMonitor missing critical dependencies: {missing_deps}"
+        logger.error(error_msg)
+        raise RuntimeError(error_msg)
+
+    logger.info("✅ MarketMonitor initialized via DI container with all dependencies validated")
     
     # Connect monitor and confluence_analyzer to signal_generator for direct OHLCV cache access
     signal_generator.monitor = market_monitor
@@ -779,7 +861,9 @@ async def initialize_components():
         'liquidation_detector': liquidation_detector,
         'market_monitor': market_monitor,
         'alpha_integration': alpha_integration,
-        'dashboard_integration': dashboard_integration
+        'dashboard_integration': dashboard_integration,
+        'container': container,
+        'service_locator': service_locator
     }
 
 @asynccontextmanager
@@ -788,6 +872,7 @@ async def lifespan(app: FastAPI):
     global config_manager, exchange_manager, portfolio_analyzer, database_client
     global confluence_analyzer, top_symbols_manager, market_monitor
     global metrics_manager, alert_manager, market_reporter, health_monitor, validation_service
+    global container, service_locator
 
     try:
         logger.info("🚀 LIFESPAN HANDLER STARTING - FastAPI Lifespan Event Triggered!")
@@ -813,6 +898,8 @@ async def lifespan(app: FastAPI):
             market_monitor = components['market_monitor']  # Already initialized in initialize_components()
             market_data_manager = components['market_data_manager']  # Extract this so ContinuousAnalysisManager can use it
             globals()['market_data_manager'] = market_data_manager  # Also store in globals for ContinuousAnalysisManager access
+            container = components['container']  # Extract DI container
+            service_locator = components['service_locator']  # Extract service locator
             
             # Don't start monitoring system here - it's handled by the monitoring task
             logger.info("Market monitor initialized (will be started by monitoring task)")
@@ -827,6 +914,8 @@ async def lifespan(app: FastAPI):
             # CRITICAL FIX: Safely get components from globals to avoid UnboundLocalError
             market_data_manager = globals().get('market_data_manager')
             confluence_analyzer = globals().get('confluence_analyzer')
+            container = globals().get('container')
+            service_locator = globals().get('service_locator')
             
             # Verify that critical components are actually available
             if market_data_manager is None:
@@ -848,6 +937,8 @@ async def lifespan(app: FastAPI):
                 market_monitor = components['market_monitor']
                 market_data_manager = components['market_data_manager']
                 globals()['market_data_manager'] = market_data_manager
+                container = components['container']  # Extract DI container
+                service_locator = components['service_locator']  # Extract service locator
                 logger.info("✅ Components reinitialized due to missing MarketDataManager")
             
             # Wait for market_monitor to be available if it's being initialized by monitoring task
@@ -1179,7 +1270,23 @@ class WebSocketProcessor:
         try:
             # Heavy processing moved here
             if hasattr(market_data_manager, 'process_websocket_message'):
-                asyncio.run(market_data_manager.process_websocket_message(message))
+                # Fix: Use run_coroutine_threadsafe instead of asyncio.run()
+                # since this is called from a thread pool executor
+                try:
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        # Schedule coroutine on the running event loop from thread
+                        future = asyncio.run_coroutine_threadsafe(
+                            market_data_manager.process_websocket_message(message),
+                            loop
+                        )
+                        # Wait for completion with timeout to prevent blocking
+                        future.result(timeout=10.0)
+                    else:
+                        # Fallback if no loop is running (shouldn't happen in this context)
+                        logger.warning("No running event loop found for WebSocket message processing")
+                except Exception as async_error:
+                    logger.error(f"Error scheduling WebSocket message processing: {async_error}")
         except Exception as e:
             logger.error(f"Error handling message: {e}")
             
@@ -2461,7 +2568,15 @@ async def get_symbol_analysis(symbol: str):
         logger.info(f"Formatted market data: {formatted_data}")
         
         # Run confluence analysis
-        analysis = await confluence_analyzer.analyze(formatted_data)
+        if not (confluence_analyzer and hasattr(confluence_analyzer, 'analyze') and callable(getattr(confluence_analyzer, 'analyze'))):
+            logger.debug(f"confluence_analyzer missing or analyze() not callable; skipping {symbol}")
+            return {"error": "confluence_analyzer not available", "symbol": symbol}
+
+        try:
+            analysis = await confluence_analyzer.analyze(formatted_data)
+        except Exception as e:
+            logger.debug(f"confluence_analyzer.analyze error for {symbol}: {e}")
+            return {"error": f"analysis failed: {e}", "symbol": symbol}
         logger.info(f"Analysis result for {symbol}: {analysis}")
         
         # Display comprehensive confluence score table with top components and interpretations
@@ -2508,7 +2623,17 @@ async def websocket_analysis(websocket: WebSocket, symbol: str):
                     continue
                 
                 # Run confluence analysis
-                analysis = await confluence_analyzer.analyze(market_data)
+                if not (confluence_analyzer and hasattr(confluence_analyzer, 'analyze') and callable(getattr(confluence_analyzer, 'analyze'))):
+                    logger.debug(f"confluence_analyzer missing or analyze() not callable; skipping {symbol}")
+                    await asyncio.sleep(1)
+                    continue
+
+                try:
+                    analysis = await confluence_analyzer.analyze(market_data)
+                except Exception as e:
+                    logger.debug(f"confluence_analyzer.analyze error for {symbol}: {e}")
+                    await asyncio.sleep(1)
+                    continue
                 
                 # Display comprehensive confluence score table with top components and interpretations
                 from src.core.formatting import LogFormatter
@@ -3151,7 +3276,14 @@ async def get_market_report():
                         market_data = await exchange_manager.fetch_market_data(symbol)
                         if market_data:
                             # Run confluence analysis
-                            analysis = await confluence_analyzer.analyze(market_data)
+                            if not (confluence_analyzer and hasattr(confluence_analyzer, 'analyze') and callable(getattr(confluence_analyzer, 'analyze'))):
+                                continue
+
+                            try:
+                                analysis = await confluence_analyzer.analyze(market_data)
+                            except Exception as e:
+                                logger.debug(f"confluence_analyzer.analyze error for {symbol}: {e}")
+                                continue
                             
                             # Create signal data with individual components
                             signal_data = {
@@ -3451,9 +3583,16 @@ async def get_alpha_opportunities():
                     try:
                         market_data = await exchange_manager.fetch_market_data(symbol)
                         if market_data:
-                            analysis = await confluence_analyzer.analyze(market_data)
+                            if not (confluence_analyzer and hasattr(confluence_analyzer, 'analyze') and callable(getattr(confluence_analyzer, 'analyze'))):
+                                continue
+
+                            try:
+                                analysis = await confluence_analyzer.analyze(market_data)
+                            except Exception as e:
+                                logger.debug(f"confluence_analyzer.analyze error for {symbol}: {e}")
+                                continue
                             confluence_score = analysis.get('confluence_score', 50)
-                            
+
                             if confluence_score > 65:  # High alpha threshold
                                 opportunities.append({
                                     "symbol": symbol,
@@ -3490,9 +3629,16 @@ async def scan_alpha_opportunities(request: dict):
                 try:
                     market_data = await exchange_manager.fetch_market_data(symbol)
                     if market_data:
-                        analysis = await confluence_analyzer.analyze(market_data)
+                        if not (confluence_analyzer and hasattr(confluence_analyzer, 'analyze') and callable(getattr(confluence_analyzer, 'analyze'))):
+                            continue
+
+                        try:
+                            analysis = await confluence_analyzer.analyze(market_data)
+                        except Exception as e:
+                            logger.debug(f"confluence_analyzer.analyze error for {symbol}: {e}")
+                            continue
                         confluence_score = analysis.get('confluence_score', 50) / 100
-                        
+
                         if confluence_score >= min_confluence_score:
                             scan_results.append({
                                 "symbol": symbol,
@@ -3666,9 +3812,16 @@ async def get_latest_signals(limit: int = 10):
                     try:
                         market_data = await exchange_manager.fetch_market_data(symbol)
                         if market_data:
-                            analysis = await confluence_analyzer.analyze(market_data)
+                            if not (confluence_analyzer and hasattr(confluence_analyzer, 'analyze') and callable(getattr(confluence_analyzer, 'analyze'))):
+                                continue
+
+                            try:
+                                analysis = await confluence_analyzer.analyze(market_data)
+                            except Exception as e:
+                                logger.debug(f"confluence_analyzer.analyze error for {symbol}: {e}")
+                                continue
                             confluence_score = analysis.get('confluence_score', 50)
-                            
+
                             signals.append({
                                 "symbol": symbol,
                                 "signal_type": "confluence",
@@ -4044,64 +4197,151 @@ async def run_application():
         except Exception as e:
             logger.error(f"❌ Could not start cache warming: {e}")
         
-        # Simplified monitoring main function
+        # Enhanced monitoring main function with restart capability
         async def monitoring_main():
-            """Simplified monitoring main using already initialized components"""
-            logger.info("🚀 MONITORING_MAIN STARTED")
+            """Enhanced monitoring main with robust restart mechanisms"""
+            logger.info("🚀 MONITORING_MAIN STARTED - Enhanced Version")
             display_banner()
-            
+
             shutdown_event = asyncio.Event()
-            
+            restart_count = 0
+            max_restarts = 5
+
             def signal_handler():
                 """Handle shutdown signals"""
                 logger.info("Shutdown signal received")
                 shutdown_event.set()
-            
+
             try:
                 # Set up signal handlers
                 loop = asyncio.get_event_loop()
                 for sig in (signal.SIGINT, signal.SIGTERM):
                     loop.add_signal_handler(sig, signal_handler)
-                
-                # Start monitoring with already initialized components
-                logger.info("🚀 Starting market_monitor in background task...")
-                
-                # Wrapper to handle monitoring failures gracefully
-                async def resilient_monitor_start():
-                    retries = 0
-                    max_retries = 3
-                    while retries < max_retries:
+
+                while not shutdown_event.is_set() and restart_count <= max_restarts:
+                    try:
+                        # Log restart attempt
+                        if restart_count > 0:
+                            logger.info(f"🔄 MONITORING RESTART ATTEMPT #{restart_count}")
+                            await asyncio.sleep(5)  # Wait before restart
+
+                        logger.info("🚀 Starting market_monitor with resilient wrapper...")
+
+                        # Enhanced wrapper with better error handling and monitoring
+                        async def resilient_monitor_start():
+                            """Enhanced resilient monitor start with detailed logging"""
+                            retries = 0
+                            max_retries = 3
+
+                            while retries < max_retries and not shutdown_event.is_set():
+                                try:
+                                    logger.info(f"🎯 Starting market_monitor (attempt {retries + 1}/{max_retries})")
+
+                                    # Add pre-start checks
+                                    logger.info("🔍 Pre-start health check:")
+                                    logger.info(f"  - Market monitor running: {market_monitor.running}")
+                                    logger.info(f"  - Shutdown event: {shutdown_event.is_set()}")
+
+                                    # Start the monitor with timeout protection
+                                    monitor_start_task = asyncio.create_task(
+                                        market_monitor.start(),
+                                        name=f"monitor_start_attempt_{retries + 1}"
+                                    )
+
+                                    # Wait with timeout
+                                    await asyncio.wait_for(monitor_start_task, timeout=120.0)
+
+                                    logger.info("✅ market_monitor.start() completed successfully!")
+                                    break  # Success
+
+                                except asyncio.TimeoutError:
+                                    retries += 1
+                                    logger.error(f"⏰ market_monitor.start() timed out (attempt {retries}/{max_retries})")
+                                    if retries >= max_retries:
+                                        raise Exception("Monitor start timed out after all retries")
+                                    await asyncio.sleep(10)  # Wait before retry
+
+                                except asyncio.CancelledError:
+                                    logger.error(f"🚨 market_monitor.start() was cancelled (attempt {retries + 1})")
+                                    if not shutdown_event.is_set():
+                                        # Only retry if not shutting down
+                                        retries += 1
+                                        if retries < max_retries:
+                                            logger.info(f"🔄 Retrying monitor start in 5 seconds...")
+                                            await asyncio.sleep(5)
+                                        else:
+                                            raise Exception("Monitor start cancelled after all retries")
+                                    else:
+                                        raise  # Re-raise if shutting down
+
+                                except Exception as e:
+                                    retries += 1
+                                    logger.error(f"❌ market_monitor.start() failed (attempt {retries}/{max_retries}): {e}")
+                                    if retries >= max_retries:
+                                        raise Exception(f"Monitor start failed after {max_retries} retries: {e}")
+                                    await asyncio.sleep(10)  # Wait before retry
+
+                        # Start the resilient monitor and wait for completion
+                        monitor_task = asyncio.create_task(
+                            resilient_monitor_start(),
+                            name=f"monitor_start_{restart_count}"
+                        )
+
+                        logger.info("✅ market_monitor background task created with retry logic!")
+                        logger.info("Monitoring system running. Press Ctrl+C to stop.")
+
+                        # Wait for monitor task completion or shutdown
                         try:
-                            await market_monitor.start()
-                            break  # Success
-                        except Exception as e:
-                            retries += 1
-                            logger.error(f"Monitor start attempt {retries} failed: {e}")
-                            if retries < max_retries:
-                                logger.info(f"Retrying monitor start in 30 seconds...")
-                                await asyncio.sleep(30)
+                            await monitor_task
+                            logger.info("🏁 Monitor task completed successfully")
+
+                            # If monitor completes without shutdown signal, it may have failed
+                            if not shutdown_event.is_set():
+                                logger.warning("🚨 Monitor completed without shutdown signal - potential failure")
+                                restart_count += 1
+                                if restart_count <= max_restarts:
+                                    logger.info(f"🔄 Scheduling restart #{restart_count} in 10 seconds...")
+                                    await asyncio.sleep(10)
+                                    continue  # Restart the monitoring loop
+                                else:
+                                    logger.error(f"❌ Maximum restarts ({max_restarts}) reached, stopping monitoring")
+                                    break
                             else:
-                                logger.error("Monitor failed to start after all retries")
-                                # Don't crash - let web server continue
-                                return
-                
-                # Create a background task for resilient monitor start
-                monitor_task = asyncio.create_task(resilient_monitor_start())
-                logger.info("✅ market_monitor background task created with retry logic!")
-                logger.info("Monitoring system running. Press Ctrl+C to stop.")
-                
-                # Wait for shutdown signal or monitor to stop
-                while not shutdown_event.is_set():
-                    # Check if monitor task is done
-                    if monitor_task.done():
-                        # Monitor task completed, check if it failed
-                        try:
-                            await monitor_task  # This will raise if task failed
+                                logger.info("✅ Monitor stopped due to shutdown signal")
+                                break
+
+                        except asyncio.CancelledError:
+                            logger.error("🚨 Monitor task was cancelled")
+                            if not shutdown_event.is_set():
+                                restart_count += 1
+                                logger.info(f"🔄 Task cancelled unexpectedly, attempting restart #{restart_count}")
+                                continue
+                            else:
+                                logger.info("✅ Monitor cancelled due to shutdown")
+                                break
+
                         except Exception as e:
-                            logger.error(f"Monitor task failed: {e}")
+                            logger.error(f"❌ Monitor task failed with exception: {e}")
+                            restart_count += 1
+                            if restart_count <= max_restarts:
+                                logger.info(f"🔄 Scheduling restart #{restart_count} after failure...")
+                                await asyncio.sleep(15)  # Longer wait after failure
+                                continue
+                            else:
+                                logger.error(f"❌ Maximum restarts reached after failure, stopping monitoring")
+                                break
+
+                    except Exception as restart_error:
+                        logger.error(f"❌ Error during restart attempt #{restart_count}: {restart_error}")
+                        restart_count += 1
+                        if restart_count <= max_restarts:
+                            logger.info(f"🔄 Waiting before next restart attempt...")
+                            await asyncio.sleep(20)
+                        else:
+                            logger.error("❌ Maximum restart attempts reached, monitoring stopped")
                             break
-                    # Don't check market_monitor.running here - let the monitor task handle its own lifecycle
-                    await asyncio.sleep(1)  # Check every second
+
+                logger.info(f"🏁 Monitoring main completed after {restart_count} restarts")
                         
             except asyncio.CancelledError:
                 import sys
@@ -4136,21 +4376,101 @@ async def run_application():
         monitoring_task = asyncio.create_task(monitoring_main(), name="monitoring_main")
         web_server_task = asyncio.create_task(start_web_server(), name="web_server")
         logger.info("✅ Tasks created, starting concurrent execution...")
-        
-        # Run both tasks concurrently with error handling
+
+        # Monitor task states before execution
+        logger.info(f"🔍 Task states before execution: monitoring={monitoring_task.done()}, web_server={web_server_task.done()}")
+
+        # Use task isolation approach instead of gather() to prevent cancellation issues
+        monitoring_completed = False
+        web_server_completed = False
+
+        async def monitor_task_completion(task, task_name):
+            """Monitor individual task completion with detailed logging"""
+            try:
+                logger.info(f"🎯 Starting {task_name} task monitor...")
+                result = await task
+                logger.info(f"✅ {task_name} task completed successfully")
+                return result
+            except asyncio.CancelledError:
+                logger.error(f"🚨 {task_name} task was cancelled")
+                raise
+            except Exception as e:
+                logger.error(f"❌ {task_name} task failed: {e}")
+                import traceback
+                logger.error(f"   Full traceback: {traceback.format_exc()}")
+                return e
+
+        # Run tasks with individual monitoring and restart capability
         try:
-            # Use return_exceptions=True to prevent one task failure from stopping the other
-            results = await asyncio.gather(monitoring_task, web_server_task, return_exceptions=True)
-            
-            # Check results for exceptions
-            for i, result in enumerate(results):
-                if isinstance(result, Exception):
-                    task_name = "monitoring" if i == 0 else "web_server"
-                    logger.error(f"{task_name} task failed with exception: {result}")
-                    # Don't propagate - let the other service continue
+            logger.info("🚀 Starting task isolation approach...")
+
+            # Create task monitors
+            monitoring_monitor = asyncio.create_task(
+                monitor_task_completion(monitoring_task, "monitoring"),
+                name="monitoring_monitor"
+            )
+            web_server_monitor = asyncio.create_task(
+                monitor_task_completion(web_server_task, "web_server"),
+                name="web_server_monitor"
+            )
+
+            # Wait for first completion with timeout
+            done, pending = await asyncio.wait(
+                [monitoring_monitor, web_server_monitor],
+                return_when=asyncio.FIRST_COMPLETED,
+                timeout=30.0  # 30 second timeout for initial startup
+            )
+
+            if not done:
+                logger.error("🚨 No tasks completed within startup timeout!")
+                # Cancel pending tasks
+                for task in pending:
+                    task.cancel()
+                return
+
+            # Analyze which task completed first
+            for completed_task in done:
+                if completed_task == monitoring_monitor:
+                    monitoring_completed = True
+                    logger.info("📈 Monitoring task completed first")
+                elif completed_task == web_server_monitor:
+                    web_server_completed = True
+                    logger.info("🌐 Web server task completed first")
+
+                # Check if task was cancelled or failed
+                try:
+                    result = await completed_task
+                    if isinstance(result, Exception):
+                        task_name = "monitoring" if completed_task == monitoring_monitor else "web_server"
+                        logger.error(f"❌ {task_name} task failed with exception: {result}")
+                except asyncio.CancelledError:
+                    task_name = "monitoring" if completed_task == monitoring_monitor else "web_server"
+                    logger.error(f"🚨 {task_name} task was cancelled")
+
+            # Handle monitoring task restart if it was cancelled/failed
+            if monitoring_completed and not web_server_completed:
+                logger.warning("🔄 Monitoring task completed unexpectedly, attempting restart...")
+                # Restart monitoring task
+                monitoring_task = asyncio.create_task(monitoring_main(), name="monitoring_main_restart")
+                monitoring_monitor = asyncio.create_task(
+                    monitor_task_completion(monitoring_task, "monitoring_restart"),
+                    name="monitoring_monitor_restart"
+                )
+
+            # Keep running tasks alive - wait indefinitely for remaining tasks
+            remaining_tasks = [task for task in pending if not task.done()]
+            if remaining_tasks:
+                logger.info(f"⏳ Waiting for {len(remaining_tasks)} remaining tasks to complete...")
+                try:
+                    await asyncio.gather(*remaining_tasks, return_exceptions=True)
+                except Exception as e:
+                    logger.error(f"Error in remaining tasks: {e}")
+
         except Exception as e:
-            logger.error(f"Critical error in gather: {e}")
-            # Both tasks failed critically
+            logger.error(f"💥 Critical error in task isolation: {e}")
+            logger.error(f"   Error type: {type(e).__name__}")
+            import traceback
+            logger.error(f"   Full traceback: {traceback.format_exc()}")
         
     except KeyboardInterrupt:
         logger.info("Shutdown signal received")
