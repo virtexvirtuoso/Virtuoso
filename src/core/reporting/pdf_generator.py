@@ -1390,7 +1390,7 @@ class ReportGenerator:
                 "title": f"{symbol} Price Chart",
                 "show_nontrading": False,
                 "returnfig": True,
-                "datetime_format": "%m-%d %H:%M",
+                "datetime_format": "%d %H:%M",
                 "xrotation": 0,
                 "tight_layout": False,
                 "ylabel": "Price",
@@ -1530,7 +1530,7 @@ class ReportGenerator:
                 ax1.xaxis.set_major_locator(date_locator)
                 
                 # Format to show consistent time format matching mplfinance config
-                time_formatter = DateFormatter('%m-%d %H:%M')
+                time_formatter = DateFormatter('%d %H:%M')
                 ax1.xaxis.set_major_formatter(time_formatter)
                 
                 # Rotate labels for better readability
@@ -2003,17 +2003,22 @@ class ReportGenerator:
             )
             reliability = signal_data.get("reliability", 0.5)
 
-            # Normalize reliability to 0-1 range regardless of upstream format
+            # Fix reliability percentage display bug - reliability is already in 0-1 range from signal generation
             try:
                 rel_raw = float(reliability)
             except Exception:
                 rel_raw = 0.5
-            rel_norm = rel_raw / 100.0 if rel_raw > 1.0 else rel_raw
-            if rel_norm < 0.0:
-                rel_norm = 0.0
-            if rel_norm > 1.0:
-                rel_norm = 1.0
-            reliability_pct = rel_norm * 100.0
+
+            # Signal generator already returns reliability in 0-1 range, so just convert to percentage
+            if rel_raw <= 1.0:
+                # Already normalized (0-1), convert to percentage
+                reliability_pct = rel_raw * 100.0
+            else:
+                # Already a percentage (shouldn't happen with new signal generator)
+                reliability_pct = rel_raw
+
+            # Ensure it's within valid bounds
+            reliability_pct = max(0.0, min(100.0, reliability_pct))
 
             # Add basic data to context
             context.update(
@@ -2336,6 +2341,29 @@ class ReportGenerator:
                     or signal_data.get("insights")
                     or (signal_data.get("breakdown", {}).get("interpretations") if isinstance(signal_data.get("breakdown"), dict) else None)
                 )
+
+                # FINAL FALLBACK: derive interpretations from results dict
+                # Many upstream paths populate per-component interpretations under results[component]['interpretation']
+                if not raw_interpretations:
+                    try:
+                        results_obj = signal_data.get("results") or {}
+                        if isinstance(results_obj, dict) and results_obj:
+                            derived_list = []
+                            for comp_name, comp_data in results_obj.items():
+                                if isinstance(comp_data, dict):
+                                    interp = comp_data.get("interpretation") or comp_data.get("summary") or comp_data.get("text")
+                                    if interp:
+                                        display = comp_name.replace('_', ' ').title()
+                                        derived_list.append({
+                                            "component": comp_name,
+                                            "display_name": display,
+                                            "interpretation": interp,
+                                        })
+                            if derived_list:
+                                raw_interpretations = derived_list
+                                self._log(f"Derived {len(derived_list)} interpretations from results for PDF", level=logging.DEBUG)
+                    except Exception as e:
+                        self._log(f"Error deriving interpretations from results: {e}", level=logging.WARNING)
                 actionable_insights = signal_data.get("actionable_insights", [])
                 
                 # Use InterpretationManager to process and standardize interpretations
@@ -4427,7 +4455,12 @@ class ReportGenerator:
                 rel_raw = float(reliability)
             except Exception:
                 rel_raw = 1.0
-            rel_norm = rel_raw / 100.0 if rel_raw > 1.0 else rel_raw
+
+            # Fix reliability display - signal generator returns 0-1 range
+            if rel_raw <= 1.0:
+                rel_norm = rel_raw  # Already normalized
+            else:
+                rel_norm = rel_raw / 100.0  # Convert percentage to 0-1
             if rel_norm < 0.0:
                 rel_norm = 0.0
             if rel_norm > 1.0:
@@ -4497,7 +4530,12 @@ class ReportGenerator:
                 rel_raw = float(reliability)
             except Exception:
                 rel_raw = 1.0
-            rel_norm = rel_raw / 100.0 if rel_raw > 1.0 else rel_raw
+
+            # Fix reliability display - signal generator returns 0-1 range
+            if rel_raw <= 1.0:
+                rel_norm = rel_raw  # Already normalized
+            else:
+                rel_norm = rel_raw / 100.0  # Convert percentage to 0-1
             if rel_norm < 0.0:
                 rel_norm = 0.0
             if rel_norm > 1.0:
@@ -4767,7 +4805,7 @@ class ReportGenerator:
                 "volume_panel": 1,
                 "show_nontrading": False,
                 "returnfig": True,
-                "datetime_format": "%m-%d %H:%M",
+                "datetime_format": "%d %H:%M",
                 "xrotation": 0,
                 "tight_layout": False,
                 "ylabel": "Price",
@@ -4913,7 +4951,7 @@ class ReportGenerator:
                 ax1.xaxis.set_major_locator(date_locator)
                 
                 # Format to show more compact time format
-                time_formatter = DateFormatter('%m-%d %H:%M')
+                time_formatter = DateFormatter('%d %H:%M')
                 ax1.xaxis.set_major_formatter(time_formatter)
                 
                 # Rotate labels for better readability
