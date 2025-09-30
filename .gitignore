@@ -58,6 +58,7 @@ config/production.yml
 CLAUDE.md
 CLAUDE.local.md
 .claude-code
+.claude/
 *claude*.md
 
 # Documentation
@@ -233,6 +234,44 @@ src/indicators/price_structure_indicators.py
 /*_alert_*.html
 /confluence_alert_*.html
 /*_test_*.html
+
+# Test and validation files now organized in /tests directory
+# Prevent future files from being created in root
+/validation_*.py
+/comprehensive_*_validation.py
+/edge_case*_validation.py
+/integration_*_test.py
+/system_*_test.py
+/performance_*_test.py
+/whale_*_validation.py
+/open_interest_*_validation.py
+/basic_integration_test.py
+/final_integration_test.py
+/debug_signals.py
+/*_validation.py
+/*_integration_test.py
+
+# Development artifacts now properly organized
+/reports/validation_results/
+/reports/logs/
+/reports/test_outputs/
+
+# Test output and temp directories in root
+/test_output/
+/test_output_*/
+/test_edge_cases_output/
+/test_reports/
+/crisis_cleanup_*/
+/temp_cleanup_*/
+
+# Validation result files in root
+/*validation_results*.json
+/*_validation_report*.json
+/*_report*.json
+/startup_test_*.txt
+/startup_test_*.json
+/performance_*.json
+/whale_*.json
 
 # Ignore all README.md files
 **/README.md
