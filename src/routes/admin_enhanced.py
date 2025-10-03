@@ -1,3 +1,4 @@
+from src.utils.task_tracker import create_tracked_task
 """Enhanced admin dashboard routes with real-time capabilities."""
 from __future__ import annotations
 
@@ -341,7 +342,7 @@ async def admin_websocket(websocket: WebSocket, token: str):
                     logger.error(f"Error in periodic updates: {e}")
                     break
         
-        update_task = asyncio.create_task(send_periodic_updates())
+        update_task = create_tracked_task(send_periodic_updates(), name="auto_tracked_task")
         
         # Handle incoming messages
         while True:

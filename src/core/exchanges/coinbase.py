@@ -11,6 +11,7 @@ from .base import BaseExchange
 import decimal
 import binascii
 import asyncio
+from src.utils.task_tracker import create_tracked_task
 
 logger = logging.getLogger(__name__)
 
@@ -158,9 +159,9 @@ class CoinbaseExchange(BaseExchange):
         """Fetch comprehensive market data from Coinbase"""
         try:
             # Parallel fetching of different data types
-            ticker_task = asyncio.create_task(self.fetch_ticker(symbol))
-            orderbook_task = asyncio.create_task(self.fetch_orderbook(symbol))
-            trades_task = asyncio.create_task(self.fetch_recent_trades(symbol))
+            ticker_task = create_tracked_task(self.fetch_ticker(symbol), name=f"ticker_{symbol}")
+            orderbook_task = create_tracked_task(self.fetch_orderbook(symbol), name=f"orderbook_{symbol}")
+            trades_task = create_tracked_task(self.fetch_recent_trades(symbol), name=f"trades_{symbol}")
             
             ticker = await ticker_task
             orderbook = await orderbook_task

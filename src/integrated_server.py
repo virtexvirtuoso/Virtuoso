@@ -1,3 +1,4 @@
+from src.utils.task_tracker import create_tracked_task
 """Integrated server that runs both monitoring system and web dashboard."""
 
 import asyncio
@@ -132,10 +133,10 @@ class IntegratedTradingSystem:
             await self.dashboard_integration.start()
             
             # Start monitoring system
-            self.monitor_task = asyncio.create_task(self._run_monitor())
+            self.monitor_task = create_tracked_task(self._run_monitor(), name="auto_tracked_task")
             
             # Start web server
-            self.web_server_task = asyncio.create_task(self._run_web_server())
+            self.web_server_task = create_tracked_task(self._run_web_server(), name="auto_tracked_task")
             
             self.logger.info("✅ Integrated Trading System started successfully")
             self.logger.info("📊 Dashboard available at: http://localhost:8000/dashboard")
@@ -260,7 +261,7 @@ async def main():
     # Setup signal handlers
     def signal_handler():
         logger.info("Received shutdown signal")
-        asyncio.create_task(system.stop())
+        create_tracked_task(system.stop(), name="auto_tracked_task")
     
     for sig in (signal.SIGINT, signal.SIGTERM):
         asyncio.get_event_loop().add_signal_handler(sig, signal_handler)

@@ -6,6 +6,7 @@ import time
 from typing import Dict, List, Any, Optional
 import traceback
 from collections import defaultdict, Counter
+from src.utils.task_tracker import create_tracked_task
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +42,9 @@ class WebSocketManager:
             'errors': 0,
             'active_connections': 0
         }
+
+        # Store background tasks
+        self.tasks = {}
         
         # Message callback
         self.message_callback = None
@@ -97,7 +101,8 @@ class WebSocketManager:
         
         # Start processing messages
         for symbol in symbols:
-            asyncio.create_task(self._process_symbol_messages(symbol))
+            task = create_tracked_task(self._process_symbol_messages(symbol), name=f"ws_messages_{symbol}")
+            self.tasks[symbol] = task
         
         logger.info(f"WebSocket manager initialized for {len(symbols)} symbols")
     
@@ -148,46 +153,148 @@ class WebSocketManager:
             logger.error("Failed to establish any WebSocket connections")
     
     async def _create_connection(self, topics: List[str], connection_id: str) -> Optional[Dict]:
-        """Create a WebSocket connection and subscribe to topics
-        
+        """Create a WebSocket connection and subscribe to topics with enhanced error handling
+
         Args:
             topics: List of topics to subscribe to
             connection_id: Unique identifier for this connection
-            
+
         Returns:
             Dict containing connection information or None if connection failed
         """
-        try:
-            # Connect to Bybit WebSocket
-            session = aiohttp.ClientSession()
-            ws = await session.ws_connect(self.ws_url, heartbeat=30)
-            
-            # Subscribe to topics
-            subscription_message = {
-                "op": "subscribe",
-                "args": topics
-            }
-            await ws.send_json(subscription_message)
-            
-            # Log subscription
-            logger.info(f"Sent subscription for topics: {topics}")
-            
-            # Start message handler for this connection
-            asyncio.create_task(self._handle_messages(ws, topics, connection_id, session))
-            
-            return {
-                "ws": ws,
-                "session": session,
-                "topics": topics,
-                "id": connection_id,
-                "connected_time": time.time(),
-                "last_message_time": time.time()
-            }
-        except Exception as e:
-            logger.error(f"Error creating WebSocket connection: {str(e)}")
-            logger.debug(traceback.format_exc())
-            return None
-    
+        max_retries = 3
+        retry_delay = 1.0
+
+        for attempt in range(max_retries):
+            session = None
+            ws = None
+
+            try:
+                self.logger.info(f"Attempting WebSocket connection {connection_id} (attempt {attempt + 1}/{max_retries})")
+
+                # Validate network connectivity first
+                if not await self._validate_network_connectivity():
+                    self.logger.warning(f"Network connectivity check failed for connection {connection_id}")
+                    if attempt < max_retries - 1:
+                        await asyncio.sleep(retry_delay * (2 ** attempt))
+                        continue
+                    else:
+                        return None
+
+                # Create session with proper timeout and SSL settings
+                timeout = aiohttp.ClientTimeout(total=30, connect=10)
+                connector = aiohttp.TCPConnector(
+                    ssl=True,
+                    limit=100,
+                    limit_per_host=10,
+                    keepalive_timeout=30,
+                    enable_cleanup_closed=True
+                )
+
+                session = aiohttp.ClientSession(
+                    timeout=timeout,
+                    connector=connector,
+                    headers={'User-Agent': 'VirtuosoTrading/1.0'}
+                )
+
+                # Connect to Bybit WebSocket with proper error handling
+                try:
+                    ws = await session.ws_connect(
+                        self.ws_url,
+                        heartbeat=30,
+                        compress=0,
+                        max_msg_size=1024*1024,  # 1MB max message size
+                        receive_timeout=5.0
+                    )
+
+                    self.logger.info(f"WebSocket connection established for {connection_id}")
+
+                except aiohttp.ClientError as e:
+                    self.logger.error(f"WebSocket connection failed for {connection_id}: {str(e)}")
+                    if session:
+                        await session.close()
+                    if attempt < max_retries - 1:
+                        await asyncio.sleep(retry_delay * (2 ** attempt))
+                        continue
+                    else:
+                        return None
+
+                # Subscribe to topics with error handling
+                subscription_message = {
+                    "op": "subscribe",
+                    "args": topics
+                }
+
+                try:
+                    await ws.send_json(subscription_message)
+                    self.logger.info(f"Subscription sent for {connection_id}: {len(topics)} topics")
+
+                    # Wait for subscription confirmation
+                    try:
+                        response = await asyncio.wait_for(ws.receive_json(), timeout=5.0)
+                        if response.get('success'):
+                            self.logger.info(f"Subscription confirmed for {connection_id}")
+                        else:
+                            self.logger.warning(f"Subscription response for {connection_id}: {response}")
+                    except asyncio.TimeoutError:
+                        self.logger.warning(f"No subscription confirmation received for {connection_id}")
+
+                except Exception as e:
+                    self.logger.error(f"Failed to send subscription for {connection_id}: {str(e)}")
+                    if ws:
+                        await ws.close()
+                    if session:
+                        await session.close()
+                    if attempt < max_retries - 1:
+                        await asyncio.sleep(retry_delay * (2 ** attempt))
+                        continue
+                    else:
+                        return None
+
+                # Start message handler for this connection
+                handler_task = create_tracked_task(
+                    self._handle_messages(ws, topics, connection_id, session, name="auto_tracked_task"),
+                    name=f"ws_handler_{connection_id}"
+                )
+
+                # Store connection info
+                connection_info = {
+                    "ws": ws,
+                    "session": session,
+                    "topics": topics,
+                    "connection_id": connection_id,
+                    "handler_task": handler_task,
+                    "created_at": time.time(),
+                    "last_ping": time.time(),
+                    "status": "connected"
+                }
+
+                self.logger.info(f"✅ Connection {connection_id} established successfully with {len(topics)} topics")
+                return connection_info
+
+            except Exception as e:
+                self.logger.error(f"Unexpected error creating connection {connection_id}: {str(e)}")
+
+                # Cleanup on error
+                if ws and not ws.closed:
+                    try:
+                        await ws.close()
+                    except:
+                        pass
+
+                if session and not session.closed:
+                    try:
+                        await session.close()
+                    except:
+                        pass
+
+                if attempt < max_retries - 1:
+                    self.logger.info(f"Retrying connection {connection_id} in {retry_delay * (2 ** attempt)} seconds...")
+                    await asyncio.sleep(retry_delay * (2 ** attempt))
+                else:
+                    self.logger.error(f"❌ Failed to establish connection {connection_id} after {max_retries} attempts")
+
+        return None
     async def _handle_messages(self, ws, topics, connection_id, session):
         """Handle incoming WebSocket messages
         
@@ -261,8 +368,10 @@ class WebSocketManager:
                 self.connections[connection_id]['connected'] = False
             
             # Attempt to reconnect
-            reconnect_task = asyncio.create_task(self._reconnect(topics, connection_id, session))
-            reconnect_task.set_name(f"reconnect_{connection_id}")
+            reconnect_task = create_tracked_task(
+                self._reconnect(topics, connection_id, session),
+                name=f"reconnect_{connection_id}"
+            )
             self.reconnect_tasks.add(reconnect_task)
             reconnect_task.add_done_callback(self.reconnect_tasks.discard)
             
@@ -417,24 +526,159 @@ class WebSocketManager:
         """
         self.message_callback = callback
     
-    def get_status(self):
-        """Get current WebSocket connection status
-        
+
+    async def _recover_failed_connections(self):
+        """Recover failed WebSocket connections."""
+        try:
+            failed_connections = []
+
+            # Check all connections for health
+            for conn_id, conn_info in list(self.connections.items()):
+                ws = conn_info.get('ws')
+                if not ws or ws.closed:
+                    self.logger.warning(f"Connection {conn_id} is closed, marking for recovery")
+                    failed_connections.append((conn_id, conn_info.get('topics', [])))
+
+                    # Clean up the failed connection
+                    await self._cleanup_connection(conn_id)
+
+            # Attempt to recover failed connections
+            for conn_id, topics in failed_connections:
+                self.logger.info(f"Attempting to recover connection {conn_id}")
+                new_conn = await self._create_connection(topics, conn_id)
+                if new_conn:
+                    self.connections[conn_id] = new_conn
+                    self.logger.info(f"✅ Successfully recovered connection {conn_id}")
+                else:
+                    self.logger.error(f"❌ Failed to recover connection {conn_id}")
+
+            # Update connection status
+            self.status['connected'] = len(self.connections) > 0
+            self.status['active_connections'] = len(self.connections)
+
+        except Exception as e:
+            self.logger.error(f"Error during connection recovery: {str(e)}")
+
+    async def _cleanup_connection(self, connection_id: str):
+        """Clean up a failed connection."""
+        try:
+            if connection_id in self.connections:
+                conn_info = self.connections[connection_id]
+
+                # Cancel handler task
+                handler_task = conn_info.get('handler_task')
+                if handler_task and not handler_task.done():
+                    handler_task.cancel()
+                    try:
+                        await handler_task
+                    except asyncio.CancelledError:
+                        pass
+
+                # Close WebSocket
+                ws = conn_info.get('ws')
+                if ws and not ws.closed:
+                    await ws.close()
+
+                # Close session
+                session = conn_info.get('session')
+                if session and not session.closed:
+                    await session.close()
+
+                # Remove from connections
+                del self.connections[connection_id]
+
+                self.logger.debug(f"Cleaned up connection {connection_id}")
+
+        except Exception as e:
+            self.logger.error(f"Error cleaning up connection {connection_id}: {str(e)}")
+
+
+    async def _validate_network_connectivity(self) -> bool:
+        """Validate network connectivity to WebSocket endpoint.
+
         Returns:
-            Dict containing status information
+            bool: True if network connectivity is available, False otherwise
         """
-        # Update connected status
-        self.status['connected'] = len(self.connections) > 0
-        
+        try:
+            # Simple connectivity test using aiohttp
+            timeout = aiohttp.ClientTimeout(total=5, connect=3)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                # Test HTTPS connectivity to Bybit
+                test_url = "https://api.bybit.com/v5/market/time" if not self.is_testnet else "https://api-testnet.bybit.com/v5/market/time"
+
+                async with session.get(test_url) as response:
+                    if response.status == 200:
+                        self.logger.debug("Network connectivity validation passed")
+                        return True
+                    else:
+                        self.logger.warning(f"Network connectivity test returned status: {response.status}")
+                        return False
+
+        except Exception as e:
+            self.logger.error(f"Network connectivity validation failed: {str(e)}")
+            return False
+
+    def get_status(self):
+        """Get current WebSocket connection status with enhanced monitoring
+
+        Returns:
+            Dict containing comprehensive status information
+        """
+        current_time = time.time()
+
+        # Count healthy connections
+        healthy_connections = 0
+        connection_details = {}
+
+        for conn_id, conn_info in self.connections.items():
+            ws = conn_info.get('ws')
+            is_healthy = ws and not ws.closed
+
+            if is_healthy:
+                healthy_connections += 1
+
+            connection_details[conn_id] = {
+                'status': 'connected' if is_healthy else 'disconnected',
+                'topics_count': len(conn_info.get('topics', [])),
+                'created_at': conn_info.get('created_at', 0),
+                'age_seconds': current_time - conn_info.get('created_at', current_time),
+                'last_ping': conn_info.get('last_ping', 0)
+            }
+
+        # Update main status
+        self.status['connected'] = healthy_connections > 0
+        self.status['healthy_connections'] = healthy_connections
+        self.status['total_connections'] = len(self.connections)
+        self.status['active_connections'] = healthy_connections
+
         # Calculate time since last message
         if self.status['last_message_time'] > 0:
-            self.status['seconds_since_last_message'] = time.time() - self.status['last_message_time']
-        
-        # Count active connections
-        self.status['active_connections'] = len(self.connections)
-        
-        # Return copy of status
-        return self.status.copy()
+            self.status['seconds_since_last_message'] = current_time - self.status['last_message_time']
+        else:
+            self.status['seconds_since_last_message'] = -1
+
+        # Add connection health details
+        self.status['connection_details'] = connection_details
+        self.status['last_status_check'] = current_time
+
+        # Determine overall health
+        if healthy_connections == 0:
+            self.status['health'] = 'disconnected'
+        elif healthy_connections < len(self.connections):
+            self.status['health'] = 'degraded'
+        else:
+            self.status['health'] = 'healthy'
+
+        # Return copy of status with additional diagnostics
+        status_copy = self.status.copy()
+        status_copy['diagnostics'] = {
+            'ws_url': self.ws_url,
+            'is_testnet': self.is_testnet,
+            'total_subscribed_topics': sum(len(topics) for topics in self.topics.values()),
+            'unique_symbols': len(self.topics)
+        }
+
+        return status_copy
 
     def _extract_symbol(self, data):
         """Extract symbol from WebSocket message

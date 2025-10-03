@@ -6,6 +6,7 @@ import asyncio
 from .base import BaseExchange
 import aiohttp
 import websockets
+from src.utils.task_tracker import create_tracked_task
 
 logger = logging.getLogger(__name__)
 
@@ -56,9 +57,9 @@ class HyperliquidExchange(BaseExchange):
             await self._wait_for_rate_limit()
             
             # Fetch all data in parallel
-            ticker_task = asyncio.create_task(self.fetch_ticker(symbol))
-            orderbook_task = asyncio.create_task(self.fetch_orderbook(symbol))
-            trades_task = asyncio.create_task(self.fetch_recent_trades(symbol))
+            ticker_task = create_tracked_task(self.fetch_ticker, name="fetch_ticker_task")
+            orderbook_task = create_tracked_task(self.fetch_orderbook(symbol), name="fetch_orderbook_task")
+            trades_task = create_tracked_task(self.fetch_recent_trades, name="fetch_recent_trades_task")
             
             ticker = await ticker_task
             orderbook = await orderbook_task

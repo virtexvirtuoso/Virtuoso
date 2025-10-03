@@ -15,6 +15,7 @@ import uuid
 import os
 import tracemalloc
 from typing import Union
+from src.utils.task_tracker import create_tracked_task
 
 if TYPE_CHECKING:
     from .alert_manager import AlertManager
@@ -90,7 +91,7 @@ class MetricsManager:
     async def start(self) -> None:
         """Start metrics collection."""
         if not self._collection_task:
-            self._collection_task = asyncio.create_task(self._collect_system_metrics())
+            self._collection_task = create_tracked_task(self._collect_system_metrics(), name="auto_tracked_task")
             logger.info("Metrics collection started")
             
     async def stop(self) -> None:

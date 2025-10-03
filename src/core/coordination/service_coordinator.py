@@ -1,3 +1,4 @@
+from src.utils.task_tracker import create_tracked_task
 """
 Service Coordinator for Breaking Circular Dependencies.
 
@@ -76,7 +77,7 @@ class ServiceCoordinator:
             return
         
         self._running = True
-        self._processing_task = asyncio.create_task(self._process_events())
+        self._processing_task = create_tracked_task(self._process_events(), name="auto_tracked_task")
         self.logger.info("ServiceCoordinator started")
     
     async def stop(self):
@@ -178,8 +179,8 @@ class ServiceCoordinator:
             if service_name in self._services:
                 service = self._services[service_name]
                 if hasattr(service, 'handle_event'):
-                    task = asyncio.create_task(
-                        self._safe_handle_event(service, event, service_name)
+                    task = create_tracked_task(
+                        self._safe_handle_event(service, event, service_name, name="auto_tracked_task")
                     )
                     tasks.append(task)
         

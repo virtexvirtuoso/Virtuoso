@@ -726,7 +726,80 @@ class InterpretationGenerator(IInterpretationService):
             message += ". Overall orderbook structure strongly supports downward price movement"
         elif abs(score - 50) < 10 and abs(imbalance - 50) < 10:
             message += ". Overall orderbook structure suggests consolidation or sideways movement"
-        
+
+        # Add retail sentiment analysis with comprehensive interpretations
+        retail = components.get('retail', None)
+        if retail is not None:
+            retail_raw = raw_values.get('retail_participation_rate', 0)
+            retail_imbalance = raw_values.get('retail_imbalance', 0)
+
+            if retail > 80:
+                message += ". EXTREME retail buying pressure detected"
+                message += f" (score: {retail:.1f}) - institutional traders should expect significant retail-driven momentum"
+                if retail_raw > 0.3:
+                    message += f", with {retail_raw*100:.1f}% retail participation indicating widespread FOMO activity"
+                message += ". Historical patterns suggest this often precedes sharp upward moves but with increased volatility risk"
+            elif retail > 70:
+                message += ". Strong retail buying interest identified"
+                message += f" (score: {retail:.1f}) - retail traders showing clear bullish conviction"
+                if retail_imbalance > 0.5:
+                    message += ", with retail flow heavily skewed toward buy orders"
+                message += ". This typically supports upward price momentum in the near term"
+            elif retail > 60:
+                message += ". Moderate retail buying pressure present"
+                message += f" (score: {retail:.1f}) - retail sentiment tilted bullish but not extreme"
+                message += ". Supportive of upward movement but unlikely to drive significant momentum alone"
+            elif retail < 20:
+                message += ". EXTREME retail selling pressure detected"
+                message += f" (score: {retail:.1f}) - institutional traders should expect retail-driven downward momentum"
+                if retail_raw > 0.3:
+                    message += f", with {retail_raw*100:.1f}% retail participation indicating widespread panic selling"
+                message += ". Historical patterns suggest this often precedes sharp downward moves with potential oversold bounces"
+            elif retail < 30:
+                message += ". Strong retail selling pressure identified"
+                message += f" (score: {retail:.1f}) - retail traders showing clear bearish conviction"
+                if retail_imbalance < -0.5:
+                    message += ", with retail flow heavily skewed toward sell orders"
+                message += ". This typically supports downward price momentum in the near term"
+            elif retail < 40:
+                message += ". Moderate retail selling pressure present"
+                message += f" (score: {retail:.1f}) - retail sentiment tilted bearish but not extreme"
+                message += ". Pressures downward movement but unlikely to drive significant momentum alone"
+            else:
+                message += ". Retail sentiment relatively neutral"
+                message += f" (score: {retail:.1f}) - balanced retail participation without clear directional bias"
+                message += ". Retail flow unlikely to be a significant momentum driver in current conditions"
+
+            # Add retail vs institutional flow context
+            if retail > 70 and score > 60:
+                message += ". CONFLUENCE ALERT: Both retail sentiment and institutional orderbook align bullish"
+                message += " - high probability of sustained upward movement"
+            elif retail < 30 and score < 40:
+                message += ". CONFLUENCE ALERT: Both retail sentiment and institutional orderbook align bearish"
+                message += " - high probability of sustained downward movement"
+            elif retail > 70 and score < 40:
+                message += ". DIVERGENCE ALERT: Retail bullish but institutional orderbook bearish"
+                message += " - expect volatility with potential retail-driven spikes followed by institutional resistance"
+            elif retail < 30 and score > 60:
+                message += ". DIVERGENCE ALERT: Retail bearish but institutional orderbook bullish"
+                message += " - expect volatility with potential retail-driven dips followed by institutional support"
+
+            # Add retail participation rate insights
+            if retail_raw > 0.4:
+                message += f". HIGH RETAIL PARTICIPATION: {retail_raw*100:.1f}% of volume from retail traders"
+                message += " - expect increased volatility and emotion-driven price action"
+            elif retail_raw > 0.25:
+                message += f". MODERATE RETAIL PARTICIPATION: {retail_raw*100:.1f}% of volume from retail traders"
+                message += " - retail influence present but not dominant"
+            elif retail_raw > 0.1:
+                message += f". LOW RETAIL PARTICIPATION: {retail_raw*100:.1f}% of volume from retail traders"
+                message += " - institutional flow likely driving price action"
+
+            # Add RPI-specific insights for institutional traders
+            if retail > 75 or retail < 25:
+                message += ". FOR INSTITUTIONS: Consider retail sentiment as contrarian indicator for medium-term positioning"
+                message += ", while using short-term retail momentum for tactical entries/exits"
+
         # Add probabilistic context to make interpretation more actionable
         component_confidence = {name: score for name, score in components.items() if isinstance(score, (int, float))}
         enhanced_message = self._add_probabilistic_context(message, score, component_confidence)

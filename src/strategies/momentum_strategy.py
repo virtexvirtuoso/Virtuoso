@@ -1,3 +1,4 @@
+from src.utils.task_tracker import create_tracked_task
 """
 Momentum Trading Strategy for Bybit
 
@@ -297,13 +298,13 @@ class MomentumStrategy(BaseComponent):
                 await self.websocket_handler.subscribe_klines(
                     symbol, 
                     self.timeframe,
-                    callback=lambda data, s=symbol: asyncio.create_task(self._handle_kline_update(s, data))
+                    callback=lambda data, s=symbol: create_tracked_task(self._handle_kline_update, name="_handle_kline_update_task")
                 )
                 
                 # Subscribe to ticker data for real-time price updates
                 await self.websocket_handler.subscribe_ticker(
                     symbol,
-                    callback=lambda data, s=symbol: asyncio.create_task(self._handle_ticker_update(s, data))
+                    callback=lambda data, s=symbol: create_tracked_task(self._handle_ticker_update, name="_handle_ticker_update_task")
                 )
             
             logger.info(f"Subscribed to WebSocket data for symbols: {self.symbols}")
@@ -915,7 +916,7 @@ class MomentumStrategy(BaseComponent):
             logger.info("MomentumStrategy started successfully")
             
             # Start background tasks
-            asyncio.create_task(self._performance_reporting_loop())
+            create_tracked_task(self._performance_reporting_loop(), name="auto_tracked_task")
             
             return True
             

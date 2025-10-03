@@ -1,3 +1,4 @@
+from src.utils.task_tracker import create_tracked_task
 #!/usr/bin/env python3
 """
 Optimized diagnostic script to run the Virtuoso_ccxt application with focus on
@@ -219,7 +220,7 @@ class ResourceMonitor:
         """Start the resource monitoring task."""
         self.running = True
         self.start_time = time.time()
-        self.task = asyncio.create_task(self._monitor_resources())
+        self.task = create_tracked_task(self._monitor_resources(), name="auto_tracked_task")
         logger.info("Resource monitoring started")
         
     async def _monitor_resources(self):
@@ -357,7 +358,7 @@ async def run_app_with_timeout(timeout_minutes=10):
             await asyncio.sleep(0.1)
     
     # Start the monitoring task
-    monitoring_task = asyncio.create_task(monitor_output())
+    monitoring_task = create_tracked_task(monitor_output(), name="auto_tracked_task")
     
     try:
         # Wait for the specified time

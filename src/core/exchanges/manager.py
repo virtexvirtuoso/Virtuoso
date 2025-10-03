@@ -1,3 +1,4 @@
+from src.utils.task_tracker import create_tracked_task
 """Exchange manager module for managing exchange connectivity."""
 
 from typing import Dict, List, Optional, Any
@@ -8,6 +9,12 @@ from .base import BaseExchange
 from src.config.manager import ConfigManager
 import time
 import pandas as pd
+
+# Import resilience components
+from ..resilience import (
+    handle_errors, RetryConfig, ErrorContext,
+    circuit_breaker, EXCHANGE_API_CONFIG
+)
 
 logger = logging.getLogger(__name__)
 
@@ -99,26 +106,71 @@ class ExchangeManager:
             return False
         
     async def get_primary_exchange(self) -> Optional[BaseExchange]:
-        """Get the primary exchange
-        
+        """Get the primary exchange with intelligent fallback
+
         Returns:
-            Optional[BaseExchange]: The primary exchange or None if no primary exchange is available
+            Optional[BaseExchange]: The primary exchange or None if no exchange is available
         """
         if not self.exchanges:
             self.logger.error("No exchanges available")
             return None
-            
+
         # First try to find an exchange marked as primary in config
         exchanges_config = self.config.get_value('exchanges', {})
+        primary_exchange_id = None
+
         for exchange_id, exchange_config in exchanges_config.items():
             if exchange_config.get('primary', False) and exchange_id in self.exchanges:
-                self.logger.debug(f"Found primary exchange: {exchange_id}")
-                return self.exchanges[exchange_id]
-                
-        # If no primary exchange is configured, return the first available exchange
-        first_exchange = next(iter(self.exchanges.values()))
-        self.logger.warning(f"No primary exchange configured, using first available: {first_exchange.exchange_id}")
-        return first_exchange
+                primary_exchange_id = exchange_id
+                break
+
+        # Test primary exchange health if found
+        if primary_exchange_id:
+            primary_exchange = self.exchanges[primary_exchange_id]
+            if await self._test_exchange_health(primary_exchange):
+                self.logger.debug(f"Primary exchange {primary_exchange_id} is healthy")
+                return primary_exchange
+            else:
+                self.logger.warning(f"Primary exchange {primary_exchange_id} failed health check, trying fallbacks")
+
+        # Fallback: try all other exchanges in order of preference
+        fallback_order = ['binance', 'bybit', 'coinbase', 'hyperliquid']
+
+        for exchange_id in fallback_order:
+            if exchange_id in self.exchanges and exchange_id != primary_exchange_id:
+                exchange = self.exchanges[exchange_id]
+                if await self._test_exchange_health(exchange):
+                    self.logger.info(f"Using fallback exchange: {exchange_id}")
+                    return exchange
+
+        # Last resort: return any available exchange without health check
+        if self.exchanges:
+            first_exchange = next(iter(self.exchanges.values()))
+            self.logger.warning(f"All health checks failed, using first available without validation: {first_exchange.exchange_id}")
+            return first_exchange
+
+        return None
+
+    async def _test_exchange_health(self, exchange: BaseExchange) -> bool:
+        """Test if an exchange is responding to API calls
+
+        Args:
+            exchange: Exchange instance to test
+
+        Returns:
+            bool: True if exchange is healthy, False otherwise
+        """
+        try:
+            # Simple health check - use fetch_status if available
+            if hasattr(exchange, 'fetch_status'):
+                status = await asyncio.wait_for(exchange.fetch_status(), timeout=5.0)
+                return status.get('online', False) if isinstance(status, dict) else True
+            else:
+                # If no fetch_status, assume healthy (will fail gracefully later if not)
+                return True
+        except Exception as e:
+            self.logger.debug(f"Exchange {exchange.exchange_id} health check failed: {str(e)}")
+            return False
         
     async def cleanup(self):
         """Cleanup all exchange connections"""
@@ -274,21 +326,35 @@ class ExchangeManager:
             Dictionary containing market data from exchanges
         """
         if exchange_id:
-            if exchange_id not in self.exchanges:
-                raise ValueError(f"Exchange {exchange_id} not found")
-            results = await self._safe_fetch_market_data(
-                exchange_id,
-                self.exchanges[exchange_id],
-                symbol,
-                limit
-            )
-            return results
+            # First try the requested exchange
+            if exchange_id in self.exchanges:
+                results = await self._safe_fetch_market_data(
+                    exchange_id,
+                    self.exchanges[exchange_id],
+                    symbol,
+                    limit
+                )
+                return results
+            else:
+                # Fallback to primary exchange if requested exchange is not available
+                self.logger.warning(f"Requested exchange {exchange_id} not available, falling back to primary exchange")
+                primary_exchange = await self.get_primary_exchange()
+                if primary_exchange:
+                    results = await self._safe_fetch_market_data(
+                        primary_exchange.exchange_id,
+                        primary_exchange,
+                        symbol,
+                        limit
+                    )
+                    return results
+                else:
+                    raise ValueError(f"Exchange {exchange_id} not found and no fallback available")
             
         # Fetch from all exchanges in parallel
         tasks = []
         for ex_id, exchange in self.exchanges.items():
-            task = asyncio.create_task(
-                self._safe_fetch_market_data(ex_id, exchange, symbol, limit)
+            task = create_tracked_task(
+                self._safe_fetch_market_data(ex_id, exchange, symbol, limit, name="auto_tracked_task")
             )
             tasks.append(task)
             
@@ -331,8 +397,13 @@ class ExchangeManager:
             Orderbook data dictionary
         """
         if exchange_id not in self.exchanges:
-            raise ValueError(f"Exchange {exchange_id} not found")
-            
+            self.logger.warning(f"Requested exchange {exchange_id} not available for orderbook, falling back to primary exchange")
+            primary_exchange = await self.get_primary_exchange()
+            if primary_exchange:
+                exchange_id = primary_exchange.exchange_id
+            else:
+                raise ValueError(f"Exchange {exchange_id} not found and no fallback available")
+
         if limit is None:
             limit = self.config.get_value('analysis.orderbook_depth', 50)
             
@@ -365,8 +436,13 @@ class ExchangeManager:
             List of kline data dictionaries
         """
         if exchange_id not in self.exchanges:
-            raise ValueError(f"Exchange {exchange_id} not found")
-            
+            self.logger.warning(f"Requested exchange {exchange_id} not available for klines, falling back to primary exchange")
+            primary_exchange = await self.get_primary_exchange()
+            if primary_exchange:
+                exchange_id = primary_exchange.exchange_id
+            else:
+                raise ValueError(f"Exchange {exchange_id} not found and no fallback available")
+
         # Get default limit from config timeframes
         if limit is None:
             for tf_name, tf_config in self.config['timeframes'].items():
@@ -420,8 +496,17 @@ class ExchangeManager:
     def get_exchange_info(self, exchange_id: str) -> Dict[str, Any]:
         """Get information about a specific exchange"""
         if exchange_id not in self.exchanges:
-            raise ValueError(f"Exchange {exchange_id} not found")
-            
+            self.logger.warning(f"Exchange {exchange_id} not available, providing generic info")
+            # Return generic exchange info for unavailable exchanges
+            return {
+                'name': exchange_id,
+                'enabled': False,
+                'status': 'unavailable',
+                'features': {},
+                'rate_limits': {},
+                'error': f"Exchange {exchange_id} not available"
+            }
+
         exchange_config = self.config.get_value(f'exchanges.{exchange_id}', {})
         return {
             'name': exchange_config.get('name', exchange_id),
@@ -524,15 +609,16 @@ class ExchangeManager:
                     await asyncio.sleep(1.0)
                 else:
                     self.logger.error(f"Failed to fetch market data for {symbol} after {max_retries} attempts")
-                    return {}
+                    return {"symbol": symbol, "error": "max_retries_exceeded", "message": f"Failed after {max_retries} attempts"}
             except Exception as e:
-                self.logger.error(f"Error fetching market data for {symbol}: {str(e)}")
+                error_msg = str(e)
+                self.logger.error(f"Error fetching market data for {symbol}: {error_msg}")
                 if attempt < max_retries - 1:
                     await asyncio.sleep(1.0)
                 else:
-                    return {}
-        
-        return {}
+                    return {"symbol": symbol, "error": "fetch_failed", "message": error_msg}
+
+        return {"symbol": symbol, "error": "no_data_available", "message": "No data returned from exchange"}
 
     async def _fetch_via_primary_exchange(self, symbol: str) -> Dict[str, Any]:
         """
@@ -605,8 +691,13 @@ class ExchangeManager:
             return market_data
             
         except Exception as e:
-            self.logger.error(f"Error fetching market data for {symbol}: {str(e)}")
-            return {}
+            error_msg = str(e)
+            if "not supported" in error_msg.lower() or "invalid symbol" in error_msg.lower():
+                self.logger.warning(f"Symbol {symbol} not supported on exchange: {error_msg}")
+                return {"symbol": symbol, "error": "unsupported_symbol", "message": error_msg}
+            else:
+                self.logger.error(f"Error fetching market data for {symbol}: {error_msg}")
+                return {"symbol": symbol, "error": "fetch_error", "message": error_msg}
 
     async def fetch_all_tickers(self, symbols: List[str] = None) -> Dict[str, Any]:
         """
@@ -677,7 +768,7 @@ class ExchangeManager:
                     # Parallel fetch as fallback
                     tasks = []
                     for symbol in symbols:
-                        task = asyncio.create_task(self.fetch_market_data(symbol))
+                        task = create_tracked_task(self.fetch_market_data(symbol), name="fetch_market_data")
                         tasks.append(task)
                     
                     results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -750,6 +841,12 @@ class ExchangeManager:
         exchange = await self.get_primary_exchange()
         return await exchange.fetch_trades(symbol, limit=limit)
 
+    @handle_errors(
+        operation='fetch_ticker',
+        component='exchange_manager',
+        circuit_breaker_name='exchange_api',
+        retry_config=RetryConfig(max_attempts=3, base_delay=1.0)
+    )
     async def fetch_ticker(self, symbol: str, exchange_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """Fetch ticker data for a symbol
         
@@ -1030,3 +1127,73 @@ class ExchangeManager:
         except Exception as e:
             self.logger.error(f"Error fetching risk limits for {symbol}: {str(e)}")
             return None
+
+    async def ping(self) -> Dict[str, Any]:
+        """Test exchange connectivity and return status.
+
+        This method is used by the health monitoring system to check
+        if the exchange manager and its primary exchange are accessible.
+
+        Returns:
+            Dict containing connectivity status and response time
+        """
+        start_time = time.time()
+
+        try:
+            # Check if exchange manager is initialized
+            if not self.initialized or not self.exchanges:
+                return {
+                    'status': 'error',
+                    'message': 'Exchange manager not initialized',
+                    'response_time_ms': (time.time() - start_time) * 1000
+                }
+
+            # Get primary exchange
+            primary_exchange = await self.get_primary_exchange()
+            if not primary_exchange:
+                return {
+                    'status': 'error',
+                    'message': 'No primary exchange available',
+                    'response_time_ms': (time.time() - start_time) * 1000
+                }
+
+            # Test connectivity with a lightweight operation
+            # Use is_healthy method if available, otherwise try a simple operation
+            if hasattr(primary_exchange, 'is_healthy'):
+                is_healthy = await primary_exchange.is_healthy()
+                status = 'healthy' if is_healthy else 'degraded'
+                message = 'Exchange connection verified' if is_healthy else 'Exchange connection degraded'
+            else:
+                # Fallback: try to load markets (lightweight operation for most exchanges)
+                try:
+                    await asyncio.wait_for(primary_exchange.load_markets(), timeout=5.0)
+                    status = 'healthy'
+                    message = 'Exchange connection verified'
+                except asyncio.TimeoutError:
+                    status = 'timeout'
+                    message = 'Exchange connection timeout'
+                except Exception as e:
+                    status = 'error'
+                    message = f'Exchange connection error: {str(e)}'
+
+            response_time = (time.time() - start_time) * 1000
+
+            return {
+                'status': status,
+                'message': message,
+                'exchange_id': getattr(primary_exchange, 'exchange_id', 'unknown'),
+                'exchange_count': len(self.exchanges),
+                'response_time_ms': round(response_time, 2),
+                'timestamp': int(time.time() * 1000)
+            }
+
+        except Exception as e:
+            response_time = (time.time() - start_time) * 1000
+            self.logger.error(f"Error in exchange ping: {str(e)}")
+
+            return {
+                'status': 'error',
+                'message': f'Ping failed: {str(e)}',
+                'response_time_ms': round(response_time, 2),
+                'timestamp': int(time.time() * 1000)
+            }

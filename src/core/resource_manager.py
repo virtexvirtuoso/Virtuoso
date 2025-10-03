@@ -4,6 +4,7 @@ import logging
 import psutil
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from src.utils.task_tracker import create_tracked_task
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +60,7 @@ class ResourceManager:
                     logger.error(f"Error in resource monitoring: {str(e)}")
                     await asyncio.sleep(1.0)
                     
-        self._monitor_task = asyncio.create_task(monitor_resources())
+        self._monitor_task = create_tracked_task(monitor_resources(), name="auto_tracked_task")
         
     async def stop_monitoring(self) -> None:
         """Stop resource monitoring."""

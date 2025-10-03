@@ -1,7 +1,7 @@
 from fastapi import Depends, Request
 from typing import Dict, Optional
 from src.core.exchanges.manager import ExchangeManager
-from src.core.exchanges.base import ExchangeInterface
+from src.core.interfaces.exchange import ExchangeInterface
 from src.core.analysis.technical import TechnicalAnalysis
 from src.core.analysis.portfolio import PortfolioAnalyzer
 from src.core.analysis.position_calculator import PositionCalculator

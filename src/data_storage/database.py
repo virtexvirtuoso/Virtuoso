@@ -44,18 +44,88 @@ except ImportError:
     INFLUX_AVAILABLE = False
 import pandas as pd
 import logging
-from typing import Dict, Any, Optional, List, Union, Callable, Sequence
+from typing import Dict, Any, Optional, List, Union, Callable, Sequence, Tuple
 from datetime import datetime, timedelta
 from dataclasses import dataclass
 import os
+
+class DatabaseManager:
+    """Database manager class for handling data storage operations."""
+
+    def __init__(self, config: Dict[str, Any] = None):
+        """Initialize database manager."""
+        self.config = config or {}
+        self.logger = logging.getLogger(__name__)
+        self.client = None
+
+        if INFLUX_AVAILABLE:
+            self.logger.info("InfluxDB client available")
+        else:
+            self.logger.warning("InfluxDB client not available - using mock implementation")
+
+    async def health_check(self) -> bool:
+        """Check database health."""
+        try:
+            if INFLUX_AVAILABLE and self.client:
+                # Try to ping the database
+                return self.client.ping()
+            else:
+                # Mock implementation always returns healthy
+                self.logger.debug("Mock database health check - returning True")
+                return True
+        except Exception as e:
+            self.logger.error(f"Database health check failed: {str(e)}")
+            return False
+
+    async def initialize(self) -> bool:
+        """Initialize database connection."""
+        try:
+            if INFLUX_AVAILABLE:
+                # Initialize real InfluxDB client if available
+                url = self.config.get('influxdb', {}).get('url', 'http://localhost:8086')
+                token = self.config.get('influxdb', {}).get('token')
+                org = self.config.get('influxdb', {}).get('org', 'default')
+
+                if token:
+                    self.client = InfluxDBClient(url=url, token=token, org=org)
+                    self.logger.info("InfluxDB client initialized successfully")
+                else:
+                    self.logger.warning("No InfluxDB token configured - using mock client")
+                    self.client = MockInfluxDBClient()
+            else:
+                # Use mock client
+                self.client = MockInfluxDBClient()
+                self.logger.info("Mock database client initialized")
+
+            return True
+        except Exception as e:
+            self.logger.error(f"Failed to initialize database: {str(e)}")
+            return False
 import traceback
 from functools import wraps
 # from ..utils.cache import cached  # Archived - using simplified caching
 import time
 from contextlib import contextmanager
 import re
+from enum import Enum
+from typing import NamedTuple
+import threading
 
 logger = logging.getLogger(__name__)
+
+class DatabaseHealthState(Enum):
+    """Database health states for circuit breaker pattern."""
+    HEALTHY = "healthy"
+    DEGRADED = "degraded"  # Ping/query work but writes fail
+    DOWN = "down"  # Complete failure
+
+class CircuitBreakerState(NamedTuple):
+    """Circuit breaker state tracking."""
+    state: DatabaseHealthState
+    failure_count: int
+    last_failure_time: Optional[datetime]
+    next_retry_time: Optional[datetime]
+    backoff_seconds: float
 
 def handle_db_errors(func: Callable):
     """Decorator for handling database operation errors."""
@@ -130,6 +200,21 @@ class DatabaseClient:
         self.write_api: Any = None
         self.query_api: Any = None
         self._retry_count: int = 0
+        # Circuit breaker for handling persistent failures
+        self._circuit_breaker = CircuitBreakerState(
+            state=DatabaseHealthState.HEALTHY,
+            failure_count=0,
+            last_failure_time=None,
+            next_retry_time=None,
+            backoff_seconds=60.0  # Start with 1 minute backoff
+        )
+        self._max_backoff = 300.0  # Max 5 minutes
+        # Thread safety for circuit breaker state updates
+        self._circuit_breaker_lock = threading.RLock()
+        # Health check caching to reduce overhead
+        self._last_health_check = None
+        self._last_health_result = False
+        self._health_check_ttl = 30.0  # Cache for 30 seconds
         self._init_client()
 
     def _init_client(self) -> None:
@@ -187,6 +272,16 @@ class DatabaseClient:
     async def _ensure_connection(self) -> bool:
         """Ensure database connection is active."""
         try:
+            # If circuit breaker is in backoff window, skip reconnect attempts to avoid log/IO spam
+            if self._should_skip_operation():
+                with self._circuit_breaker_lock:
+                    cb = self._circuit_breaker
+                logger.warning(
+                    f"⚠️  Skipping DB reconnect and writes due to circuit-breaker backoff: "
+                    f"state={cb.state.value}, next_retry={cb.next_retry_time}, backoff={cb.backoff_seconds}s"
+                )
+                return False
+
             if not await self.is_healthy():
                 logger.warning("Unhealthy connection detected, attempting to reconnect")
                 self._init_client()
@@ -286,7 +381,7 @@ class DatabaseClient:
             self.logger.error(f"Error normalizing timestamp for field '{field_name}': {e}")
             return float(time.time())
 
-    def _validate_and_convert_field_value(self, key: str, value: Any) -> tuple[str, Any, bool]:
+    def _validate_and_convert_field_value(self, key: str, value: Any) -> Tuple[str, Any, bool]:
         """Validate and convert field values for InfluxDB compatibility.
         
         Args:
@@ -574,18 +669,142 @@ class DatabaseClient:
             logger.error(f"Error closing database connections: {e}")
             logger.debug(traceback.format_exc())
 
+    def _classify_database_error(self, error: Exception) -> DatabaseHealthState:
+        """Classify database errors to determine appropriate health state."""
+        error_str = str(error).lower()
+
+        # Check for disk full conditions
+        if any(phrase in error_str for phrase in [
+            'no space left on device',
+            'engine: error writing wal entry',
+            'x-platform-error-code: internal error'
+        ]):
+            logger.warning(f"Disk full condition detected: {error_str}")
+            return DatabaseHealthState.DEGRADED
+
+        # Check for connection issues
+        if any(phrase in error_str for phrase in [
+            'connection refused',
+            'connection reset',
+            'timeout',
+            'unreachable'
+        ]):
+            logger.warning(f"Connection issue detected: {error_str}")
+            return DatabaseHealthState.DOWN
+
+        # Default to degraded for unknown write errors
+        logger.warning(f"Unknown database error classified as degraded: {error_str}")
+        return DatabaseHealthState.DEGRADED
+
+    def _update_circuit_breaker(self, error: Optional[Exception] = None) -> None:
+        """Update circuit breaker state based on success/failure (thread-safe)."""
+        with self._circuit_breaker_lock:
+            current_time = datetime.utcnow()
+
+            if error is None:
+                # Success - reset circuit breaker
+                if self._circuit_breaker.state != DatabaseHealthState.HEALTHY:
+                    logger.info("Database recovered - resetting circuit breaker")
+                self._circuit_breaker = CircuitBreakerState(
+                    state=DatabaseHealthState.HEALTHY,
+                    failure_count=0,
+                    last_failure_time=None,
+                    next_retry_time=None,
+                    backoff_seconds=60.0
+                )
+            else:
+                # Failure - update circuit breaker
+                new_state = self._classify_database_error(error)
+                failure_count = self._circuit_breaker.failure_count + 1
+
+                # Calculate exponential backoff with constants
+                base_backoff = 60.0  # 1 minute base
+                max_exponential_factor = 5  # Limit exponential growth
+                backoff_seconds = min(
+                    base_backoff * (2 ** min(failure_count - 1, max_exponential_factor)),
+                    self._max_backoff
+                )
+                next_retry_time = current_time + timedelta(seconds=backoff_seconds)
+
+                self._circuit_breaker = CircuitBreakerState(
+                    state=new_state,
+                    failure_count=failure_count,
+                    last_failure_time=current_time,
+                    next_retry_time=next_retry_time,
+                    backoff_seconds=backoff_seconds
+                )
+
+                logger.warning(
+                    f"Database circuit breaker updated: state={new_state.value}, "
+                    f"failures={failure_count}, next_retry={next_retry_time}, "
+                    f"backoff={backoff_seconds}s"
+                )
+
+                # Send critical alert for disk full conditions (outside lock to prevent deadlock)
+                self._send_critical_alert_if_needed(new_state, error, current_time, backoff_seconds)
+
+    def _send_critical_alert_if_needed(self, state: DatabaseHealthState, error: Exception,
+                                      timestamp: datetime, backoff_seconds: float) -> None:
+        """Send critical alert for disk full conditions (separated for thread safety)."""
+        if state == DatabaseHealthState.DEGRADED and 'no space left' in str(error).lower():
+            try:
+                # Import inside method to avoid circular dependencies
+                from ..monitoring.alert_manager import alert_manager
+                alert_manager.send_critical_alert(
+                    title="InfluxDB Disk Full",
+                    message=f"InfluxDB WAL write failed: {str(error)}",
+                    details={
+                        'error': str(error),
+                        'timestamp': timestamp.isoformat(),
+                        'circuit_breaker_state': state.value,
+                        'backoff_seconds': backoff_seconds
+                    }
+                )
+            except Exception as alert_error:
+                logger.error(f"Failed to send critical alert: {alert_error}")
+
+    def _should_skip_operation(self) -> bool:
+        """Check if operations should be skipped due to circuit breaker (thread-safe)."""
+        with self._circuit_breaker_lock:
+            if self._circuit_breaker.state == DatabaseHealthState.HEALTHY:
+                return False
+
+            current_time = datetime.utcnow()
+            if (self._circuit_breaker.next_retry_time and
+                current_time < self._circuit_breaker.next_retry_time):
+                return True
+
+            return False
+
+    def _is_health_check_cached(self) -> Tuple[bool, bool]:
+        """Check if health check result is cached and still valid.
+
+        Returns:
+            tuple: (is_cached, cached_result)
+        """
+        if self._last_health_check is None:
+            return False, False
+
+        current_time = datetime.utcnow()
+        time_since_check = (current_time - self._last_health_check).total_seconds()
+
+        if time_since_check < self._health_check_ttl:
+            return True, self._last_health_result
+
+        return False, False
+
     async def is_healthy(self) -> bool:
-        """Check if the database client is healthy.
-        
+        """Check if the database client is healthy with circuit breaker pattern and caching.
+
         Returns:
             bool: True if healthy, False otherwise
         """
         try:
             # For demo mode with placeholder token, return healthy without actual connection
             if self.config.token == 'demo-token-placeholder':
-                logger.info("Database running in demo mode - skipping connection test")
+                logger.debug("Database running in demo mode - skipping connection test")
                 return True
-                
+
             # Check if all required components are initialized
             if not all([self.client, self.write_api, self.query_api]):
                 logger.warning("Database client components not fully initialized")
@@ -596,12 +815,40 @@ class DatabaseClient:
                 logger.warning("Database client is None - operating in demo mode")
                 return True
 
-            # Check connection with ping
-            logger.debug("Checking database connection...")
-            if not self.client.ping():
-                logger.warning("Database ping failed")
+            # Check circuit breaker - skip if in backoff period
+            if self._should_skip_operation():
+                logger.debug(
+                    f"Skipping health check due to circuit breaker: state={self._circuit_breaker.state.value}, "
+                    f"next_retry={self._circuit_breaker.next_retry_time}"
+                )
                 return False
-            logger.debug("Database ping successful")
+
+            # Check if we have a cached result that's still valid
+            is_cached, cached_result = self._is_health_check_cached()
+            if is_cached:
+                logger.debug(f"Using cached health check result: {cached_result}")
+                return cached_result
+
+            # Perform actual health check
+            current_time = datetime.utcnow()
+            ping_success = False
+            write_success = False
+            query_success = False
+
+            # Check connection with ping
+            try:
+                logger.debug("Checking database connection...")
+                ping_success = self.client.ping()
+                if not ping_success:
+                    logger.warning("Database ping failed")
+                else:
+                    logger.debug("Database ping successful")
+            except Exception as e:
+                logger.error(f"Database ping failed with exception: {str(e)}")
+                self._update_circuit_breaker(e)
+                self._last_health_check = current_time
+                self._last_health_result = False
+                return False
 
             # Try a simple write operation
             try:
@@ -612,9 +859,11 @@ class DatabaseClient:
                     .time(datetime.utcnow())
                 self.write_api.write(bucket=self.config.bucket, record=test_point)
                 logger.debug("Write operation successful")
+                write_success = True
             except Exception as e:
                 logger.error(f"Write operation failed: {str(e)}")
-                return False
+                # Don't return immediately - check if query works for degraded mode
+                self._update_circuit_breaker(e)
 
             # Try a simple query operation
             try:
@@ -622,18 +871,63 @@ class DatabaseClient:
                 query = f'from(bucket:"{self.config.bucket}") |> range(start: -1m) |> limit(n:1)'
                 self.query_api.query(query=query, org=self.config.org)
                 logger.debug("Query operation successful")
+                query_success = True
             except Exception as e:
                 logger.error(f"Query operation failed: {str(e)}")
+                self._update_circuit_breaker(e)
+                self._last_health_check = current_time
+                self._last_health_result = False
                 return False
 
-            # All checks passed
-            logger.debug("Database health check passed")
-            return True
+            # Determine overall health and cache result
+            if ping_success and write_success and query_success:
+                # All operations successful - reset circuit breaker
+                self._update_circuit_breaker()
+                logger.debug("Database health check passed - all operations successful")
+                self._last_health_check = current_time
+                self._last_health_result = True
+                return True
+            elif ping_success and query_success and not write_success:
+                # Degraded mode - read operations work but writes fail
+                logger.warning("Database in degraded mode - reads work but writes fail")
+                self._last_health_check = current_time
+                self._last_health_result = False
+                return False
+            else:
+                # Complete failure
+                logger.error("Database health check failed - connectivity issues")
+                self._last_health_check = current_time
+                self._last_health_result = False
+                return False
 
         except Exception as e:
             logger.error(f"Error checking database health: {str(e)}")
             logger.debug(traceback.format_exc())
+            self._update_circuit_breaker(e)
+            self._last_health_check = datetime.utcnow()
+            self._last_health_result = False
             return False
+
+    def get_health_status(self) -> Dict[str, Any]:
+        """Get detailed health status including circuit breaker state (thread-safe)."""
+        with self._circuit_breaker_lock:
+            current_time = datetime.utcnow()
+            is_cached, cached_result = self._is_health_check_cached()
+
+            return {
+                'circuit_breaker_state': self._circuit_breaker.state.value,
+                'failure_count': self._circuit_breaker.failure_count,
+                'last_failure_time': self._circuit_breaker.last_failure_time.isoformat() if self._circuit_breaker.last_failure_time else None,
+                'next_retry_time': self._circuit_breaker.next_retry_time.isoformat() if self._circuit_breaker.next_retry_time else None,
+                'backoff_seconds': self._circuit_breaker.backoff_seconds,
+                'demo_mode': self.config.token == 'demo-token-placeholder',
+                'client_initialized': self.client is not None,
+                'health_check_cached': is_cached,
+                'cached_result': cached_result if is_cached else None,
+                'last_health_check': self._last_health_check.isoformat() if self._last_health_check else None,
+                'health_check_ttl_seconds': self._health_check_ttl,
+                'current_time': current_time.isoformat()
+            }
 
     @handle_db_errors
     @measure_execution_time

@@ -1,102 +1,47 @@
 #!/bin/bash
+set -e
 
-# Deploy Mock Data Fixes to VPS
-# Addresses critical issues from MOCK_DATA_AUDIT_REPORT.md
+echo "🚀 Deploying Mock Data Fixes to VPS"
+echo "=================================="
 
-echo "=============================================="
-echo "Deploying Mock Data Fixes to VPS"
-echo "=============================================="
+VPS_HOST=${VPS_HOST:-"vps"}
+PROJECT_DIR="/home/linuxuser/trading/Virtuoso_ccxt"
 
-# VPS connection details
-VPS_USER="linuxuser"
-VPS_HOST="${VPS_HOST}"
-VPS_DIR="/home/linuxuser/trading/Virtuoso_ccxt"
+echo "📋 Step 1: Backup current VPS state"
+ssh $VPS_HOST "cd $PROJECT_DIR && cp .env .env.backup.\$(date +%Y%m%d_%H%M%S) 2>/dev/null || echo 'No .env to backup'"
 
-# Files to sync - ALL critical files from PRODUCTION_MOCK_DATA_AUDIT_2
-FILES_TO_SYNC=(
-    # CRITICAL: Trade execution using random scores
-    "src/trade_execution/trade_executor.py"
-    # CRITICAL: Analysis service using random components
-    "src/services/analysis_service_enhanced.py"
-    # Market data and indicators
-    "src/core/market/market_data_manager.py"
-    "src/indicators/orderflow_indicators.py"
-    # Dashboard files with hardcoded defaults
-    "src/dashboard/dashboard_integration.py"
-    "src/dashboard/integration_service.py"
-    "src/api/services/mobile_fallback_service.py"
-    # Other important files
-    "scripts/populate_cache_service.py"
-    "src/api/routes/correlation.py"
-    "src/core/analysis/confluence.py"
-    "src/monitoring/alert_manager.py"
-    "src/indicators/orderbook_indicators.py"
-    "src/main.py"
-)
+echo "📋 Step 2: Apply environment configuration fixes"
+ssh $VPS_HOST "cd $PROJECT_DIR && 
+    echo 'EXCHANGE_DEMO_MODE=false' > .env.deploy_fix &&
+    echo 'ANALYSIS_MODE=false' >> .env.deploy_fix &&
+    if [ -f .env ]; then
+        grep -v 'EXCHANGE_DEMO_MODE\|ANALYSIS_MODE' .env >> .env.deploy_fix || true
+    fi &&
+    mv .env.deploy_fix .env &&
+    echo '✅ Environment configuration updated'"
 
-echo ""
-echo "📋 Files to deploy:"
-for file in "${FILES_TO_SYNC[@]}"; do
-    echo "  - $file"
-done
+echo "📋 Step 3: Restart services with new configuration"
+ssh $VPS_HOST "cd $PROJECT_DIR && 
+    echo 'Stopping existing services...' &&
+    pkill -f 'python.*main.py' 2>/dev/null || echo 'No main.py running' &&
+    pkill -f 'python.*web_server.py' 2>/dev/null || echo 'No web_server.py running' &&
+    sleep 3 &&
+    echo 'Starting services with real market data...' &&
+    source venv311/bin/activate &&
+    nohup python src/main.py > logs/deploy_main_\$(date +%H%M%S).log 2>&1 & &&
+    sleep 5 &&
+    nohup python src/web_server.py > logs/deploy_web_\$(date +%H%M%S).log 2>&1 & &&
+    echo '✅ Services restarted with production configuration'"
 
-echo ""
-echo "🔍 Skipping local validation (already verified critical fixes are done)..."
-# ./venv311/bin/python scripts/validate_mock_data_removal.py
-# if [ $? -ne 0 ]; then
-#     echo "❌ Local validation failed! Fix issues before deploying."
-#     exit 1
-# fi
+echo "📋 Step 4: Verify real market data is being used"
+ssh $VPS_HOST "cd $PROJECT_DIR && 
+    sleep 10 &&
+    echo 'Checking for real market prices in logs...' &&
+    tail -30 logs/app.log 2>/dev/null | grep -E '[0-9]{5,}.*BTC|BTC.*[0-9]{5,}' | head -2 || echo 'No BTC price data found yet'"
 
 echo ""
-echo "📦 Syncing files to VPS..."
-for file in "${FILES_TO_SYNC[@]}"; do
-    echo "  Copying $file..."
-    rsync -avz "$file" "$VPS_USER@$VPS_HOST:$VPS_DIR/$file"
-done
+echo "🎯 Deployment Complete!"
+echo "✅ Demo mode disabled on VPS"
+echo "✅ Services restarted with production config"
+echo "🔍 Monitor logs for real $115K+ BTC prices"
 
-echo ""
-echo "🔍 Skipping VPS validation (will verify manually after deployment)..."
-# ssh "$VPS_USER@$VPS_HOST" "cd $VPS_DIR && python3 scripts/validate_mock_data_removal.py"
-# if [ $? -ne 0 ]; then
-#     echo "❌ VPS validation failed!"
-#     exit 1
-# fi
-
-echo ""
-echo "🔄 Restarting services..."
-ssh "$VPS_USER@$VPS_HOST" "sudo systemctl restart virtuoso-web.service"
-sleep 3
-
-echo ""
-echo "✅ Checking service status..."
-ssh "$VPS_USER@$VPS_HOST" "sudo systemctl status virtuoso-web.service --no-pager | head -10"
-
-echo ""
-echo "🎯 Testing production endpoints..."
-echo "  Testing main dashboard..."
-curl -s -o /dev/null -w "  HTTP Status: %{http_code}\n" "http://$VPS_HOST:8003/"
-
-echo "  Testing API endpoint..."
-curl -s -o /dev/null -w "  HTTP Status: %{http_code}\n" "http://$VPS_HOST:8003/api/dashboard/data"
-
-echo ""
-echo "=============================================="
-echo "✅ Mock Data Fixes Deployed Successfully!"
-echo "=============================================="
-echo ""
-echo "Summary of fixes applied:"
-echo "  1. ✅ Removed fake open interest history generation"
-echo "  2. ✅ Eliminated sample ticker data fallbacks"
-echo "  3. ✅ Fixed hardcoded symbol lists"
-echo "  4. ✅ Removed mock mode from alert system"
-echo "  5. ✅ Fixed default neutral scores in indicators"
-echo ""
-echo "Next steps:"
-echo "  1. Monitor exchange API calls for failures"
-echo "  2. Check alert delivery is working correctly"
-echo "  3. Verify real market data is being displayed"
-echo "  4. Watch logs for any data fetch errors"
-echo ""
-echo "Monitor logs with:"
-echo "  ssh $VPS_USER@$VPS_HOST 'sudo journalctl -u virtuoso-web.service -f'"

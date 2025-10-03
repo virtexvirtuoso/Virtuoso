@@ -1,3 +1,4 @@
+from src.utils.task_tracker import create_tracked_task
 """
 Slim Monitor Orchestrator - Optimized Dependencies.
 
@@ -108,8 +109,8 @@ class SlimMonitorOrchestrator:
         self.metrics_collector.record_metric('monitor.symbols_count', len(symbols))
         
         # Start monitoring loop
-        self._monitoring_task = asyncio.create_task(
-            self._monitoring_loop(symbols, interval)
+        self._monitoring_task = create_tracked_task(
+            self._monitoring_loop(symbols, interval, name="auto_tracked_task")
         )
         
         self.logger.info("🚀 Optimized monitoring started")

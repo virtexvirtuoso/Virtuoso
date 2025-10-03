@@ -1,3 +1,4 @@
+from src.utils.task_tracker import create_tracked_task
 """
 Phase 4 Performance Monitoring Dashboard
 ========================================
@@ -338,7 +339,7 @@ class MetricsCollector:
         if self.collection_task:
             return
         
-        self.collection_task = asyncio.create_task(self._collection_loop())
+        self.collection_task = create_tracked_task(self._collection_loop(), name="auto_tracked_task")
         self.logger.info("Metrics collection started")
     
     async def stop_collection(self):
@@ -762,7 +763,7 @@ class PerformanceDashboard:
         """Start the dashboard server."""
         # Start metrics broadcasting
         if not self.broadcast_task:
-            self.broadcast_task = asyncio.create_task(self._broadcast_metrics())
+            self.broadcast_task = create_tracked_task(self._broadcast_metrics(), name="auto_tracked_task")
         
         # Start FastAPI server
         config = uvicorn.Config(
@@ -875,7 +876,7 @@ class Phase4PerformanceMonitor(IAsyncDisposable):
             await self.metrics_collector.start_collection()
             
             # Start dashboard (non-blocking)
-            asyncio.create_task(self.dashboard.start_dashboard())
+            create_tracked_task(self.dashboard.start_dashboard(), name="auto_tracked_task")
             
             self.running = True
             self.logger.info(f"Phase 4 Performance Monitor started on port {self.dashboard.port}")

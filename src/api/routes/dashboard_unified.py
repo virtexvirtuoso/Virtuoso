@@ -22,6 +22,7 @@ from fastapi.responses import JSONResponse
 # Import the performance-optimized cache adapter
 from src.api.cache_adapter_direct import cache_adapter
 from src.api.feature_flags import is_unified_endpoints_enabled, is_performance_monitoring_enabled
+from src.utils.task_tracker import create_tracked_task
 
 logger = logging.getLogger(__name__)
 
@@ -60,17 +61,17 @@ async def get_unified_dashboard(
         if include_signals:
             tasks.append(cache_adapter.get_signals())
         else:
-            tasks.append(asyncio.create_task(asyncio.sleep(0, result={"signals": [], "count": 0})))
-            
+            tasks.append(create_tracked_task(asyncio.sleep(0), name="sleep_task"))
+
         if include_movers:
             tasks.append(cache_adapter.get_market_movers())
         else:
-            tasks.append(asyncio.create_task(asyncio.sleep(0, result={"gainers": [], "losers": []})))
-            
+            tasks.append(create_tracked_task(asyncio.sleep(0), name="sleep_task"))
+
         if include_analysis:
             tasks.append(cache_adapter.get_market_analysis())
         else:
-            tasks.append(asyncio.create_task(asyncio.sleep(0, result={"market_regime": "unknown"})))
+            tasks.append(create_tracked_task(asyncio.sleep(0), name="sleep_task"))
         
         # Execute all tasks in parallel
         overview, signals, movers, analysis = await asyncio.gather(*tasks)

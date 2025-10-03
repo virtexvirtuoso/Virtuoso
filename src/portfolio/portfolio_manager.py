@@ -1,3 +1,4 @@
+from src.utils.task_tracker import create_tracked_task
 """
 Portfolio Management System
 Implements portfolio allocation, rebalancing, and performance tracking based on configuration.
@@ -132,7 +133,7 @@ class PortfolioManager:
     async def start(self):
         """Start portfolio management."""
         if self.rebalancing_enabled:
-            self.rebalancing_task = asyncio.create_task(self._rebalancing_loop())
+            self.rebalancing_task = create_tracked_task(self._rebalancing_loop(), name="auto_tracked_task")
             self.logger.info("Portfolio rebalancing task started")
     
     async def stop(self):

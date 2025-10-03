@@ -1,3 +1,4 @@
+from src.utils.task_tracker import create_tracked_task
 #!/usr/bin/env python
 """
 Bybit Demo Trading Runner
@@ -238,7 +239,7 @@ class DemoTradingRunner:
             if self.config.get('trading', {}).get('use_signals', True):
                 # Start the market monitor to receive signals
                 logger.info("Starting market monitor...")
-                asyncio.create_task(self.market_monitor.start())
+                create_tracked_task(self.market_monitor.start(), name="auto_tracked_task")
             
             self.initialized = True
             logger.info("Demo trading system initialized")
@@ -317,7 +318,7 @@ class DemoTradingRunner:
         
         # Start signal listener if using signals
         if self.config.get('trading', {}).get('use_signals', True):
-            asyncio.create_task(self._monitor_signals())
+            create_tracked_task(self._monitor_signals(), name="auto_tracked_task")
         
         # Start the strategy
         await self.strategy.start()

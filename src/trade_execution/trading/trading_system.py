@@ -1,3 +1,4 @@
+from src.utils.task_tracker import create_tracked_task
 """Trading system module.
 
 This module provides functionality for executing trades.
@@ -147,8 +148,8 @@ class TradingSystem:
                 
             # Start trading tasks
             self.trading_enabled = True
-            asyncio.create_task(self._update_loop())
-            asyncio.create_task(self._risk_check_loop())
+            create_tracked_task(self._update_loop(), name="auto_tracked_task")
+            create_tracked_task(self._risk_check_loop(), name="auto_tracked_task")
             
             logger.info("✓ Trading started")
             return True

@@ -1,3 +1,4 @@
+from src.utils.task_tracker import create_tracked_task
 """
 API Request Queue Manager
 
@@ -303,7 +304,7 @@ class APIRequestQueue:
         
         # Start worker tasks
         for i in range(self.max_concurrent):
-            worker = asyncio.create_task(self._worker(i))
+            worker = create_tracked_task(self._worker, name="_worker_task")
             self._workers.append(worker)
         
         logger.info(

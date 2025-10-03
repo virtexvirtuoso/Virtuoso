@@ -1,22 +1,18 @@
 #!/bin/bash
 
-# Complete deployment script for Trade Parameters and Reliability fixes
-echo "🚀 Deploying Complete Fixes (Trade Params & Reliability)"
-echo "=========================================="
+# Deploy Complete AsyncIO and Confluence Fixes to VPS
+# This script deploys:
+# 1. AsyncIO session management fixes in BybitExchange
+# 2. Confluence breakdown generation solution
+# 3. All related validation and testing scripts
 
-# Colors for output
-GREEN='\033[0;32m'
-RED='\033[0;31m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+set -e
 
-# VPS Configuration
-VPS_USER="linuxuser"
-VPS_HOST="${VPS_HOST}"
-VPS_DIR="/home/linuxuser/trading/Virtuoso_ccxt"
-LOCAL_DIR="/Users/ffv_macmini/Desktop/Virtuoso_ccxt"
+VPS_HOST="${VPS_HOST:-45.77.40.77}"
+VPS_USER="${VPS_USER:-linuxuser}"
+PROJECT_DIR="/home/$VPS_USER/trading/Virtuoso_ccxt"
 
-echo -e "${YELLOW}📦 Preparing deployment...${NC}"
+echo "🚀 Deploying Complete AsyncIO & Confluence Fixes to VPS ($VPS_HOST)..."
 
 # Step 1: Create backup on VPS
 echo -e "${GREEN}Step 1: Creating backup on VPS...${NC}"

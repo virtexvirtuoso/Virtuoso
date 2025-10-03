@@ -1,3 +1,4 @@
+from src.utils.task_tracker import create_tracked_task
 """
 Event Sourcing System - Complete Audit Trail Implementation
 ===========================================================
@@ -251,7 +252,7 @@ class EventStore:
         await self._load_snapshots()
         
         # Schedule cleanup tasks
-        asyncio.create_task(self._periodic_cleanup())
+        create_tracked_task(self._periodic_cleanup(), name="auto_tracked_task")
         
         self.logger.info("Event store initialized successfully")
     
@@ -297,7 +298,7 @@ class EventStore:
             self.hot_index[record.event_id] = record
             
             # Async database insert (don't wait)
-            asyncio.create_task(self._insert_to_database(record))
+            create_tracked_task(self._insert_to_database, name="_insert_to_database_task")
             
             # Update metrics
             self.append_count += 1
@@ -804,7 +805,7 @@ class EventSourcingManager(IAsyncDisposable):
                 record = EventRecord.from_event(event)
                 for subscriber in self.stream_subscribers:
                     try:
-                        asyncio.create_task(subscriber(record))
+                        create_tracked_task(subscriber, name="subscriber_task")
                     except Exception as e:
                         self.logger.error(f"Stream subscriber failed: {e}")
             

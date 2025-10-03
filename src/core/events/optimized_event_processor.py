@@ -1,3 +1,4 @@
+from src.utils.task_tracker import create_tracked_task
 """
 Optimized Event Processing Pipeline - Phase 4 Implementation
 =============================================================
@@ -428,23 +429,23 @@ class OptimizedEventProcessor(IAsyncDisposable):
         
         # Start batch processors for each priority
         for priority in ProcessingPriority:
-            processor_task = asyncio.create_task(
-                self._batch_processor(priority),
+            processor_task = create_tracked_task(
+                self._batch_processor, name="_batch_processor_task"),
                 name=f"batch_processor_{priority.name.lower()}"
             )
             self.batch_processors[priority] = processor_task
         
         # Start worker pool
         for i in range(self.worker_pool_size):
-            worker_task = asyncio.create_task(
-                self._event_worker(f"worker_{i}"),
+            worker_task = create_tracked_task(
+                self._event_worker, name="_event_worker_task"),
                 name=f"event_worker_{i}"
             )
             self.worker_tasks.append(worker_task)
         
         # Start batch timer
-        self._batch_timer_task = asyncio.create_task(
-            self._batch_timer(),
+        self._batch_timer_task = create_tracked_task(
+            self._batch_timer, name="_batch_timer_task"),
             name="batch_timer"
         )
         
@@ -762,7 +763,7 @@ class OptimizedEventProcessor(IAsyncDisposable):
             # Execute handlers for this event type
             for handler_info in matching_handlers:
                 handler = handler_info['handler']
-                task = asyncio.create_task(self._execute_handler(handler, type_events))
+                task = create_tracked_task(self._execute_handler, name="_execute_handler_task")
                 tasks.append(task)
         
         # Wait for all handlers to complete

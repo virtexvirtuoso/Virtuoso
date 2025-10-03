@@ -1,3 +1,4 @@
+from src.utils.task_tracker import create_tracked_task
 """Bybit exchange implementation with CCXT standardization."""
 
 import asyncio
@@ -344,14 +345,43 @@ class BybitExchange(BaseExchange):
                 return True
             else:
                 self.logger.error(f"❌ {self.exchange_id} exchange health check failed")
+                # Clean up any resources created during failed initialization
+                await self._cleanup_resources()
                 self.initialized = False
                 return False
                 
         except Exception as e:
             self.logger.error(f"Failed to initialize {self.exchange_id}: {str(e)}")
+            # Clean up any resources created during failed initialization
+            await self._cleanup_resources()
             self.initialized = False
             return False
-    
+
+    async def _cleanup_resources(self):
+        """Clean up all aiohttp sessions and resources to prevent leaks"""
+        try:
+            # Clean up main data fetcher session
+            if hasattr(self, 'data_fetcher') and self.data_fetcher and hasattr(self.data_fetcher, 'session'):
+                if self.data_fetcher.session and not self.data_fetcher.session.closed:
+                    await self.data_fetcher.session.close()
+                    self.logger.debug("Closed data_fetcher session")
+
+            # Clean up liquidation data fetcher session
+            if hasattr(self, 'liquidation_data_fetcher') and self.liquidation_data_fetcher and hasattr(self.liquidation_data_fetcher, 'session'):
+                if self.liquidation_data_fetcher.session and not self.liquidation_data_fetcher.session.closed:
+                    await self.liquidation_data_fetcher.session.close()
+                    self.logger.debug("Closed liquidation_data_fetcher session")
+
+            # Clean up rate limiter session
+            if hasattr(self, 'rate_limiter') and self.rate_limiter and hasattr(self.rate_limiter, 'session'):
+                if self.rate_limiter.session and not self.rate_limiter.session.closed:
+                    await self.rate_limiter.session.close()
+                    self.logger.debug("Closed rate_limiter session")
+
+            self.logger.debug("All aiohttp resources cleaned up")
+        except Exception as e:
+            self.logger.warning(f"Error during resource cleanup: {e}")
+
     def _setup_basic_config(self):
         """Setup basic configuration parameters"""
         # Validate required fields
@@ -649,7 +679,19 @@ class BybitExchange(BaseExchange):
             # Check if connector is still alive
             if hasattr(self, 'connector') and self.connector and self.connector.closed:
                 self.logger.warning("Connector is closed, recreating session...")
+                # Proactively close any existing session/connector to prevent leaks
+                try:
+                    if self.session and not self.session.closed:
+                        await self.session.close()
+                except Exception:
+                    pass
+                try:
+                    if self.connector and not self.connector.closed:
+                        await self.connector.close()
+                except Exception:
+                    pass
                 self.session = None
+                self.connector = None
                 await self._create_session()
                 return True
                 
@@ -880,7 +922,17 @@ class BybitExchange(BaseExchange):
                         if retry_count > 0:
                             await asyncio.sleep(backoff_delay)
                         
-                        # Force recreate session
+                        # Force recreate session, closing previous handles to avoid leaks
+                        try:
+                            if self.session and not self.session.closed:
+                                await self.session.close()
+                        except Exception:
+                            pass
+                        try:
+                            if self.connector and not self.connector.closed:
+                                await self.connector.close()
+                        except Exception:
+                            pass
                         self.session = None
                         self.connector = None
                         await self._create_session()
@@ -1142,8 +1194,8 @@ class BybitExchange(BaseExchange):
                 if not hasattr(self, 'ws_tasks') or not self.ws_tasks:
                     self.ws_tasks = []
                     
-                self.ws_tasks.append(asyncio.create_task(self._ws_message_handler()))
-                self.ws_tasks.append(asyncio.create_task(self._ws_keepalive()))
+                self.ws_tasks.append(create_tracked_task(self._ws_message_handler(), name="bybit_ws_message_handler"))
+                self.ws_tasks.append(create_tracked_task(self._ws_keepalive(), name="bybit_ws_keepalive"))
                 
                 return True
                 
@@ -1978,8 +2030,19 @@ class BybitExchange(BaseExchange):
     async def close(self) -> None:
         """Close exchange connections."""
         try:
+            # Close HTTP session and connector defensively
             if hasattr(self, 'session') and self.session:
-                await self.session.close()
+                try:
+                    if not self.session.closed:
+                        await self.session.close()
+                finally:
+                    self.session = None
+            if hasattr(self, 'connector') and self.connector:
+                try:
+                    if not self.connector.closed:
+                        await self.connector.close()
+                finally:
+                    self.connector = None
             if hasattr(self, 'ws') and self.ws:
                 await self.ws.close()
         except Exception as e:
@@ -4374,6 +4437,132 @@ class BybitExchange(BaseExchange):
                 'datetime': datetime.now().isoformat(),
                 'nonce': None
             }
+
+    async def fetch_rpi_orderbook(self, symbol: str, category: str = 'linear', limit: int = 50) -> Dict[str, Any]:
+        """
+        Fetch Bybit RPI (Retail Price Improvement) orderbook data.
+
+        Args:
+            symbol: Trading symbol (e.g., 'BTCUSDT')
+            category: Market category ('linear', 'spot', 'inverse')
+            limit: Number of price levels (max 50)
+
+        Returns:
+            RPI orderbook data with format:
+            {
+                'b': [[price, non_rpi_size, rpi_size], ...],  # bids
+                'a': [[price, non_rpi_size, rpi_size], ...],  # asks
+                'ts': timestamp,
+                'u': update_id,
+                'seq': sequence_number
+            }
+        """
+        import time
+        start_time = time.time()
+
+        self.logger.debug(f"🔍 [RPI_DEBUG] Starting RPI orderbook fetch for {symbol}")
+        self.logger.debug(f"🔍 [RPI_DEBUG] Input params: category={category}, limit={limit}")
+
+        try:
+            endpoint = '/v5/market/rpi_orderbook'
+            api_symbol = self._get_symbol_string(symbol)
+            original_limit = limit
+            limit = min(limit, 50)  # Bybit max limit is 50
+
+            if original_limit != limit:
+                self.logger.debug(f"🔍 [RPI_DEBUG] Limit adjusted from {original_limit} to {limit} (Bybit max)")
+
+            params = {
+                'category': category,
+                'symbol': api_symbol,
+                'limit': limit
+            }
+
+            self.logger.debug(f"🔍 [RPI_DEBUG] Symbol conversion: {symbol} -> {api_symbol}")
+            self.logger.debug(f"🔍 [RPI_DEBUG] API endpoint: {endpoint}")
+            self.logger.debug(f"🔍 [RPI_DEBUG] Request params: {params}")
+
+            request_start = time.time()
+            response = await self._make_request_with_retry('GET', endpoint, params=params, max_retries=3)
+            request_time = (time.time() - request_start) * 1000
+
+            self.logger.debug(f"🔍 [RPI_DEBUG] API request completed in {request_time:.2f}ms")
+            self.logger.debug(f"🔍 [RPI_DEBUG] Response type: {type(response)}")
+
+            if isinstance(response, dict):
+                ret_code = response.get('retCode')
+                ret_msg = response.get('retMsg')
+                self.logger.debug(f"🔍 [RPI_DEBUG] Response retCode: {ret_code}, retMsg: {ret_msg}")
+
+                if ret_code == 0:
+                    result = response.get('result', {})
+
+                    # Log detailed result structure
+                    bids = result.get('b', [])
+                    asks = result.get('a', [])
+                    timestamp = result.get('ts')
+                    update_id = result.get('u')
+                    seq = result.get('seq')
+
+                    self.logger.debug(f"🔍 [RPI_DEBUG] Result structure analysis:")
+                    self.logger.debug(f"🔍 [RPI_DEBUG]   - Bids count: {len(bids)}")
+                    self.logger.debug(f"🔍 [RPI_DEBUG]   - Asks count: {len(asks)}")
+                    self.logger.debug(f"🔍 [RPI_DEBUG]   - Timestamp: {timestamp}")
+                    self.logger.debug(f"🔍 [RPI_DEBUG]   - Update ID: {update_id}")
+                    self.logger.debug(f"🔍 [RPI_DEBUG]   - Sequence: {seq}")
+
+                    # Sample first few levels for debugging
+                    if bids:
+                        sample_bids = bids[:min(3, len(bids))]
+                        self.logger.debug(f"🔍 [RPI_DEBUG] Sample bids: {sample_bids}")
+
+                        # Validate bid structure
+                        for i, bid in enumerate(sample_bids):
+                            if len(bid) == 3:
+                                price, non_rpi, rpi = bid[0], bid[1], bid[2]
+                                total = float(non_rpi) + float(rpi)
+                                self.logger.debug(f"🔍 [RPI_DEBUG]   Bid {i}: price={price}, non_rpi={non_rpi}, rpi={rpi}, total={total}")
+                            else:
+                                self.logger.warning(f"⚠️ [RPI_DEBUG] Invalid bid structure at index {i}: {bid}")
+
+                    if asks:
+                        sample_asks = asks[:min(3, len(asks))]
+                        self.logger.debug(f"🔍 [RPI_DEBUG] Sample asks: {sample_asks}")
+
+                        # Validate ask structure
+                        for i, ask in enumerate(sample_asks):
+                            if len(ask) == 3:
+                                price, non_rpi, rpi = ask[0], ask[1], ask[2]
+                                total = float(non_rpi) + float(rpi)
+                                self.logger.debug(f"🔍 [RPI_DEBUG]   Ask {i}: price={price}, non_rpi={non_rpi}, rpi={rpi}, total={total}")
+                            else:
+                                self.logger.warning(f"⚠️ [RPI_DEBUG] Invalid ask structure at index {i}: {ask}")
+
+                    total_time = (time.time() - start_time) * 1000
+                    self.logger.debug(f"✅ [RPI_DEBUG] RPI orderbook successfully fetched for {symbol} in {total_time:.2f}ms")
+                    self.logger.debug(f"✅ [RPI_DEBUG] Final result: {len(bids)} bids, {len(asks)} asks")
+
+                    return result
+                else:
+                    self.logger.debug(f"🔍 [RPI_DEBUG] API returned error - retCode: {ret_code}")
+                    self.logger.warning(f"⚠️ RPI orderbook fetch failed for {symbol}: "
+                                      f"retCode={ret_code}, retMsg={ret_msg}")
+                    return {}
+            else:
+                self.logger.debug(f"🔍 [RPI_DEBUG] Unexpected response type: {type(response)}")
+                self.logger.warning(f"⚠️ RPI orderbook fetch failed for {symbol}: "
+                                  f"{self._summarize_response(response)}")
+                return {}
+
+        except Exception as e:
+            total_time = (time.time() - start_time) * 1000
+            self.logger.debug(f"🔍 [RPI_DEBUG] Exception occurred after {total_time:.2f}ms")
+            self.logger.debug(f"🔍 [RPI_DEBUG] Exception type: {type(e).__name__}")
+            self.logger.debug(f"🔍 [RPI_DEBUG] Exception message: {str(e)}")
+            import traceback
+            self.logger.debug(f"🔍 [RPI_DEBUG] Full traceback:\n{traceback.format_exc()}")
+            self.logger.error(f"❌ Error fetching RPI orderbook for {symbol}: {str(e)}")
+            return {}
 
     async def _fetch_long_short_ratio(self, symbol: str) -> Dict[str, Any]:
         """

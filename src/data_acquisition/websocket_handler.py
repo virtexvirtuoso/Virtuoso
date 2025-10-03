@@ -1,3 +1,4 @@
+from src.utils.task_tracker import create_tracked_task
 """WebSocket handler for market data acquisition.
 
 This module provides WebSocket functionality for:
@@ -73,7 +74,7 @@ class WebSocketHandler:
                 return False
                 
             # Start heartbeat monitoring
-            asyncio.create_task(self._monitor_heartbeats())
+            create_tracked_task(self._monitor_heartbeats(), name="auto_tracked_task")
             
             logger.info("WebSocket handler initialized successfully")
             return True

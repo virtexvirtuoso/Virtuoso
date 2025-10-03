@@ -4,6 +4,7 @@ import time
 from typing import Dict, Any, List, Optional, Union
 from src.core.analysis.confluence import ConfluenceAnalyzer
 from src.trade_execution.confluence_position_manager import ConfluenceBasedPositionManager
+from src.utils.task_tracker import create_tracked_task
 
 logger = logging.getLogger(__name__)
 
@@ -109,7 +110,7 @@ class ConfluenceTradingStrategy:
             return True
             
         self.enabled = True
-        asyncio.create_task(self._trading_loop())
+        create_tracked_task(self._trading_loop(), name="auto_tracked_task")
         
         logger.info("Started confluence trading strategy")
         return True
@@ -145,7 +146,26 @@ class ConfluenceTradingStrategy:
         """
         try:
             # Analyze market data with confluence analyzer
-            analysis = await self.confluence_analyzer.analyze(market_data)
+            analyzer = getattr(self, 'confluence_analyzer', None)
+            if not (analyzer and hasattr(analyzer, 'analyze') and callable(getattr(analyzer, 'analyze'))):
+                logger.debug("confluence_analyzer missing or analyze() not callable; returning neutral signal")
+                return {
+                    'action': 'none',
+                    'score': 50,
+                    'reason': 'analyzer_unavailable',
+                    'timestamp': time.time() * 1000
+                }
+
+            try:
+                analysis = await analyzer.analyze(market_data)
+            except Exception as e:
+                logger.debug(f"confluence_analyzer.analyze error: {e}")
+                return {
+                    'action': 'none',
+                    'score': 50,
+                    'reason': f'analysis_error: {e}',
+                    'timestamp': time.time() * 1000
+                }
             
             # Get confluence score
             score = analysis.get('score', 50)

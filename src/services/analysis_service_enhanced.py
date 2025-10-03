@@ -1,3 +1,4 @@
+from src.utils.task_tracker import create_tracked_task
 """
 Enhanced Analysis Service - Phase 2B
 Generates trading signals, top movers, and market analysis
@@ -140,7 +141,7 @@ class EnhancedAnalysisService:
             # Use real indicator data from cache or direct calculation
             if hasattr(self, 'cache_client') and self.cache_client:
                 cache_key = f"{symbol}:{component}:score".encode()
-                score_data = asyncio.create_task(self.cache_client.get(cache_key))
+                score_data = create_tracked_task(self.cache_client.get, name="get_task")
                 if score_data:
                     return float(score_data)
             

@@ -351,6 +351,7 @@ make format
 - **[Contributing Guidelines](CONTRIBUTING.md)** - How to contribute to the project
 - **[Change Log](CHANGELOG.md)** - Version history and updates
 - **[License](LICENSE)** - Project license information
+ - **[Confluence Specification](docs/CONFLUENCE.md)** - Canonical Market Prism system design and operation
 
 ### 📖 In-Application Documentation
 When the application is running, you can access:

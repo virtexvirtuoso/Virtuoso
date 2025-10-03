@@ -126,6 +126,7 @@ main() {
         git \
         curl \
         wget \
+        logrotate \
         nginx \
         redis-server \
         supervisor \
@@ -271,20 +272,28 @@ EOF
     # Step 14: Setup log rotation
     log_info "Setting up log rotation..."
     cat > /etc/logrotate.d/virtuoso << EOF
-$INSTALL_DIR/logs/*.log {
+$INSTALL_DIR/logs/*.log /home/$SERVICE_USER/web_server.log {
     daily
+    size 3G
     missingok
     rotate 14
+    maxage 30
     compress
     delaycompress
     notifempty
+    copytruncate
     create 0640 $SERVICE_USER $SERVICE_USER
     sharedscripts
     postrotate
-        systemctl reload virtuoso >/dev/null 2>&1 || true
+        systemctl kill -s HUP --kill-who=main virtuoso >/dev/null 2>&1 || true
     endscript
 }
 EOF
+
+    # Install maintenance scripts
+    log_info "Installing maintenance scripts..."
+    install -Dm755 "$INSTALL_DIR/scripts/maintenance/check_disk_usage.sh" /usr/local/bin/virt-disk-monitor || true
+    install -Dm755 "$INSTALL_DIR/scripts/maintenance/cleanup_exports.sh" /usr/local/bin/virt-clean-exports || true
     
     # Step 15: Setup monitoring
     log_info "Setting up basic monitoring..."
@@ -297,8 +306,10 @@ fi
 EOF
     chmod +x /usr/local/bin/virtuoso-health-check
     
-    # Add to crontab
+    # Add to crontab (health, disk monitor hourly, exports cleanup daily)
     (crontab -l 2>/dev/null; echo "*/5 * * * * /usr/local/bin/virtuoso-health-check") | crontab -
+    (crontab -l 2>/dev/null; echo "15 * * * * /usr/local/bin/virt-disk-monitor >> /var/log/virtuoso-disk-monitor.log 2>&1") | crontab -
+    (crontab -l 2>/dev/null; echo "30 3 * * * RETENTION_DAYS=14 PROJECT_ROOT=$INSTALL_DIR /usr/local/bin/virt-clean-exports >> $INSTALL_DIR/logs/maintenance.log 2>&1") | crontab -
     
     # Step 16: Enable and start services
     log_info "Enabling and starting services..."

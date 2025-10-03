@@ -1,3 +1,4 @@
+from src.utils.task_tracker import create_tracked_task
 """
 Event-Driven Infrastructure for Virtuoso Trading System
 
@@ -339,8 +340,8 @@ class EventBus(IAsyncDisposable):
         # Start worker tasks for each priority level
         for priority in EventPriority:
             for i in range(self.max_workers // len(EventPriority) + 1):
-                worker = asyncio.create_task(
-                    self._worker(priority, f"{priority.name.lower()}_worker_{i}")
+                worker = create_tracked_task(
+                    self._worker, name="_worker_task")}_worker_{i}")
                 )
                 self._workers.append(worker)
                 
@@ -612,7 +613,7 @@ class EventBus(IAsyncDisposable):
         if event.retry_count < event.max_retries:
             event.retry_count += 1
             # Re-queue for retry (simplified)
-            asyncio.create_task(self.publish(event))
+            create_tracked_task(self.publish, name="publish_task")
             return False
             
         return True

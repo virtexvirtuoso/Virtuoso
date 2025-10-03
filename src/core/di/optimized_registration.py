@@ -265,13 +265,18 @@ def register_core_services_optimized(
     async def create_top_symbols_manager():
         """Top symbols manager - SCOPED (per-request symbol context)"""
         from ...core.market.top_symbols import TopSymbolsManager
-        
+        from ...core.validation.service import AsyncValidationService
+
         # Get required singleton dependencies
         exchange_manager = await container.get_service(ExchangeManager)
-        
+
+        # Create validation service (lightweight, can be created per request)
+        validation_service = AsyncValidationService()
+
         manager = TopSymbolsManager(
             exchange_manager=exchange_manager,
-            config=config.get('symbols', {})
+            config=config,
+            validation_service=validation_service
         )
         logger.debug("✅ TopSymbolsManager created (SCOPED)")
         return manager

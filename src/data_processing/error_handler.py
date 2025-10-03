@@ -46,7 +46,22 @@ class SimpleErrorHandler:
             self.logger.debug(traceback.format_exc())
             
             # Handle based on severity
-            if severity >= ErrorSeverity.HIGH:
+            # Convert severity to numeric value for comparison
+            severity_levels = {
+                ErrorSeverity.DEBUG: 0,
+                ErrorSeverity.INFO: 1,
+                ErrorSeverity.WARNING: 2,
+                ErrorSeverity.ERROR: 3,
+                ErrorSeverity.CRITICAL: 4,
+                ErrorSeverity.LOW: 1,
+                ErrorSeverity.MEDIUM: 2,
+                ErrorSeverity.HIGH: 3
+            }
+
+            current_level = severity_levels.get(severity, 2)  # Default to MEDIUM
+            high_level = severity_levels.get(ErrorSeverity.HIGH, 3)
+
+            if current_level >= high_level:
                 # For high severity errors, we might want to:
                 # - Send alerts
                 # - Stop processing

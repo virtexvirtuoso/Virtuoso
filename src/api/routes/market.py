@@ -10,6 +10,14 @@ import asyncio
 from src.core.analysis.confluence import ConfluenceAnalyzer
 from src.api.cache_adapter_direct import cache_adapter
 
+# Import shared cache bridge for live data
+try:
+    from src.core.cache.web_service_adapter import get_web_service_cache_adapter
+    web_cache = get_web_service_cache_adapter()
+except ImportError:
+    web_cache = None
+    logger.warning("Shared cache web adapter not available - using fallback")
+
 # Import cache functionality with safe fallback
 try:
     from src.core.cache.unified_cache import get_cache
@@ -411,13 +419,30 @@ async def get_market_overview(
     request: Request,
     exchange_manager: ExchangeManager = Depends(get_exchange_manager)
 ) -> Dict[str, Any]:
-    """Get general market overview with regime analysis using LIVE data."""
+    """Get general market overview with regime analysis using LIVE data from shared cache."""
     try:
-        # Check cache first
+        # CRITICAL FIX: Use shared cache bridge for live data
+        if web_cache:
+            try:
+                live_data = await web_cache.get_market_overview()
+                if live_data and live_data.get('total_symbols', 0) > 0:
+                    logger.info(f"✅ Market overview from shared cache: {live_data.get('total_symbols')} symbols")
+                    return {
+                        **live_data,
+                        "cached": True,
+                        "data_source": "shared_cache_live",
+                        "timestamp": int(time.time())
+                    }
+                logger.warning("Shared cache returned empty data, falling back to direct fetch")
+            except Exception as e:
+                logger.error(f"Shared cache error: {e}, falling back to direct fetch")
+
+        # Fallback to direct exchange fetch if shared cache unavailable
         cache_key = "market_overview"
         cached_data = market_cache.get(cache_key, ttl_seconds=30)
         if cached_data:
             cached_data["cached"] = True
+            cached_data["data_source"] = "direct_cache_fallback"
             return cached_data
         
         # Initialize variables
@@ -1216,7 +1241,22 @@ async def get_comprehensive_symbol_analysis(
                 }
             
             # Get confluence analysis
-            confluence_result = await confluence_analyzer.analyze(confluence_market_data)
+            if not (confluence_analyzer and hasattr(confluence_analyzer, 'analyze') and callable(getattr(confluence_analyzer, 'analyze'))):
+                return {
+                    "error": "confluence_analyzer not available",
+                    "symbol": symbol,
+                    "message": "Confluence analysis service is currently unavailable"
+                }
+
+            try:
+                confluence_result = await confluence_analyzer.analyze(confluence_market_data)
+            except Exception as e:
+                logger.debug(f"confluence_analyzer.analyze error for {symbol}: {e}")
+                return {
+                    "error": f"analysis failed: {e}",
+                    "symbol": symbol,
+                    "message": "Failed to perform confluence analysis"
+                }
             
             if confluence_result and "error" not in confluence_result:
                 # Extract key confluence metrics
@@ -1408,9 +1448,107 @@ async def get_comprehensive_symbol_analysis(
         }
         
         return analysis
-        
+
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error in comprehensive analysis for {symbol}: {e}")
         raise HTTPException(status_code=500, detail=f"Error generating comprehensive analysis for {symbol}: {str(e)}")
+
+
+@router.get("/data")
+
+@router.get("/symbols")
+async def get_market_symbols() -> Dict[str, Any]:
+    """Get list of all tracked symbols with basic info."""
+    try:
+        # Use shared cache bridge for live data
+        from src.core.cache.web_service_adapter import get_web_service_cache_adapter
+        web_cache = get_web_service_cache_adapter()
+
+        if web_cache:
+            try:
+                symbols_data = await web_cache.get_symbols_list()
+                if symbols_data:
+                    return symbols_data
+            except Exception as e:
+                logger.error(f"Error fetching symbols from cache: {e}")
+
+        # Fallback: Get from Bybit directly
+        import aiohttp
+        async with aiohttp.ClientSession() as session:
+            url = "https://api.bybit.com/v5/market/tickers?category=linear"
+            async with session.get(url, timeout=10) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    if data.get('retCode') == 0 and 'result' in data:
+                        tickers = data['result']['list']
+                        symbols = [
+                            {
+                                "symbol": t['symbol'],
+                                "price": float(t['lastPrice']),
+                                "change_24h": float(t['price24hPcnt']) * 100,
+                                "volume_24h": float(t['volume24h'])
+                            }
+                            for t in tickers
+                            if t['symbol'].endswith('USDT') and float(t['turnover24h']) > 1000000
+                        ]
+                        return {
+                            "symbols": symbols[:50],  # Top 50 by volume
+                            "count": len(symbols),
+                            "timestamp": datetime.utcnow().isoformat()
+                        }
+
+        return {
+            "symbols": [],
+            "count": 0,
+            "timestamp": datetime.utcnow().isoformat(),
+            "status": "no_data"
+        }
+    except Exception as e:
+        logger.error(f"Error in get_market_symbols: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+async def get_general_market_data(
+    exchange_manager: ExchangeManager = Depends(get_exchange_manager)
+) -> Dict:
+    """Get general market data overview across exchanges"""
+    try:
+        from datetime import datetime
+        import time
+
+        overview = {
+            'status': 'operational',
+            'exchanges': {},
+            'top_symbols': ['BTC/USDT', 'ETH/USDT', 'BNB/USDT'],
+            'timestamp': datetime.now().isoformat(),
+            'uptime_seconds': time.time()
+        }
+
+        if hasattr(exchange_manager, 'exchanges'):
+            for exchange_id, exchange in exchange_manager.exchanges.items():
+                try:
+                    # Get basic market info
+                    markets = await exchange.load_markets()
+                    overview['exchanges'][exchange_id] = {
+                        'status': 'connected',
+                        'market_count': len(markets),
+                        'name': exchange.name if hasattr(exchange, 'name') else exchange_id
+                    }
+                except Exception as e:
+                    overview['exchanges'][exchange_id] = {
+                        'status': 'error',
+                        'error': str(e),
+                        'market_count': 0
+                    }
+
+        return overview
+
+    except Exception as e:
+        logger.error(f"Error getting general market data: {e}")
+        return {
+            'status': 'error',
+            'error': str(e),
+            'exchanges': {},
+            'timestamp': datetime.now().isoformat()
+        }

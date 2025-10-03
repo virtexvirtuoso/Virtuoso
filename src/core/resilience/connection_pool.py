@@ -1,3 +1,4 @@
+from src.utils.task_tracker import create_tracked_task
 """
 Connection Pool Manager for Virtuoso CCXT Trading System.
 
@@ -236,10 +237,10 @@ class ConnectionPool:
             
             # Start background tasks
             if self.config.health_check_interval > 0:
-                self._health_check_task = asyncio.create_task(self._health_check_loop())
+                self._health_check_task = create_tracked_task(self._health_check_loop(), name="auto_tracked_task")
             
             if self.config.enable_cleanup and self.config.cleanup_interval > 0:
-                self._cleanup_task = asyncio.create_task(self._cleanup_loop())
+                self._cleanup_task = create_tracked_task(self._cleanup_loop(), name="auto_tracked_task")
             
             logger.info(f"Connection pool '{self.name}' initialized successfully")
     

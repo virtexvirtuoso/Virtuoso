@@ -13,6 +13,7 @@ import traceback
 from dataclasses import dataclass, field, asdict
 
 from src.monitoring.metrics_manager import MetricsManager
+from src.utils.task_tracker import create_tracked_task
 
 
 @dataclass
@@ -259,7 +260,7 @@ class HealthMonitor:
         self.logger.info("Starting health monitoring")
         
         # Create the monitoring task
-        self.monitoring_task = asyncio.create_task(self._monitoring_loop())
+        self.monitoring_task = create_tracked_task(self._monitoring_loop(), name="auto_tracked_task")
     
     async def stop_monitoring(self) -> None:
         """Stop the health monitoring background task."""

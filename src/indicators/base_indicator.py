@@ -219,14 +219,15 @@ class BaseIndicator(ABC):
             self.cache = None
             self.logger.debug("Indicator caching disabled")
         
-        # Timeframe config from root level
+        # Timeframe config from root level (optional for some indicators)
         self.TIMEFRAME_CONFIG = {}
-        for tf_name, tf_config in config['timeframes'].items():
-            self.TIMEFRAME_CONFIG[tf_name] = {
-                'friendly_name': f"{tf_config['interval']} minute",
-                'interval': str(tf_config['interval']),
-                'min_candles': tf_config['validation']['min_candles']
-            }
+        if 'timeframes' in config:
+            for tf_name, tf_config in config['timeframes'].items():
+                self.TIMEFRAME_CONFIG[tf_name] = {
+                    'friendly_name': f"{tf_config['interval']} minute",
+                    'interval': str(tf_config['interval']),
+                    'min_candles': tf_config['validation']['min_candles']
+                }
 
         # Data validation configuration
         self.DATA_REQUIREMENTS = {
@@ -257,12 +258,14 @@ class BaseIndicator(ABC):
             for tf_name, tf_config in self.TIMEFRAME_CONFIG.items()
         }
 
-        # Standard timeframe weights
-        self.timeframe_weights = {
-            tf_name: self.config['timeframes'][tf_name]['weight']
-            for tf_name in ['base', 'ltf', 'mtf', 'htf'] 
-            if tf_name in self.config['timeframes']
-        }
+        # Standard timeframe weights (only if timeframes config exists)
+        self.timeframe_weights = {}
+        if 'timeframes' in self.config:
+            self.timeframe_weights = {
+                tf_name: self.config['timeframes'][tf_name]['weight']
+                for tf_name in ['base', 'ltf', 'mtf', 'htf']
+                if tf_name in self.config['timeframes']
+            }
 
         self.validation_requirements = {
             'ohlcv': {

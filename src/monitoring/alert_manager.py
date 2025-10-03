@@ -17,12 +17,13 @@ import uuid
 import subprocess
 import hashlib
 import textwrap
-import random
 import requests
 import aiofiles
 import numpy as np
 import pandas as pd
 import sqlite3
+import math
+from src.utils.task_tracker import create_tracked_task
 
 logger = logging.getLogger(__name__)
 
@@ -229,6 +230,40 @@ class AlertManager:
         self.liquidation_cooldown = 300  # Default 5 minutes cooldown between liquidation alerts for the same symbol
         self.large_order_cooldown = 300  # Default 5 minutes cooldown between large order alerts for the same symbol
         self.whale_activity_cooldown = 900  # Default 15 minutes cooldown between whale activity alerts for the same symbol
+
+        # Manipulation detection configuration
+        self.manipulation_thresholds = {
+            'volume': {
+                'critical': 10_000_000,  # $10M+
+                'high': 5_000_000,       # $5M+
+                'moderate': 2_000_000,   # $2M+
+                'low': 0                 # < $2M
+            },
+            'trades': {
+                'critical': 10,  # 10+ trades
+                'high': 5,       # 5+ trades
+                'moderate': 3,   # 3+ trades
+                'low': 0         # < 3 trades
+            },
+            'ratio': {
+                'critical_high': 10,   # 10:1+ ratio
+                'critical_low': 0.1,   # 1:10+ ratio (inverse)
+                'high_high': 5,        # 5:1+ ratio
+                'high_low': 0.2,       # 1:5+ ratio (inverse)
+                'moderate_high': 3,    # 3:1+ ratio
+                'moderate_low': 0.33,  # 1:3+ ratio (inverse)
+            }
+        }
+        self.manipulation_severity_weights = {
+            'volume': 0.4,    # 40% weight
+            'trades': 0.3,    # 30% weight
+            'ratio': 0.3      # 30% weight
+        }
+        self.manipulation_severity_score_thresholds = {
+            'extreme': 3.5,    # Score >= 3.5
+            'high': 2.5,       # Score >= 2.5
+            'moderate': 1.5    # Score >= 1.5
+        }
         
         # Discord configuration
         self.discord_client = None
@@ -300,14 +335,17 @@ class AlertManager:
         # Additional configurations from config file
         if 'monitoring' in self.config and 'alerts' in self.config['monitoring']:
             alert_config = self.config['monitoring']['alerts']
-            
+            self.logger.info(f"DEBUG: alert_config keys: {list(alert_config.keys())}")
+
             # Discord webhook - first check from direct path in config
-            if 'discord_webhook_url' in alert_config and alert_config['discord_webhook_url']:
-                self.discord_webhook_url = alert_config['discord_webhook_url'].strip()
-                if self.discord_webhook_url:
-                        pass  # logger.debug(f" Webhook URL from direct config: {self.discord_webhook_url[:20]}...{self.discord_webhook_url[-10:]}")  # Disabled verbose config dump
-                else:
-                    self.logger.debug(" Discord webhook URL from direct config is empty after stripping")
+            if 'discord_webhook_url' in alert_config:
+                self.logger.info(f"DEBUG: discord_webhook_url in config: {repr(alert_config['discord_webhook_url'])}")
+                if alert_config['discord_webhook_url']:
+                    self.discord_webhook_url = alert_config['discord_webhook_url'].strip()
+                    if self.discord_webhook_url:
+                            pass  # logger.debug(f" Webhook URL from direct config: {self.discord_webhook_url[:20]}...{self.discord_webhook_url[-10:]}")  # Disabled verbose config dump
+                    else:
+                        self.logger.debug(" Discord webhook URL from direct config is empty after stripping")
             # Then check nested discord > webhook_url path (old format)
             elif 'discord' in alert_config and 'webhook_url' in alert_config['discord'] and alert_config['discord']['webhook_url']:
                 self.discord_webhook_url = alert_config['discord']['webhook_url'].strip()
@@ -315,14 +353,19 @@ class AlertManager:
                         pass  # logger.debug(f" Webhook URL from nested config: {self.discord_webhook_url[:20]}...{self.discord_webhook_url[-10:]}")  # Disabled verbose config dump
                 else:
                     self.logger.debug(" Discord webhook URL from nested config is empty after stripping")
-            # Try to get from environment variable (fallback for empty config values)
-            else:
-                self.discord_webhook_url = os.getenv('DISCORD_WEBHOOK_URL', '')  # Use environment variable instead of hardcoded value
+
+            # Always check environment variable as fallback if config is empty
+            if not self.discord_webhook_url:
+                env_webhook = os.getenv('DISCORD_WEBHOOK_URL', '')
+                self.logger.info(f"DEBUG: Checking environment for DISCORD_WEBHOOK_URL: {bool(env_webhook)}")
+                if env_webhook:
+                    self.logger.info(f"DEBUG: Raw env value length: {len(env_webhook)}")
+                self.discord_webhook_url = env_webhook  # Use environment variable instead of hardcoded value
                 if self.discord_webhook_url:
                     # Fix potential newline issues
                     self.discord_webhook_url = self.discord_webhook_url.strip().replace('\n', '')
                     if self.discord_webhook_url:
-                            self.logger.debug(f" Webhook URL from environment: {self.discord_webhook_url[:20]}...{self.discord_webhook_url[-10:]}")
+                            self.logger.info(f"✅ Webhook URL loaded from environment: {self.discord_webhook_url[:20]}...{self.discord_webhook_url[-10:]}")
                     else:
                         self.logger.debug(" Discord webhook URL from environment is empty after cleaning")
                 else:
@@ -446,16 +489,23 @@ class AlertManager:
             self.report_manager = None
             self.pdf_enabled = False
 
+        # FINAL FALLBACK: Always check environment variables if webhook URL still not set
+        if not self.discord_webhook_url or self.discord_webhook_url.strip() == "":
+            env_webhook = os.getenv('DISCORD_WEBHOOK_URL', '')
+            if env_webhook and env_webhook.strip():
+                self.discord_webhook_url = env_webhook.strip().replace('\n', '')
+                self.logger.info(f"✅ Discord webhook loaded from environment variable: {self.discord_webhook_url[:20]}...{self.discord_webhook_url[-10:]}")
+
         # Force initialize handlers
         try:
             self._initialize_handlers()
             self.logger.debug(f"Handlers after initialization: {self.handlers}")
         except Exception as e:
             self.logger.error(f"Error initializing handlers: {str(e)}")
-        
+
         # Test Discord webhook
         # self.test_discord_webhook()  # Removed test webhook to prevent startup alerts
-        
+
         # Log critical information for troubleshooting
         self.logger.info(f"Buy threshold: {self.buy_threshold}")
         self.logger.info(f"Sell threshold: {self.sell_threshold}")
@@ -918,24 +968,23 @@ class AlertManager:
                     
                     # Build description with prominent manipulation warning if needed
                     if manipulation_warning:
+                        # Optimized format: Action → Evidence → Context
                         description = (
-                            f"🚨🚨🚨 **MANIPULATION ALERT** 🚨🚨🚨\n\n"
+                            f"🚨 **MANIPULATION ALERT** - {signal_context.upper()}\n"
                             f"{emoji} **{signal_strength} Whale {subtype.capitalize()}** {strength_emoji}\n"
-                            f"**{symbol}** - ${abs(net_usd_value):,.0f} | {whale_trades_count} trades | {volume_multiple}\n"
-                            f"Current price: **${current_price:,.2f}**\n\n"
-                            f"⚠️ **DANGER: {signal_context}** ⚠️\n"
-                            f"**What this means:**\n{interpretation}\n\n"
-                            f"**Recent Whale Activity:**\n{trades_details}\n\n"
-                            f"**Large Orders on Book:**\n{orders_details}"
+                            f"**{symbol}**: ${current_price:,.2f} | ${abs(net_usd_value):,.0f} volume | {whale_trades_count} trades\n\n"
+                            f"📊 **Evidence:**\n{trades_details}\n"
+                            f"📋 **Order Book:**\n{orders_details}\n\n"
+                            f"⚠️ **Risk Assessment:** {interpretation}"
                         )
                     else:
+                        # Optimized format: Signal → Evidence → Context
                         description = (
-                            f"{emoji} **{signal_strength} Whale {subtype.capitalize()}** {strength_emoji}\n\n"
-                            f"**{symbol}** - ${abs(net_usd_value):,.0f} | {whale_trades_count} trades | {volume_multiple}\n"
-                            f"Current price: **${current_price:,.2f}**\n\n"
-                            f"**What this means:**\n{interpretation}\n\n"
-                            f"**Recent Whale Activity:**\n{trades_details}\n\n"
-                            f"**Large Orders on Book:**\n{orders_details}"
+                            f"{emoji} **{signal_strength} Whale {subtype.capitalize()}** {strength_emoji}\n"
+                            f"**{symbol}**: ${current_price:,.2f} | ${abs(net_usd_value):,.0f} volume | {whale_trades_count} trades\n\n"
+                            f"📊 **Evidence:**\n{trades_details}\n"
+                            f"📋 **Order Book:**\n{orders_details}\n\n"
+                            f"💡 **Analysis:** {interpretation}"
                         )
                     
                     # Create Discord embed
@@ -949,16 +998,16 @@ class AlertManager:
                     # Add footer with Alert ID in the format: "Virtuoso Whale Detection • ID: WA-123456-BTCUSDT"
                     embed.set_footer(text=f"Virtuoso Whale Detection • ID: {alert_id}")
                     
-                    # Simplified two-panel layout with essential info only
+                    # Optimized two-panel layout: Trade metrics and Signal info
                     embed.add_embed_field(
-                        name="📊 Trade Activity",
-                        value=f"**${abs(net_usd_value):,.0f}** total value\n**{whale_trades_count}** whale trades\n**{whale_buy_volume:.0f}** buy / **{whale_sell_volume:.0f}** sell",
+                        name="📊 Trade Metrics",
+                        value=f"**{whale_buy_volume:.0f}** buy / **{whale_sell_volume:.0f}** sell\n{volume_multiple}",
                         inline=True
                     )
-                    
+
                     embed.add_embed_field(
-                        name=f"{strength_emoji} Signal Type",
-                        value=f"**{signal_strength}**\n{signal_context}\nCurrent price: **${current_price:.2f}**",
+                        name=f"{strength_emoji} Signal Strength",
+                        value=f"**{signal_strength}**\n{signal_context}",
                         inline=True
                     )
                     
@@ -1010,7 +1059,7 @@ class AlertManager:
                                 priority='high' if signal_strength == 'EXECUTING' else 'normal',
                                 tags=[subtype, signal_strength, symbol]
                             )
-                            asyncio.create_task(self.alert_persistence.save_alert(alert_obj))
+                            create_tracked_task(self.alert_persistence.save_alert, name="save_alert_task")
                             self.logger.debug(f"Alert {alert_id} queued for persistence")
                         except Exception as e:
                             self.logger.error(f"Failed to persist whale alert {alert_id}: {e}")
@@ -2916,6 +2965,57 @@ class AlertManager:
             self.logger.error(traceback.format_exc())
             self._alert_stats['errors'] = int(self._alert_stats.get('errors', 0)) + 1
 
+    async def send_report(self, report: str, title: Optional[str] = None, files: Optional[List[str]] = None) -> bool:
+        """Send a periodic market report via configured channels.
+
+        Args:
+            report: Plain-text report content
+            title: Optional report title
+            files: Optional list of file paths to attach (e.g., PDFs)
+
+        Returns:
+            True if at least one message was delivered successfully, else False
+        """
+        try:
+            if not isinstance(report, str) or not report.strip():
+                self.logger.warning("send_report called with empty report content")
+                return False
+
+            # Default title
+            report_title = title or "\ud83d\udcca Virtuoso Market Report"
+
+            # Discord content limit is ~2000 chars; keep margin for fencing and header
+            max_chunk = 1800
+            chunks: List[str] = []
+            content = report.strip()
+            while content:
+                chunks.append(content[:max_chunk])
+                content = content[max_chunk:]
+
+            any_success = False
+            for idx, chunk in enumerate(chunks):
+                heading = report_title if idx == 0 else f"{report_title} (cont. {idx})"
+                message: Dict[str, Any] = {
+                    "content": f"**{heading}**\n```\n{chunk}\n```",
+                    "username": "Virtuoso Monitoring",
+                }
+
+                attach_files = files if (idx == 0 and files) else None
+                ok, _resp = await self.send_discord_webhook_message(message, files=attach_files, alert_type='market_report')
+                any_success = any_success or ok
+
+            if not any_success:
+                self.logger.error("send_report: failed to deliver report via Discord webhook")
+            else:
+                self.logger.info("send_report: report delivered successfully")
+
+            return any_success
+
+        except Exception as e:
+            logger.error(f"Unhandled exception: {e}", exc_info=True)
+            self.logger.error(f"send_report error: {type(e).__name__}: {str(e)}")
+            return False
+
     async def send_discord_webhook_message(self, message: Dict[str, Any], files: List[str] = None, alert_type: str = None) -> Tuple[bool, Optional[Dict[str, Any]]]:
         """Send message to Discord webhook with enhanced error handling and logging.
         
@@ -3241,14 +3341,19 @@ class AlertManager:
     async def cleanup(self):
         """Clean up resources when shutting down"""
         try:
+            # Close client session if it exists
+            if self._client_session and not self._client_session.closed:
+                await self._client_session.close()
+                self.logger.info("Closed HTTP client session")
+
             # Close webhook session
             await self._close_webhook_session()
-            
+
             # Clean up throttle entries
             self._cleanup_throttle_entries()
-            
+
             self.logger.info("AlertManager cleanup completed")
-            
+
         except Exception as e:
             self.logger.error(f"Error during cleanup: {e}")
 
@@ -4118,6 +4223,342 @@ class AlertManager:
             self.logger.error(f"Error sending manipulation alert for {symbol}: {str(e)}")
             self.logger.debug(traceback.format_exc())
 
+    async def send_retail_pressure_alert(
+        self,
+        symbol: str,
+        retail_score: float,
+        retail_imbalance: float,
+        retail_participation: float,
+        interpretation: str,
+        current_price: float = None,
+        signal_strength: str = "moderate"
+    ) -> None:
+        """
+        Send retail pressure alert based on RPI data analysis.
+
+        Args:
+            symbol: Trading pair symbol
+            retail_score: Retail component score (0-100)
+            retail_imbalance: Retail bid/ask imbalance (-1 to 1)
+            retail_participation: Retail participation rate (0-1)
+            interpretation: Human-readable interpretation
+            current_price: Current price of the asset
+            signal_strength: Signal strength ('weak', 'moderate', 'strong')
+        """
+        import time
+        start_time = time.time()
+
+        try:
+            self.logger.debug(f"🔍 [RPI_DEBUG] Starting retail pressure alert for {symbol}")
+            self.logger.debug(f"🔍 [RPI_DEBUG] Alert parameters:")
+            self.logger.debug(f"🔍 [RPI_DEBUG]   Retail score: {retail_score:.2f}")
+            self.logger.debug(f"🔍 [RPI_DEBUG]   Retail imbalance: {retail_imbalance:.4f}")
+            self.logger.debug(f"🔍 [RPI_DEBUG]   Retail participation: {retail_participation:.4f} ({retail_participation*100:.1f}%)")
+            self.logger.debug(f"🔍 [RPI_DEBUG]   Signal strength: {signal_strength}")
+            self.logger.debug(f"🔍 [RPI_DEBUG]   Current price: {current_price}")
+            self.logger.debug(f"🔍 [RPI_DEBUG]   Interpretation: {interpretation}")
+
+            # Skip if no webhook URL configured
+            if not self.discord_webhook_url:
+                self.logger.warning("Discord webhook URL not configured for retail alerts")
+                self.logger.debug(f"🔍 [RPI_DEBUG] Alert skipped - no webhook configured")
+                return
+
+            # Check throttling for retail alerts
+            alert_key = f"retail_pressure_{symbol}_{int(retail_score/5)*5}"  # Group by 5-point ranges
+            self.logger.debug(f"🔍 [RPI_DEBUG] Checking throttling with key: {alert_key}")
+
+            if self._check_improved_throttling(alert_key, "retail_pressure"):
+                self._mark_alert_sent_improved(alert_key, "retail_pressure")
+                self.logger.debug(f"🔍 [RPI_DEBUG] Throttling check passed - proceeding with alert")
+            else:
+                self.logger.debug(f"Retail pressure alert throttled for {symbol}")
+                self.logger.debug(f"🔍 [RPI_DEBUG] Alert throttled - skipping")
+                return
+
+            # Determine alert color and emoji based on retail score
+            if retail_score >= 75:
+                color = 0x00ff00  # Bright green - strong buying
+                emoji = "🚀"
+            elif retail_score >= 60:
+                color = 0x32cd32  # Green - moderate buying
+                emoji = "📈"
+            elif retail_score <= 25:
+                color = 0xff0000  # Red - strong selling
+                emoji = "📉"
+            elif retail_score <= 40:
+                color = 0xff6b6b  # Light red - moderate selling
+                emoji = "⚠️"
+            else:
+                color = 0xffa500  # Orange - neutral/mixed
+                emoji = "🔄"
+
+            # Format participation percentage
+            participation_pct = retail_participation * 100
+
+            # Create embed title
+            direction = "Bullish" if retail_score > 60 else "Bearish" if retail_score < 40 else "Neutral"
+            title = f"{emoji} {direction} Retail Pressure Detected - {symbol}"
+
+            embed_data = {
+                "title": title,
+                "color": color,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "fields": [
+                    {
+                        "name": "📊 Retail Score",
+                        "value": f"{retail_score:.1f}/100",
+                        "inline": True
+                    },
+                    {
+                        "name": "⚖️ Retail Imbalance",
+                        "value": f"{retail_imbalance:+.3f}",
+                        "inline": True
+                    },
+                    {
+                        "name": "🎯 Participation Rate",
+                        "value": f"{participation_pct:.1f}%",
+                        "inline": True
+                    },
+                    {
+                        "name": "🧠 Interpretation",
+                        "value": interpretation,
+                        "inline": False
+                    },
+                    {
+                        "name": "💪 Signal Strength",
+                        "value": signal_strength.title(),
+                        "inline": True
+                    }
+                ]
+            }
+
+            # Add price if available
+            if current_price:
+                embed_data["fields"].append({
+                    "name": "💰 Current Price",
+                    "value": f"${current_price:,.2f}",
+                    "inline": True
+                })
+
+            # Add footer with timestamp
+            embed_data["footer"] = {
+                "text": f"RPI Analysis • {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}"
+            }
+
+            # Send to Discord
+            message_data = {
+                "embeds": [embed_data]
+            }
+
+            success, response = await self.send_discord_webhook_message(
+                message_data,
+                alert_type="retail_pressure"
+            )
+
+            if success:
+                self.logger.info(f"Retail pressure alert sent for {symbol}: {interpretation}")
+            else:
+                self.logger.error(f"Failed to send retail pressure alert for {symbol}")
+
+        except Exception as e:
+            self.logger.error(f"Error sending retail pressure alert for {symbol}: {str(e)}")
+            self.logger.debug(traceback.format_exc())
+
+    async def send_retail_extremes_alert(
+        self,
+        symbol: str,
+        retail_score: float,
+        alert_type: str,  # 'extreme_buying' or 'extreme_selling'
+        retail_metrics: Dict[str, Any],
+        current_price: float = None
+    ) -> None:
+        """
+        Send alert for extreme retail activity (above 80 or below 20).
+
+        Args:
+            symbol: Trading pair symbol
+            retail_score: Retail component score
+            alert_type: Type of extreme activity
+            retail_metrics: Additional retail metrics
+            current_price: Current price of the asset
+        """
+        try:
+            # Skip if no webhook URL configured
+            if not self.discord_webhook_url:
+                self.logger.warning("Discord webhook URL not configured for extreme retail alerts")
+                return
+
+            # Check throttling for extreme alerts (more restrictive)
+            alert_key = f"retail_extreme_{symbol}_{alert_type}"
+            if self._check_improved_throttling(alert_key, "retail_extreme", content=f"{retail_score:.1f}"):
+                self._mark_alert_sent_improved(alert_key, "retail_extreme", content=f"{retail_score:.1f}")
+            else:
+                self.logger.debug(f"Extreme retail alert throttled for {symbol}")
+                return
+
+            # Configure alert based on type
+            if alert_type == "extreme_buying":
+                color = 0x00ff00  # Bright green
+                emoji = "🚀"
+                title_action = "EXTREME RETAIL BUYING"
+                description = "Unusually high retail buying pressure detected. Institutional interest may follow."
+            else:  # extreme_selling
+                color = 0xff0000  # Bright red
+                emoji = "💥"
+                title_action = "EXTREME RETAIL SELLING"
+                description = "Severe retail selling pressure detected. Possible capitulation scenario."
+
+            title = f"{emoji} {title_action} - {symbol}"
+
+            embed_data = {
+                "title": title,
+                "description": description,
+                "color": color,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "fields": [
+                    {
+                        "name": "🎯 Retail Score",
+                        "value": f"{retail_score:.1f}/100",
+                        "inline": True
+                    },
+                    {
+                        "name": "📊 Participation Rate",
+                        "value": f"{retail_metrics.get('participation', 0)*100:.1f}%",
+                        "inline": True
+                    },
+                    {
+                        "name": "⚖️ Imbalance",
+                        "value": f"{retail_metrics.get('imbalance', 0):+.3f}",
+                        "inline": True
+                    }
+                ]
+            }
+
+            # Add price if available
+            if current_price:
+                embed_data["fields"].append({
+                    "name": "💰 Price",
+                    "value": f"${current_price:,.2f}",
+                    "inline": True
+                })
+
+            # Add additional metrics if available
+            if retail_metrics.get('total_volume'):
+                embed_data["fields"].append({
+                    "name": "📈 Total Retail Volume",
+                    "value": f"{retail_metrics['total_volume']:,.2f}",
+                    "inline": True
+                })
+
+            # Add trading implications
+            if alert_type == "extreme_buying":
+                implications = "• Watch for institutional follow-through\n• Potential momentum continuation\n• Monitor for profit-taking"
+            else:
+                implications = "• Possible reversal opportunity\n• Watch for institutional accumulation\n• Monitor support levels"
+
+            embed_data["fields"].append({
+                "name": "💡 Trading Implications",
+                "value": implications,
+                "inline": False
+            })
+
+            embed_data["footer"] = {
+                "text": f"RPI Extreme Alert • {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}"
+            }
+
+            # Send to Discord
+            message_data = {
+                "embeds": [embed_data]
+            }
+
+            success, response = await self.send_discord_webhook_message(
+                message_data,
+                alert_type="retail_extreme"
+            )
+
+            if success:
+                self.logger.info(f"Extreme retail alert sent for {symbol}: {title_action}")
+            else:
+                self.logger.error(f"Failed to send extreme retail alert for {symbol}")
+
+        except Exception as e:
+            self.logger.error(f"Error sending extreme retail alert for {symbol}: {str(e)}")
+            self.logger.debug(traceback.format_exc())
+
+    def _generate_retail_alerts(self, analysis_result: Dict[str, Any], symbol: str) -> List[str]:
+        """
+        Generate retail-specific alerts based on analysis results.
+
+        Args:
+            analysis_result: Orderbook analysis result containing retail component
+            symbol: Trading symbol
+
+        Returns:
+            List of retail alert messages
+        """
+        self.logger.debug(f"🔍 [RPI_DEBUG] Generating retail alerts for {symbol}")
+        self.logger.debug(f"🔍 [RPI_DEBUG] Analysis result keys: {list(analysis_result.keys())}")
+
+        alerts = []
+        components = analysis_result.get('components', {})
+        retail_score = components.get('retail', 50.0)
+
+        self.logger.debug(f"🔍 [RPI_DEBUG] Components available: {list(components.keys())}")
+        self.logger.debug(f"🔍 [RPI_DEBUG] Retail score: {retail_score:.2f}")
+
+        # Define thresholds and their corresponding alerts
+        alert_thresholds = [
+            (80, "🔥 Extreme Retail Buying Pressure - Institutional interest likely", "extreme_buying"),
+            (70, "📈 Strong Retail Buying - Monitor for momentum", "strong_buying"),
+            (30, "📉 Strong Retail Selling - Watch for reversal", "strong_selling", "<="),
+            (20, "❄️ Extreme Retail Selling Pressure - Possible capitulation", "extreme_selling", "<=")
+        ]
+
+        # Generate alerts based on retail score thresholds
+        self.logger.debug(f"🔍 [RPI_DEBUG] Evaluating {len(alert_thresholds)} threshold conditions")
+
+        for i, threshold_config in enumerate(alert_thresholds):
+            threshold = threshold_config[0]
+            message = threshold_config[1]
+            category = threshold_config[2]
+            operator = threshold_config[3] if len(threshold_config) > 3 else ">="
+
+            condition_met = False
+            if operator == ">=":
+                condition_met = retail_score >= threshold
+            elif operator == "<=":
+                condition_met = retail_score <= threshold
+
+            self.logger.debug(f"🔍 [RPI_DEBUG]   Threshold {i+1}: {retail_score:.2f} {operator} {threshold} = {condition_met} ({category})")
+
+            if condition_met:
+                alerts.append(message)
+                self.logger.debug(f"🔍 [RPI_DEBUG]   Alert triggered: {category}")
+                break  # Only trigger the first matching condition
+
+        # Log retail sentiment analysis
+        if retail_score > 60:
+            sentiment = "Bullish"
+            strength = "Strong" if retail_score > 75 else "Moderate"
+        elif retail_score < 40:
+            sentiment = "Bearish"
+            strength = "Strong" if retail_score < 25 else "Moderate"
+        else:
+            sentiment = "Neutral"
+            strength = "Weak"
+
+        self.logger.debug(f"🔍 [RPI_DEBUG] Retail sentiment: {strength} {sentiment} (score: {retail_score:.2f})")
+        self.logger.debug(f"🔍 [RPI_DEBUG] Generated {len(alerts)} retail alerts for {symbol}")
+
+        if alerts:
+            for i, alert in enumerate(alerts):
+                self.logger.debug(f"🔍 [RPI_DEBUG]   Alert {i+1}: {alert}")
+        else:
+            self.logger.debug(f"🔍 [RPI_DEBUG] No retail alerts generated (neutral conditions)")
+
+        return alerts
+
     async def send_trade_execution_alert(
         self, 
         symbol: str, 
@@ -4836,20 +5277,248 @@ class AlertManager:
                 )
         
         elif signal_strength == "CONFLICTING":
+            # Calculate manipulation severity based on volume mismatch
+            buy_sell_ratio = buy_volume / max(sell_volume, 1)
+            volume_mismatch_severity = self._calculate_manipulation_severity(
+                abs(usd_value), trades_count, buy_sell_ratio
+            )
+
             if subtype == "accumulation":
-                interpretation = (
-                    f"🚨 **POTENTIAL MANIPULATION:** Order book shows large buy orders but actual trades are sells. "
-                    f"Whales may be spoofing/fake-walling to create false accumulation signals then selling into the fake demand. "
-                    f"⚠️ **HIGH RISK:** Price may drop suddenly when fake orders are pulled. DO NOT FOMO BUY."
+                # Order book shows buy orders but actual trades are sells
+                interpretation = self._format_manipulation_alert(
+                    pattern="FAKE BUY WALL",
+                    orderbook_signal="large BUY orders",
+                    actual_trades=f"{sell_volume:.0f} SELL trades",
+                    manipulation_tactic="spoofing/fake-walling to create false accumulation",
+                    whale_action="selling into the fake demand",
+                    risk_scenario="Price may drop suddenly when fake orders are pulled",
+                    trader_action="DO NOT FOMO BUY",
+                    severity=volume_mismatch_severity,
+                    volume=abs(usd_value),
+                    trade_count=trades_count
                 )
             else:  # distribution
-                interpretation = (
-                    f"🚨 **POTENTIAL MANIPULATION:** Order book shows large sell orders but actual trades are buys. "
-                    f"Whales may be spoofing/fake-walling to create false distribution signals then buying the fake dip. "
-                    f"⚠️ **HIGH RISK:** Price may pump suddenly when fake orders are pulled. DO NOT PANIC SELL."
+                # Order book shows sell orders but actual trades are buys
+                interpretation = self._format_manipulation_alert(
+                    pattern="FAKE SELL WALL",
+                    orderbook_signal="large SELL orders",
+                    actual_trades=f"{buy_volume:.0f} BUY trades",
+                    manipulation_tactic="spoofing/fake-walling to create false distribution",
+                    whale_action="buying the fake dip",
+                    risk_scenario="Price may pump suddenly when fake orders are pulled",
+                    trader_action="DO NOT PANIC SELL",
+                    severity=volume_mismatch_severity,
+                    volume=abs(usd_value),
+                    trade_count=trades_count
                 )
         
         return interpretation
+
+    def _calculate_manipulation_severity(self, volume: float, trade_count: int, buy_sell_ratio: float) -> str:
+        """
+        Calculate manipulation severity based on volume, trade count, and buy/sell ratio.
+
+        Args:
+            volume: Total USD volume involved
+            trade_count: Number of whale trades
+            buy_sell_ratio: Ratio of buy to sell volume (or vice versa)
+
+        Returns:
+            Severity level: "EXTREME", "HIGH", "MODERATE", or "LOW"
+        """
+        try:
+            # Input validation: Check for NaN, infinity, and negative values
+            if volume is None or math.isnan(volume) or math.isinf(volume):
+                self.logger.warning(f"Invalid volume value: {volume}, using 0")
+                volume = 0
+            if volume < 0:
+                self.logger.warning(f"Negative volume value: {volume}, using absolute value")
+                volume = abs(volume)
+
+            if trade_count is None or (isinstance(trade_count, float) and (math.isnan(trade_count) or math.isinf(trade_count))):
+                self.logger.warning(f"Invalid trade_count value: {trade_count}, using 0")
+                trade_count = 0
+            if trade_count < 0:
+                self.logger.warning(f"Negative trade_count value: {trade_count}, using 0")
+                trade_count = 0
+            trade_count = int(trade_count)  # Ensure it's an integer
+
+            if buy_sell_ratio is None or math.isnan(buy_sell_ratio) or math.isinf(buy_sell_ratio):
+                self.logger.warning(f"Invalid buy_sell_ratio value: {buy_sell_ratio}, using 1.0")
+                buy_sell_ratio = 1.0
+            if buy_sell_ratio < 0:
+                self.logger.warning(f"Negative buy_sell_ratio value: {buy_sell_ratio}, using 1.0")
+                buy_sell_ratio = 1.0
+
+            self.logger.debug(f"Calculating manipulation severity: volume=${volume:,.2f}, trades={trade_count}, ratio={buy_sell_ratio:.2f}")
+
+            # Volume-based severity using configuration constants
+            vol_thresholds = self.manipulation_thresholds['volume']
+            if volume >= vol_thresholds['critical']:
+                volume_severity = 4
+            elif volume >= vol_thresholds['high']:
+                volume_severity = 3
+            elif volume >= vol_thresholds['moderate']:
+                volume_severity = 2
+            else:
+                volume_severity = 1
+
+            # Trade count severity (more trades = more coordinated)
+            trade_thresholds = self.manipulation_thresholds['trades']
+            if trade_count >= trade_thresholds['critical']:
+                trade_severity = 4
+            elif trade_count >= trade_thresholds['high']:
+                trade_severity = 3
+            elif trade_count >= trade_thresholds['moderate']:
+                trade_severity = 2
+            else:
+                trade_severity = 1
+
+            # Ratio severity (higher imbalance = more manipulation)
+            ratio_thresholds = self.manipulation_thresholds['ratio']
+            if buy_sell_ratio >= ratio_thresholds['critical_high'] or buy_sell_ratio <= ratio_thresholds['critical_low']:
+                ratio_severity = 4
+            elif buy_sell_ratio >= ratio_thresholds['high_high'] or buy_sell_ratio <= ratio_thresholds['high_low']:
+                ratio_severity = 3
+            elif buy_sell_ratio >= ratio_thresholds['moderate_high'] or buy_sell_ratio <= ratio_thresholds['moderate_low']:
+                ratio_severity = 2
+            else:
+                ratio_severity = 1
+
+            # Calculate weighted average using configuration constants
+            weights = self.manipulation_severity_weights
+            total_severity = (
+                volume_severity * weights['volume'] +
+                trade_severity * weights['trades'] +
+                ratio_severity * weights['ratio']
+            )
+
+            # Determine severity level using configuration thresholds
+            score_thresholds = self.manipulation_severity_score_thresholds
+            if total_severity >= score_thresholds['extreme']:
+                severity = "EXTREME"
+            elif total_severity >= score_thresholds['high']:
+                severity = "HIGH"
+            elif total_severity >= score_thresholds['moderate']:
+                severity = "MODERATE"
+            else:
+                severity = "LOW"
+
+            self.logger.debug(
+                f"Severity calculation complete: score={total_severity:.2f}, level={severity} "
+                f"(vol_sev={volume_severity}, trade_sev={trade_severity}, ratio_sev={ratio_severity})"
+            )
+
+            return severity
+
+        except Exception as e:
+            # Safe fallback if calculation fails
+            self.logger.error(f"Severity calculation failed with exception: {e}", exc_info=True)
+            self.logger.error(f"Input values: volume={volume}, trade_count={trade_count}, buy_sell_ratio={buy_sell_ratio}")
+            return "MODERATE"  # Safe fallback severity
+
+    def _format_manipulation_alert(
+        self,
+        pattern: str,
+        orderbook_signal: str,
+        actual_trades: str,
+        manipulation_tactic: str,
+        whale_action: str,
+        risk_scenario: str,
+        trader_action: str,
+        severity: str,
+        volume: float,
+        trade_count: int
+    ) -> str:
+        """
+        Format a detailed manipulation alert with severity-based messaging.
+
+        Args:
+            pattern: Manipulation pattern type (e.g., "FAKE SELL WALL")
+            orderbook_signal: What the order book is showing
+            actual_trades: What trades are actually happening
+            manipulation_tactic: The manipulation technique being used
+            whale_action: What whales are actually doing
+            risk_scenario: What could happen to price
+            trader_action: What traders should NOT do
+            severity: Severity level from _calculate_manipulation_severity
+            volume: Total volume in USD
+            trade_count: Number of trades
+
+        Returns:
+            Formatted manipulation alert string
+        """
+        try:
+            # Input validation
+            if volume is None or (isinstance(volume, float) and (math.isnan(volume) or math.isinf(volume))):
+                self.logger.warning(f"Invalid volume in alert formatting: {volume}, using 0")
+                volume = 0
+            if volume < 0:
+                volume = abs(volume)
+
+            if trade_count is None or (isinstance(trade_count, float) and (math.isnan(trade_count) or math.isinf(trade_count))):
+                self.logger.warning(f"Invalid trade_count in alert formatting: {trade_count}, using 0")
+                trade_count = 0
+            if trade_count < 0:
+                trade_count = 0
+            trade_count = int(trade_count)
+
+            # Severity-based emoji and risk level
+            severity_config = {
+                "EXTREME": {"emoji": "🚨🚨🚨", "risk": "CRITICAL", "urgency": "IMMEDIATE ATTENTION REQUIRED"},
+                "HIGH": {"emoji": "🚨🚨", "risk": "HIGH", "urgency": "Use extreme caution"},
+                "MODERATE": {"emoji": "🚨", "risk": "MODERATE", "urgency": "Exercise caution"},
+                "LOW": {"emoji": "⚠️", "risk": "LOW", "urgency": "Be aware"}
+            }
+
+            config = severity_config.get(severity, severity_config["MODERATE"])
+
+            # Format volume and trade metrics with safe fallbacks
+            try:
+                if volume >= 1_000_000:
+                    volume_str = f"${volume/1_000_000:.1f}M"
+                elif volume >= 1_000:
+                    volume_str = f"${volume/1_000:.0f}K"
+                else:
+                    volume_str = f"${volume:.0f}"
+            except Exception as e:
+                self.logger.warning(f"Error formatting volume {volume}: {e}")
+                volume_str = "$0"
+
+            trade_plural = "trade" if trade_count == 1 else "trades"
+
+            # Build structured alert
+            alert_parts = [
+                f"{config['emoji']} **{pattern} DETECTED** {config['emoji']}",
+                f"",
+                f"**Severity:** {severity} ({config['risk']} RISK)",
+                f"**Evidence:** {volume_str} across {trade_count} {trade_plural}",
+                f"",
+                f"**Orderbook Signal:** {orderbook_signal}",
+                f"**Actual Trades:** {actual_trades}",
+                f"",
+                f"**Manipulation Tactic:** {manipulation_tactic}",
+                f"**What Whales Are Doing:** {whale_action}",
+                f"",
+                f"⚠️ **RISK:** {risk_scenario}",
+                f"🛑 **ACTION:** {trader_action}",
+                f"",
+                f"_{config['urgency']}_"
+            ]
+
+            return "\n".join(alert_parts)
+
+        except Exception as e:
+            # Safe fallback if formatting fails
+            self.logger.error(f"Alert formatting failed with exception: {e}", exc_info=True)
+            self.logger.error(f"Input values: pattern={pattern}, severity={severity}, volume={volume}, trade_count={trade_count}")
+            # Return a basic alert message as fallback
+            return (
+                f"🚨 **{pattern} DETECTED** 🚨\n\n"
+                f"**Severity:** {severity}\n"
+                f"**Evidence:** Alert formatting error - see logs\n\n"
+                f"**Action:** {trader_action}"
+            )
 
     def _format_whale_trades(self, top_trades: list) -> str:
         """Format the top whale trades for display."""
@@ -4919,22 +5588,52 @@ def add_trade_parameters_to_signal(self, signal_data):
         if signal_type == 'NEUTRAL' or not price:
             return signal_data
 
-        # Calculate trade parameters
-        stop_loss_pct = 3.5  # 3.5% stop loss
-        take_profit_pct = 7.0  # 7% take profit (2:1 R/R)
+        # Use unified stop loss calculator for consistency with trade execution
+        try:
+            from src.core.risk.stop_loss_calculator import get_stop_loss_calculator, StopLossMethod
+
+            # Initialize stop loss calculator if not already done
+            try:
+                stop_calc = get_stop_loss_calculator()
+            except ValueError:
+                # First initialization
+                stop_calc = get_stop_loss_calculator(self.config)
+
+            # Get sophisticated stop loss calculation based on confluence score
+            stop_info = stop_calc.get_stop_loss_info(signal_data, StopLossMethod.CONFIDENCE_BASED)
+
+            if 'error' in stop_info:
+                # Fallback to simple calculation
+                risk_config = self.config.get('risk', {})
+                stop_loss_pct = risk_config.get('long_stop_percentage', 3.5) if signal_type == 'BUY' else risk_config.get('short_stop_percentage', 3.5)
+                stop_loss_pct = stop_loss_pct / 100  # Convert to decimal
+            else:
+                stop_loss_pct = stop_info['stop_loss_percentage']
+
+        except ImportError:
+            # Fallback if unified calculator not available
+            risk_config = self.config.get('risk', {})
+            stop_loss_pct = risk_config.get('long_stop_percentage', 3.5) if signal_type == 'BUY' else risk_config.get('short_stop_percentage', 3.5)
+            stop_loss_pct = stop_loss_pct / 100  # Convert to decimal
+
+        # Calculate take profit based on risk/reward ratio
+        risk_config = self.config.get('risk', {})
+        risk_reward_ratio = risk_config.get('risk_reward_ratio', 2.0)
+        take_profit_pct = risk_reward_ratio * stop_loss_pct
 
         if signal_type == 'BUY':
-            stop_loss = price * (1 - stop_loss_pct / 100)
-            take_profit = price * (1 + take_profit_pct / 100)
+            stop_loss = price * (1 - stop_loss_pct)
+            take_profit = price * (1 + take_profit_pct)
         elif signal_type == 'SELL':
-            stop_loss = price * (1 + stop_loss_pct / 100)
-            take_profit = price * (1 - take_profit_pct / 100)
+            stop_loss = price * (1 + stop_loss_pct)
+            take_profit = price * (1 - take_profit_pct)
         else:
             return signal_data
 
         # Calculate position size (simplified)
-        account_balance = 10000  # Default account balance
-        risk_amount = account_balance * 0.02  # 2% risk
+        account_balance = risk_config.get('account_balance', 10000)  # Default account balance from config
+        default_risk_pct = risk_config.get('default_risk_percentage', 2.0)  # Risk percentage from config
+        risk_amount = account_balance * (default_risk_pct / 100)
         stop_distance = abs(price - stop_loss)
         position_size = risk_amount / stop_distance if stop_distance > 0 else 0
 

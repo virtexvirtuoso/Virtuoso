@@ -1,3 +1,4 @@
+from src.utils.task_tracker import create_tracked_task
 #!/usr/bin/env python3
 """
 Liquidation Monitor Tool
@@ -384,7 +385,7 @@ async def main():
     # Run for specified duration
     try:
         # Start the monitor
-        monitor_task = asyncio.create_task(monitor.start())
+        monitor_task = create_tracked_task(monitor.start(), name="auto_tracked_task")
         
         # Wait for specified duration
         await asyncio.sleep(args.duration)

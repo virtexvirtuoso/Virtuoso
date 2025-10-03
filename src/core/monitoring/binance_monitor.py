@@ -1,3 +1,4 @@
+from src.utils.task_tracker import create_tracked_task
 """
 Binance Integration Monitoring
 
@@ -476,6 +477,6 @@ async def setup_monitoring(config: Dict[str, Any],
     monitor.register_components(exchange, data_fetcher, websocket_handler)
     
     # Start monitoring in background
-    asyncio.create_task(monitor.start_monitoring())
+    create_tracked_task(monitor.start_monitoring(), name="auto_tracked_task")
     
     return monitor 

@@ -10,6 +10,9 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional
 import asyncio
 
+from ..data import get_real_market_data_service
+from ..resilience import handle_errors, RetryConfig
+
 logger = logging.getLogger(__name__)
 
 
@@ -19,10 +22,13 @@ class SimpleCorrelationService:
     using direct market data access without complex dependency injection.
     """
     
-    def __init__(self):
+    def __init__(self, exchange_manager=None):
         self.logger = logger
         self.cache = {}
         self.cache_ttl = 3600  # 1 hour
+        
+        # Initialize real market data service
+        self.market_data_service = get_real_market_data_service(exchange_manager)
         
         # Default symbols for analysis
         self.default_symbols = [
@@ -30,133 +36,80 @@ class SimpleCorrelationService:
             "ADAUSDT", "DOTUSDT", "AVAXUSDT"
         ]
         
-    async def get_price_data_from_integration(self, symbol: str, days: int = 30) -> pd.DataFrame:
-        """
-        Get historical price data using the dashboard integration service.
-        This bypasses the exchange manager and uses cached data when available.
-        """
+    @handle_errors(
+        operation='get_price_data',
+        component='correlation_service',
+        retry_config=RetryConfig(max_attempts=3, base_delay=1.0)
+    )
+    async def get_price_data(self, symbol: str, days: int = 30) -> pd.DataFrame:
+        """Get real historical price data for symbol."""
         try:
-            # Try to get data from the dashboard integration
-            from src.dashboard.dashboard_proxy_phase2 import get_dashboard_integration
-            integration = get_dashboard_integration()
+            # Use real market data service to fetch OHLCV data
+            df = await self.market_data_service.fetch_historical_ohlcv(
+                symbol=symbol,
+                timeframe='1d',
+                days=days
+            )
             
-            if integration and hasattr(integration, '_dashboard_data'):
-                # Get cached market data
-                dashboard_data = integration._dashboard_data
-                if dashboard_data and 'signals' in dashboard_data:
-                    for signal_data in dashboard_data['signals']:
-                        if signal_data.get('symbol') == symbol:
-                            # Extract price and change data
-                            current_price = signal_data.get('price', 0)
-                            change_24h = signal_data.get('change_24h', 0)
-                            
-                            if current_price > 0:
-                                # Generate synthetic historical data based on current price and change
-                                # This is a simplified approach for demo purposes
-                                df = self._generate_synthetic_price_series(current_price, change_24h, days)
-                                return df
+            if df.empty:
+                raise ValueError(f"No historical data available for {symbol}")
             
-            # Fallback: generate basic synthetic data
-            return self._generate_basic_synthetic_data(symbol, days)
+            self.logger.info(f"✅ Retrieved {len(df)} days of real data for {symbol}")
+            return df
             
         except Exception as e:
-            self.logger.warning(f"Error getting price data for {symbol}: {e}")
-            return self._generate_basic_synthetic_data(symbol, days)
+            self.logger.error(f"Failed to get real price data for {symbol}: {e}")
+            raise ValueError(f"Real market data unavailable for {symbol}: {e}")
     
-    def _generate_synthetic_price_series(self, current_price: float, change_24h: float, days: int) -> pd.DataFrame:
-        """
-        Generate a realistic price series based on current price and recent change.
-        """
-        dates = pd.date_range(end=datetime.utcnow(), periods=days, freq='D')
-        
-        # Start with current price and work backwards
-        prices = []
-        price = current_price
-        
-        # Use the 24h change to estimate daily volatility
-        daily_volatility = abs(change_24h / 100) * 0.7  # Rough estimate
-        daily_volatility = max(0.01, min(0.1, daily_volatility))  # Clamp between 1% and 10%
-        
-        for i in range(days):
-            if i == 0:
-                prices.append(price)
-            else:
-                # Generate somewhat realistic price movement
-                random_change = np.random.normal(0, daily_volatility)
-                price = price * (1 + random_change)
-                prices.append(max(0.001, price))  # Ensure positive prices
-        
-        # Reverse to get chronological order
-        prices.reverse()
-        
-        # Create DataFrame
-        df = pd.DataFrame({
-            'timestamp': dates,
-            'close': prices
-        })
-        df.set_index('timestamp', inplace=True)
-        
-        # Calculate returns
-        df['returns'] = df['close'].pct_change()
-        df.dropna(inplace=True)
-        
-        return df
+    async def get_price_data_from_integration(self, symbol: str, days: int = 30) -> pd.DataFrame:
+        """Legacy method - delegates to main get_price_data method."""
+        return await self.get_price_data(symbol, days)
     
-    def _generate_basic_synthetic_data(self, symbol: str, days: int) -> pd.DataFrame:
-        """
-        Generate basic synthetic data when no real data is available.
-        """
-        dates = pd.date_range(end=datetime.utcnow(), periods=days, freq='D')
-        
-        # Base prices for different symbols
-        base_prices = {
-            'BTCUSDT': 98000,
-            'ETHUSDT': 3500,
-            'SOLUSDT': 240,
-            'XRPUSDT': 2.5,
-            'ADAUSDT': 1.1,
-            'DOTUSDT': 8.5,
-            'AVAXUSDT': 50
-        }
-        
-        base_price = base_prices.get(symbol, 100)
-        
-        # Generate price series with realistic volatility
-        returns = np.random.normal(0, 0.03, len(dates))  # 3% daily volatility
-        prices = [base_price]
-        
-        for ret in returns[1:]:
-            prices.append(prices[-1] * (1 + ret))
-        
-        df = pd.DataFrame({
-            'timestamp': dates,
-            'close': prices
-        })
-        df.set_index('timestamp', inplace=True)
-        
-        # Calculate returns
-        df['returns'] = df['close'].pct_change()
-        df.dropna(inplace=True)
-        
-        return df
+    # Synthetic data generation methods removed for production safety
+    # All market data must come from real exchange APIs
     
+    @handle_errors(
+        operation='calculate_correlation_matrix',
+        component='correlation_service',
+        retry_config=RetryConfig(max_attempts=2, base_delay=2.0)
+    )
     async def calculate_correlation_matrix(self, symbols: List[str], days: int = 30) -> Dict[str, Any]:
         """
-        Calculate correlation matrix using available price data.
+        Calculate correlation matrix using real market data.
         """
         try:
-            # Fetch price data for all symbols
+            # Fetch price data for all symbols concurrently
+            self.logger.info(f"Fetching real market data for {len(symbols)} symbols over {days} days")
+            
             symbol_data = {}
+            successful_symbols = []
+            failed_symbols = []
+            
+            # Fetch data for all symbols
             for symbol in symbols:
-                df = await self.get_price_data_from_integration(symbol, days)
-                if not df.empty and 'returns' in df.columns:
-                    symbol_data[symbol] = df['returns'].dropna()
+                try:
+                    df = await self.get_price_data(symbol, days)
+                    if not df.empty and 'returns' in df.columns and len(df) >= 10:
+                        symbol_data[symbol] = df['returns'].dropna()
+                        successful_symbols.append(symbol)
+                        self.logger.info(f"✅ Got {len(df)} data points for {symbol}")
+                    else:
+                        failed_symbols.append(symbol)
+                        self.logger.warning(f"⚠️ Insufficient data for {symbol} (got {len(df) if not df.empty else 0} points)")
+                except Exception as e:
+                    failed_symbols.append(symbol)
+                    self.logger.error(f"❌ Failed to get data for {symbol}: {e}")
             
             if not symbol_data:
-                return self._fallback_correlation_matrix(symbols)
+                return self._fallback_correlation_matrix(symbols, "No real market data available for any symbol")
             
-            # Calculate correlation matrix
+            if len(symbol_data) < len(symbols):
+                self.logger.warning(f"Only {len(symbol_data)}/{len(symbols)} symbols have data. Failed: {failed_symbols}")
+            
+            # Calculate correlation matrix using only symbols with data
             correlations = []
+            working_symbols = list(symbol_data.keys())
+            
             for i, sym1 in enumerate(symbols):
                 row = []
                 for j, sym2 in enumerate(symbols):
@@ -167,18 +120,22 @@ class SimpleCorrelationService:
                         returns1 = symbol_data[sym1]
                         returns2 = symbol_data[sym2]
                         
-                        # Align the series
-                        min_len = min(len(returns1), len(returns2))
-                        if min_len >= 10:  # Need at least 10 observations
-                            corr = returns1.iloc[-min_len:].corr(returns2.iloc[-min_len:])
+                        # Align the series by time index
+                        aligned_data = pd.DataFrame({
+                            'returns1': returns1,
+                            'returns2': returns2
+                        }).dropna()
+                        
+                        if len(aligned_data) >= 10:  # Need at least 10 observations
+                            corr = aligned_data['returns1'].corr(aligned_data['returns2'])
                             if pd.isna(corr):
                                 corr = 0.0
                         else:
                             corr = 0.0
                     else:
-                        corr = 0.0
+                        corr = None  # No data available
                     
-                    row.append(round(float(corr), 3))
+                    row.append(round(float(corr), 3) if corr is not None else None)
                 correlations.append(row)
             
             return {
@@ -186,13 +143,16 @@ class SimpleCorrelationService:
                 "correlation_matrix": correlations,
                 "timeframe": f"{days}d",
                 "timestamp": datetime.utcnow().isoformat(),
-                "status": "success",
-                "data_source": "calculated_from_available_data"
+                "status": "success" if len(failed_symbols) == 0 else "partial",
+                "data_source": "real_market_data",
+                "successful_symbols": successful_symbols,
+                "failed_symbols": failed_symbols,
+                "data_points_used": {sym: len(data) for sym, data in symbol_data.items()}
             }
             
         except Exception as e:
             self.logger.error(f"Error calculating correlation matrix: {e}")
-            return self._fallback_correlation_matrix(symbols)
+            return self._fallback_correlation_matrix(symbols, str(e))
     
     async def calculate_beta_time_series(self, symbols: List[str], window_days: int = 30, num_windows: int = 7) -> Dict[str, Any]:
         """
@@ -312,8 +272,8 @@ class SimpleCorrelationService:
             self.logger.error(f"Error getting correlation heatmap: {e}")
             return self._fallback_heatmap(symbols)
     
-    def _fallback_correlation_matrix(self, symbols: List[str]) -> Dict[str, Any]:
-        """Fallback correlation matrix with null values."""
+    def _fallback_correlation_matrix(self, symbols: List[str], error_msg: str = "Data unavailable") -> Dict[str, Any]:
+        """Fallback correlation matrix with null values when real data fails."""
         correlations = []
         for i, sym1 in enumerate(symbols):
             row = []
@@ -329,8 +289,11 @@ class SimpleCorrelationService:
             "correlation_matrix": correlations,
             "timeframe": "unavailable",
             "timestamp": datetime.utcnow().isoformat(),
-            "status": "partial",
-            "data_source": "fallback_null_values"
+            "status": "error",
+            "data_source": "fallback_null_values",
+            "error_message": error_msg,
+            "successful_symbols": [],
+            "failed_symbols": symbols
         }
     
     def _fallback_beta_series(self, symbols: List[str], num_windows: int) -> Dict[str, Any]:
@@ -386,10 +349,10 @@ class SimpleCorrelationService:
 _simple_correlation_service: Optional[SimpleCorrelationService] = None
 
 
-def get_simple_correlation_service() -> SimpleCorrelationService:
+def get_simple_correlation_service(exchange_manager=None) -> SimpleCorrelationService:
     """Get or create the simple correlation service singleton."""
     global _simple_correlation_service
     if _simple_correlation_service is None:
-        _simple_correlation_service = SimpleCorrelationService()
-        logger.info("✅ Simple correlation service initialized")
+        _simple_correlation_service = SimpleCorrelationService(exchange_manager)
+        logger.info("✅ Simple correlation service initialized with real market data")
     return _simple_correlation_service

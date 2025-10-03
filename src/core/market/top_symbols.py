@@ -1,3 +1,4 @@
+from src.utils.task_tracker import create_tracked_task
 """Top symbols management functionality."""
 
 import logging
@@ -223,22 +224,61 @@ class TopSymbolsManager:
                 except Exception:
                     pass
                 
-                # Sort and limit to max symbols
+                # Validate data structure before sorting
                 max_symbols = self.market_config.get('max_symbols', 10)
-                
-                # Fix turnover calculation - Binance uses 'quoteVolume' not 'turnover24h'
+                if not raw_markets or not isinstance(raw_markets, (list, dict)):
+                    self.logger.error(f"Invalid raw_markets data type: {type(raw_markets)}")
+                    return
+
+                # If dict (e.g., from direct REST), convert to list of values
+                if isinstance(raw_markets, dict):
+                    try:
+                        raw_markets = list(raw_markets.values())
+                    except Exception:
+                        self.logger.error("Failed to convert raw_markets dict to list")
+                        return
+
+                # Filter out invalid entries and ensure all items are dictionaries
+                valid_markets = []
+                for item in raw_markets:
+                    if isinstance(item, dict) and 'symbol' in item:
+                        valid_markets.append(item)
+                    else:
+                        try:
+                            preview = str(item)[:100]
+                        except Exception:
+                            preview = '<unprintable>'
+                        self.logger.debug(f"Skipping invalid market data: {type(item)} - {preview}")
+
+                if not valid_markets:
+                    self.logger.error("No valid market data after filtering")
+                    return
+
+                # Sort with robust error handling
+                def _turnover_key(x: Dict[str, Any]) -> float:
+                    try:
+                        return float(x.get('quoteVolume', x.get('turnover24h', x.get('turnover', 0)) or 0))
+                    except Exception:
+                        return 0.0
+
+                # Fix turnover calculation - prefer 'quoteVolume', fallback to 'turnover24h'/'turnover'
                 sorted_markets = sorted(
-                    raw_markets,
-                    key=lambda x: float(x.get('quoteVolume', x.get('turnover24h', 0) or x.get('turnover', 0) or 0)),
+                    valid_markets,
+                    key=_turnover_key,
                     reverse=True
                 )[:max_symbols]
 
                 # Log turnover statistics with corrected field
-                total_turnover = sum(float(m.get('quoteVolume', m.get('turnover24h', m.get('turnover', 0)))) for m in raw_markets)
+                def _safe_float(v: Any) -> float:
+                    try:
+                        return float(v)
+                    except Exception:
+                        return 0.0
+                total_turnover = sum(_safe_float(m.get('quoteVolume', m.get('turnover24h', m.get('turnover', 0)))) for m in valid_markets)
                 for market in sorted_markets:
                     symbol = market.get('symbol', '')
                     # Use quoteVolume as primary field, fallback to turnover24h for other exchanges
-                    turnover = float(market.get('quoteVolume', market.get('turnover24h', 0)))
+                    turnover = _safe_float(market.get('quoteVolume', market.get('turnover24h', market.get('turnover', 0))))
                     percentage = (turnover / total_turnover * 100) if total_turnover > 0 else 0
                     self.logger.info(f"Selected {symbol} with turnover {turnover:.2f} ({percentage:.2f}%)")
 
@@ -688,6 +728,10 @@ class TopSymbolsManager:
         """Unified ticker fetch across implementations.
         Returns a list of dicts with at least symbol, quoteVolume/turnover fields.
         """
+        self.logger.info("🔍 DEBUG: Starting _fetch_all_market_tickers with comprehensive debugging")
+        self.logger.info(f"🔍 DEBUG: Exchange type: {type(exchange).__name__}")
+        self.logger.info(f"🔍 DEBUG: Exchange attributes: {', '.join([attr for attr in dir(exchange) if not attr.startswith('_')][:10])}")
+
         def _normalize_symbol(sym: str) -> str:
             try:
                 s = (sym or '').upper()
@@ -698,10 +742,19 @@ class TopSymbolsManager:
                 return s
             except Exception:
                 return sym
+
         # 1) Prefer CCXT unified bulk method if available
+        self.logger.info("🔍 DEBUG: Attempting Method 1 - CCXT unified bulk fetch")
         try:
-            if hasattr(exchange, 'ccxt') and hasattr(exchange.ccxt, 'fetch_tickers'):
+            has_ccxt = hasattr(exchange, 'ccxt')
+            has_fetch_tickers = has_ccxt and hasattr(exchange.ccxt, 'fetch_tickers')
+            self.logger.info(f"🔍 DEBUG: Method 1 - has_ccxt: {has_ccxt}, has_fetch_tickers: {has_fetch_tickers}")
+
+            if has_ccxt and has_fetch_tickers:
+                self.logger.info("🔍 DEBUG: Method 1 - Calling exchange.ccxt.fetch_tickers()")
                 all_ticks = await exchange.ccxt.fetch_tickers()
+                self.logger.info(f"🔍 DEBUG: Method 1 - Got {len(all_ticks) if all_ticks else 0} tickers from CCXT")
+
                 normalized = []
                 for sym, t in all_ticks.items():
                     normalized.append({
@@ -709,35 +762,89 @@ class TopSymbolsManager:
                         'quoteVolume': t.get('quoteVolume') or t.get('baseVolume') or 0,
                         'turnover24h': t.get('turnover24h') or 0
                     })
+
+                self.logger.info(f"🔍 DEBUG: Method 1 - Normalized {len(normalized)} tickers")
                 if normalized:
+                    self.logger.info("✅ DEBUG: Method 1 SUCCESS - Returning CCXT bulk data")
                     return normalized
+                else:
+                    self.logger.warning("⚠️ DEBUG: Method 1 - No normalized data, continuing to Method 2")
+            else:
+                self.logger.info("⚠️ DEBUG: Method 1 - Prerequisites not met, continuing to Method 2")
         except Exception as e:
-            self.logger.debug(f"CCXT fetch_tickers failed: {e}")
+            error_msg = str(e).strip()
+            self.logger.error(f"❌ DEBUG: Method 1 FAILED - Exception: {e}")
+            self.logger.error(f"❌ DEBUG: Method 1 - Error type: {type(e).__name__}")
+            if error_msg == "0" or (len(error_msg) <= 3 and "0" in error_msg):
+                self.logger.warning("⚠️ DEBUG: Method 1 - CCXT fetch_tickers returned Error: 0 - continuing with fallback methods")
+            else:
+                self.logger.error(f"❌ DEBUG: Method 1 - CCXT fetch_tickers failed: {e}")
+
         # 2) Fall back to exchange implementation method if present
+        self.logger.info("🔍 DEBUG: Attempting Method 2 - Exchange implementation fetch")
         try:
-            if hasattr(exchange, 'fetch_market_tickers'):
-                return await exchange.fetch_market_tickers()
+            has_fetch_tickers = hasattr(exchange, 'fetch_tickers')
+            self.logger.info(f"🔍 DEBUG: Method 2 - has_fetch_tickers: {has_fetch_tickers}")
+
+            if has_fetch_tickers:
+                self.logger.info("🔍 DEBUG: Method 2 - Calling exchange.fetch_tickers()")
+                result = await exchange.fetch_tickers()
+                self.logger.info(f"🔍 DEBUG: Method 2 - Got result type: {type(result)}, length: {len(result) if result else 0}")
+                if result:
+                    self.logger.info("✅ DEBUG: Method 2 SUCCESS - Returning exchange implementation data")
+                    return result
+                else:
+                    self.logger.warning("⚠️ DEBUG: Method 2 - Empty result, continuing to Method 3")
+            else:
+                self.logger.info("⚠️ DEBUG: Method 2 - No fetch_tickers method, continuing to Method 3")
         except Exception as e:
-            self.logger.debug(f"exchange.fetch_market_tickers failed: {e}")
+            self.logger.error(f"❌ DEBUG: Method 2 FAILED - exchange.fetch_tickers failed: {e}")
+            self.logger.error(f"❌ DEBUG: Method 2 - Error type: {type(e).__name__}")
+
         # 3) Try generic CCXT per-symbol fallback if needed to seed non-empty set
+        self.logger.info("🔍 DEBUG: Attempting Method 3 - Per-symbol fallback (THIS IS WHERE THE 5-SYMBOL LIMIT COMES FROM)")
         try:
             symbols = []
             # Attempt to use exchange.markets if available to gather a small batch
-            if hasattr(exchange, 'markets') and isinstance(exchange.markets, dict) and exchange.markets:
+            has_markets = hasattr(exchange, 'markets')
+            markets_valid = has_markets and isinstance(exchange.markets, dict) and exchange.markets
+            self.logger.info(f"🔍 DEBUG: Method 3 - has_markets: {has_markets}, markets_valid: {markets_valid}")
+
+            if markets_valid:
+                self.logger.info(f"🔍 DEBUG: Method 3 - Total markets available: {len(exchange.markets)}")
+                market_samples = list(exchange.markets.keys())[:5]
+                self.logger.info(f"🔍 DEBUG: Method 3 - Sample markets: {market_samples}")
+
                 # Prefer USDT spot-style pairs first
                 for s in list(exchange.markets.keys()):
                     if len(symbols) >= 20:
                         break
                     if isinstance(s, str) and ('/USDT' in s or s.endswith(':USDT')) and 'PERP' not in s:
                         symbols.append(s)
+
+                self.logger.info(f"🔍 DEBUG: Method 3 - Found {len(symbols)} USDT pairs from markets")
+            else:
+                self.logger.warning("⚠️ DEBUG: Method 3 - No valid markets, will use hardcoded fallback")
+
             # As a last attempt, try common majors
             if not symbols:
                 symbols = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'XRP/USDT', 'ADA/USDT']
+                self.logger.warning(f"🚨 DEBUG: Method 3 - USING HARDCODED 5-SYMBOL FALLBACK: {symbols}")
+            else:
+                self.logger.info(f"🔍 DEBUG: Method 3 - Using {len(symbols)} symbols from markets: {symbols[:10]}")
+
             results: List[Dict[str, Any]] = []
-            if hasattr(exchange, 'fetch_ticker'):
+            has_fetch_ticker = hasattr(exchange, 'fetch_ticker')
+            self.logger.info(f"🔍 DEBUG: Method 3 - has_fetch_ticker: {has_fetch_ticker}")
+
+            if has_fetch_ticker:
                 # Fetch a small batch sequentially to avoid blowing rate limits
-                for s in symbols[:15]:
+                symbols_to_fetch = symbols[:15]
+                self.logger.info(f"🔍 DEBUG: Method 3 - Fetching tickers for {len(symbols_to_fetch)} symbols: {symbols_to_fetch}")
+
+                for i, s in enumerate(symbols_to_fetch):
                     try:
+                        self.logger.debug(f"🔍 DEBUG: Method 3 - Fetching ticker {i+1}/{len(symbols_to_fetch)}: {s}")
                         t = await exchange.fetch_ticker(s)
                         if t:
                             results.append({
@@ -745,15 +852,34 @@ class TopSymbolsManager:
                                 'quoteVolume': t.get('quoteVolume') or t.get('baseVolume') or 0,
                                 'turnover24h': t.get('turnover24h') or 0
                             })
-                    except Exception:
+                        else:
+                            self.logger.warning(f"⚠️ DEBUG: Method 3 - Empty ticker result for {s}")
+                    except Exception as e:
+                        self.logger.error(f"❌ DEBUG: Method 3 - Failed to fetch ticker for {s}: {e}")
                         continue
+
+                self.logger.info(f"🔍 DEBUG: Method 3 - Successfully fetched {len(results)} tickers")
+            else:
+                self.logger.error("❌ DEBUG: Method 3 - No fetch_ticker method available")
+
             if results:
+                self.logger.info(f"✅ DEBUG: Method 3 SUCCESS - Returning {len(results)} per-symbol results")
+                sample_symbols = [r['symbol'] for r in results[:5]]
+                self.logger.info(f"✅ DEBUG: Method 3 - Sample symbols returned: {sample_symbols}")
                 return results
+            else:
+                self.logger.error("❌ DEBUG: Method 3 - No results, continuing to Method 4")
         except Exception as e:
-            self.logger.debug(f"ccxt per-symbol fallback failed: {e}")
+            self.logger.error(f"❌ DEBUG: Method 3 FAILED - ccxt per-symbol fallback failed: {e}")
+            self.logger.error(f"❌ DEBUG: Method 3 - Error type: {type(e).__name__}")
+
         # 4) Last resort: simple Bybit REST
+        self.logger.info("🔍 DEBUG: Attempting Method 4 - Simple Bybit REST (last resort)")
         try:
+            self.logger.info("🔍 DEBUG: Method 4 - Calling simple_fetch_tickers()")
             data = await simple_fetch_tickers(exchange)
+            self.logger.info(f"🔍 DEBUG: Method 4 - Got data type: {type(data)}, length: {len(data) if data else 0}")
+
             if data:
                 out = []
                 for sym, t in data.items():
@@ -761,9 +887,15 @@ class TopSymbolsManager:
                         'symbol': _normalize_symbol(sym),
                         'quoteVolume': t.get('volume', 0)
                     })
+                self.logger.info(f"✅ DEBUG: Method 4 SUCCESS - Returning {len(out)} simple REST results")
                 return out
+            else:
+                self.logger.error("❌ DEBUG: Method 4 - No data from simple_fetch_tickers")
         except Exception as e:
-            self.logger.debug(f"simple_fetch_tickers failed: {e}")
+            self.logger.error(f"❌ DEBUG: Method 4 FAILED - simple_fetch_tickers failed: {e}")
+            self.logger.error(f"❌ DEBUG: Method 4 - Error type: {type(e).__name__}")
+
+        self.logger.error("🚨 DEBUG: ALL METHODS FAILED - Returning empty list!")
         return []
 
     def _normalize_market_data(self, data: Dict[str, Any], symbol: str) -> Dict[str, Any]:
@@ -985,8 +1117,11 @@ class TopSymbolsManager:
             # Create tasks for parallel execution
             tasks = []
             for symbol in symbols:
-                # Create a task for each symbol fetch
-                task = asyncio.create_task(self.get_market_data(symbol))
+                # Create a task for each symbol fetch with the symbol parameter
+                task = create_tracked_task(
+                    self.get_market_data(symbol),
+                    name=f"get_market_data_{symbol}"
+                )
                 tasks.append(task)
             
             # Wait for all tasks with a reasonable timeout
@@ -1188,13 +1323,37 @@ class TopSymbolsManager:
 
 # SIMPLE OVERRIDE - Place this at the END of top_symbols.py
 
+class TopSymbolsProvider:
+    """Simple provider class for top symbols - fixes import error in diagnostic script."""
+
+    def __init__(self, config: Dict[str, Any] = None):
+        """Initialize with optional config."""
+        self.config = config or {}
+        self.logger = logging.getLogger(__name__)
+
+    def get_top_symbols(self, limit: int = 15) -> List[str]:
+        """Get top symbols list."""
+        # Use static symbols for now to fix the critical import error
+        default_symbols = [
+            'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'ADAUSDT',
+            'AVAXUSDT', 'DOTUSDT', 'MATICUSDT', 'LINKUSDT', 'UNIUSDT',
+            'LTCUSDT', 'BCHUSDT', 'FILUSDT', 'TRXUSDT', 'ATOMUSDT'
+        ]
+
+        # Get from config if available
+        static_symbols = self.config.get('market', {}).get('symbols', {}).get('static_symbols', default_symbols)
+
+        result = static_symbols[:limit]
+        self.logger.info(f"TopSymbolsProvider returning {len(result)} symbols: {result}")
+        return result
+
 async def simple_fetch_tickers(exchange):
     """Simple ticker fetch that actually works"""
     import aiohttp
     try:
         url = "https://api.bybit.com/v5/market/tickers"
         params = {"category": "linear"}
-        
+
         timeout = aiohttp.ClientTimeout(total=30)
         async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.get(url, params=params) as response:

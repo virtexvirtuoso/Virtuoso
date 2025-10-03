@@ -1,3 +1,4 @@
+from src.utils.task_tracker import create_tracked_task
 #!/usr/bin/env python3
 """
 Alpha Integration Manager - Safe Production Rollout
@@ -200,8 +201,8 @@ class AlphaIntegrationManager:
     
     async def _scan_parallel(self, market_data: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Run both scanners in parallel for comparison."""
-        legacy_task = asyncio.create_task(self._scan_legacy_only(market_data))
-        optimized_task = asyncio.create_task(self._scan_optimized_only(market_data))
+        legacy_task = create_tracked_task(self._scan_legacy_only, name="_scan_legacy_only_task")
+        optimized_task = create_tracked_task(self._scan_optimized_only(market_data, name="auto_tracked_task")
         
         legacy_results, optimized_results = await asyncio.gather(
             legacy_task, optimized_task, return_exceptions=True

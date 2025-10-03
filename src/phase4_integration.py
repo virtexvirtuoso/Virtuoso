@@ -1,3 +1,4 @@
+from src.utils.task_tracker import create_tracked_task
 """
 Phase 4 Integration System - Complete Architecture Integration
 =============================================================
@@ -195,7 +196,7 @@ class Phase4IntegrationManager:
         """Setup signal handlers for graceful shutdown."""
         def signal_handler(signum, frame):
             self.logger.info(f"Received signal {signum}, initiating graceful shutdown...")
-            asyncio.create_task(self.shutdown())
+            create_tracked_task(self.shutdown(), name="auto_tracked_task")
         
         signal.signal(signal.SIGTERM, signal_handler)
         signal.signal(signal.SIGINT, signal_handler)
@@ -437,21 +438,21 @@ class Phase4IntegrationManager:
         self.logger.info("Starting background tasks...")
         
         # Health check task
-        self.health_check_task = asyncio.create_task(
+        self.health_check_task = create_tracked_task(
             self._periodic_health_check(),
             name="phase4_health_check"
         )
         self.integration_tasks.append(self.health_check_task)
         
         # Memory monitoring task
-        memory_task = asyncio.create_task(
+        memory_task = create_tracked_task(
             self._periodic_memory_monitoring(),
             name="phase4_memory_monitor"
         )
         self.integration_tasks.append(memory_task)
         
         # Performance optimization task
-        optimization_task = asyncio.create_task(
+        optimization_task = create_tracked_task(
             self._periodic_optimization(),
             name="phase4_optimization"
         )

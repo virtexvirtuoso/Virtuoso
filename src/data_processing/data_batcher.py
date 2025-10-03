@@ -5,6 +5,7 @@ import logging
 from collections import defaultdict
 from datetime import datetime, timezone
 import traceback
+from src.utils.task_tracker import create_tracked_task
 
 # Type checking imports
 if TYPE_CHECKING:
@@ -71,7 +72,7 @@ class DataBatcher:
             # Process batch if it reaches the size limit
             if len(self.batches[data_type]) >= self.batch_size:
                 # Create task for async processing
-                asyncio.create_task(self._process_batch(data_type))
+                create_tracked_task(self._process_batch, name="_process_batch_task")
                 
         except Exception as e:
             logger.error(f"Error adding data to batch: {str(e)}")

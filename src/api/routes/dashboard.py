@@ -46,12 +46,22 @@ except ImportError:
     logger.info("📦 Using Phase 1 dashboard integration")
 
 # Import direct cache adapter for improved performance
+USE_DIRECT_CACHE = False
+web_cache = None
 try:
     from src.api.cache_adapter_direct import cache_adapter as direct_cache
     USE_DIRECT_CACHE = True
+
+    # Import shared cache bridge for live data
+    try:
+        from src.core.cache.web_service_adapter import get_web_service_cache_adapter
+        web_cache = get_web_service_cache_adapter()
+        logger.info("✅ Shared cache web adapter loaded for dashboard")
+    except ImportError as e:
+        logger.warning(f"Shared cache web adapter not available: {e}")
+
     logger.info("✅ Direct cache adapter available for regular dashboard")
 except ImportError:
-    USE_DIRECT_CACHE = False
     logger.info("Direct cache adapter not available")
 
 # Import Phase 1 Direct Market Data service
@@ -106,16 +116,17 @@ connection_manager = ConnectionManager()
     summary="Get Dashboard Overview",
     description="""
     Retrieve comprehensive dashboard overview with real-time market data.
-    
+
     This endpoint provides aggregated market data including:
     - Active symbol monitoring status
-    - Recent signals and alerts
+    - Recent signals and alerts with component breakdowns
     - Market metrics and statistics
     - Cache status and performance metrics
-    
+
     Data is served from Memcached cache for optimal performance.
+    Component breakdowns are enriched from confluence:breakdown:{symbol} cache keys.
     """,
-    response_description="Dashboard overview data",
+    response_description="Dashboard overview data with component breakdowns",
     tags=["dashboard"],
     responses={
         200: {
@@ -137,30 +148,62 @@ connection_manager = ConnectionManager()
     }
 )
 async def get_dashboard_overview() -> Dict[str, Any]:
-    """Get comprehensive dashboard overview with real-time data from Memcached."""
+    """Get comprehensive dashboard overview with real-time data from Memcached.
+
+    CRITICAL FIX: This endpoint now queries breakdown cache keys to populate
+    component scores and interpretations for each symbol.
+    """
     try:
+        # Import cache service
+        from src.core.cache.confluence_cache_service import confluence_cache_service
+
         # Use direct cache if available for better performance
         if USE_DIRECT_CACHE:
-            return await direct_cache.get_dashboard_overview()
+            overview = await direct_cache.get_dashboard_overview()
+
+            # CRITICAL FIX: Enrich with breakdown data
+            signals = overview.get('signals', [])
+            if signals:
+                enriched_signals = []
+                for signal in signals:
+                    symbol = signal.get('symbol')
+                    if symbol:
+                        # Query breakdown cache for this symbol
+                        breakdown = await confluence_cache_service.get_cached_breakdown(symbol)
+                        if breakdown:
+                            # Enrich signal with breakdown data
+                            signal['components'] = breakdown.get('components', {})
+                            signal['interpretations'] = breakdown.get('interpretations', {})
+                            signal['reliability'] = breakdown.get('reliability', 0)
+                            signal['has_breakdown'] = True
+                        else:
+                            signal['has_breakdown'] = False
+                    enriched_signals.append(signal)
+
+                overview['signals'] = enriched_signals
+                logger.info(f"✅ Enriched {len(enriched_signals)} signals with breakdown data")
+
+            return overview
+
         # Check Memcached for real-time status
         symbol_count = 0
         try:
             from pymemcache.client.base import Client
             import json
-            
+
             mc_client = Client(('127.0.0.1', 11211))
-            
+
             # Check if we have symbols data
             symbols_data = mc_client.get(b'virtuoso:symbols')
             if symbols_data:
                 data = json.loads(symbols_data.decode('utf-8'))
                 symbol_count = len(data.get('symbols', []))
                 logger.info(f"Memcached has {symbol_count} symbols with confluence scores")
-            
+
             mc_client.close()
         except Exception as mc_error:
             logger.debug(f"Memcached check: {mc_error}")
-        
+
         # Get dashboard integration service
         integration = get_dashboard_integration()
         if not integration:
@@ -174,7 +217,7 @@ async def get_dashboard_overview() -> Dict[str, Any]:
                 "alpha_opportunities": {"total": 0, "high_confidence": 0, "medium_confidence": 0},
                 "system_status": {
                     "monitoring": "active" if symbol_count > 0 else "inactive",
-                    "data_feed": "connected" if symbol_count > 0 else "disconnected", 
+                    "data_feed": "connected" if symbol_count > 0 else "disconnected",
                     "alerts": "enabled" if symbol_count > 0 else "disabled",
                     "websocket": "connected" if symbol_count > 0 else "disconnected",
                     "last_update": time.time() if symbol_count > 0 else 0,
@@ -184,12 +227,34 @@ async def get_dashboard_overview() -> Dict[str, Any]:
 
         # Get dashboard overview from integration service
         overview_data = await integration.get_dashboard_overview()
-        
+
+        # CRITICAL FIX: Enrich signals with breakdown data
+        signals = overview_data.get('signals', [])
+        if signals:
+            enriched_signals = []
+            for signal in signals:
+                symbol = signal.get('symbol')
+                if symbol:
+                    # Query breakdown cache for this symbol
+                    breakdown = await confluence_cache_service.get_cached_breakdown(symbol)
+                    if breakdown:
+                        # Enrich signal with breakdown data
+                        signal['components'] = breakdown.get('components', {})
+                        signal['interpretations'] = breakdown.get('interpretations', {})
+                        signal['reliability'] = breakdown.get('reliability', 0)
+                        signal['has_breakdown'] = True
+                    else:
+                        signal['has_breakdown'] = False
+                enriched_signals.append(signal)
+
+            overview_data['signals'] = enriched_signals
+            logger.info(f"✅ Enriched {len(enriched_signals)} signals with breakdown data")
+
         # Enhance with Memcached data if available
         if symbol_count > 0:
             overview_data['system_status']['symbols_tracked'] = symbol_count
             overview_data['system_status']['cache_status'] = 'memcached_active'
-        
+
         return overview_data
 
     except Exception as e:
@@ -309,18 +374,35 @@ async def get_alpha_opportunities() -> List[Dict[str, Any]]:
 
 @router.get("/market-overview")
 async def get_market_overview() -> Dict[str, Any]:
-    """Get market overview data for dashboard."""
+    """Get market overview data for dashboard using shared cache bridge."""
     try:
+        # CRITICAL FIX: Use shared cache bridge for live data
+        if web_cache:
+            try:
+                live_data = await web_cache.get_market_overview()
+                if live_data and live_data.get('total_symbols', 0) > 0:
+                    logger.info(f"✅ Dashboard market overview from shared cache: {live_data.get('total_symbols')} symbols")
+                    return {
+                        **live_data,
+                        "data_source": "shared_cache_live"
+                    }
+                logger.warning("Shared cache returned empty data for dashboard market overview")
+            except Exception as e:
+                logger.error(f"Shared cache error in dashboard market overview: {e}")
+
+        # Fallback to integration service
         integration = get_dashboard_integration()
         if not integration:
             return {
                 "active_symbols": 0,
                 "total_volume": 0,
                 "market_regime": "unknown",
-                "volatility": 0
+                "volatility": 0,
+                "data_source": "fallback_default"
             }
 
         market_data = await integration.get_market_overview()
+        market_data["data_source"] = "integration_service_fallback"
         return market_data
 
     except Exception as e:
@@ -710,17 +792,29 @@ async def get_mobile_dashboard_data_direct(request: Request) -> Dict[str, Any]:
 
 @router.get("/mobile-data")
 async def get_mobile_dashboard_data() -> Dict[str, Any]:
-    """Optimized endpoint for mobile dashboard with cache integration."""
+    """Optimized endpoint for mobile dashboard with shared cache bridge integration."""
     try:
+        # CRITICAL FIX: Use shared cache bridge for live mobile data
+        if web_cache:
+            try:
+                mobile_data = await web_cache.get_mobile_data()
+                if mobile_data and mobile_data.get('confluence_scores'):
+                    logger.info(f"✅ Mobile data from shared cache: {len(mobile_data.get('confluence_scores', []))} confluence scores")
+                    return mobile_data
+                logger.warning("Shared cache returned empty mobile data")
+            except Exception as e:
+                logger.error(f"Shared cache error in mobile data: {e}")
+
+        # Fallback to direct memcached access
         import aiomcache
         import json
-        
+
         # Get integration if available
         integration = get_dashboard_integration()
-        
+
         # Fetch actual data from cache
         cache_client = aiomcache.Client("localhost", 11211)
-        
+
         # Get overview and breadth data
         overview_data = await cache_client.get(b"market:overview")
         breadth_data = await cache_client.get(b"market:breadth")
@@ -1105,19 +1199,13 @@ async def get_dashboard_symbols() -> Dict[str, Any]:
             symbols_data = await local_integration.get_symbols_data()
             return symbols_data
         
-        # Last resort fallback
-        logger.warning("Using fallback symbols data")
+        # Last resort: do not return mock data
+        logger.warning("No symbols available from Memcached or integration service")
         return {
-            "status": "fallback",
-            "symbols": [
-                {"symbol": "BTCUSDT", "confluence_score": 50, "change_24h": 2.45},
-                {"symbol": "ETHUSDT", "confluence_score": 50, "change_24h": -1.23},
-                {"symbol": "ADAUSDT", "confluence_score": 50, "change_24h": 0.87},
-                {"symbol": "SOLUSDT", "confluence_score": 50, "change_24h": 3.21},
-                {"symbol": "DOTUSDT", "confluence_score": 50, "change_24h": -0.56}
-            ],
+            "status": "unavailable",
+            "symbols": [],
             "timestamp": datetime.utcnow().isoformat(),
-            "message": "Waiting for live data from trading system"
+            "message": "No live symbol data available"
         }
         
     except Exception as e:

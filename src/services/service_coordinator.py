@@ -1,3 +1,4 @@
+from src.utils.task_tracker import create_tracked_task
 """
 Phase 2 Service Coordinator
 Manages independent services and provides health monitoring
@@ -53,16 +54,16 @@ class ServiceCoordinator:
         self.running = True
         
         # Start services as independent tasks
-        self.market_task = asyncio.create_task(
-            self.market_service.start(),
+        self.market_task = create_tracked_task(
+            self.market_service.start, name="start_task"),
             name="market_service"
         )
         
         # Wait a bit for market data to populate before starting analysis
         await asyncio.sleep(2)
         
-        self.analysis_task = asyncio.create_task(
-            self.analysis_service.start(),
+        self.analysis_task = create_tracked_task(
+            self.analysis_service.start, name="start_task"),
             name="analysis_service"
         )
         
@@ -81,8 +82,8 @@ class ServiceCoordinator:
                     if exception:
                         logger.error(f"Market service crashed: {exception}")
                         logger.info("Restarting market service...")
-                        self.market_task = asyncio.create_task(
-                            self.market_service.start(),
+                        self.market_task = create_tracked_task(
+                            self.market_service.start, name="start_task"),
                             name="market_service"
                         )
                 
@@ -91,8 +92,8 @@ class ServiceCoordinator:
                     if exception:
                         logger.error(f"Analysis service crashed: {exception}")
                         logger.info("Restarting analysis service...")
-                        self.analysis_task = asyncio.create_task(
-                            self.analysis_service.start(),
+                        self.analysis_task = create_tracked_task(
+                            self.analysis_service.start, name="start_task"),
                             name="analysis_service"
                         )
                 
@@ -145,7 +146,7 @@ async def run_coordinator():
     # Handle shutdown signals
     def signal_handler(sig, frame):
         logger.info("Received shutdown signal")
-        asyncio.create_task(coordinator.stop())
+        create_tracked_task(coordinator.stop(), name="auto_tracked_task")
         sys.exit(0)
     
     signal.signal(signal.SIGINT, signal_handler)

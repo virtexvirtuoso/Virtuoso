@@ -1,3 +1,4 @@
+from src.utils.task_tracker import create_tracked_task
 """
 Health Check Service for Virtuoso CCXT Trading System.
 
@@ -422,7 +423,7 @@ class HealthCheckService:
             return  # Already monitoring
         
         health_check = self._health_checks[name]
-        task = asyncio.create_task(self._monitoring_loop(name, health_check))
+        task = create_tracked_task(self._monitoring_loop, name="_monitoring_loop_task")
         self._monitoring_tasks[name] = task
         
         logger.info(f"Started monitoring for health check: {name}")
