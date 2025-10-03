@@ -1,3 +1,4 @@
+from src.utils.task_tracker import create_tracked_task
 """
 Phase 4 Load Testing Suite - Realistic Trading Scenarios
 ========================================================
@@ -464,7 +465,7 @@ class PerformanceProfiler:
         self.gc_count_start = len(gc.get_stats()) if hasattr(gc, 'get_stats') else 0
         
         # Start collection task
-        self.profiling_task = asyncio.create_task(self._collect_metrics())
+        self.profiling_task = create_tracked_task(self._collect_metrics(), name="auto_tracked_task")
     
     async def stop_profiling(self) -> Dict[str, Any]:
         """Stop profiling and return summary."""
@@ -654,8 +655,8 @@ class LoadTestRunner:
         load_pattern = LoadPatternGenerator(config)
         
         # Start background monitoring
-        self.monitoring_task = asyncio.create_task(
-            self._monitor_test_progress(config, profiler)
+        self.monitoring_task = create_tracked_task(
+            self._monitor_test_progress(config, profiler, name="auto_tracked_task")
         )
         
         # Generate and send events according to load pattern

@@ -14,7 +14,7 @@ import {
   ContributionGraph
 } from 'react-native-chart-kit';
 
-const API_BASE = 'http://5.223.63.4:8003/api/dashboard';
+const API_BASE = process.env.REACT_APP_API_BASE || 'http://localhost:8003/api/dashboard';
 const screenWidth = Dimensions.get('window').width;
 
 const BetaDashboard = () => {

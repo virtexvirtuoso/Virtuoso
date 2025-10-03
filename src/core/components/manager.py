@@ -1,3 +1,4 @@
+from src.utils.task_tracker import create_tracked_task
 """Component management system."""
 
 import logging
@@ -49,7 +50,7 @@ class ComponentManager:
     async def start_monitoring(self) -> None:
         """Start component monitoring."""
         if self._health_check_task is None:
-            self._health_check_task = asyncio.create_task(self._monitor_components())
+            self._health_check_task = create_tracked_task(self._monitor_components(), name="auto_tracked_task")
             
     async def stop_monitoring(self) -> None:
         """Stop component monitoring."""

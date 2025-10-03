@@ -146,7 +146,16 @@ class AlphaScannerEngine:
                 return None
             
             # Run confluence analysis
-            confluence_result = await self.confluence_analyzer.analyze(market_data)
+            analyzer = getattr(self, 'confluence_analyzer', None)
+            if not (analyzer and hasattr(analyzer, 'analyze') and callable(getattr(analyzer, 'analyze'))):
+                self.logger.debug(f"confluence_analyzer missing or analyze() not callable; skipping {symbol}")
+                return None
+
+            try:
+                confluence_result = await analyzer.analyze(market_data)
+            except Exception as e:
+                self.logger.debug(f"confluence_analyzer.analyze error for {symbol}: {e}")
+                return None
             
             if not confluence_result or confluence_result.get('score', 0) < 50:
                 self.logger.debug(f"Low confluence score for {symbol}: {confluence_result.get('score', 0)}")

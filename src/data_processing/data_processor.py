@@ -55,6 +55,15 @@ class DataProcessor:
             # Process orderbook
             if 'orderbook' in market_data:
                 processed_data['orderbook'] = await self.process_orderbook(market_data['orderbook'])
+
+            # Process RPI data if available
+            if 'rpi_orderbook' in market_data:
+                processed_data['rpi_orderbook'] = await self.process_rpi_orderbook(market_data['rpi_orderbook'])
+                processed_data['rpi_enabled'] = market_data.get('rpi_enabled', False)
+
+            # Process enhanced orderbook if available
+            if 'enhanced_orderbook' in market_data:
+                processed_data['enhanced_orderbook'] = await self.process_orderbook(market_data['enhanced_orderbook'])
                 
             # Process trades
             if 'trades' in market_data:
@@ -132,6 +141,173 @@ class DataProcessor:
         except Exception as e:
             self.logger.error(f"Error processing orderbook: {str(e)}")
             raise
+
+    async def process_rpi_orderbook(self, rpi_orderbook: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Process RPI orderbook data with validation.
+
+        Args:
+            rpi_orderbook: RPI orderbook data from Bybit API
+
+        Returns:
+            Dict containing validated and processed RPI data
+        """
+        import time
+        start_time = time.time()
+
+        try:
+            self.logger.debug(f"🔍 [RPI_DEBUG] Starting RPI orderbook processing")
+            self.logger.debug(f"🔍 [RPI_DEBUG] Input type: {type(rpi_orderbook)}, keys: {list(rpi_orderbook.keys()) if isinstance(rpi_orderbook, dict) else 'N/A'}")
+
+            if not isinstance(rpi_orderbook, dict):
+                self.logger.warning("RPI orderbook data is not a dictionary")
+                self.logger.debug(f"🔍 [RPI_DEBUG] Invalid input type: {type(rpi_orderbook)}")
+                return {}
+
+            # Validate required fields
+            required_fields = ['b', 'a']
+            missing_fields = [field for field in required_fields if field not in rpi_orderbook]
+            if missing_fields:
+                self.logger.warning(f"RPI orderbook missing required fields: {missing_fields}")
+                self.logger.debug(f"🔍 [RPI_DEBUG] Available fields: {list(rpi_orderbook.keys())}")
+                return {}
+
+            self.logger.debug(f"🔍 [RPI_DEBUG] Validation passed, processing {len(rpi_orderbook)} fields")
+
+            processed_rpi = {}
+            processing_stats = {'total_processed': 0, 'total_skipped': 0, 'validation_errors': 0}
+
+            # Process bids and asks
+            for side, side_name in [('b', 'bids'), ('a', 'asks')]:
+                side_start = time.time()
+                side_data = rpi_orderbook.get(side, [])
+                side_stats = {'processed': 0, 'skipped': 0, 'validation_errors': 0}
+
+                self.logger.debug(f"🔍 [RPI_DEBUG] Processing {side_name}: {len(side_data)} levels")
+
+                if not isinstance(side_data, list):
+                    self.logger.warning(f"RPI {side_name} is not a list, skipping")
+                    self.logger.debug(f"🔍 [RPI_DEBUG] {side_name} type: {type(side_data)}")
+                    continue
+
+                validated_levels = []
+                total_non_rpi_volume = 0.0
+                total_rpi_volume = 0.0
+
+                for i, level in enumerate(side_data):
+                    if not isinstance(level, list) or len(level) != 3:
+                        self.logger.debug(f"Skipping invalid RPI {side_name} level {i}: expected [price, non_rpi, rpi], got {level}")
+                        side_stats['skipped'] += 1
+                        continue
+
+                    try:
+                        price = float(level[0])
+                        non_rpi_size = float(level[1])
+                        rpi_size = float(level[2])
+
+                        # Validate values
+                        if price <= 0:
+                            self.logger.debug(f"Skipping RPI {side_name} level {i}: invalid price {price}")
+                            side_stats['validation_errors'] += 1
+                            continue
+
+                        if non_rpi_size < 0 or rpi_size < 0:
+                            self.logger.debug(f"Skipping RPI {side_name} level {i}: negative size values (non_rpi={non_rpi_size}, rpi={rpi_size})")
+                            side_stats['validation_errors'] += 1
+                            continue
+
+                        validated_levels.append([price, non_rpi_size, rpi_size])
+                        total_non_rpi_volume += non_rpi_size
+                        total_rpi_volume += rpi_size
+                        side_stats['processed'] += 1
+
+                        # Log first 3 levels for debugging
+                        if i < 3:
+                            total_size = non_rpi_size + rpi_size
+                            rpi_percent = (rpi_size / total_size * 100) if total_size > 0 else 0
+                            self.logger.debug(f"🔍 [RPI_DEBUG]   Level {i+1}: price={price:.2f}, non_rpi={non_rpi_size:.4f}, rpi={rpi_size:.4f}, total={total_size:.4f}, rpi%={rpi_percent:.1f}%")
+
+                    except (ValueError, TypeError) as e:
+                        self.logger.debug(f"Skipping RPI {side_name} level {i}: conversion error {e}")
+                        side_stats['validation_errors'] += 1
+                        continue
+
+                # Sort appropriately (bids descending, asks ascending)
+                sort_start = time.time()
+                if side == 'b':  # bids
+                    validated_levels.sort(key=lambda x: x[0], reverse=True)
+                else:  # asks
+                    validated_levels.sort(key=lambda x: x[0])
+                sort_time = (time.time() - sort_start) * 1000
+
+                processed_rpi[side] = validated_levels
+                side_time = (time.time() - side_start) * 1000
+
+                # Update global stats
+                processing_stats['total_processed'] += side_stats['processed']
+                processing_stats['total_skipped'] += side_stats['skipped']
+                processing_stats['validation_errors'] += side_stats['validation_errors']
+
+                # Log side processing summary
+                self.logger.debug(f"🔍 [RPI_DEBUG] {side_name.capitalize()} processing summary:")
+                self.logger.debug(f"🔍 [RPI_DEBUG]   Processed: {side_stats['processed']}/{len(side_data)} levels")
+                self.logger.debug(f"🔍 [RPI_DEBUG]   Skipped: {side_stats['skipped']}, Validation errors: {side_stats['validation_errors']}")
+                self.logger.debug(f"🔍 [RPI_DEBUG]   Non-RPI volume: {total_non_rpi_volume:.4f}, RPI volume: {total_rpi_volume:.4f}")
+                self.logger.debug(f"🔍 [RPI_DEBUG]   Sort time: {sort_time:.2f}ms, Total side time: {side_time:.2f}ms")
+
+                if validated_levels:
+                    best_price = validated_levels[0][0]
+                    self.logger.debug(f"🔍 [RPI_DEBUG]   Best {side_name[:-1]} price after sort: {best_price:.2f}")
+
+            # Preserve metadata
+            metadata_fields = ['ts', 'u', 'seq']
+            preserved_metadata = {}
+            for field in metadata_fields:
+                if field in rpi_orderbook:
+                    processed_rpi[field] = rpi_orderbook[field]
+                    preserved_metadata[field] = rpi_orderbook[field]
+
+            self.logger.debug(f"🔍 [RPI_DEBUG] Preserved metadata: {preserved_metadata}")
+
+            # Calculate data quality metrics
+            bid_count = len(processed_rpi.get('b', []))
+            ask_count = len(processed_rpi.get('a', []))
+            original_bid_count = len(rpi_orderbook.get('b', []))
+            original_ask_count = len(rpi_orderbook.get('a', []))
+
+            total_time = (time.time() - start_time) * 1000
+
+            # Calculate data quality scores
+            bid_quality = (bid_count / original_bid_count * 100) if original_bid_count > 0 else 0
+            ask_quality = (ask_count / original_ask_count * 100) if original_ask_count > 0 else 0
+            overall_quality = (processing_stats['total_processed'] / (processing_stats['total_processed'] + processing_stats['total_skipped'] + processing_stats['validation_errors']) * 100) if (processing_stats['total_processed'] + processing_stats['total_skipped'] + processing_stats['validation_errors']) > 0 else 0
+
+            # Log comprehensive processing results
+            self.logger.debug(f"🔍 [RPI_DEBUG] RPI processing completed in {total_time:.2f}ms")
+            self.logger.debug(f"🔍 [RPI_DEBUG] Final results: {bid_count} bids, {ask_count} asks")
+            self.logger.debug(f"🔍 [RPI_DEBUG] Data quality: Bids {bid_quality:.1f}%, Asks {ask_quality:.1f}%, Overall {overall_quality:.1f}%")
+            self.logger.debug(f"🔍 [RPI_DEBUG] Processing stats: {processing_stats}")
+
+            if bid_count > 0 or ask_count > 0:
+                self.logger.info(f"RPI orderbook processed: {bid_count} bids ({bid_quality:.1f}% quality), {ask_count} asks ({ask_quality:.1f}% quality) in {total_time:.1f}ms")
+
+                # Log spread information if both sides exist
+                if bid_count > 0 and ask_count > 0:
+                    best_bid = processed_rpi['b'][0][0]
+                    best_ask = processed_rpi['a'][0][0]
+                    spread = best_ask - best_bid
+                    spread_bps = (spread / best_bid * 10000) if best_bid > 0 else 0
+                    self.logger.debug(f"🔍 [RPI_DEBUG] RPI Spread: {spread:.2f} ({spread_bps:.1f} bps), Best bid: {best_bid:.2f}, Best ask: {best_ask:.2f}")
+            else:
+                self.logger.warning("No valid RPI orderbook levels after processing")
+                self.logger.debug(f"🔍 [RPI_DEBUG] Processing failed - all {original_bid_count + original_ask_count} original levels were invalid")
+
+            return processed_rpi
+
+        except Exception as e:
+            self.logger.error(f"Error processing RPI orderbook: {str(e)}")
+            # Return empty dict on error to maintain data flow
+            return {}
 
     async def process_trades(self, trades: List[Dict]) -> pd.DataFrame:
         """Process trade data."""
@@ -992,13 +1168,47 @@ class DataProcessor:
     def process_trade(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Legacy method for processing individual trades. Redirects to _process_trades."""
         self.logger.debug("Using legacy process_trade method - consider using _process_trades instead")
-        result = asyncio.run(self._process_trades([data]))
-        return result[0] if result else {}
+        # Fix: Use run_coroutine_threadsafe instead of asyncio.run()
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # Schedule coroutine on the running event loop from thread
+                future = asyncio.run_coroutine_threadsafe(
+                    self._process_trades([data]),
+                    loop
+                )
+                # Wait for completion with timeout
+                result = future.result(timeout=10.0)
+                return result[0] if result else {}
+            else:
+                # Fallback for when no loop is running
+                logger.warning("No running event loop found for trade processing")
+                return {}
+        except Exception as e:
+            self.logger.error(f"Error in process_trade: {e}")
+            return {}
 
     def process_ticker_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Legacy method for processing ticker data. Redirects to _process_ticker."""
         self.logger.debug("Using legacy process_ticker_data method - consider using _process_ticker instead")
-        return asyncio.run(self._process_ticker(data))
+        # Fix: Use run_coroutine_threadsafe instead of asyncio.run()
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # Schedule coroutine on the running event loop from thread
+                future = asyncio.run_coroutine_threadsafe(
+                    self._process_ticker(data),
+                    loop
+                )
+                # Wait for completion with timeout
+                return future.result(timeout=10.0)
+            else:
+                # Fallback for when no loop is running
+                logger.warning("No running event loop found for ticker processing")
+                return {}
+        except Exception as e:
+            self.logger.error(f"Error in process_ticker_data: {e}")
+            return {}
 
     async def initialize(self) -> None:
         """Initialize the data processor.
@@ -1059,6 +1269,16 @@ class DataProcessor:
             # Validate input data
             if not market_data or not isinstance(market_data, dict):
                 raise ValueError("Invalid market data format")
+
+            # Handle error responses from exchange manager
+            if "error" in market_data:
+                error_type = market_data.get("error")
+                if error_type == "unsupported_symbol":
+                    self.logger.info(f"Skipping unsupported symbol: {market_data.get('symbol')}")
+                    return {"symbol": market_data.get('symbol'), "status": "unsupported"}
+                else:
+                    self.logger.warning(f"Exchange error for {market_data.get('symbol')}: {market_data.get('message')}")
+                    return {"symbol": market_data.get('symbol'), "status": "error", "message": market_data.get('message')}
                 
             # Initialize processed data with metadata
             processed_data = {

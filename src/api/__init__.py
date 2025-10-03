@@ -57,7 +57,7 @@ Version: 2.5.0
 """
 
 from fastapi import FastAPI
-from .routes import signals, market, system, trading, dashboard, alpha, liquidation, correlation, bitcoin_beta, manipulation, top_symbols, whale_activity, sentiment, admin, debug_test, core_api, alerts, cache_metrics
+from .routes import signals, market, system, trading, dashboard, alpha, liquidation, correlation, bitcoin_beta, manipulation, top_symbols, whale_activity, sentiment, admin, core_api, alerts, cache_metrics
 
 
 # Priority 2 Gateway Implementation
@@ -240,12 +240,12 @@ def init_api_routes(app: FastAPI):
     #     tags=["cache"]
     # )
     
-    # Include debug routes
-    app.include_router(
-        debug_test.router,
-        prefix=f"{api_prefix}/debug",
-        tags=["debug"]
-    )
+    # Debug routes removed for security - debug_test.py removed from production
+    # app.include_router(
+    #     debug_test.router,
+    #     prefix=f"{api_prefix}/debug",
+    #     tags=["debug"]
+    # )
     
     # Include core API routes (standard endpoints)
     app.include_router(

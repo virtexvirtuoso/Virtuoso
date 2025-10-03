@@ -1,3 +1,4 @@
+from src.utils.task_tracker import create_tracked_task
 """
 Mobile-Optimized Real-time Streaming Manager
 Phase 3: Transforms request-response to real-time streaming architecture
@@ -85,11 +86,11 @@ class MobileStreamManager:
         
         # Start core streaming tasks
         self._streaming_tasks = [
-            asyncio.create_task(self._process_message_queue()),
-            asyncio.create_task(self._monitor_client_health()),
-            asyncio.create_task(self._adaptive_market_monitoring()),
-            asyncio.create_task(self._stream_confluence_updates()),
-            asyncio.create_task(self._stream_market_pulse())
+            create_tracked_task(self._process_message_queue(), name="auto_tracked_task"),
+            create_tracked_task(self._monitor_client_health(), name="auto_tracked_task"),
+            create_tracked_task(self._adaptive_market_monitoring(), name="auto_tracked_task"),
+            create_tracked_task(self._stream_confluence_updates(), name="auto_tracked_task"),
+            create_tracked_task(self._stream_market_pulse(), name="auto_tracked_task")
         ]
         
         logger.info("✅ Phase 3 Mobile Streaming Manager started with 5 background tasks")
@@ -292,7 +293,7 @@ class MobileStreamManager:
         except Exception as e:
             logger.error(f"Error sending message to client {client_id}: {e}")
             # Schedule client for disconnection
-            asyncio.create_task(self.disconnect_client(client_id))
+            create_tracked_task(self.disconnect_client, name="disconnect_client_task")
             
     async def _monitor_client_health(self):
         """Monitor health of connected clients"""

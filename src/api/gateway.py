@@ -1,3 +1,4 @@
+from src.utils.task_tracker import create_tracked_task
 """
 API Gateway - Priority 2 Implementation
 Unified API gateway for all dashboard requests with:
@@ -65,7 +66,7 @@ class RateLimiter:
         self._lock = threading.Lock()
         
         # Start cleanup task
-        asyncio.create_task(self._cleanup_task())
+        create_tracked_task(self._cleanup_task(), name="auto_tracked_task")
     
     async def _cleanup_task(self):
         """Periodic cleanup of inactive clients"""

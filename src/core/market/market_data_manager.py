@@ -11,6 +11,7 @@ from src.core.error.unified_exceptions import DataUnavailableError
 from src.core.exchanges.rate_limiter import BybitRateLimiter
 from src.core.exchanges.websocket_manager import WebSocketManager
 from src.core.market.smart_intervals import SmartIntervalsManager, MarketActivity
+from src.utils.task_tracker import create_tracked_task
 
 logger = logging.getLogger(__name__)
 
@@ -185,7 +186,7 @@ class MarketDataManager:
         self.running = True
         
         # Create task for monitoring loop
-        self.monitoring_task = asyncio.create_task(self._monitoring_loop())
+        self.monitoring_task = create_tracked_task(self._monitoring_loop(), name="auto_tracked_task")
         
         self.logger.info("Market data monitoring started")
     
@@ -373,13 +374,13 @@ class MarketDataManager:
                         self.last_full_refresh[symbol]['components']['ticker'] = current_time
                 
                 elif component == 'orderbook':
-                    # Fetch orderbook
-                    orderbook_data = await self._fetch_with_rate_limiting(
-                        'v5/market/orderbook',
-                        lambda: self.exchange_manager.fetch_orderbook(symbol, limit=50)
-                    )
-                    if orderbook_data:
-                        self.data_cache[symbol]['orderbook'] = orderbook_data
+                    # Fetch both standard and RPI orderbook data
+                    enhanced_orderbook_data = await self._fetch_enhanced_orderbook_data(symbol)
+                    if enhanced_orderbook_data:
+                        self.data_cache[symbol]['orderbook'] = enhanced_orderbook_data['standard_orderbook']
+                        self.data_cache[symbol]['rpi_orderbook'] = enhanced_orderbook_data.get('rpi_orderbook', {})
+                        self.data_cache[symbol]['enhanced_orderbook'] = enhanced_orderbook_data.get('enhanced_orderbook', {})
+                        self.data_cache[symbol]['rpi_enabled'] = enhanced_orderbook_data.get('rpi_enabled', False)
                         self.last_full_refresh[symbol]['components']['orderbook'] = current_time
                 
                 elif component == 'kline':
@@ -1562,8 +1563,8 @@ class MarketDataManager:
                 }
                 
                 # Use asyncio to call the coroutine with proper error handling
-                task = asyncio.create_task(
-                    self.alert_manager.check_liquidation_threshold(liquidation['symbol'], liquidation_data)
+                task = create_tracked_task(
+                    self.alert_manager.check_liquidation_threshold(liquidation['symbol'], liquidation_data, name="auto_tracked_task")
                 )
                 # Add error callback to handle any exceptions
                 def handle_liquidation_alert_error(task):
@@ -2108,12 +2109,15 @@ class MarketDataManager:
                             self.logger.error("No exchange available for ticker fetch")
                     
                     elif component == 'orderbook':
-                        # Try to find exchange
+                        # Try to find exchange and fetch enhanced orderbook data
                         exchange = await self.exchange_manager.get_primary_exchange()
                         if exchange:
-                            orderbook = await exchange.fetch_order_book(symbol)
-                            if orderbook:
-                                fetched_data['orderbook'] = orderbook
+                            enhanced_orderbook_data = await self._fetch_enhanced_orderbook_data(symbol)
+                            if enhanced_orderbook_data:
+                                fetched_data['orderbook'] = enhanced_orderbook_data['standard_orderbook']
+                                fetched_data['rpi_orderbook'] = enhanced_orderbook_data.get('rpi_orderbook', {})
+                                fetched_data['enhanced_orderbook'] = enhanced_orderbook_data.get('enhanced_orderbook', {})
+                                fetched_data['rpi_enabled'] = enhanced_orderbook_data.get('rpi_enabled', False)
                         else:
                             self.logger.error("No exchange available for orderbook fetch")
                     
@@ -2294,3 +2298,270 @@ class MarketDataManager:
         except Exception as e:
             self.logger.error(f"Error fetching OHLCV data for {symbol}: {str(e)}")
             return None
+
+    async def _fetch_enhanced_orderbook_data(self, symbol: str) -> Dict[str, Any]:
+        """
+        Fetch both standard and RPI orderbook data and merge them.
+
+        Args:
+            symbol: Trading symbol to fetch data for
+
+        Returns:
+            Dict containing standard, RPI, and enhanced orderbook data
+        """
+        import time
+        start_time = time.time()
+
+        try:
+            self.logger.debug(f"🔍 [RPI_DEBUG] Starting enhanced orderbook fetch for {symbol}")
+
+            exchange_client = await self.exchange_manager.get_primary_exchange()
+            if not exchange_client:
+                self.logger.error("No exchange client available for enhanced orderbook fetch")
+                return {}
+
+            self.logger.debug(f"🔍 [RPI_DEBUG] Exchange client obtained: {type(exchange_client).__name__}")
+
+            # Fetch both standard and RPI orderbook concurrently
+            self.logger.debug(f"🔍 [RPI_DEBUG] Setting up concurrent fetch tasks")
+
+            standard_task = self._fetch_with_rate_limiting(
+                'v5/market/orderbook',
+                lambda: exchange_client.fetch_order_book(symbol, limit=50)
+            )
+            self.logger.debug(f"🔍 [RPI_DEBUG] Standard orderbook task created")
+
+            # Check if RPI method is available before creating task
+            rpi_task = None
+            if hasattr(exchange_client, 'fetch_rpi_orderbook'):
+                self.logger.debug(f"🔍 [RPI_DEBUG] RPI method available, creating RPI task")
+                rpi_task = self._fetch_with_rate_limiting(
+                    'v5/market/rpi_orderbook',
+                    lambda: exchange_client.fetch_rpi_orderbook(symbol, limit=50)
+                )
+            else:
+                self.logger.debug(f"🔍 [RPI_DEBUG] RPI method not available on exchange client")
+
+            # Execute tasks
+            fetch_start = time.time()
+            if rpi_task:
+                self.logger.debug(f"🔍 [RPI_DEBUG] Executing concurrent fetch tasks (standard + RPI)")
+                standard_ob, rpi_ob = await asyncio.gather(standard_task, rpi_task, return_exceptions=True)
+                fetch_time = (time.time() - fetch_start) * 1000
+                self.logger.debug(f"🔍 [RPI_DEBUG] Concurrent fetch completed in {fetch_time:.2f}ms")
+
+                # Handle exceptions in RPI fetch
+                if isinstance(rpi_ob, Exception):
+                    self.logger.warning(f"RPI fetch failed for {symbol}: {rpi_ob}, using standard orderbook only")
+                    self.logger.debug(f"🔍 [RPI_DEBUG] RPI fetch exception type: {type(rpi_ob).__name__}")
+                    rpi_ob = {}
+                else:
+                    self.logger.debug(f"🔍 [RPI_DEBUG] RPI fetch successful, data keys: {list(rpi_ob.keys()) if rpi_ob else 'empty'}")
+                    if rpi_ob:
+                        bids_count = len(rpi_ob.get('b', []))
+                        asks_count = len(rpi_ob.get('a', []))
+                        self.logger.debug(f"🔍 [RPI_DEBUG] RPI data: {bids_count} bids, {asks_count} asks")
+            else:
+                self.logger.debug(f"🔍 [RPI_DEBUG] Executing standard fetch task only")
+                standard_ob = await standard_task
+                fetch_time = (time.time() - fetch_start) * 1000
+                self.logger.debug(f"🔍 [RPI_DEBUG] Standard fetch completed in {fetch_time:.2f}ms")
+                rpi_ob = {}
+
+            # Handle exceptions in standard fetch
+            if isinstance(standard_ob, Exception):
+                self.logger.error(f"Standard orderbook fetch failed for {symbol}: {standard_ob}")
+                self.logger.debug(f"🔍 [RPI_DEBUG] Standard fetch exception type: {type(standard_ob).__name__}")
+                return {}
+
+            self.logger.debug(f"🔍 [RPI_DEBUG] Standard orderbook fetch successful")
+            if standard_ob:
+                bids_count = len(standard_ob.get('bids', []))
+                asks_count = len(standard_ob.get('asks', []))
+                self.logger.debug(f"🔍 [RPI_DEBUG] Standard data: {bids_count} bids, {asks_count} asks")
+
+            # Merge RPI data into standard orderbook format
+            merge_start = time.time()
+            self.logger.debug(f"🔍 [RPI_DEBUG] Starting RPI data merge")
+            enhanced_orderbook = self._merge_rpi_data(standard_ob, rpi_ob)
+            merge_time = (time.time() - merge_start) * 1000
+            self.logger.debug(f"🔍 [RPI_DEBUG] RPI merge completed in {merge_time:.2f}ms")
+
+            if enhanced_orderbook.get('enhanced'):
+                enhanced_bids = len(enhanced_orderbook.get('bids', []))
+                enhanced_asks = len(enhanced_orderbook.get('asks', []))
+                self.logger.debug(f"🔍 [RPI_DEBUG] Enhanced orderbook: {enhanced_bids} bids, {enhanced_asks} asks")
+            else:
+                self.logger.debug(f"🔍 [RPI_DEBUG] No enhancement applied, using standard orderbook")
+
+            total_time = (time.time() - start_time) * 1000
+            rpi_enabled = bool(rpi_ob)
+
+            result = {
+                'standard_orderbook': standard_ob,
+                'rpi_orderbook': rpi_ob,
+                'enhanced_orderbook': enhanced_orderbook,
+                'rpi_enabled': rpi_enabled,
+                'symbol': symbol,
+                'timestamp': int(time.time() * 1000)
+            }
+
+            self.logger.debug(f"🔍 [RPI_DEBUG] Enhanced orderbook fetch completed in {total_time:.2f}ms")
+            self.logger.debug(f"🔍 [RPI_DEBUG] Result summary: RPI enabled={rpi_enabled}, enhanced={enhanced_orderbook.get('enhanced', False)}")
+
+            return result
+
+        except Exception as e:
+            total_time = (time.time() - start_time) * 1000
+            self.logger.error(f"Error fetching enhanced orderbook for {symbol}: {str(e)}")
+            self.logger.debug(f"🔍 [RPI_DEBUG] Enhanced orderbook fetch failed after {total_time:.2f}ms")
+            self.logger.debug(f"🔍 [RPI_DEBUG] Exception details: {traceback.format_exc()}")
+            return {}
+
+    def _merge_rpi_data(self, standard_ob: Dict, rpi_ob: Dict) -> Dict:
+        """
+        Merge RPI data with standard orderbook to get total liquidity.
+
+        Args:
+            standard_ob: Standard orderbook data
+            rpi_ob: RPI orderbook data
+
+        Returns:
+            Enhanced orderbook with merged liquidity
+        """
+        self.logger.debug(f"🔍 [RPI_DEBUG] Starting RPI data merge process")
+        self.logger.debug(f"🔍 [RPI_DEBUG] Standard OB available: {bool(standard_ob)}")
+        self.logger.debug(f"🔍 [RPI_DEBUG] RPI OB available: {bool(rpi_ob)}")
+
+        if not rpi_ob or not rpi_ob.get('b') or not rpi_ob.get('a'):
+            self.logger.debug(f"🔍 [RPI_DEBUG] No RPI data to merge, returning standard orderbook")
+            if not rpi_ob:
+                self.logger.debug(f"🔍 [RPI_DEBUG] RPI orderbook is empty")
+            else:
+                self.logger.debug(f"🔍 [RPI_DEBUG] RPI bids: {len(rpi_ob.get('b', []))}, asks: {len(rpi_ob.get('a', []))}")
+            return standard_ob
+
+        try:
+            standard_bids = standard_ob.get('bids', [])
+            standard_asks = standard_ob.get('asks', [])
+            rpi_bids = rpi_ob.get('b', [])
+            rpi_asks = rpi_ob.get('a', [])
+
+            self.logger.debug(f"🔍 [RPI_DEBUG] Input data sizes:")
+            self.logger.debug(f"🔍 [RPI_DEBUG]   Standard bids: {len(standard_bids)}, asks: {len(standard_asks)}")
+            self.logger.debug(f"🔍 [RPI_DEBUG]   RPI bids: {len(rpi_bids)}, asks: {len(rpi_asks)}")
+
+            # Enhance bids and asks with RPI liquidity
+            self.logger.debug(f"🔍 [RPI_DEBUG] Merging bid side data")
+            enhanced_bids = self._merge_side_data(
+                standard_bids,
+                rpi_bids,
+                is_bid=True
+            )
+
+            self.logger.debug(f"🔍 [RPI_DEBUG] Merging ask side data")
+            enhanced_asks = self._merge_side_data(
+                standard_asks,
+                rpi_asks,
+                is_bid=False
+            )
+
+            self.logger.debug(f"🔍 [RPI_DEBUG] Merge completed:")
+            self.logger.debug(f"🔍 [RPI_DEBUG]   Enhanced bids: {len(enhanced_bids)}, asks: {len(enhanced_asks)}")
+
+            # Log sample of enhanced data for validation
+            if enhanced_bids:
+                sample_bid = enhanced_bids[0]
+                self.logger.debug(f"🔍 [RPI_DEBUG] Sample enhanced bid: {sample_bid}")
+            if enhanced_asks:
+                sample_ask = enhanced_asks[0]
+                self.logger.debug(f"🔍 [RPI_DEBUG] Sample enhanced ask: {sample_ask}")
+
+            result = {
+                'bids': enhanced_bids,
+                'asks': enhanced_asks,
+                'timestamp': standard_ob.get('timestamp'),
+                'enhanced': True
+            }
+
+            self.logger.debug(f"🔍 [RPI_DEBUG] RPI merge successful - orderbook enhanced")
+            return result
+
+        except Exception as e:
+            self.logger.error(f"Error merging RPI data: {str(e)}")
+            self.logger.debug(f"🔍 [RPI_DEBUG] RPI merge failed: {traceback.format_exc()}")
+            return standard_ob
+
+    def _merge_side_data(self, standard_levels: List, rpi_levels: List, is_bid: bool) -> List:
+        """
+        Merge one side of orderbook with RPI data.
+
+        Args:
+            standard_levels: Standard orderbook levels [[price, size], ...]
+            rpi_levels: RPI levels [[price, non_rpi_size, rpi_size], ...]
+            is_bid: True for bids (descending), False for asks (ascending)
+
+        Returns:
+            Merged orderbook levels with enhanced liquidity
+        """
+        side_name = "bids" if is_bid else "asks"
+        self.logger.debug(f"🔍 [RPI_DEBUG] Merging {side_name} - standard: {len(standard_levels)}, RPI: {len(rpi_levels)} levels")
+
+        price_to_total = {}
+        standard_processed = 0
+        rpi_processed = 0
+
+        # Add standard sizes
+        self.logger.debug(f"🔍 [RPI_DEBUG] Processing standard {side_name} levels")
+        for i, level in enumerate(standard_levels):
+            if len(level) >= 2:
+                try:
+                    price, size = float(level[0]), float(level[1])
+                    price_to_total[price] = price_to_total.get(price, 0.0) + size
+                    standard_processed += 1
+
+                    if i < 3:  # Log first 3 levels
+                        self.logger.debug(f"🔍 [RPI_DEBUG]   Standard level {i+1}: price={price:.2f}, size={size:.4f}")
+                except (ValueError, IndexError) as e:
+                    self.logger.debug(f"🔍 [RPI_DEBUG] Skipping invalid standard level {i}: {level}, error: {e}")
+            else:
+                self.logger.debug(f"🔍 [RPI_DEBUG] Skipping malformed standard level {i}: {level}")
+
+        # Add RPI sizes (non_rpi + rpi = total additional)
+        self.logger.debug(f"🔍 [RPI_DEBUG] Processing RPI {side_name} levels")
+        for i, level in enumerate(rpi_levels):
+            if len(level) >= 3:
+                try:
+                    price, non_rpi, rpi = float(level[0]), float(level[1]), float(level[2])
+                    total_additional = non_rpi + rpi
+
+                    # Track before and after for this price level
+                    original_size = price_to_total.get(price, 0.0)
+                    price_to_total[price] = original_size + total_additional
+                    rpi_processed += 1
+
+                    if i < 3:  # Log first 3 levels
+                        self.logger.debug(f"🔍 [RPI_DEBUG]   RPI level {i+1}: price={price:.2f}, non_rpi={non_rpi:.4f}, rpi={rpi:.4f}, total_add={total_additional:.4f}")
+                        self.logger.debug(f"🔍 [RPI_DEBUG]     Price {price:.2f}: {original_size:.4f} -> {price_to_total[price]:.4f} (+{total_additional:.4f})")
+
+                except (ValueError, IndexError) as e:
+                    self.logger.debug(f"🔍 [RPI_DEBUG] Skipping invalid RPI level {i}: {level}, error: {e}")
+            else:
+                self.logger.debug(f"🔍 [RPI_DEBUG] Skipping malformed RPI level {i}: {level}")
+
+        # Sort and return
+        self.logger.debug(f"🔍 [RPI_DEBUG] Sorting merged {side_name} data (reverse={is_bid})")
+        sorted_items = sorted(price_to_total.items(), key=lambda x: x[0], reverse=is_bid)
+        result = [[price, size] for price, size in sorted_items]
+
+        self.logger.debug(f"🔍 [RPI_DEBUG] Merge summary for {side_name}:")
+        self.logger.debug(f"🔍 [RPI_DEBUG]   Standard processed: {standard_processed}/{len(standard_levels)}")
+        self.logger.debug(f"🔍 [RPI_DEBUG]   RPI processed: {rpi_processed}/{len(rpi_levels)}")
+        self.logger.debug(f"🔍 [RPI_DEBUG]   Unique price levels: {len(price_to_total)}")
+        self.logger.debug(f"🔍 [RPI_DEBUG]   Final result levels: {len(result)}")
+
+        if result:
+            top_level = result[0]
+            self.logger.debug(f"🔍 [RPI_DEBUG]   Best level: price={top_level[0]:.2f}, size={top_level[1]:.4f}")
+
+        return result

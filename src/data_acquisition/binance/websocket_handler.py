@@ -1,3 +1,4 @@
+from src.utils.task_tracker import create_tracked_task
 """
 Binance WebSocket Handler
 
@@ -99,10 +100,10 @@ class BinanceWebSocketHandler:
             self.error_count = 0
             
             # Start message handler
-            asyncio.create_task(self._message_handler())
+            create_tracked_task(self._message_handler(), name="auto_tracked_task")
             
             # Start health monitor
-            asyncio.create_task(self._health_monitor())
+            create_tracked_task(self._health_monitor(), name="auto_tracked_task")
             
             logger.info("WebSocket connected successfully")
             return True

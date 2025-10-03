@@ -271,6 +271,9 @@ service_locator = None
 market_data_manager = None
 _service_scope = None  # For proper resource management
 
+# Import task tracking utilities
+from src.utils.task_tracker import create_tracked_task, cleanup_background_tasks, get_task_info
+
 # Resolve paths relative to the project root  
 PROJECT_ROOT = Path(__file__).parent.parent
 TEMPLATE_DIR = PROJECT_ROOT / "src" / "dashboard" / "templates"
@@ -394,6 +397,11 @@ async def cleanup_all_components():
     # Cleanup alert manager
     if alert_manager:
         try:
+            logger.info("Stopping alert manager...")
+            # First call stop() to ensure client session is closed
+            if hasattr(alert_manager, 'stop'):
+                await asyncio.wait_for(alert_manager.stop(), timeout=5.0)
+
             logger.info("Cleaning up alert manager...")
             if hasattr(alert_manager, 'cleanup'):
                 if asyncio.iscoroutinefunction(alert_manager.cleanup):
@@ -877,6 +885,10 @@ async def lifespan(app: FastAPI):
     try:
         logger.info("🚀 LIFESPAN HANDLER STARTING - FastAPI Lifespan Event Triggered!")
         logger.info("🔧 DEBUGGING: About to check component initialization status")
+
+        # Initialize task cleanup event
+        global task_cleanup_event
+        task_cleanup_event = asyncio.Event()
         # Check if components are already initialized (from run_application)
         if config_manager is None:
             logger.info("Components not yet initialized, initializing now...")
@@ -975,7 +987,18 @@ async def lifespan(app: FastAPI):
         app.state.market_reporter = market_reporter
         app.state.market_monitor = market_monitor
         app.state.liquidation_detector = getattr(market_monitor, 'liquidation_detector', None)
-        
+
+        # CRITICAL INTEGRATION: Initialize shared cache bridge with market monitor
+        try:
+            from src.core.cache.service_integration import trading_service_startup_hook
+            cache_integration_success = await trading_service_startup_hook(market_monitor)
+            if cache_integration_success:
+                logger.info("✅ Shared cache bridge integration successful - data flow enabled")
+            else:
+                logger.warning("⚠️ Shared cache bridge integration failed - performance may be limited")
+        except Exception as e:
+            logger.error(f"❌ Shared cache bridge integration error: {e}")
+
         # Initialize Phase 2: Mobile optimization services with market monitor
         try:
             # from src.core.cache.priority_warmer import priority_cache_warmer  # Archived
@@ -1003,7 +1026,7 @@ async def lifespan(app: FastAPI):
             await realtime_pipeline.initialize()
             
             # Start real-time data monitoring in background
-            asyncio.create_task(realtime_pipeline.start_monitoring())
+            create_tracked_task(realtime_pipeline.start_monitoring(), name="realtime_pipeline_monitoring")
             
             logger.info("✅ Phase 3 real-time streaming services initialized")
             
@@ -1087,8 +1110,8 @@ async def lifespan(app: FastAPI):
         init_worker_pool()
         
         # Start background cache updates
-        asyncio.create_task(schedule_background_update())
-        asyncio.create_task(schedule_ticker_updates())
+        create_tracked_task(schedule_background_update(), name="schedule_background_update")
+        create_tracked_task(schedule_ticker_updates(), name="schedule_ticker_updates")
         logger.info("Background cache updates scheduled")
         
         # Store components for cache bridge access by capturing them in closure
@@ -1156,7 +1179,7 @@ async def lifespan(app: FastAPI):
                         import traceback
                         logger.error(traceback.format_exc())
                 
-                bridge_task = asyncio.create_task(bridge_wrapper())
+                bridge_task = create_tracked_task(bridge_wrapper(), name="cache_bridge_wrapper")
                 
                 # Store references for cleanup
                 app.state.cache_bridge_task = bridge_task
@@ -1170,7 +1193,7 @@ async def lifespan(app: FastAPI):
                 logger.error(traceback.format_exc())
         
         # Start cache bridge with enhanced initialization
-        asyncio.create_task(start_cache_bridge_with_proper_dependencies())
+        create_tracked_task(start_cache_bridge_with_proper_dependencies(), name="cache_bridge_dependencies")
         logger.info("🚀 Enhanced cache data bridge initialization scheduled")
         
         logger.info("🎉 LIFESPAN STARTUP COMPLETE - All initialization finished!")
@@ -1180,7 +1203,13 @@ async def lifespan(app: FastAPI):
         
         # Cleanup on shutdown - only if we're the ones who initialized
         logger.info("FastAPI lifespan shutdown starting...")
-        
+
+        # Cleanup background tasks first to prevent new tasks from starting
+        try:
+            await cleanup_background_tasks()
+        except Exception as e:
+            logger.error(f"Error during background task cleanup: {e}")
+
         # Cleanup mobile services HTTP sessions
         try:
             from src.api.services.mobile_fallback_service import mobile_fallback_service
@@ -1324,7 +1353,7 @@ class ContinuousAnalysisManager:
         """Start continuous analysis"""
         if not self.running:
             self.running = True
-            self._task = asyncio.create_task(self._continuous_analysis_loop())
+            self._task = create_tracked_task(self._continuous_analysis_loop(), name="continuous_analysis_loop")
             logger.info("Continuous analysis started")
     
     async def stop(self):
@@ -1829,10 +1858,11 @@ background_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="back
 
 async def aggregate_confluence_signals():
     """Aggregate confluence scores into signals for dashboard"""
+    memcache_client = None
     try:
         import aiomcache
         import json
-        
+
         # Initialize memcache client
         memcache_client = aiomcache.Client('localhost', 11211, pool_size=2)
         
@@ -2024,6 +2054,20 @@ async def aggregate_confluence_signals():
         logger.error(f"Error aggregating confluence signals: {e}")
         import traceback
         logger.error(traceback.format_exc())
+    finally:
+        # Always cleanup aiomcache client to prevent resource leaks
+        if memcache_client:
+            try:
+                await memcache_client.close()
+                logger.debug("Memcache client closed successfully")
+            except Exception as e:
+                logger.debug(f"Error closing memcache client: {e}")
+
+
+# Task tracking functions are now imported from src.utils.task_tracker
+
+
+# cleanup_background_tasks function is now imported from src.utils.task_tracker
 
 
 async def update_symbols_cache():
@@ -2049,21 +2093,22 @@ async def update_symbols_cache():
 
 async def fetch_and_cache_tickers():
     """Fetch ticker data from Bybit and cache it"""
+    memcache_client = None
     try:
         import aiohttp
         import aiomcache
         import json
-        
+
         url = "https://api.bybit.com/v5/market/tickers"
         params = {"category": "linear"}
-        
+
         async with aiohttp.ClientSession() as session:
             async with session.get(url, params=params, timeout=10) as response:
                 if response.status == 200:
                     data = await response.json()
                     if data.get('retCode') == 0:
                         tickers = data.get('result', {}).get('list', [])
-                        
+
                         # Convert to dict for easy lookup
                         ticker_dict = {}
                         for ticker in tickers:
@@ -2078,7 +2123,7 @@ async def fetch_and_cache_tickers():
                                     'low_24h': float(ticker.get('lowPrice24h', 0)),
                                     'volume': float(ticker.get('volume24h', 0))
                                 }
-                        
+
                         # Store in memcache
                         memcache_client = aiomcache.Client('localhost', 11211)
                         await memcache_client.set(
@@ -2090,6 +2135,14 @@ async def fetch_and_cache_tickers():
                         return ticker_dict
     except Exception as e:
         logger.error(f"Error fetching tickers: {e}")
+    finally:
+        # Always cleanup aiomcache client to prevent resource leaks
+        if memcache_client:
+            try:
+                await memcache_client.close()
+                logger.debug("Ticker cache memcache client closed successfully")
+            except Exception as e:
+                logger.debug(f"Error closing ticker cache memcache client: {e}")
     return {}
 
 
@@ -2104,7 +2157,7 @@ async def schedule_background_update():
     """Schedule periodic background updates"""
     while True:
         await asyncio.sleep(60)  # Update every minute
-        asyncio.create_task(update_symbols_cache())
+        create_tracked_task(update_symbols_cache(), name="update_symbols_cache")
 
 
 
@@ -2123,7 +2176,7 @@ class HealthMonitor:
     async def start(self):
         """Start background health monitoring"""
         if not self._task:
-            self._task = asyncio.create_task(self.background_health_check())
+            self._task = create_tracked_task(self.background_health_check(), name="background_health_check")
             
     async def stop(self):
         """Stop background health monitoring"""
@@ -4180,7 +4233,7 @@ async def run_application():
                     logger.info("✅ Initial cache warming completed")
                     
                     # Start continuous warming in background
-                    asyncio.create_task(cache_warmer.start_continuous_warming())
+                    create_tracked_task(cache_warmer.start_continuous_warming(), name="cache_warmer_continuous")
                     logger.info("✅ Continuous cache warming started (60s intervals)")
                     
                 except Exception as e:
@@ -4188,7 +4241,7 @@ async def run_application():
                     logger.debug(f"Cache warming error details: {traceback.format_exc()}")
             
             # Start the warming task
-            asyncio.create_task(start_cache_warming())
+            create_tracked_task(start_cache_warming(), name="start_cache_warming")
             logger.info("✅ Cache warming system initialized")
             
         except ImportError as e:
@@ -4243,20 +4296,19 @@ async def run_application():
                                     logger.info(f"  - Shutdown event: {shutdown_event.is_set()}")
 
                                     # Start the monitor with timeout protection
-                                    monitor_start_task = asyncio.create_task(
-                                        market_monitor.start(),
-                                        name=f"monitor_start_attempt_{retries + 1}"
+                                    monitor_start_task = create_tracked_task(
+                                        market_monitor.start(), name=f"monitor_start_attempt_{retries + 1}"
                                     )
 
-                                    # Wait with timeout
-                                    await asyncio.wait_for(monitor_start_task, timeout=120.0)
+                                    # Wait with timeout (increased to prevent startup cancellation)
+                                    await asyncio.wait_for(monitor_start_task, timeout=300.0)  # 5 minutes - enough for multiple cycles
 
                                     logger.info("✅ market_monitor.start() completed successfully!")
                                     break  # Success
 
                                 except asyncio.TimeoutError:
                                     retries += 1
-                                    logger.error(f"⏰ market_monitor.start() timed out (attempt {retries}/{max_retries})")
+                                    logger.error(f"⏰ market_monitor.start() timed out after 180s (attempt {retries}/{max_retries})")
                                     if retries >= max_retries:
                                         raise Exception("Monitor start timed out after all retries")
                                     await asyncio.sleep(10)  # Wait before retry
@@ -4282,9 +4334,8 @@ async def run_application():
                                     await asyncio.sleep(10)  # Wait before retry
 
                         # Start the resilient monitor and wait for completion
-                        monitor_task = asyncio.create_task(
-                            resilient_monitor_start(),
-                            name=f"monitor_start_{restart_count}"
+                        monitor_task = create_tracked_task(
+                            resilient_monitor_start(), name=f"monitor_start_{restart_count}"
                         )
 
                         logger.info("✅ market_monitor background task created with retry logic!")
@@ -4371,18 +4422,17 @@ async def run_application():
                     await cleanup_all_components()
                     logger.info("Monitoring cleanup completed")
         
-        # Create tasks for both the monitoring system and web server
-        logger.info("🔄 Creating monitoring and web server tasks...")
-        monitoring_task = asyncio.create_task(monitoring_main(), name="monitoring_main")
-        web_server_task = asyncio.create_task(start_web_server(), name="web_server")
-        logger.info("✅ Tasks created, starting concurrent execution...")
+        # Create task for the monitoring system only
+        # Web server functionality is handled by standalone web_server.py
+        logger.info("🔄 Creating monitoring task...")
+        monitoring_task = create_tracked_task(monitoring_main(), name="monitoring_main")
+        logger.info("✅ Monitoring task created, starting execution...")
 
-        # Monitor task states before execution
-        logger.info(f"🔍 Task states before execution: monitoring={monitoring_task.done()}, web_server={web_server_task.done()}")
+        # Monitor task state before execution
+        logger.info(f"🔍 Task state before execution: monitoring={monitoring_task.done()}")
 
         # Use task isolation approach instead of gather() to prevent cancellation issues
         monitoring_completed = False
-        web_server_completed = False
 
         async def monitor_task_completion(task, task_name):
             """Monitor individual task completion with detailed logging"""
@@ -4404,55 +4454,51 @@ async def run_application():
         try:
             logger.info("🚀 Starting task isolation approach...")
 
-            # Create task monitors
-            monitoring_monitor = asyncio.create_task(
+            # Create task monitor
+            monitoring_monitor = create_tracked_task(
                 monitor_task_completion(monitoring_task, "monitoring"),
                 name="monitoring_monitor"
             )
-            web_server_monitor = asyncio.create_task(
-                monitor_task_completion(web_server_task, "web_server"),
-                name="web_server_monitor"
-            )
 
-            # Wait for first completion with timeout
+            # Wait for monitoring completion with timeout
+            logger.info("⏱️  Starting monitoring initialization (120s timeout)...")
+            start_time = asyncio.get_event_loop().time()
             done, pending = await asyncio.wait(
-                [monitoring_monitor, web_server_monitor],
+                [monitoring_monitor],
                 return_when=asyncio.FIRST_COMPLETED,
-                timeout=30.0  # 30 second timeout for initial startup
+                timeout=120.0  # 2 minute timeout for initial startup (increased from 30s)
             )
 
             if not done:
-                logger.error("🚨 No tasks completed within startup timeout!")
+                elapsed_time = asyncio.get_event_loop().time() - start_time
+                logger.error(f"🚨 Monitoring task did not complete within startup timeout! ({elapsed_time:.1f}s elapsed)")
+                logger.error(f"📋 Pending tasks: monitoring_monitor={monitoring_monitor in pending}")
                 # Cancel pending tasks
                 for task in pending:
                     task.cancel()
                 return
 
-            # Analyze which task completed first
+            # Analyze monitoring task completion
+            elapsed_time = asyncio.get_event_loop().time() - start_time
             for completed_task in done:
                 if completed_task == monitoring_monitor:
                     monitoring_completed = True
-                    logger.info("📈 Monitoring task completed first")
-                elif completed_task == web_server_monitor:
-                    web_server_completed = True
-                    logger.info("🌐 Web server task completed first")
+                    logger.info(f"📈 Monitoring task completed ({elapsed_time:.1f}s)")
 
                 # Check if task was cancelled or failed
                 try:
                     result = await completed_task
                     if isinstance(result, Exception):
-                        task_name = "monitoring" if completed_task == monitoring_monitor else "web_server"
-                        logger.error(f"❌ {task_name} task failed with exception: {result}")
+                        logger.error(f"❌ Monitoring task failed with exception: {result}")
                 except asyncio.CancelledError:
-                    task_name = "monitoring" if completed_task == monitoring_monitor else "web_server"
-                    logger.error(f"🚨 {task_name} task was cancelled")
+                    logger.error(f"🚨 Monitoring task was cancelled")
 
             # Handle monitoring task restart if it was cancelled/failed
-            if monitoring_completed and not web_server_completed:
+            if monitoring_completed:
                 logger.warning("🔄 Monitoring task completed unexpectedly, attempting restart...")
                 # Restart monitoring task
-                monitoring_task = asyncio.create_task(monitoring_main(), name="monitoring_main_restart")
-                monitoring_monitor = asyncio.create_task(
+                monitoring_task = create_tracked_task(monitoring_main(), name="monitoring_main_restart")
+                monitoring_monitor = create_tracked_task(
                     monitor_task_completion(monitoring_task, "monitoring_restart"),
                     name="monitoring_monitor_restart"
                 )
@@ -4474,16 +4520,14 @@ async def run_application():
         
     except KeyboardInterrupt:
         logger.info("Shutdown signal received")
-        # Cancel tasks gracefully
+        # Cancel monitoring task gracefully
         if 'monitoring_task' in locals() and not monitoring_task.done():
             monitoring_task.cancel()
-        if 'web_server_task' in locals() and not web_server_task.done():
-            web_server_task.cancel()
-        
+
         # Wait for cancellation with timeout
         try:
             await asyncio.wait_for(
-                asyncio.gather(monitoring_task, web_server_task, return_exceptions=True),
+                asyncio.gather(monitoring_task, return_exceptions=True),
                 timeout=10.0
             )
         except asyncio.TimeoutError:

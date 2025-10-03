@@ -1,3 +1,4 @@
+from src.utils.task_tracker import create_tracked_task
 """
 Dashboard Manager - Coordinates all dashboard functionality
 Handles data aggregation, real-time updates, and dashboard state management
@@ -64,7 +65,7 @@ class DashboardManager:
         self.logger.info("Starting Dashboard Manager...")
         
         # Start background update task
-        self._update_task = asyncio.create_task(self._update_loop())
+        self._update_task = create_tracked_task(self._update_loop(), name="auto_tracked_task")
         
         self.logger.info("Dashboard Manager started successfully")
     

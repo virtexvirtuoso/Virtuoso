@@ -1207,7 +1207,22 @@ async def get_comprehensive_symbol_analysis(
                 }
             
             # Get confluence analysis
-            confluence_result = await confluence_analyzer.analyze(confluence_market_data)
+            if not (confluence_analyzer and hasattr(confluence_analyzer, 'analyze') and callable(getattr(confluence_analyzer, 'analyze'))):
+                return {
+                    "error": "confluence_analyzer not available",
+                    "symbol": symbol,
+                    "message": "Confluence analysis service is currently unavailable"
+                }
+
+            try:
+                confluence_result = await confluence_analyzer.analyze(confluence_market_data)
+            except Exception as e:
+                logger.debug(f"confluence_analyzer.analyze error for {symbol}: {e}")
+                return {
+                    "error": f"analysis failed: {e}",
+                    "symbol": symbol,
+                    "message": "Failed to perform confluence analysis"
+                }
             
             if confluence_result and "error" not in confluence_result:
                 # Extract key confluence metrics

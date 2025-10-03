@@ -249,6 +249,63 @@ async def get_portfolio_summary(
                 continue
                 
         return PortfolioSummary(**summary)
-        
+
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e)) 
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/status")
+async def get_trading_status(
+    exchange_manager: ExchangeManager = Depends(get_exchange_manager)
+) -> Dict:
+    """Get trading system status and exchange connectivity"""
+    try:
+        status = {
+            'system_status': 'operational',
+            'exchanges': {},
+            'total_exchanges': 0,
+            'connected_exchanges': 0,
+            'timestamp': None
+        }
+
+        from datetime import datetime
+        status['timestamp'] = datetime.now().isoformat()
+
+        if hasattr(exchange_manager, 'exchanges'):
+            status['total_exchanges'] = len(exchange_manager.exchanges)
+
+            for exchange_id, exchange in exchange_manager.exchanges.items():
+                try:
+                    # Test connectivity with a simple health check
+                    await exchange.load_markets()
+                    status['exchanges'][exchange_id] = {
+                        'status': 'connected',
+                        'name': exchange.name if hasattr(exchange, 'name') else exchange_id,
+                        'has_markets': True
+                    }
+                    status['connected_exchanges'] += 1
+                except Exception as e:
+                    status['exchanges'][exchange_id] = {
+                        'status': 'error',
+                        'error': str(e),
+                        'has_markets': False
+                    }
+
+        # Update overall status based on connectivity
+        if status['connected_exchanges'] == 0:
+            status['system_status'] = 'no_exchanges_connected'
+        elif status['connected_exchanges'] < status['total_exchanges']:
+            status['system_status'] = 'partial_connectivity'
+
+        return status
+
+    except Exception as e:
+        logger.error(f"Error getting trading status: {e}")
+        return {
+            'system_status': 'error',
+            'error': str(e),
+            'exchanges': {},
+            'total_exchanges': 0,
+            'connected_exchanges': 0,
+            'timestamp': datetime.now().isoformat()
+        }

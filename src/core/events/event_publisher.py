@@ -1,3 +1,4 @@
+from src.utils.task_tracker import create_tracked_task
 """
 Event Publisher Service for Virtuoso Trading System
 
@@ -106,7 +107,7 @@ class EventPublisher(IAsyncDisposable):
         
         # Start batch processing if enabled
         if self.enable_batching:
-            self._batch_task = asyncio.create_task(self._batch_processor())
+            self._batch_task = create_tracked_task(self._batch_processor(), name="auto_tracked_task")
             
         self._logger.info("EventPublisher started")
 

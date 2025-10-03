@@ -75,7 +75,7 @@ class VirtuosoError(Exception):
         self.error_code = error_code or self.__class__.__name__.lower()
         self.severity = severity
         self.category = category
-        self.context = context or ErrorContext()
+        self.context = context or ErrorContext(component="unknown", operation="error")
         self.details = details or {}
         self.cause = cause
         
@@ -133,9 +133,7 @@ class ComponentError(SystemError):
     """Base class for component-related errors."""
     
     def __init__(self, message: str, component: str = None, **kwargs):
-        context = kwargs.get('context') or ErrorContext()
-        if component:
-            context.component = component
+        context = kwargs.get('context') or ErrorContext(component=component or "system", operation="component_error")
         kwargs['context'] = context
         super().__init__(message, **kwargs)
 
@@ -144,8 +142,7 @@ class InitializationError(ComponentError):
     """Error during component initialization."""
     
     def __init__(self, message: str, component: str = None, **kwargs):
-        context = kwargs.get('context') or ErrorContext()
-        context.operation = 'initialization'
+        context = kwargs.get('context') or ErrorContext(component=component or "system", operation="initialization")
         kwargs['context'] = context
         super().__init__(message, component=component, **kwargs)
 
@@ -180,7 +177,7 @@ class ResourceLimitError(ResourceError):
 
 class ValidationError(VirtuosoError):
     """Base validation error with structured data."""
-    
+
     def __init__(
         self,
         message: str,
@@ -188,10 +185,12 @@ class ValidationError(VirtuosoError):
         validation_code: Optional[str] = None,
         **kwargs
     ):
+        # Set default category if not provided
+        if 'category' not in kwargs:
+            kwargs['category'] = ErrorCategory.VALIDATION
         super().__init__(
             message,
             error_code=validation_code or 'validation_error',
-            category=ErrorCategory.VALIDATION,
             **kwargs
         )
         if field:
@@ -200,13 +199,15 @@ class ValidationError(VirtuosoError):
 
 class ConfigValidationError(ValidationError):
     """Configuration validation error."""
-    
+
     def __init__(self, message: str, config_key: str = None, **kwargs):
+        # Set category if not already provided
+        if 'category' not in kwargs:
+            kwargs['category'] = ErrorCategory.CONFIGURATION
         super().__init__(
             message,
             field=config_key,
             validation_code='config_validation_error',
-            category=ErrorCategory.CONFIGURATION,
             **kwargs
         )
 
@@ -228,7 +229,7 @@ class BinanceValidationError(ValidationError):
     """Binance-specific validation error."""
     
     def __init__(self, message: str, **kwargs):
-        context = kwargs.get('context') or ErrorContext()
+        context = kwargs.get('context') or ErrorContext(component="binance", operation="validation_error")
         context.exchange = 'binance'
         kwargs['context'] = context
         super().__init__(
@@ -266,9 +267,7 @@ class ExchangeError(VirtuosoError):
     """Base class for exchange-related errors."""
     
     def __init__(self, message: str, exchange: str = None, **kwargs):
-        context = kwargs.get('context') or ErrorContext()
-        if exchange:
-            context.exchange = exchange
+        context = kwargs.get('context') or ErrorContext(component=exchange or "exchange", operation="exchange_error")
         kwargs['context'] = context
         super().__init__(
             message,
@@ -302,7 +301,7 @@ class BybitExchangeError(ExchangeError):
     """Bybit-specific exchange error."""
     
     def __init__(self, message: str, **kwargs):
-        context = kwargs.get('context') or ErrorContext()
+        context = kwargs.get('context') or ErrorContext(component="bybit", operation="exchange_error")
         context.exchange = 'bybit'
         kwargs['context'] = context
         super().__init__(message, **kwargs)
@@ -327,7 +326,7 @@ class MarketDataError(TradingError):
     """Market data related error."""
     
     def __init__(self, message: str, symbol: str = None, **kwargs):
-        context = kwargs.get('context') or ErrorContext()
+        context = kwargs.get('context') or ErrorContext(component="market_data", operation="data_error")
         if symbol:
             context.symbol = symbol
         kwargs['context'] = context

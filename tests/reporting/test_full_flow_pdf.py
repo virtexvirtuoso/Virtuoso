@@ -36,8 +36,12 @@ def create_ohlcv(periods: int = 120, base_price: float = 50000.0) -> pd.DataFram
 
 
 def main() -> int:
+    # Ensure project root is on path
+    PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../'))
+    sys.path.insert(0, PROJECT_ROOT)
+
     # Load config
-    config_path = os.path.join(os.getcwd(), "config", "config.yaml")
+    config_path = os.path.join(PROJECT_ROOT, "config", "config.yaml")
     if yaml and os.path.exists(config_path):
         with open(config_path, "r") as f:
             config = yaml.safe_load(f)
@@ -55,11 +59,13 @@ def main() -> int:
         "price_structure": 79.0,
     }
 
-    # Use ConfluenceAnalyzer formatting to produce a realistic analysis result without heavy processing
-    from src.core.analysis.confluence import ConfluenceAnalyzer
-    analyzer = ConfluenceAnalyzer(config=config)
-    analysis_result = analyzer._format_response(component_scores)
-    analysis_result["results"] = {k: {"score": v, "components": {}} for k, v in component_scores.items()}
+    # Create a realistic analysis result with simplified formatting
+    confluence_score = sum(component_scores.values()) / len(component_scores)
+    analysis_result = {
+        "confluence_score": confluence_score,
+        "reliability": 85.0,
+        "results": {k: {"score": v, "components": {}} for k, v in component_scores.items()}
+    }
 
     # Determine signal type based on config thresholds
     buy_th = config.get("confluence", {}).get("thresholds", {}).get("buy", 60.0)

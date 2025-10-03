@@ -1,3 +1,4 @@
+from src.utils.task_tracker import create_tracked_task
 """Market data monitoring system.
 
 This module provides monitoring functionality for market data:
@@ -1980,7 +1981,7 @@ class MarketMonitor:
             
             # Initialize asynchronously using create_task
             # Note: This will be executed when the event loop is running
-            asyncio.create_task(self.ws_manager.initialize(symbols))
+            create_tracked_task(self.ws_manager.initialize, name="initialize_task")
             
             self.logger.info(f"WebSocket integration initialized for {self.symbol}")
             
@@ -2525,7 +2526,7 @@ class MarketMonitor:
             
             # Start monitoring tasks
             self.logger.info("🔄 Starting monitoring tasks...")
-            self._monitoring_task = asyncio.create_task(self._run_monitoring_loop())
+            self._monitoring_task = create_tracked_task(self._run_monitoring_loop(), name="auto_tracked_task")
             self.logger.info("✅ MONITOR STARTED - Monitoring loop is now running!")
             
             # Start metrics manager if available
@@ -2542,7 +2543,7 @@ class MarketMonitor:
             if hasattr(self, 'market_reporter') and self.market_reporter is not None:
                 self.logger.info("Starting scheduled market reports service...")
                 # Create a background task for the market reporter's scheduled reports
-                self._market_report_task = asyncio.create_task(self.market_reporter.run_scheduled_reports())
+                self._market_report_task = create_tracked_task(self.market_reporter.run_scheduled_reports(), name="auto_tracked_task")
                 self.logger.info("Scheduled market reports service started")
                 
             # Delay initial market report generation until after first monitoring cycle
@@ -4215,7 +4216,7 @@ class MarketMonitor:
             loop = asyncio.get_event_loop()
             
             if loop.is_running():
-                asyncio.create_task(self._process_market_data(symbol, market_data))
+                create_tracked_task(self._process_market_data, name="_process_market_data_task")
             else:
                 loop.run_until_complete(self._process_market_data(symbol, market_data))
                 
@@ -5116,7 +5117,7 @@ class MarketMonitor:
             self.logger.info("Starting monitoring tasks...")
             
             # Create monitoring task
-            self._monitoring_task = asyncio.create_task(self._run_monitoring_loop())
+            self._monitoring_task = create_tracked_task(self._run_monitoring_loop(), name="auto_tracked_task")
             
             # Start metrics manager if available
             if self.metrics_manager:

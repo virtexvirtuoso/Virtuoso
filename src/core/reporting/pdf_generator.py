@@ -386,6 +386,8 @@ class ReportGenerator:
             self._validate_signal_data(signal_data, report_id)
             if ohlcv_data is not None:
                 self._validate_ohlcv_data(ohlcv_data, report_id)
+            # Validate stop loss consistency between PDF and execution logic
+            self._validate_stop_loss_consistency(signal_data, report_id)
         except DataValidationError as e:
             self._log(f"[PDF_GEN:{report_id}] Data validation failed: {str(e)}", level=logging.ERROR)
             return False
@@ -703,6 +705,84 @@ class ReportGenerator:
             self._log(f"[PDF_GEN:{report_id}] Error copying PDF report: {str(e)}", level=logging.ERROR)
             self._log(f"[PDF_GEN:{report_id}] Returning original PDF path: {pdf_path}", level=logging.INFO)
             return pdf_path
+
+    def _validate_stop_loss_consistency(self, signal_data: Dict[str, Any], report_id: str) -> None:
+        """
+        Validate that PDF stop loss calculations match execution parameters using the unified StopLossCalculator.
+
+        Args:
+            signal_data: Signal data dictionary
+            report_id: Report ID for logging
+
+        Raises:
+            DataValidationError: If validation fails
+        """
+        try:
+            trade_params = signal_data.get("trade_params", {})
+            if not trade_params:
+                self._log(f"[PDF_GEN:{report_id}] No trade_params found for validation", logging.WARNING)
+                return
+
+            pdf_stop_loss = trade_params.get("stop_loss")
+            pdf_entry_price = trade_params.get("entry_price")
+
+            if not pdf_stop_loss or not pdf_entry_price:
+                self._log(f"[PDF_GEN:{report_id}] Missing stop_loss or entry_price for validation", logging.WARNING)
+                return
+
+            # Calculate PDF stop loss percentage
+            if pdf_entry_price > pdf_stop_loss:  # Long position
+                pdf_stop_loss_pct = abs(((pdf_stop_loss / pdf_entry_price) - 1) * 100)
+            else:  # Short position
+                pdf_stop_loss_pct = abs(((pdf_stop_loss / pdf_entry_price) - 1) * 100)
+
+            # Use unified StopLossCalculator for consistency with AlertManager
+            try:
+                from src.core.risk.stop_loss_calculator import get_stop_loss_calculator, StopLossMethod
+
+                # Get configuration for calculator
+                config = self.config if hasattr(self, 'config') else {}
+
+                # Initialize stop loss calculator if not already done
+                try:
+                    stop_calc = get_stop_loss_calculator()
+                except ValueError:
+                    # First initialization
+                    stop_calc = get_stop_loss_calculator(config)
+
+                # Get expected stop loss percentage using the same logic as AlertManager
+                signal_type = signal_data.get("signal_type", "BUY").upper()
+                confluence_score = signal_data.get("confluence_score", 50)
+
+                expected_stop_pct = stop_calc.calculate_stop_loss_percentage(
+                    signal_type, confluence_score, StopLossMethod.CONFIDENCE_BASED
+                ) * 100  # Convert to percentage
+
+                self._log(f"[PDF_GEN:{report_id}] Using unified stop loss calculator: "
+                         f"{signal_type} @ score {confluence_score} → {expected_stop_pct:.2f}%", logging.DEBUG)
+
+            except Exception as calc_error:
+                # Fallback to simple risk config if calculator fails
+                self._log(f"[PDF_GEN:{report_id}] StopLossCalculator failed, using fallback: {calc_error}", logging.WARNING)
+                risk_config = config.get('risk', {})
+                if signal_type == 'BUY':
+                    expected_stop_pct = risk_config.get('long_stop_percentage', 3.5)
+                else:
+                    expected_stop_pct = risk_config.get('short_stop_percentage', 3.5)
+
+            # Allow larger tolerance for confidence-based calculations (1% instead of 0.1%)
+            tolerance = 1.0
+            if abs(pdf_stop_loss_pct - expected_stop_pct) > tolerance:
+                error_msg = (f"Stop loss mismatch for {signal_type} signal @ confidence {confluence_score}: "
+                           f"PDF shows {pdf_stop_loss_pct:.2f}% but unified calculator expects {expected_stop_pct:.2f}%")
+                self._log(f"[PDF_GEN:{report_id}] {error_msg}", logging.ERROR)
+                self._track_error("stop_loss_mismatch", ErrorSeverity.HIGH)
+            else:
+                self._log(f"[PDF_GEN:{report_id}] Stop loss validation passed: PDF {pdf_stop_loss_pct:.2f}% vs expected {expected_stop_pct:.2f}%", logging.DEBUG)
+
+        except Exception as e:
+            self._log(f"[PDF_GEN:{report_id}] Error during stop loss validation: {str(e)}", logging.ERROR)
+            self._track_error("validation_error", ErrorSeverity.MEDIUM)
 
     def _track_error(self, error_type: str, severity: ErrorSeverity) -> None:
         """
@@ -2451,7 +2531,7 @@ class ReportGenerator:
                 self._log(f"Error extracting insights: {str(e)}", logging.ERROR)
                 self._log(traceback.format_exc(), logging.DEBUG)
 
-            # Extract risk management details
+            # Extract risk management details with comprehensive validation
             entry_price = price
             stop_loss = None
             stop_loss_percent = 0
@@ -2461,15 +2541,45 @@ class ReportGenerator:
                 entry_price = trade_params.get("entry_price", None) or signal_data.get("entry_price", price)
                 stop_loss = trade_params.get("stop_loss", None) or signal_data.get("stop_loss", None)
 
+                # Comprehensive boundary checking and validation
                 if stop_loss and entry_price:
-                    if entry_price > stop_loss:  # Long position
-                        stop_loss_percent = ((stop_loss / entry_price) - 1) * 100
-                    else:  # Short position
-                        stop_loss_percent = ((entry_price / stop_loss) - 1) * 100
+                    # Validate numeric types
+                    if not isinstance(entry_price, (int, float)) or not isinstance(stop_loss, (int, float)):
+                        self._log(f"Invalid price types: entry_price={type(entry_price)}, stop_loss={type(stop_loss)}", logging.ERROR)
+                        entry_price, stop_loss = price, None
+
+                    # Validate positive values
+                    elif entry_price <= 0 or stop_loss <= 0:
+                        self._log(f"Invalid negative prices: entry_price={entry_price}, stop_loss={stop_loss}", logging.ERROR)
+                        entry_price, stop_loss = price, None
+
+                    # Validate reasonable price ranges (not more than 1000x difference)
+                    elif abs(entry_price / stop_loss) > 1000 or abs(stop_loss / entry_price) > 1000:
+                        self._log(f"Unrealistic price ratio: entry_price={entry_price}, stop_loss={stop_loss}", logging.ERROR)
+                        entry_price, stop_loss = price, None
+
+                    else:
+                        # Calculate stop loss percentage with proper validation
+                        if entry_price > stop_loss:  # Long position
+                            stop_loss_percent = ((stop_loss / entry_price) - 1) * 100
+                        else:  # Short position
+                            stop_loss_percent = ((stop_loss / entry_price) - 1) * 100
+
+                        # Validate calculated percentage is reasonable (0.1% to 50%)
+                        abs_percent = abs(stop_loss_percent)
+                        if abs_percent < 0.1 or abs_percent > 50:
+                            self._log(f"Unrealistic stop loss percentage: {stop_loss_percent:.2f}%", logging.WARNING)
+                            # Don't reset to None, but log the concern
+
+                        # Ensure percentage is displayed as positive value
+                        stop_loss_percent = abs(stop_loss_percent)
+
+            except (ZeroDivisionError, ValueError, TypeError) as e:
+                self._log(f"Calculation error in risk management details: {str(e)}", logging.ERROR)
+                entry_price, stop_loss, stop_loss_percent = price, None, 0
             except Exception as e:
-                self._log(
-                    f"Error extracting risk management details: {str(e)}", logging.ERROR
-                )
+                self._log(f"Unexpected error extracting risk management details: {str(e)}", logging.ERROR)
+                entry_price, stop_loss, stop_loss_percent = price, None, 0
 
             # Format targets
             targets = []
@@ -5896,3 +6006,7 @@ if __name__ == "__main__":
         print(f"PDF report generated: {pdf_path}")
     if json_path:
         print(f"JSON data exported: {json_path}")
+
+
+# Alias for backward compatibility with code expecting PDFGenerator
+PDFGenerator = ReportGenerator

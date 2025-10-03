@@ -1,3 +1,4 @@
+from src.utils.task_tracker import create_tracked_task
 """
 Confluence Analyzer Event-Driven Adapter
 
@@ -123,7 +124,7 @@ class ConfluenceEventAdapter(IAsyncDisposable):
             
         # Start batch processor if enabled
         if self.batch_processing:
-            self._batch_processor_task = asyncio.create_task(self._batch_processor())
+            self._batch_processor_task = create_tracked_task(self._batch_processor(), name="auto_tracked_task")
             
         self._logger.info("ConfluenceEventAdapter started")
 
@@ -370,8 +371,8 @@ class ConfluenceEventAdapter(IAsyncDisposable):
                 return
                 
             # Run confluence analysis with timeout
-            analysis_task = asyncio.create_task(
-                self._run_confluence_analysis(symbol, timeframe, market_data)
+            analysis_task = create_tracked_task(
+                self._run_confluence_analysis(symbol, timeframe, market_data, name="auto_tracked_task")
             )
             
             try:
@@ -461,9 +462,14 @@ class ConfluenceEventAdapter(IAsyncDisposable):
         """Run the actual confluence analysis."""
         try:
             # Call the original ConfluenceAnalyzer
-            if hasattr(self.confluence_analyzer, 'analyze'):
+            analyzer = getattr(self, 'confluence_analyzer', None)
+            if analyzer and hasattr(analyzer, 'analyze') and callable(getattr(analyzer, 'analyze')):
                 # Async analyzer
-                result = await self.confluence_analyzer.analyze(market_data)
+                try:
+                    result = await analyzer.analyze(market_data)
+                except Exception as e:
+                    logger.debug(f"confluence_analyzer.analyze error: {e}")
+                    return None
             elif hasattr(self.confluence_analyzer, 'run_analysis'):
                 # Sync analyzer - run in thread pool
                 loop = asyncio.get_event_loop()
@@ -656,8 +662,13 @@ class ConfluenceEventAdapter(IAsyncDisposable):
             
         try:
             # Run analysis through the original analyzer
-            if hasattr(self.confluence_analyzer, 'analyze'):
-                result = await self.confluence_analyzer.analyze(market_data)
+            analyzer = getattr(self, 'confluence_analyzer', None)
+            if analyzer and hasattr(analyzer, 'analyze') and callable(getattr(analyzer, 'analyze')):
+                try:
+                    result = await analyzer.analyze(market_data)
+                except Exception as e:
+                    logger.debug(f"confluence_analyzer.analyze error: {e}")
+                    return None
             elif hasattr(self.confluence_analyzer, 'run_analysis'):
                 loop = asyncio.get_event_loop()
                 result = await loop.run_in_executor(

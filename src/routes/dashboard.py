@@ -94,16 +94,17 @@ connection_manager = ConnectionManager()
     summary="Get Dashboard Overview",
     description="""
     Retrieve comprehensive dashboard overview with real-time market data.
-    
+
     This endpoint provides aggregated market data including:
     - Active symbol monitoring status
-    - Recent signals and alerts
+    - Recent signals and alerts with component breakdowns
     - Market metrics and statistics
     - Cache status and performance metrics
-    
+
     Data is served from Memcached cache for optimal performance.
+    Component breakdowns are enriched from confluence:breakdown:{symbol} cache keys.
     """,
-    response_description="Dashboard overview data",
+    response_description="Dashboard overview data with component breakdowns",
     tags=["dashboard"],
     responses={
         200: {
@@ -125,30 +126,62 @@ connection_manager = ConnectionManager()
     }
 )
 async def get_dashboard_overview() -> Dict[str, Any]:
-    """Get comprehensive dashboard overview with real-time data from Memcached."""
+    """Get comprehensive dashboard overview with real-time data from Memcached.
+
+    CRITICAL FIX: This endpoint now queries breakdown cache keys to populate
+    component scores and interpretations for each symbol.
+    """
     try:
+        # Import cache service
+        from src.core.cache.confluence_cache_service import confluence_cache_service
+
         # Use direct cache if available for better performance
         if USE_DIRECT_CACHE:
-            return await direct_cache.get_dashboard_overview()
+            overview = await direct_cache.get_dashboard_overview()
+
+            # CRITICAL FIX: Enrich with breakdown data
+            signals = overview.get('signals', [])
+            if signals:
+                enriched_signals = []
+                for signal in signals:
+                    symbol = signal.get('symbol')
+                    if symbol:
+                        # Query breakdown cache for this symbol
+                        breakdown = await confluence_cache_service.get_cached_breakdown(symbol)
+                        if breakdown:
+                            # Enrich signal with breakdown data
+                            signal['components'] = breakdown.get('components', {})
+                            signal['interpretations'] = breakdown.get('interpretations', {})
+                            signal['reliability'] = breakdown.get('reliability', 0)
+                            signal['has_breakdown'] = True
+                        else:
+                            signal['has_breakdown'] = False
+                    enriched_signals.append(signal)
+
+                overview['signals'] = enriched_signals
+                logger.info(f"✅ Enriched {len(enriched_signals)} signals with breakdown data")
+
+            return overview
+
         # Check Memcached for real-time status
         symbol_count = 0
         try:
             from pymemcache.client.base import Client
             import json
-            
+
             mc_client = Client(('127.0.0.1', 11211))
-            
+
             # Check if we have symbols data
             symbols_data = mc_client.get(b'virtuoso:symbols')
             if symbols_data:
                 data = json.loads(symbols_data.decode('utf-8'))
                 symbol_count = len(data.get('symbols', []))
                 logger.info(f"Memcached has {symbol_count} symbols with confluence scores")
-            
+
             mc_client.close()
         except Exception as mc_error:
             logger.debug(f"Memcached check: {mc_error}")
-        
+
         # Get dashboard integration service
         integration = get_dashboard_integration()
         if not integration:
@@ -162,7 +195,7 @@ async def get_dashboard_overview() -> Dict[str, Any]:
                 "alpha_opportunities": {"total": 0, "high_confidence": 0, "medium_confidence": 0},
                 "system_status": {
                     "monitoring": "active" if symbol_count > 0 else "inactive",
-                    "data_feed": "connected" if symbol_count > 0 else "disconnected", 
+                    "data_feed": "connected" if symbol_count > 0 else "disconnected",
                     "alerts": "enabled" if symbol_count > 0 else "disabled",
                     "websocket": "connected" if symbol_count > 0 else "disconnected",
                     "last_update": time.time() if symbol_count > 0 else 0,
@@ -172,12 +205,34 @@ async def get_dashboard_overview() -> Dict[str, Any]:
 
         # Get dashboard overview from integration service
         overview_data = await integration.get_dashboard_overview()
-        
+
+        # CRITICAL FIX: Enrich signals with breakdown data
+        signals = overview_data.get('signals', [])
+        if signals:
+            enriched_signals = []
+            for signal in signals:
+                symbol = signal.get('symbol')
+                if symbol:
+                    # Query breakdown cache for this symbol
+                    breakdown = await confluence_cache_service.get_cached_breakdown(symbol)
+                    if breakdown:
+                        # Enrich signal with breakdown data
+                        signal['components'] = breakdown.get('components', {})
+                        signal['interpretations'] = breakdown.get('interpretations', {})
+                        signal['reliability'] = breakdown.get('reliability', 0)
+                        signal['has_breakdown'] = True
+                    else:
+                        signal['has_breakdown'] = False
+                enriched_signals.append(signal)
+
+            overview_data['signals'] = enriched_signals
+            logger.info(f"✅ Enriched {len(enriched_signals)} signals with breakdown data")
+
         # Enhance with Memcached data if available
         if symbol_count > 0:
             overview_data['system_status']['symbols_tracked'] = symbol_count
             overview_data['system_status']['cache_status'] = 'memcached_active'
-        
+
         return overview_data
 
     except Exception as e:
@@ -667,9 +722,17 @@ async def get_mobile_dashboard_data_direct(request: Request) -> Dict[str, Any]:
                         # Get market data
                         if market_data_manager:
                             market_data = await market_data_manager.get_market_data(symbol)
-                            if market_data and confluence_analyzer:
+                            if market_data:
                                 # Get confluence analysis
-                                result = await confluence_analyzer.analyze(market_data)
+                                analyzer = confluence_analyzer
+                                if not (analyzer and hasattr(analyzer, 'analyze') and callable(getattr(analyzer, 'analyze'))):
+                                    continue
+
+                                try:
+                                    result = await analyzer.analyze(market_data)
+                                except Exception as e:
+                                    logger.debug(f"confluence_analyzer.analyze error for {symbol}: {e}")
+                                    continue
                                 
                                 score = result.get('confluence_score', 50)
                                 components = result.get('components', {})

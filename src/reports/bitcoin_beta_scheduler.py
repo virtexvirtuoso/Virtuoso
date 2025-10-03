@@ -1,3 +1,4 @@
+from src.utils.task_tracker import create_tracked_task
 #!/usr/bin/env python3
 """
 Bitcoin Beta Report Scheduler
@@ -153,7 +154,7 @@ class BitcoinBetaScheduler:
                     
                     # Send notification if alert manager is available
                     if self.alert_manager:
-                        asyncio.create_task(self._send_report_notification(pdf_path))
+                        create_tracked_task(self._send_report_notification, name="_send_report_notification_task")
                         
                 else:
                     self.logger.error("❌ Scheduled Bitcoin Beta Report failed")

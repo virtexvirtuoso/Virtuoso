@@ -168,6 +168,9 @@ class FeatureFlagManager:
 # Global feature flag manager instance
 feature_flags = FeatureFlagManager()
 
+# Legacy compatibility alias
+FeatureFlags = FeatureFlagManager
+
 # Convenience functions for common checks
 def is_multi_tier_cache_enabled(user_id: Optional[str] = None) -> bool:
     """Check if multi-tier cache is enabled"""

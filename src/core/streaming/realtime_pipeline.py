@@ -1,3 +1,4 @@
+from src.utils.task_tracker import create_tracked_task
 """
 Real-time Data Pipeline - Phase 3 Integration with Phase 2 Cache
 Bridges cached data with real-time streaming for mobile optimization
@@ -90,11 +91,11 @@ class RealtimeDataPipeline:
         
         # Start monitoring tasks
         self._monitoring_tasks = [
-            asyncio.create_task(self._monitor_confluence_changes()),
-            asyncio.create_task(self._monitor_signal_generation()),
-            asyncio.create_task(self._monitor_alert_triggers()),
-            asyncio.create_task(self._monitor_market_changes()),
-            asyncio.create_task(self._monitor_system_health())
+            create_tracked_task(self._monitor_confluence_changes(), name="auto_tracked_task"),
+            create_tracked_task(self._monitor_signal_generation(), name="auto_tracked_task"),
+            create_tracked_task(self._monitor_alert_triggers(), name="auto_tracked_task"),
+            create_tracked_task(self._monitor_market_changes(), name="auto_tracked_task"),
+            create_tracked_task(self._monitor_system_health(), name="auto_tracked_task")
         ]
         
         # Wait for tasks to start

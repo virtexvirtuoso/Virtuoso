@@ -1,3 +1,4 @@
+from src.utils.task_tracker import create_tracked_task
 """Base exchange class with CCXT standardization."""
 
 import asyncio
@@ -401,9 +402,39 @@ class BaseExchange(ABC):
         """Validate trading symbol"""
         if not symbol:
             raise ValueError("Symbol is required")
-            
-        if symbol not in self.symbols:
-            raise ValueError(f"Symbol {symbol} is not supported")
+
+        # First check if symbol exists as-is
+        if symbol in self.symbols:
+            return
+
+        # If not found, try to convert from normalized format back to CCXT format
+        # This handles cases where TopSymbolsManager normalizes '10000SATS/USDT:USDT' to '10000SATSUSDT'
+        # but CCXTExchange markets still use the original CCXT format
+
+        # Convert normalized symbol back to common CCXT formats
+        potential_formats = []
+
+        # Format 1: BASE/USDT:USDT (linear perpetual)
+        if symbol.endswith('USDT') and len(symbol) > 4:
+            base = symbol[:-4]  # Remove 'USDT'
+            potential_formats.append(f"{base}/USDT:USDT")
+            potential_formats.append(f"{base}/USDT")  # spot format
+
+        # Format 2: BASE/USDC:USDC (USDC pairs)
+        if symbol.endswith('USDC') and len(symbol) > 4:
+            base = symbol[:-4]  # Remove 'USDC'
+            potential_formats.append(f"{base}/USDC:USDC")
+            potential_formats.append(f"{base}/USDC")
+
+        # Check if any potential format exists in markets
+        for potential_symbol in potential_formats:
+            if potential_symbol in self.symbols:
+                # Update the request to use the correct CCXT format
+                # Note: This is for validation only, the actual API calls will handle conversion
+                return
+
+        # If none of the formats work, raise the original error
+        raise ValueError(f"Symbol {symbol} is not supported")
             
     def validate_timeframe(self, timeframe: str) -> None:
         """Validate timeframe"""
@@ -739,10 +770,10 @@ class BaseExchange(ABC):
     async def _start_ws_tasks(self):
         """Start websocket maintenance tasks"""
         self._ws_tasks.add(
-            asyncio.create_task(self._maintain_ws_connection())
+            create_tracked_task(self._maintain_ws_connection(), name="maintain_ws_connection")
         )
         self._ws_tasks.add(
-            asyncio.create_task(self._handle_ws_messages())
+            create_tracked_task(self._handle_ws_messages(), name="handle_ws_messages")
         )
         
     async def is_healthy(self) -> bool:

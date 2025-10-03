@@ -1,3 +1,4 @@
+from src.utils.task_tracker import create_tracked_task
 """Error handling decorators."""
 
 import logging
@@ -85,10 +86,10 @@ def handle_errors(
                         raise
                     
                     attempt += 1
-                    asyncio.create_task(
+                    create_tracked_task(
                         error_handler.handle_error(
                             e, f"{component}_{operation}", severity
-                        )
+                        , name="auto_tracked_task")
                     )
                     
                     if attempt > retries:

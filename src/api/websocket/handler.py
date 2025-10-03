@@ -4,9 +4,10 @@ import json
 import asyncio
 import logging
 from datetime import datetime
-from src.core.exchanges.base import ExchangeInterface
+from src.core.interfaces.exchange import ExchangeInterface
 from src.core.analysis.technical import TechnicalAnalysis
 from src.core.analysis.portfolio import PortfolioAnalyzer
+from src.utils.task_tracker import create_tracked_task
 
 logger = logging.getLogger(__name__)
 
@@ -124,8 +125,8 @@ class MarketDataStream:
         if symbol in self.running_tasks:
             return
             
-        task = asyncio.create_task(
-            self._stream_symbol_data(symbol, interval)
+        task = create_tracked_task(
+            self._stream_symbol_data(symbol, interval, name="auto_tracked_task")
         )
         self.running_tasks[symbol] = task
         

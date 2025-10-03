@@ -1,3 +1,4 @@
+from src.utils.task_tracker import create_tracked_task
 """
 Background Dashboard Data Updater
 Pre-computes expensive dashboard data to serve from cache
@@ -269,7 +270,7 @@ class DashboardUpdater:
     def start(self):
         """Start the background updater task."""
         if not self.task:
-            self.task = asyncio.create_task(self.run())
+            self.task = create_tracked_task(self.run(), name="auto_tracked_task")
             logger.info("Dashboard updater task started")
     
     def stop(self):

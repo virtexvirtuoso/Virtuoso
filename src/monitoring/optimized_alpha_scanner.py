@@ -786,213 +786,97 @@ class OptimizedAlphaScanner:
         
         return insight
     
-    def _detect_beta_expansion(self, symbol: str, data: Dict, 
+    def _detect_beta_expansion(self, symbol: str, data: Dict,
                               min_alpha: float, min_confidence: float) -> Optional[AlphaAlert]:
         """Detect beta expansion patterns - highest priority."""
-        # This would contain actual beta expansion detection logic
-        # For demonstration, creating a mock alert with enhanced insight
-        
-        # Mock detection logic (replace with real analysis)
-        mock_alpha = 1.25  # 125% alpha
-        mock_confidence = 0.96  # 96% confidence
-        mock_beta_change = 0.75  # 75% increase in volatility
-        mock_volume_spike = 4.2  # 4.2x normal volume
-        
-        if mock_alpha >= min_alpha and mock_confidence >= min_confidence:
-            additional_data = {
-                'beta_change': mock_beta_change,
-                'volume_spike': mock_volume_spike
-            }
-            
-            trading_insight = self._generate_enhanced_trading_insight(
-                'beta_expansion', symbol, mock_alpha, mock_confidence, additional_data
-            )
-            
-            tier = self._determine_tier(mock_alpha)
-            value_score = self._calculate_value_score(mock_alpha, mock_confidence, 'beta_expansion', True)
-            
-            return AlphaAlert(
-                symbol=symbol,
-                pattern_type='beta_expansion',
-                alpha_magnitude=mock_alpha,
-                confidence=mock_confidence,
-                value_score=value_score,
-                tier=tier,
-                priority=PatternPriority.CRITICAL,
-                trading_insight=trading_insight,
-                risk_level="Medium-High",
-                expected_duration="2-6 hours",
-                entry_conditions=["Volume confirmation", "Trend continuation", "Beta expansion >50%"],
-                exit_conditions=["Volatility normalization", "Volume decline", "Bitcoin correlation return"],
-                timestamp=datetime.now(timezone.utc),
-                volume_confirmed=True,
-                beta_change=mock_beta_change
-            )
-        
-        return None
+        # CRITICAL: Real implementation required - no mock data
+        try:
+            # Validate required data is available
+            if not data or 'price' not in data:
+                self.logger.debug(f"Insufficient market data for {symbol} beta expansion analysis")
+                return None
+
+            # Real beta expansion analysis would go here
+            # For now, return None to prevent fake signals
+            self.logger.debug(f"Beta expansion analysis not implemented for {symbol}")
+            return None
+
+        except Exception as e:
+            self.logger.error(f"Error in beta expansion detection for {symbol}: {str(e)}")
+            return None
     
     def _detect_beta_compression(self, symbol: str, data: Dict,
                                 min_alpha: float, min_confidence: float) -> Optional[AlphaAlert]:
         """Detect beta compression patterns - highest priority."""
-        # Mock detection logic for demonstration (replace with real analysis)
-        mock_alpha = 0.85  # 85% alpha
-        mock_confidence = 0.92  # 92% confidence
-        mock_correlation_drop = 0.45  # 45% correlation drop
-        mock_independence_score = 0.78  # 78% independence
-        
-        if mock_alpha >= min_alpha and mock_confidence >= min_confidence:
-            additional_data = {
-                'correlation_drop': mock_correlation_drop,
-                'independence_score': mock_independence_score
-            }
-            
-            trading_insight = self._generate_enhanced_trading_insight(
-                'beta_compression', symbol, mock_alpha, mock_confidence, additional_data
-            )
-            
-            tier = self._determine_tier(mock_alpha)
-            value_score = self._calculate_value_score(mock_alpha, mock_confidence, 'beta_compression', True)
-            
-            return AlphaAlert(
-                symbol=symbol,
-                pattern_type='beta_compression',
-                alpha_magnitude=mock_alpha,
-                confidence=mock_confidence,
-                value_score=value_score,
-                tier=tier,
-                priority=PatternPriority.CRITICAL,
-                trading_insight=trading_insight,
-                risk_level="Medium",
-                expected_duration="1-4 hours",
-                entry_conditions=["Direction confirmation", "Volume support", "Correlation <0.5"],
-                exit_conditions=["Correlation return", "Bitcoin dominance", "Volume decline"],
-                timestamp=datetime.now(timezone.utc),
-                volume_confirmed=True,
-                correlation_change=mock_correlation_drop
-            )
-        
-        return None
+        # CRITICAL: Real implementation required - no mock data
+        try:
+            # Validate required data is available
+            if not data or 'price' not in data:
+                self.logger.debug(f"Insufficient market data for {symbol} beta compression analysis")
+                return None
+
+            # Real beta compression analysis would go here
+            # For now, return None to prevent fake signals
+            self.logger.debug(f"Beta compression analysis not implemented for {symbol}")
+            return None
+
+        except Exception as e:
+            self.logger.error(f"Error in beta compression detection for {symbol}: {str(e)}")
+            return None
     
     def _detect_alpha_breakout(self, symbol: str, data: Dict,
                               min_alpha: float, min_confidence: float) -> Optional[AlphaAlert]:
         """Detect alpha breakout patterns - medium priority."""
-        # Mock detection logic for demonstration (replace with real analysis)
-        mock_alpha = 0.35  # 35% alpha
-        mock_confidence = 0.88  # 88% confidence
-        mock_trend_strength = 0.82  # 82% trend strength
-        mock_breakout_level = 'resistance'
-        
-        if mock_alpha >= min_alpha and mock_confidence >= min_confidence:
-            additional_data = {
-                'trend_strength': mock_trend_strength,
-                'breakout_level': mock_breakout_level
-            }
-            
-            trading_insight = self._generate_enhanced_trading_insight(
-                'alpha_breakout', symbol, mock_alpha, mock_confidence, additional_data
-            )
-            
-            tier = self._determine_tier(mock_alpha)
-            value_score = self._calculate_value_score(mock_alpha, mock_confidence, 'alpha_breakout', True)
-            
-            return AlphaAlert(
-                symbol=symbol,
-                pattern_type='alpha_breakout',
-                alpha_magnitude=mock_alpha,
-                confidence=mock_confidence,
-                value_score=value_score,
-                tier=tier,
-                priority=PatternPriority.HIGH,
-                trading_insight=trading_insight,
-                risk_level="Medium",
-                expected_duration="1-3 hours",
-                entry_conditions=["Breakout confirmation", "Volume spike", "Trend continuation"],
-                exit_conditions=["Resistance/support test", "Volume decline", "Trend reversal"],
-                timestamp=datetime.now(timezone.utc),
-                volume_confirmed=True
-            )
-        
-        return None
+        # CRITICAL: Real implementation required - no mock data
+        try:
+            # Validate required data is available
+            if not data or 'price' not in data:
+                self.logger.debug(f"Insufficient market data for {symbol} alpha breakout analysis")
+                return None
+
+            # Real alpha breakout analysis would go here
+            # For now, return None to prevent fake signals
+            self.logger.debug(f"Alpha breakout analysis not implemented for {symbol}")
+            return None
+
+        except Exception as e:
+            self.logger.error(f"Error in alpha breakout detection for {symbol}: {str(e)}")
+            return None
     
     def _detect_correlation_breakdown(self, symbol: str, data: Dict,
                                      min_alpha: float, min_confidence: float) -> Optional[AlphaAlert]:
         """Detect correlation breakdown - lower priority."""
-        # Mock detection logic for demonstration (replace with real analysis)
-        mock_alpha = 0.18  # 18% alpha
-        mock_confidence = 0.82  # 82% confidence
-        mock_breakdown_magnitude = 0.38  # 38% breakdown
-        mock_historical_context = 'elevated'
-        
-        if mock_alpha >= min_alpha and mock_confidence >= min_confidence:
-            additional_data = {
-                'breakdown_magnitude': mock_breakdown_magnitude,
-                'historical_context': mock_historical_context
-            }
-            
-            trading_insight = self._generate_enhanced_trading_insight(
-                'correlation_breakdown', symbol, mock_alpha, mock_confidence, additional_data
-            )
-            
-            tier = self._determine_tier(mock_alpha)
-            value_score = self._calculate_value_score(mock_alpha, mock_confidence, 'correlation_breakdown', False)
-            
-            return AlphaAlert(
-                symbol=symbol,
-                pattern_type='correlation_breakdown',
-                alpha_magnitude=mock_alpha,
-                confidence=mock_confidence,
-                value_score=value_score,
-                tier=tier,
-                priority=PatternPriority.MEDIUM,
-                trading_insight=trading_insight,
-                risk_level="Medium-Low",
-                expected_duration="30min-2 hours",
-                entry_conditions=["Direction confirmation", "Catalyst identification", "Volume support"],
-                exit_conditions=["Correlation return", "News fade", "Time decay"],
-                timestamp=datetime.now(timezone.utc),
-                volume_confirmed=False,
-                correlation_change=mock_breakdown_magnitude
-            )
-        
-        return None
+        # CRITICAL: Real implementation required - no mock data
+        try:
+            # Validate required data is available
+            if not data or 'price' not in data:
+                self.logger.debug(f"Insufficient market data for {symbol} correlation breakdown analysis")
+                return None
+
+            # Real correlation breakdown analysis would go here
+            # For now, return None to prevent fake signals
+            self.logger.debug(f"Correlation breakdown analysis not implemented for {symbol}")
+            return None
+
+        except Exception as e:
+            self.logger.error(f"Error in correlation breakdown detection for {symbol}: {str(e)}")
+            return None
     
     def _detect_cross_timeframe(self, symbol: str, data: Dict,
                                min_alpha: float, min_confidence: float) -> Optional[AlphaAlert]:
         """Detect cross timeframe patterns - lowest priority."""
-        # Mock detection logic for demonstration (replace with real analysis)
-        mock_alpha = 0.12  # 12% alpha
-        mock_confidence = 0.78  # 78% confidence
-        mock_timeframe_alignment = 0.85  # 85% alignment
-        mock_consensus_strength = 0.72  # 72% consensus
-        
-        if mock_alpha >= min_alpha and mock_confidence >= min_confidence:
-            additional_data = {
-                'timeframe_alignment': mock_timeframe_alignment,
-                'consensus_strength': mock_consensus_strength
-            }
-            
-            trading_insight = self._generate_enhanced_trading_insight(
-                'cross_timeframe', symbol, mock_alpha, mock_confidence, additional_data
-            )
-            
-            tier = self._determine_tier(mock_alpha)
-            value_score = self._calculate_value_score(mock_alpha, mock_confidence, 'cross_timeframe', False)
-            
-            return AlphaAlert(
-                symbol=symbol,
-                pattern_type='cross_timeframe',
-                alpha_magnitude=mock_alpha,
-                confidence=mock_confidence,
-                value_score=value_score,
-                tier=tier,
-                priority=PatternPriority.LOW,
-                trading_insight=trading_insight,
-                risk_level="Low-Medium",
-                expected_duration="1-4 hours",
-                entry_conditions=["All timeframes aligned", "Volume confirmation", "Clear direction"],
-                exit_conditions=["Timeframe divergence", "Volume decline", "Target reached"],
-                timestamp=datetime.now(timezone.utc),
-                volume_confirmed=False
-            )
-        
-        return None 
+        # CRITICAL: Real implementation required - no mock data
+        try:
+            # Validate required data is available
+            if not data or 'price' not in data:
+                self.logger.debug(f"Insufficient market data for {symbol} cross timeframe analysis")
+                return None
+
+            # Real cross timeframe analysis would go here
+            # For now, return None to prevent fake signals
+            self.logger.debug(f"Cross timeframe analysis not implemented for {symbol}")
+            return None
+
+        except Exception as e:
+            self.logger.error(f"Error in cross timeframe detection for {symbol}: {str(e)}")
+            return None 

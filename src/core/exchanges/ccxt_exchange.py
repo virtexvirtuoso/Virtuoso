@@ -1,3 +1,4 @@
+from src.utils.task_tracker import create_tracked_task
 """CCXT exchange implementation with unified API support."""
 
 import asyncio
@@ -167,7 +168,157 @@ class CCXTExchange(BaseExchange):
         except Exception as e:
             logger.error(f"Initialization error: {str(e)}")
             return False
-            
+
+    async def _execute_with_session_retry(self, operation, *args, **kwargs):
+        """Execute CCXT operation with session retry logic for 'Session is closed' errors.
+
+        Args:
+            operation: The CCXT method to call
+            *args: Arguments to pass to the operation
+            **kwargs: Keyword arguments to pass to the operation
+
+        Returns:
+            Result of the operation
+
+        Raises:
+            Exception: If all retry attempts fail
+        """
+        max_retries = 3
+        retry_delay = 1.0
+
+        for attempt in range(max_retries):
+            try:
+                # Execute the operation
+                result = await operation(*args, **kwargs)
+                return result
+
+            except RuntimeError as e:
+                if "Session is closed" in str(e) and attempt < max_retries - 1:
+                    logger.warning(f"Session closed error on attempt {attempt + 1}, reinitializing exchange...")
+
+                    # Reinitialize the exchange to get fresh session
+                    try:
+                        await self._reinitialize_session()
+                        await asyncio.sleep(retry_delay)
+                        retry_delay *= 2  # Exponential backoff
+                        continue
+                    except Exception as reinit_error:
+                        logger.error(f"Failed to reinitialize session: {str(reinit_error)}")
+                        if attempt == max_retries - 1:
+                            raise e
+                        continue
+                else:
+                    # Not a session error or final attempt
+                    raise e
+
+            except Exception as e:
+                # Not a session error, propagate immediately
+                raise e
+
+        # Should not reach here, but just in case
+        raise RuntimeError("All retry attempts exhausted")
+
+    async def _reinitialize_session(self):
+        """Reinitialize the CCXT exchange instance to get fresh aiohttp session."""
+        try:
+            # Properly close existing exchange instance and all its resources
+            if hasattr(self.ccxt, 'close'):
+                try:
+                    await self.ccxt.close()
+                    logger.debug(f"Closed existing {self.exchange_id} exchange instance")
+                except Exception as close_error:
+                    logger.warning(f"Error closing existing exchange: {str(close_error)}")
+
+            # Additional session cleanup
+            if hasattr(self.ccxt, 'session') and self.ccxt.session:
+                if not self.ccxt.session.closed:
+                    await self.ccxt.session.close()
+                self.ccxt.session = None
+
+            # Small delay to ensure cleanup completes
+            await asyncio.sleep(0.1)
+
+            # Recreate the exchange instance with fresh session
+            exchange_class = getattr(ccxtpro, self.exchange_id, None)
+            if exchange_class:
+                # Store critical data before reinitializing
+                old_markets = getattr(self.ccxt, 'markets', None)
+                old_symbols = getattr(self.ccxt, 'symbols', None)
+
+                # Create new instance
+                self.ccxt = exchange_class(self.ccxt_options)
+
+                # Restore critical data to avoid re-fetching
+                if old_markets:
+                    self.ccxt.markets = old_markets
+                    self.ccxt.markets_by_id = {v['id']: v for v in old_markets.values()}
+                if old_symbols:
+                    self.ccxt.symbols = old_symbols
+
+                logger.info(f"Successfully reinitialized {self.exchange_id} session")
+            else:
+                raise Exception(f"Exchange {self.exchange_id} not found")
+
+        except Exception as e:
+            logger.error(f"Error reinitializing session: {str(e)}")
+            raise
+
+
+    async def _ensure_session_healthy(self):
+        """Proactively check and reinitialize session if needed."""
+        if not self.ccxt:
+            await self.initialize()
+            return
+
+        # Check if session exists and is open
+        if hasattr(self.ccxt, 'session'):
+            if self.ccxt.session is None or self.ccxt.session.closed:
+                logger.warning("Detected closed session, reinitializing...")
+                await self._reinitialize_session()
+
+    def _convert_symbol_to_ccxt_format(self, symbol: str) -> str:
+        """Convert normalized symbol back to CCXT format for API calls.
+
+        TopSymbolsManager normalizes '10000SATS/USDT:USDT' to '10000SATSUSDT'
+        but CCXT API calls need the original format.
+
+        Args:
+            symbol: Normalized symbol (e.g., '10000SATSUSDT')
+
+        Returns:
+            CCXT format symbol (e.g., '10000SATS/USDT:USDT')
+        """
+        # First check if symbol exists as-is (already in CCXT format)
+        if symbol in self.symbols:
+            return symbol
+
+        # Convert from normalized format to CCXT format
+        if symbol.endswith('USDT') and len(symbol) > 4:
+            base = symbol[:-4]  # Remove 'USDT'
+            # Check linear perpetual format first (preferred for trading)
+            ccxt_linear = f"{base}/USDT:USDT"
+            if ccxt_linear in self.symbols:
+                return ccxt_linear
+            # Check spot format as fallback
+            ccxt_spot = f"{base}/USDT"
+            if ccxt_spot in self.symbols:
+                return ccxt_spot
+
+        if symbol.endswith('USDC') and len(symbol) > 4:
+            base = symbol[:-4]  # Remove 'USDC'
+            # Check linear perpetual format first
+            ccxt_linear = f"{base}/USDC:USDC"
+            if ccxt_linear in self.symbols:
+                return ccxt_linear
+            # Check spot format as fallback
+            ccxt_spot = f"{base}/USDC"
+            if ccxt_spot in self.symbols:
+                return ccxt_spot
+
+        # If no conversion works, return original symbol
+        # This will likely fail in CCXT call, but that's expected behavior
+        return symbol
+
     async def health_check(self) -> bool:
         """Check exchange connection health.
         
@@ -317,10 +468,15 @@ class CCXTExchange(BaseExchange):
         """
         try:
             self.validate_symbol(symbol)
-            
-            # Use CCXT's fetch_order_book method
-            orderbook = await self.ccxt.fetch_order_book(symbol, limit)
-            
+
+            # Convert symbol to CCXT format for API call
+            ccxt_symbol = self._convert_symbol_to_ccxt_format(symbol)
+
+            # Use CCXT's fetch_order_book method with session retry
+            orderbook = await self._execute_with_session_retry(
+                self.ccxt.fetch_order_book, ccxt_symbol, limit
+            )
+
             return self.standardize_response(orderbook, 'orderbook')
             
         except Exception as e:
@@ -343,10 +499,15 @@ class CCXTExchange(BaseExchange):
         """
         try:
             self.validate_symbol(symbol)
-            
-            # Use CCXT's fetch_trades method
-            trades = await self.ccxt.fetch_trades(symbol, since, limit)
-            
+
+            # Convert symbol to CCXT format for API call
+            ccxt_symbol = self._convert_symbol_to_ccxt_format(symbol)
+
+            # Use CCXT's fetch_trades method with session retry
+            trades = await self._execute_with_session_retry(
+                self.ccxt.fetch_trades, ccxt_symbol, since, limit
+            )
+
             return self.standardize_response(trades, 'trades')
             
         except Exception as e:
@@ -357,25 +518,73 @@ class CCXTExchange(BaseExchange):
     @handle_timeout()
     async def fetch_ticker(self, symbol: str) -> Dict[str, Any]:
         """Fetch ticker data.
-        
+
         Args:
             symbol: Trading pair symbol
-            
+
         Returns:
             Ticker data dictionary
         """
         try:
             self.validate_symbol(symbol)
-            
-            # Use CCXT's fetch_ticker method
-            ticker = await self.ccxt.fetch_ticker(symbol)
-            
+
+            # Convert symbol to CCXT format for API call
+            ccxt_symbol = self._convert_symbol_to_ccxt_format(symbol)
+
+            # Use CCXT's fetch_ticker method with session retry
+            ticker = await self._execute_with_session_retry(
+                self.ccxt.fetch_ticker, ccxt_symbol
+            )
+
             return self.standardize_response(ticker, 'ticker')
-            
+
         except Exception as e:
-            logger.error(f"Error fetching ticker for {symbol}: {str(e)}")
+            error_msg = str(e).strip()
+            # Enhanced Error: 0 detection and handling
+            if error_msg == "0" or (len(error_msg) <= 3 and "0" in error_msg):
+                logger.warning(f"CCXT parsing error detected for {symbol}: '{error_msg}' - likely symbol format issue")
+                # Return None to trigger graceful fallback instead of raising
+                return None
+            if "not supported" in error_msg.lower() or "invalid symbol" in error_msg.lower():
+                logger.warning(f"Symbol {symbol} not supported on this exchange: {error_msg}")
+                return None
+            logger.error(f"Error fetching ticker for {symbol}: {error_msg}")
             raise
-    
+
+    @retry_on_error()
+    @handle_timeout()
+    async def fetch_tickers(self, symbols: Optional[List[str]] = None) -> Dict[str, Any]:
+        """Fetch ticker data for multiple symbols.
+
+        Args:
+            symbols: List of trading pair symbols (optional)
+
+        Returns:
+            Dictionary of ticker data keyed by symbol
+        """
+        try:
+            # Use CCXT's fetch_tickers method with session retry
+            if symbols:
+                # Some exchanges support fetching specific symbols
+                tickers = await self._execute_with_session_retry(
+                    self.ccxt.fetch_tickers, symbols
+                )
+            else:
+                # Fetch all available tickers
+                tickers = await self._execute_with_session_retry(
+                    self.ccxt.fetch_tickers
+                )
+
+            return self.standardize_response(tickers, 'tickers')
+
+        except Exception as e:
+            error_msg = str(e).strip()
+            if error_msg == "0" or (len(error_msg) <= 3 and "0" in error_msg):
+                logger.warning("CCXT fetch_tickers returned Error: 0 - returning empty result for graceful fallback")
+                return {}
+            logger.error(f"Error fetching tickers: {error_msg}")
+            raise
+
     @retry_on_error()
     @handle_timeout()
     async def fetch_historical_klines(
@@ -427,7 +636,48 @@ class CCXTExchange(BaseExchange):
         except Exception as e:
             logger.error(f"Error fetching historical klines for {symbol}, interval {interval}: {str(e)}")
             raise
-    
+
+    @retry_on_error()
+    @handle_timeout()
+    async def fetch_ohlcv(
+        self,
+        symbol: str,
+        timeframe: str = '1m',
+        since: Optional[int] = None,
+        limit: Optional[int] = None
+    ) -> List[List]:
+        """Fetch OHLCV (candlestick) data.
+
+        Args:
+            symbol: Trading pair symbol
+            timeframe: Timeframe (e.g., '1m', '5m', '1h', '1d')
+            since: Timestamp in ms to fetch data from
+            limit: Number of candles to fetch
+
+        Returns:
+            List of OHLCV arrays in CCXT format: [timestamp, open, high, low, close, volume]
+        """
+        try:
+            self.validate_symbol(symbol)
+            self.validate_timeframe(timeframe)
+
+            # Convert symbol to CCXT format for API call
+            ccxt_symbol = self._convert_symbol_to_ccxt_format(symbol)
+
+            # Use CCXT's native fetch_ohlcv method with session retry
+            ohlcv = await self._execute_with_session_retry(
+                self.ccxt.fetch_ohlcv, ccxt_symbol, timeframe, since=since, limit=limit
+            )
+
+            return ohlcv
+
+        except Exception as e:
+            logger.error(f"Error fetching OHLCV for {symbol}, timeframe {timeframe}: {str(e)}")
+            # For unsupported symbols, return None instead of raising
+            if "not supported" in str(e).lower() or "invalid symbol" in str(e).lower():
+                return None
+            raise
+
     @retry_on_error()
     @handle_timeout()
     async def fetch_order_book_ticker(self, symbol: str) -> Dict[str, Any]:
@@ -594,16 +844,13 @@ class CCXTExchange(BaseExchange):
             if self.exchange_id == 'bybit':
                 # Bybit specific implementation
                 try:
-                    # Convert to Bybit's interval format
-                    bybit_interval = interval.replace('min', '')
-                    
-                    # Fetch open interest history
+                    # Bybit v5 expects the full interval with units (e.g., '5min') under 'intervalTime'
                     path = '/v5/market/open-interest'
                     params = {
                         'category': 'linear',
                         'symbol': self.market_id_map.get(symbol, symbol),
-                        'interval': bybit_interval,
-                        'limit': limit
+                        'intervalTime': interval,
+                        'limit': min(limit, 200)
                     }
                     
                     response = await self.public_request('GET', path, params)
@@ -850,14 +1097,14 @@ class CCXTExchange(BaseExchange):
             self.validate_symbol(symbol)
             
             # Fetch various data in parallel
-            ticker_task = asyncio.create_task(self.fetch_ticker(symbol))
-            orderbook_task = asyncio.create_task(self.fetch_order_book(symbol, 20))
-            trades_task = asyncio.create_task(self.fetch_trades(symbol, limit=50))
+            ticker_task = create_tracked_task(self.fetch_ticker, name="fetch_ticker_task")
+            orderbook_task = create_tracked_task(self.fetch_order_book(symbol, 20), name="fetch_orderbook_task")
+            trades_task = create_tracked_task(self.fetch_trades, name="fetch_trades_task")
             
             # Try to fetch additional data if available
-            funding_task = asyncio.create_task(self.fetch_funding_rate(symbol))
-            open_interest_task = asyncio.create_task(self.fetch_open_interest(symbol))
-            open_interest_history_task = asyncio.create_task(self.fetch_open_interest_history(symbol, '5min', 200))
+            funding_task = create_tracked_task(self.fetch_funding_rate(symbol), name="fetch_funding_task")
+            open_interest_task = create_tracked_task(self.fetch_open_interest, name="fetch_open_interest_task")
+            open_interest_history_task = create_tracked_task(self.fetch_open_interest_history(symbol, '5min', 200), name="fetch_oi_history_task")
             
             # Gather results
             ticker = await ticker_task

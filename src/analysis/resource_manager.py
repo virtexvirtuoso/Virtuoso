@@ -1,3 +1,4 @@
+from src.utils.task_tracker import create_tracked_task
 """Resource management for analysis components."""
 
 from typing import Dict, Any, Optional, List, Set
@@ -112,9 +113,9 @@ class ResourceManager:
     async def start(self) -> None:
         """Start resource monitoring and cleanup tasks."""
         if not self._check_task:
-            self._check_task = asyncio.create_task(self._monitor_resources())
+            self._check_task = create_tracked_task(self._monitor_resources(), name="auto_tracked_task")
         if not self._cleanup_task:
-            self._cleanup_task = asyncio.create_task(self._cleanup_resources())
+            self._cleanup_task = create_tracked_task(self._cleanup_resources(), name="auto_tracked_task")
     
     async def stop(self) -> None:
         """Stop resource monitoring and cleanup tasks."""
@@ -193,11 +194,11 @@ class ResourceManager:
         metrics.active_operations += 1
         
         # Schedule automatic release
-        asyncio.create_task(
+        create_tracked_task(
             self._auto_release(
                 component_name,
                 self.thresholds.operation_timeout
-            )
+            , name="auto_tracked_task")
         )
         
         return True

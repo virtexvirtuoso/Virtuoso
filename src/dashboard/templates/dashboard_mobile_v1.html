@@ -1312,10 +1312,10 @@
             try {
                 // Load summary, symbols, market overview, and movers data
                 const [summaryResponse, symbolsResponse, marketResponse, mobileDataResponse] = await Promise.all([
-                    fetch('/api/dashboard-cached/overview'),
-                    fetch('/api/dashboard-cached/symbols'),
-                    fetch('/api/dashboard-cached/market-overview'),
-                    fetch('/api/dashboard-cached/mobile-data')
+                    fetch('/api/dashboard/overview'),
+                    fetch('/api/dashboard/symbols'),
+                    fetch('/api/dashboard/market-overview'),
+                    fetch('/api/dashboard/mobile-data')
                 ]);
                 
                 const summaryData = await summaryResponse.json();
@@ -1358,7 +1358,7 @@
         async function loadSignalsData() {
             try {
                 // Fetch from dashboard signals endpoint which provides real signal data
-                const response = await fetch('/api/dashboard-cached/signals');
+                const response = await fetch('/api/dashboard/signals');
                 const data = await response.json();
                 updateSignals(data);
             } catch (error) {
@@ -1371,7 +1371,7 @@
 
         async function loadAlphaData() {
             try {
-                const response = await fetch('/api/dashboard-cached/opportunities');
+                const response = await fetch('/api/dashboard/opportunities');
                 const data = await response.json();
                 updateAlpha(data);
             } catch (error) {
@@ -1381,7 +1381,7 @@
 
         async function loadAlertsData() {
             try {
-                const response = await fetch('/api/dashboard-cached/alerts');
+                const response = await fetch('/api/dashboard/alerts');
                 const data = await response.json();
                 updateAlerts(data);
             } catch (error) {
@@ -2651,7 +2651,7 @@
             } else if (data.type === 'price_update' || data.type === 'ticker') {
                 // Update symbols if on dashboard tab
                 if (document.getElementById('dashboardTab').classList.contains('active')) {
-                    fetch('/api/dashboard-cached/symbols')
+                    fetch('/api/dashboard/symbols')
                         .then(response => response.json())
                         .then(data => updateSymbols(data))
                         .catch(error => console.error('Error updating symbols:', error));

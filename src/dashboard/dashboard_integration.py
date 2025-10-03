@@ -1,3 +1,4 @@
+from src.utils.task_tracker import create_tracked_task
 """Dashboard Integration Service.
 
 This service bridges the real monitoring system with the web dashboard,
@@ -160,8 +161,8 @@ class DashboardIntegrationService:
             return
             
         self._running = True
-        self._update_task = asyncio.create_task(self._update_loop())
-        self._confluence_update_task = asyncio.create_task(self._update_confluence_cache())
+        self._update_task = create_tracked_task(self._update_loop(), name="auto_tracked_task")
+        self._confluence_update_task = create_tracked_task(self._update_confluence_cache(), name="auto_tracked_task")
         self.logger.info("Dashboard integration service started")
     
     async def stop(self):
@@ -214,11 +215,19 @@ class DashboardIntegrationService:
                         if hasattr(self.monitor, 'market_data_manager') and hasattr(self.monitor, 'confluence_analyzer') and self.monitor.confluence_analyzer:
                             market_data = await self.monitor.market_data_manager.get_market_data(symbol)
                             if market_data:
-                                # Guard: analyzer may be None or not initialized
+                                # Guard: analyzer may be None or not initialized or missing method
+                                analyzer = getattr(self.monitor, 'confluence_analyzer', None)
+                                result = None
                                 try:
-                                    result = await self.monitor.confluence_analyzer.analyze(market_data)
+                                    if analyzer and hasattr(analyzer, 'analyze') and callable(getattr(analyzer, 'analyze')):
+                                        result = await analyzer.analyze(market_data)
+                                    else:
+                                        self.logger.warning("confluence_analyzer unavailable or missing analyze(); skipping")
                                 except AttributeError:
                                     self.logger.warning("confluence_analyzer not initialized; skipping analyze() for now")
+                                    result = None
+                                except Exception as e:
+                                    self.logger.debug(f"confluence_analyzer.analyze error for {symbol}: {e}")
                                     result = None
                                 if result and 'confluence_score' in result:
                                     score = float(result['confluence_score'])
@@ -637,7 +646,12 @@ class DashboardIntegrationService:
             # First try to get from confluence analyzer if available
             if hasattr(self.monitor, 'confluence_analyzer') and self.monitor.confluence_analyzer:
                 try:
-                    result = await self.monitor.confluence_analyzer.analyze(market_data)
+                    analyzer = getattr(self.monitor, 'confluence_analyzer', None)
+                    result = None
+                    if analyzer and hasattr(analyzer, 'analyze') and callable(getattr(analyzer, 'analyze')):
+                        result = await analyzer.analyze(market_data)
+                    else:
+                        self.logger.debug("confluence_analyzer missing or analyze() not callable")
                     if result and 'confluence_score' in result:
                         score = float(result['confluence_score'])
                         self.logger.info(f"Got confluence score {score} for {symbol} from analyzer")
@@ -1189,7 +1203,12 @@ class DashboardIntegrationService:
                     market_data = await self.monitor.market_data_manager.get_market_data(symbol)
                     if market_data and self.monitor.confluence_analyzer:
                         try:
-                            result = await self.monitor.confluence_analyzer.analyze(market_data)
+                            analyzer = getattr(self.monitor, 'confluence_analyzer', None)
+                            result = None
+                            if analyzer and hasattr(analyzer, 'analyze') and callable(getattr(analyzer, 'analyze')):
+                                result = await analyzer.analyze(market_data)
+                            else:
+                                self.logger.debug("confluence_analyzer missing or analyze() not callable")
                         except AttributeError:
                             self.logger.warning("confluence_analyzer not initialized; skipping analyze()")
                             result = None

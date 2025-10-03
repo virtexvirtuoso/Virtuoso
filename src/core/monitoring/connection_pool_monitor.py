@@ -1,3 +1,4 @@
+from src.utils.task_tracker import create_tracked_task
 """
 Connection Pool Monitor for tracking and logging connection pool usage
 """
@@ -80,7 +81,7 @@ class ConnectionPoolMonitor:
             return
             
         self._running = True
-        self._monitoring_task = asyncio.create_task(self._monitor_loop())
+        self._monitoring_task = create_tracked_task(self._monitor_loop(), name="auto_tracked_task")
         logger.info(f"Started connection pool monitoring (interval: {self.check_interval}s)")
         
     async def stop(self) -> None:

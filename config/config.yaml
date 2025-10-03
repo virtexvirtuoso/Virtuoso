@@ -513,16 +513,15 @@ confluence:
       sentiment: 0.07
     sub_components:
       orderbook:
-        absorption_exhaustion: 0.08
-        depth: 0.2
-        dom_momentum: 0.05
-        imbalance: 0.18
-        liquidity: 0.14
+        depth: 0.19
+        imbalance: 0.17
+        oir: 0.15
+        liquidity: 0.13
         mpi: 0.11
-        obps: 0.08
-        spread: 0.05
         manipulation: 0.08
-        di: 0.03
+        absorption_exhaustion: 0.08
+        di: 0.05
+        retail: 0.04
       orderflow:
         cvd: 0.22
         imbalance: 0.13
@@ -622,7 +621,7 @@ exchanges:
     api_credentials:
       api_key: ${BINANCE_API_KEY:}
       api_secret: ${BINANCE_API_SECRET:}
-    data_only: false
+    data_only: true
     data_preferences:
       exclude_symbols: []
       min_24h_volume: 1000000
@@ -630,7 +629,7 @@ exchanges:
       - USDT
       - BTC
       - ETH
-    enabled: ${ENABLE_BINANCE_DATA:false}
+    enabled: true
     market_types:
     - spot
     - futures
@@ -873,6 +872,14 @@ market_data:
       max_spread: 0.01
       min_levels: 10
       update_interval: 100
+      rpi:
+        enabled: true
+        retail_threshold: 0.05  # Minimum retail share for signal validity
+        cache_ttl: 30          # RPI data cache TTL in seconds
+        extreme_thresholds:    # Thresholds for extreme retail alerts
+          buying: 80           # Score above which to send extreme buying alerts
+          selling: 20          # Score below which to send extreme selling alerts
+        participation_weight: 2.0  # Multiplier for retail participation impact
     price:
       max_value: 1000000
       min_value: 0
@@ -972,9 +979,9 @@ monitoring:
       use_system_webhook: true
     system_alerts_webhook_url: ${SYSTEM_ALERTS_WEBHOOK_URL}
     whale_activity:
-      accumulation_threshold: 2500000
+      accumulation_threshold: 500000
       cooldown: 1800
-      distribution_threshold: 2500000
+      distribution_threshold: 500000
       enabled: true
       excluded_symbols: []
       imbalance_threshold: 0.3
@@ -984,9 +991,9 @@ monitoring:
       min_trade_imbalance: 0.75
       min_trade_volume_usd: 500000
       min_whale_trades: 5
-      trade_alerts_enabled: false
-      trade_cooldown: 900
-      alert_threshold_usd: 2000000
+      trade_alerts_enabled: true
+      trade_cooldown: 600
+      alert_threshold_usd: 300000
     smart_money_detection:
       enabled: true
       min_sophistication_score: 6.0
@@ -1021,7 +1028,7 @@ monitoring:
   enabled: true
   error_delay: 5
   health_check_interval: 30
-  interval: 30
+  interval: 10
   max_errors: 10
   memory_tracking:
     check_interval_seconds: 300
@@ -1098,14 +1105,24 @@ risk:
     max_drawdown: 0.25
     max_leverage: 3.0
     max_position_size: 0.1
+  # Enhanced stop loss configuration for more breathing room
+  long_stop_percentage: 4.5    # Increased from 3.0% to 4.5%
+  short_stop_percentage: 5.0   # Increased from 3.5% to 5.0%
+  min_stop_multiplier: 0.7     # Reduced from 0.8 to 0.7 (tighter minimum)
+  max_stop_multiplier: 2.0     # Increased from 1.5 to 2.0 (wider maximum)
   stop_loss:
     activation_percentage: 0.01
-    default: 0.02
+    default: 0.04              # Increased from 0.02 (2%) to 0.04 (4%)
     trailing: true
   take_profit:
     activation_percentage: 0.02
-    default: 0.04
+    default: 0.06              # Increased from 0.04 (4%) to 0.06 (6%)
     trailing: true
+risk_management:
+  # StopLossCalculator configuration
+  default_stop_loss: 0.04      # 4% base stop loss (increased from 2%)
+  confidence_scaling: true     # Enable confidence-based stop loss scaling
+  notes: "Enhanced configuration provides more breathing room for crypto volatility"
 rollout:
   enabled: true
   mode: complete

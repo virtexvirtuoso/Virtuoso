@@ -9,6 +9,7 @@ import json
 
 from src.core.exchanges.manager import ExchangeManager
 from src.core.models.liquidation import LiquidationEvent, LiquidationType, LiquidationSeverity
+from src.utils.task_tracker import create_tracked_task
 
 @dataclass
 class RawLiquidationData:
@@ -58,13 +59,13 @@ class LiquidationDataCollector:
         tasks = []
         for exchange_id, exchange in self.exchange_manager.exchanges.items():
             if hasattr(exchange, 'subscribe_liquidations'):
-                task = asyncio.create_task(
-                    self._collect_from_exchange(exchange_id, exchange, symbols)
+                task = create_tracked_task(
+                    self._collect_from_exchange(exchange), name="_collect_from_exchange_task"
                 )
                 tasks.append(task)
         
         # Start periodic REST API collection for exchanges that don't support WebSocket
-        tasks.append(asyncio.create_task(self._periodic_rest_collection(symbols)))
+        tasks.append(create_tracked_task(self._periodic_rest_collection(), name="_periodic_rest_collection_task"))
         
         try:
             await asyncio.gather(*tasks)
