@@ -4454,63 +4454,61 @@ async def run_application():
         try:
             logger.info("🚀 Starting task isolation approach...")
 
-            # Create task monitor
-            monitoring_monitor = create_tracked_task(
-                monitor_task_completion(monitoring_task, "monitoring"),
-                name="monitoring_monitor"
+            # Start monitoring task (runs forever - don't wait for completion)
+            logger.info("🚀 Starting monitoring task (runs continuously in background)...")
+
+            # Launch monitoring task in background
+            monitoring_background_task = create_tracked_task(
+                monitoring_task,
+                name="monitoring_background"
             )
 
-            # Wait for monitoring completion with timeout
-            logger.info("⏱️  Starting monitoring initialization (120s timeout)...")
+            # Wait for first monitoring cycle to complete (confirms successful initialization)
+            logger.info("⏱️  Waiting for first monitoring cycle to complete (max 240s)...")
             start_time = asyncio.get_event_loop().time()
-            done, pending = await asyncio.wait(
-                [monitoring_monitor],
-                return_when=asyncio.FIRST_COMPLETED,
-                timeout=120.0  # 2 minute timeout for initial startup (increased from 30s)
-            )
+            timeout_seconds = 240.0
+            poll_interval = 1.0
 
-            if not done:
-                elapsed_time = asyncio.get_event_loop().time() - start_time
-                logger.error(f"🚨 Monitoring task did not complete within startup timeout! ({elapsed_time:.1f}s elapsed)")
-                logger.error(f"📋 Pending tasks: monitoring_monitor={monitoring_monitor in pending}")
-                # Cancel pending tasks
-                for task in pending:
-                    task.cancel()
-                return
+            first_cycle_completed = False
+            while not first_cycle_completed:
+                elapsed = asyncio.get_event_loop().time() - start_time
 
-            # Analyze monitoring task completion
-            elapsed_time = asyncio.get_event_loop().time() - start_time
-            for completed_task in done:
-                if completed_task == monitoring_monitor:
-                    monitoring_completed = True
-                    logger.info(f"📈 Monitoring task completed ({elapsed_time:.1f}s)")
+                # Check if timeout exceeded
+                if elapsed > timeout_seconds:
+                    logger.error(f"🚨 Monitoring first cycle did not complete within {timeout_seconds}s timeout!")
+                    logger.error(f"   Elapsed time: {elapsed:.1f}s")
+                    monitoring_background_task.cancel()
+                    return
 
-                # Check if task was cancelled or failed
-                try:
-                    result = await completed_task
-                    if isinstance(result, Exception):
-                        logger.error(f"❌ Monitoring task failed with exception: {result}")
-                except asyncio.CancelledError:
-                    logger.error(f"🚨 Monitoring task was cancelled")
+                # Check if task failed/crashed
+                if monitoring_background_task.done():
+                    try:
+                        result = await monitoring_background_task
+                        logger.error(f"❌ Monitoring task exited unexpectedly: {result}")
+                        return
+                    except Exception as e:
+                        logger.error(f"❌ Monitoring task crashed: {e}")
+                        import traceback
+                        logger.error(f"   {traceback.format_exc()}")
+                        return
 
-            # Handle monitoring task restart if it was cancelled/failed
-            if monitoring_completed:
-                logger.warning("🔄 Monitoring task completed unexpectedly, attempting restart...")
-                # Restart monitoring task
-                monitoring_task = create_tracked_task(monitoring_main(), name="monitoring_main_restart")
-                monitoring_monitor = create_tracked_task(
-                    monitor_task_completion(monitoring_task, "monitoring_restart"),
-                    name="monitoring_monitor_restart"
-                )
+                # Check if monitor has completed first cycle
+                # Access the monitor instance through the service coordinator
+                if hasattr(service_coordinator, 'monitoring_service') and service_coordinator.monitoring_service:
+                    monitor = service_coordinator.monitoring_service
+                    if hasattr(monitor, '_last_successful_cycle') and monitor._last_successful_cycle > 0:
+                        first_cycle_completed = True
+                        elapsed = asyncio.get_event_loop().time() - start_time
+                        logger.info(f"✅ First monitoring cycle completed successfully ({elapsed:.1f}s)")
+                        logger.info(f"📊 Monitoring is now running continuously in the background")
+                        break
 
-            # Keep running tasks alive - wait indefinitely for remaining tasks
-            remaining_tasks = [task for task in pending if not task.done()]
-            if remaining_tasks:
-                logger.info(f"⏳ Waiting for {len(remaining_tasks)} remaining tasks to complete...")
-                try:
-                    await asyncio.gather(*remaining_tasks, return_exceptions=True)
-                except Exception as e:
-                    logger.error(f"Error in remaining tasks: {e}")
+                # Sleep before next poll
+                await asyncio.sleep(poll_interval)
+
+            # Monitoring is now running successfully in background
+            # Keep the background task alive by storing it
+            monitoring_completed = False  # Monitoring should never "complete" - it runs forever
 
         except Exception as e:
             logger.error(f"💥 Critical error in task isolation: {e}")
