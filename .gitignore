@@ -101,7 +101,9 @@ logs/
 src/logs/
 *.sqlite
 *.db
+# Runtime cache directories (but not source code in src/core/cache/)
 cache/
+!src/core/cache/
 *_reporter.log
 *_report.json
 *_report.log
