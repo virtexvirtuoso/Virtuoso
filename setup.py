@@ -34,6 +34,7 @@ setup(
         "pandas",
         "numpy",
         "aiohttp",
+        "aiofiles",
         "websockets",
         "influxdb-client",
         "python-jose[cryptography]",
