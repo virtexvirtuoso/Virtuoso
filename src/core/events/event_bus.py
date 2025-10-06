@@ -341,7 +341,8 @@ class EventBus(IAsyncDisposable):
         for priority in EventPriority:
             for i in range(self.max_workers // len(EventPriority) + 1):
                 worker = create_tracked_task(
-                    self._worker, name="_worker_task")}_worker_{i}")
+                    self._worker(priority),
+                    name=f"event_bus_worker_{i}"
                 )
                 self._workers.append(worker)
                 
