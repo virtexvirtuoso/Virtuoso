@@ -132,6 +132,18 @@ def main():
             'call': 'create_tracked_task',
             'context': 'run_application',
             'description': 'Task tracking for monitoring loop'
+        },
+        {
+            'file': 'src/main.py',
+            'call': 'cache_warmer.start_warming_loop',
+            'context': 'start_cache_warming',
+            'description': 'Cache warming continuous background loop - prevents stale cache data'
+        },
+        {
+            'file': 'src/main.py',
+            'call': 'cache_warmer.warm_all_caches',
+            'context': 'start_cache_warming',
+            'description': 'Initial cache warming on startup'
         }
     ]
 
