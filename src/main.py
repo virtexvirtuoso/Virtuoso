@@ -4318,7 +4318,8 @@ async def run_application():
 
         while time.time() - poll_start < poll_timeout:
             # Check if monitor has completed first cycle via its internal flag
-            if hasattr(market_monitor, 'first_cycle_complete') and market_monitor.first_cycle_complete:
+            # Fixed: Changed first_cycle_complete → first_cycle_completed (Oct 6, 2025)
+            if hasattr(market_monitor, 'first_cycle_completed') and market_monitor.first_cycle_completed:
                 elapsed = time.time() - poll_start
                 logger.info(f"✅ First monitoring cycle completed in {elapsed:.1f}s")
                 break
@@ -4329,6 +4330,11 @@ async def run_application():
             logger.info("📊 Monitoring will continue in background")
 
         logger.info("🔄 Monitoring loop is now running continuously")
+
+        # Keep the application alive - wait for monitoring task to complete
+        # (monitoring runs forever, so this effectively keeps the app running)
+        logger.info("⏸️  Application waiting for monitoring task...")
+        await monitoring_task
 
     except KeyboardInterrupt:
         logger.info("Shutdown signal received from run_application()")
