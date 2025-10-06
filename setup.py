@@ -35,6 +35,7 @@ setup(
         "numpy",
         "aiohttp",
         "aiofiles",
+        "aiomcache",
         "websockets",
         "influxdb-client",
         "python-jose[cryptography]",
