@@ -629,7 +629,7 @@ exchanges:
       - USDT
       - BTC
       - ETH
-    enabled: true
+    enabled: false  # Disabled - no API credentials configured
     market_types:
     - spot
     - futures
