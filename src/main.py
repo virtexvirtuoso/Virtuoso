@@ -68,6 +68,28 @@ Configuration:
         ENABLE_EVENT_SOURCING: Enable event sourcing (default: true)
         TARGET_THROUGHPUT: Target events per second (default: 10000)
 
+🚨 CRITICAL CODE PATHS - READ BEFORE MODIFYING:
+    ════════════════════════════════════════════════════════════════════════
+    EXECUTION FLOW:
+        1. __main__ entry point (line ~4340) calls asyncio.run(run_application())
+        2. run_application() (line ~4190) is the PRIMARY startup function
+        3. Within run_application(), market_monitor.start() MUST be called
+        4. Deleting market_monitor.start() will BREAK the entire system
+
+    INCIDENT HISTORY:
+        - Oct 5, 2025: Accidental deletion of monitoring startup code
+        - Impact: System ran but did NO confluence analysis
+        - Root cause: Assumed code was "dead" without verifying execution path
+        - Resolution: Restored market_monitor.start() call with proper documentation
+
+    BEFORE DELETING ANY CODE:
+        ✓ Trace the execution path from __main__
+        ✓ Verify function is NOT called from run_application()
+        ✓ Check VPS logs for evidence of execution
+        ✓ Test locally with monitoring to confirm no impact
+        ✓ Review critical function checklist (see run_application() docstring)
+    ════════════════════════════════════════════════════════════════════════
+
 API Endpoints:
     Main Application (port 8003):
         GET / - Desktop dashboard interface
@@ -76,7 +98,7 @@ API Endpoints:
         GET /api/alerts - Active trading alerts
         GET /api/bitcoin-beta - Bitcoin correlation analysis
         WebSocket /ws - Real-time data streaming
-    
+
     Monitoring API (port 8001):
         GET /api/monitoring/status - System health status
         GET /api/monitoring/metrics - Performance metrics
@@ -4188,11 +4210,26 @@ async def main():
         logger.info("✅ Application shutdown complete")
 
 async def run_application():
-    """Run both the monitoring system and web server concurrently"""
+    """
+    🚨 CRITICAL ENTRY POINT - Main application startup function.
+
+    This function is called by __main__ and is the PRIMARY execution path for the system.
+
+    CRITICAL RESPONSIBILITIES:
+    1. Initialize all system components via initialize_components()
+    2. Start cache warming system
+    3. START MONITORING LOOP via market_monitor.start() - ESSENTIAL, DO NOT DELETE
+
+    EXECUTION FLOW:
+    __main__ → asyncio.run(run_application()) → [this function]
+
+    ⚠️  WARNING: This is NOT dead code. Any removal of monitoring startup
+    will break the entire system. See Oct 5, 2025 incident.
+    """
     global config_manager, exchange_manager, portfolio_analyzer, database_client
     global confluence_analyzer, top_symbols_manager, market_monitor
     global metrics_manager, alert_manager, market_reporter, health_monitor, validation_service
-    
+
     logger.info("Starting application with concurrent monitoring and web server...")
     
     try:
@@ -4249,289 +4286,52 @@ async def run_application():
             logger.info("📌 Using DirectCacheAdapter without warming (data on demand)")
         except Exception as e:
             logger.error(f"❌ Could not start cache warming: {e}")
-        
-        # Enhanced monitoring main function with restart capability
-        async def monitoring_main():
-            """Enhanced monitoring main with robust restart mechanisms"""
-            logger.info("🚀 MONITORING_MAIN STARTED - Enhanced Version")
-            display_banner()
 
-            shutdown_event = asyncio.Event()
-            restart_count = 0
-            max_restarts = 5
+        # ============================================================================
+        # 🚨 CRITICAL: MONITORING LOOP STARTUP - DO NOT DELETE 🚨
+        # ============================================================================
+        # This section is ESSENTIAL for system operation. Without it, the monitoring
+        # loop will NOT run and NO confluence analysis will occur.
+        #
+        # VALIDATION CHECKLIST before modifying this section:
+        # ✓ market_monitor.start() MUST be called
+        # ✓ Must be wrapped in create_tracked_task() for proper lifecycle management
+        # ✓ Must NOT use await asyncio.wait_for() (monitoring runs forever)
+        # ✓ Polling approach for first cycle completion is REQUIRED
+        #
+        # Last verified: Oct 5, 2025 - After accidental deletion incident
+        # ============================================================================
 
-            def signal_handler():
-                """Handle shutdown signals"""
-                logger.info("Shutdown signal received")
-                shutdown_event.set()
+        logger.info("🚀 Starting market monitoring loop...")
 
-            try:
-                # Set up signal handlers
-                loop = asyncio.get_event_loop()
-                for sig in (signal.SIGINT, signal.SIGTERM):
-                    loop.add_signal_handler(sig, signal_handler)
+        # Create monitoring task without timeout (monitoring runs forever)
+        monitoring_task = create_tracked_task(
+            market_monitor.start(),
+            name="market_monitoring"
+        )
+        logger.info("✅ Market monitoring task created successfully")
 
-                while not shutdown_event.is_set() and restart_count <= max_restarts:
-                    try:
-                        # Log restart attempt
-                        if restart_count > 0:
-                            logger.info(f"🔄 MONITORING RESTART ATTEMPT #{restart_count}")
-                            await asyncio.sleep(5)  # Wait before restart
+        # Poll for first cycle completion (with timeout for startup only)
+        logger.info("⏳ Waiting for first monitoring cycle to complete...")
+        poll_start = time.time()
+        poll_timeout = 120  # 2 minutes for first cycle
 
-                        logger.info("🚀 Starting market_monitor with resilient wrapper...")
+        while time.time() - poll_start < poll_timeout:
+            # Check if monitor has completed first cycle via its internal flag
+            if hasattr(market_monitor, 'first_cycle_complete') and market_monitor.first_cycle_complete:
+                elapsed = time.time() - poll_start
+                logger.info(f"✅ First monitoring cycle completed in {elapsed:.1f}s")
+                break
+            await asyncio.sleep(1)
+        else:
+            # Timeout waiting for first cycle - but don't cancel monitoring!
+            logger.warning(f"⚠️ First monitoring cycle did not complete within {poll_timeout}s")
+            logger.info("📊 Monitoring will continue in background")
 
-                        # Enhanced wrapper with better error handling and monitoring
-                        async def resilient_monitor_start():
-                            """Enhanced resilient monitor start with detailed logging"""
-                            retries = 0
-                            max_retries = 3
+        logger.info("🔄 Monitoring loop is now running continuously")
 
-                            while retries < max_retries and not shutdown_event.is_set():
-                                try:
-                                    logger.info(f"🎯 Starting market_monitor (attempt {retries + 1}/{max_retries})")
-
-                                    # Add pre-start checks
-                                    logger.info("🔍 Pre-start health check:")
-                                    logger.info(f"  - Market monitor running: {market_monitor.running}")
-                                    logger.info(f"  - Shutdown event: {shutdown_event.is_set()}")
-
-                                    # Start the monitor with timeout protection
-                                    monitor_start_task = create_tracked_task(
-                                        market_monitor.start(), name=f"monitor_start_attempt_{retries + 1}"
-                                    )
-
-                                    # Wait with timeout (increased to prevent startup cancellation)
-                                    await asyncio.wait_for(monitor_start_task, timeout=300.0)  # 5 minutes - enough for multiple cycles
-
-                                    logger.info("✅ market_monitor.start() completed successfully!")
-                                    break  # Success
-
-                                except asyncio.TimeoutError:
-                                    retries += 1
-                                    logger.error(f"⏰ market_monitor.start() timed out after 180s (attempt {retries}/{max_retries})")
-                                    if retries >= max_retries:
-                                        raise Exception("Monitor start timed out after all retries")
-                                    await asyncio.sleep(10)  # Wait before retry
-
-                                except asyncio.CancelledError:
-                                    logger.error(f"🚨 market_monitor.start() was cancelled (attempt {retries + 1})")
-                                    if not shutdown_event.is_set():
-                                        # Only retry if not shutting down
-                                        retries += 1
-                                        if retries < max_retries:
-                                            logger.info(f"🔄 Retrying monitor start in 5 seconds...")
-                                            await asyncio.sleep(5)
-                                        else:
-                                            raise Exception("Monitor start cancelled after all retries")
-                                    else:
-                                        raise  # Re-raise if shutting down
-
-                                except Exception as e:
-                                    retries += 1
-                                    logger.error(f"❌ market_monitor.start() failed (attempt {retries}/{max_retries}): {e}")
-                                    if retries >= max_retries:
-                                        raise Exception(f"Monitor start failed after {max_retries} retries: {e}")
-                                    await asyncio.sleep(10)  # Wait before retry
-
-                        # Start the resilient monitor and wait for completion
-                        monitor_task = create_tracked_task(
-                            resilient_monitor_start(), name=f"monitor_start_{restart_count}"
-                        )
-
-                        logger.info("✅ market_monitor background task created with retry logic!")
-                        logger.info("Monitoring system running. Press Ctrl+C to stop.")
-
-                        # Wait for monitor task completion or shutdown
-                        try:
-                            await monitor_task
-                            logger.info("🏁 Monitor task completed successfully")
-
-                            # If monitor completes without shutdown signal, it may have failed
-                            if not shutdown_event.is_set():
-                                logger.warning("🚨 Monitor completed without shutdown signal - potential failure")
-                                restart_count += 1
-                                if restart_count <= max_restarts:
-                                    logger.info(f"🔄 Scheduling restart #{restart_count} in 10 seconds...")
-                                    await asyncio.sleep(10)
-                                    continue  # Restart the monitoring loop
-                                else:
-                                    logger.error(f"❌ Maximum restarts ({max_restarts}) reached, stopping monitoring")
-                                    break
-                            else:
-                                logger.info("✅ Monitor stopped due to shutdown signal")
-                                break
-
-                        except asyncio.CancelledError:
-                            logger.error("🚨 Monitor task was cancelled")
-                            if not shutdown_event.is_set():
-                                restart_count += 1
-                                logger.info(f"🔄 Task cancelled unexpectedly, attempting restart #{restart_count}")
-                                continue
-                            else:
-                                logger.info("✅ Monitor cancelled due to shutdown")
-                                break
-
-                        except Exception as e:
-                            logger.error(f"❌ Monitor task failed with exception: {e}")
-                            restart_count += 1
-                            if restart_count <= max_restarts:
-                                logger.info(f"🔄 Scheduling restart #{restart_count} after failure...")
-                                await asyncio.sleep(15)  # Longer wait after failure
-                                continue
-                            else:
-                                logger.error(f"❌ Maximum restarts reached after failure, stopping monitoring")
-                                break
-
-                    except Exception as restart_error:
-                        logger.error(f"❌ Error during restart attempt #{restart_count}: {restart_error}")
-                        restart_count += 1
-                        if restart_count <= max_restarts:
-                            logger.info(f"🔄 Waiting before next restart attempt...")
-                            await asyncio.sleep(20)
-                        else:
-                            logger.error("❌ Maximum restart attempts reached, monitoring stopped")
-                            break
-
-                logger.info(f"🏁 Monitoring main completed after {restart_count} restarts")
-                        
-            except asyncio.CancelledError:
-                import sys
-                
-                # Enhanced debug logging for monitoring task cancellation
-                frame_info = []
-                frame = sys._getframe()
-                while frame:
-                    frame_info.append(f"{frame.f_code.co_filename}:{frame.f_lineno} in {frame.f_code.co_name}")
-                    frame = frame.f_back
-                    if len(frame_info) > 10:
-                        break
-                
-                logger.error("🚨 MAIN MONITORING TASK CANCELLED - DEBUG INFO:")
-                logger.error(f"Shutdown event set: {shutdown_event.is_set()}")
-                logger.error(f"All running tasks: {len(asyncio.all_tasks())}")
-                logger.error("📚 Cancellation call stack:")
-                for i, frame_str in enumerate(frame_info):
-                    logger.error(f"  {i}: {frame_str}")
-                logger.error("💥 MAIN MONITORING TASK CANCELLED - DEBUGGING ENABLED")
-            except Exception as e:
-                logger.error(f"Error during monitoring: {str(e)}")
-                logger.debug(traceback.format_exc())
-            finally:
-                # Use centralized cleanup only on shutdown
-                if shutdown_event.is_set():
-                    await cleanup_all_components()
-                    logger.info("Monitoring cleanup completed")
-        
-        # Create task for the monitoring system only
-        # Web server functionality is handled by standalone web_server.py
-        logger.info("🔄 Creating monitoring task...")
-        monitoring_task = create_tracked_task(monitoring_main(), name="monitoring_main")
-        logger.info("✅ Monitoring task created, starting execution...")
-
-        # Monitor task state before execution
-        logger.info(f"🔍 Task state before execution: monitoring={monitoring_task.done()}")
-
-        # Use task isolation approach instead of gather() to prevent cancellation issues
-        monitoring_completed = False
-
-        async def monitor_task_completion(task, task_name):
-            """Monitor individual task completion with detailed logging"""
-            try:
-                logger.info(f"🎯 Starting {task_name} task monitor...")
-                result = await task
-                logger.info(f"✅ {task_name} task completed successfully")
-                return result
-            except asyncio.CancelledError:
-                logger.error(f"🚨 {task_name} task was cancelled")
-                raise
-            except Exception as e:
-                logger.error(f"❌ {task_name} task failed: {e}")
-                import traceback
-                logger.error(f"   Full traceback: {traceback.format_exc()}")
-                return e
-
-        # Run tasks with individual monitoring and restart capability
-        try:
-            logger.info("🚀 Starting task isolation approach...")
-
-            # Start monitoring task (runs forever - don't wait for completion)
-            logger.info("🚀 Starting monitoring task (runs continuously in background)...")
-
-            # Launch monitoring task in background
-            monitoring_background_task = create_tracked_task(
-                monitoring_task,
-                name="monitoring_background"
-            )
-
-            # Wait for first monitoring cycle to complete (confirms successful initialization)
-            logger.info("⏱️  Waiting for first monitoring cycle to complete (max 240s)...")
-            start_time = asyncio.get_event_loop().time()
-            timeout_seconds = 240.0
-            poll_interval = 1.0
-
-            first_cycle_completed = False
-            while not first_cycle_completed:
-                elapsed = asyncio.get_event_loop().time() - start_time
-
-                # Check if timeout exceeded
-                if elapsed > timeout_seconds:
-                    logger.error(f"🚨 Monitoring first cycle did not complete within {timeout_seconds}s timeout!")
-                    logger.error(f"   Elapsed time: {elapsed:.1f}s")
-                    monitoring_background_task.cancel()
-                    return
-
-                # Check if task failed/crashed
-                if monitoring_background_task.done():
-                    try:
-                        result = await monitoring_background_task
-                        logger.error(f"❌ Monitoring task exited unexpectedly: {result}")
-                        return
-                    except Exception as e:
-                        logger.error(f"❌ Monitoring task crashed: {e}")
-                        import traceback
-                        logger.error(f"   {traceback.format_exc()}")
-                        return
-
-                # Check if monitor has completed first cycle
-                # Access the monitor instance through the service coordinator
-                if hasattr(service_coordinator, 'monitoring_service') and service_coordinator.monitoring_service:
-                    monitor = service_coordinator.monitoring_service
-                    if hasattr(monitor, '_last_successful_cycle') and monitor._last_successful_cycle > 0:
-                        first_cycle_completed = True
-                        elapsed = asyncio.get_event_loop().time() - start_time
-                        logger.info(f"✅ First monitoring cycle completed successfully ({elapsed:.1f}s)")
-                        logger.info(f"📊 Monitoring is now running continuously in the background")
-                        break
-
-                # Sleep before next poll
-                await asyncio.sleep(poll_interval)
-
-            # Monitoring is now running successfully in background
-            # Keep the background task alive by storing it
-            monitoring_completed = False  # Monitoring should never "complete" - it runs forever
-
-        except Exception as e:
-            logger.error(f"💥 Critical error in task isolation: {e}")
-            logger.error(f"   Error type: {type(e).__name__}")
-            import traceback
-            logger.error(f"   Full traceback: {traceback.format_exc()}")
-        
     except KeyboardInterrupt:
-        logger.info("Shutdown signal received")
-        # Cancel monitoring task gracefully
-        if 'monitoring_task' in locals() and not monitoring_task.done():
-            monitoring_task.cancel()
-
-        # Wait for cancellation with timeout
-        try:
-            await asyncio.wait_for(
-                asyncio.gather(monitoring_task, return_exceptions=True),
-                timeout=10.0
-            )
-        except asyncio.TimeoutError:
-            logger.warning("Tasks did not complete cancellation within timeout")
-        except Exception as e:
-            logger.error(f"Error during task cancellation: {e}")
+        logger.info("Shutdown signal received from run_application()")
 
 @app.post("/api/websocket/initialize")
 async def initialize_websocket():
