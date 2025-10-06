@@ -37,6 +37,7 @@ setup(
         "aiofiles",
         "aiomcache",
         "redis[hiredis]",
+        "psutil",
         "websockets",
         "influxdb-client",
         "python-jose[cryptography]",
