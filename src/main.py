@@ -4270,8 +4270,8 @@ async def run_application():
                     logger.info("✅ Initial cache warming completed")
                     
                     # Start continuous warming in background
-                    create_tracked_task(cache_warmer.start_continuous_warming(), name="cache_warmer_continuous")
-                    logger.info("✅ Continuous cache warming started (60s intervals)")
+                    create_tracked_task(cache_warmer.start_warming_loop(), name="cache_warmer_continuous")
+                    logger.info("✅ Continuous cache warming started (30s intervals)")
                     
                 except Exception as e:
                     logger.error(f"❌ Cache warming failed: {e}")
