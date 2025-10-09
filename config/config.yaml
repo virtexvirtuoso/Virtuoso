@@ -270,6 +270,7 @@ analysis:
       cvd:
         price_direction_threshold: 0.01
         cvd_significance_threshold: 0.01
+        saturation_threshold: 0.15  # CVD % for full strength signal (15% of volume)
       divergence:
         impact_multiplier: 0.1
         lookback: 20
@@ -293,6 +294,8 @@ analysis:
         normalization_threshold: 5.0
         minimal_change_threshold: 0.02
         price_direction_threshold: 0.01
+        oi_saturation_threshold: 2.0  # OI change % for full strength (2%)
+        price_saturation_threshold: 1.0  # Price change % for full strength (1%)
       trade_flow:
         momentum_lookback: 10
         pressure_sensitivity: 0.8
