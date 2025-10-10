@@ -1261,10 +1261,11 @@ class LogFormatter:
         return header
 
     @staticmethod
-    def format_enhanced_confluence_score_table(symbol, confluence_score, components, results, weights=None, reliability=0.0, use_pretty_table=True, border_style="double"):
+    def format_enhanced_confluence_score_table(symbol, confluence_score, components, results, weights=None, reliability=0.0,
+                                              consensus=None, confidence=None, disagreement=None, use_pretty_table=True, border_style="double"):
         """
         Format a comprehensive confluence analysis table with enhanced interpretations.
-        
+
         Args:
             symbol: Trading symbol
             confluence_score: Overall confluence score
@@ -1272,9 +1273,12 @@ class LogFormatter:
             results: Dictionary of detailed results for each component
             weights: Optional dictionary of component weights
             reliability: Reliability score of the analysis (0.0-1.0)
+            consensus: Quality metric - indicator agreement level (0-1)
+            confidence: Quality metric - combined signal strength (0-1)
+            disagreement: Quality metric - signal variance (lower is better)
             use_pretty_table: Whether to use PrettyTable formatting (default: True)
             border_style: Border style for PrettyTable ("default", "single", "double", "markdown")
-            
+
         Returns:
             str: Formatted table with comprehensive analysis and enhanced interpretations
         """
@@ -1287,9 +1291,12 @@ class LogFormatter:
                 results=results,
                 weights=weights,
                 reliability=reliability,
+                consensus=consensus,
+                confidence=confidence,
+                disagreement=disagreement,
                 border_style=border_style
             )
-        
+
         # Fallback to EnhancedFormatter if PrettyTable is not available or not requested
         return EnhancedFormatter.format_enhanced_confluence_score_table(
             symbol=symbol,
@@ -1772,10 +1779,11 @@ class PrettyTableFormatter:
             return PrettyTableFormatter.RED + "↓" + PrettyTableFormatter.RESET
     
     @staticmethod
-    def format_confluence_score_table(symbol, confluence_score, components, results, weights=None, reliability=0.0, border_style="double"):
+    def format_confluence_score_table(symbol, confluence_score, components, results, weights=None, reliability=0.0,
+                                     consensus=None, confidence=None, disagreement=None, border_style="double"):
         """
         Format a comprehensive confluence analysis table using PrettyTable.
-        
+
         Args:
             symbol: Trading symbol
             confluence_score: Overall confluence score
@@ -1783,8 +1791,11 @@ class PrettyTableFormatter:
             results: Dictionary of detailed results for each component
             weights: Optional dictionary of component weights
             reliability: Reliability score of the analysis (0.0-1.0)
+            consensus: Quality metric - indicator agreement level (0-1)
+            confidence: Quality metric - combined signal strength (0-1)
+            disagreement: Quality metric - signal variance (lower is better)
             border_style: Border style ("default", "single", "double", "markdown")
-            
+
         Returns:
             str: Formatted table with comprehensive analysis
         """
@@ -1793,9 +1804,9 @@ class PrettyTableFormatter:
             return LogFormatter.format_confluence_score_table(
                 symbol, confluence_score, components, results, weights, reliability
             )
-        
+
         output = []
-        
+
         # Header section with enhanced styling
         if border_style == "double":
             header_text = f"{PrettyTableFormatter.BOLD}{PrettyTableFormatter.CYAN}╔══ {symbol} CONFLUENCE ANALYSIS ══╗{PrettyTableFormatter.RESET}"
@@ -1803,9 +1814,9 @@ class PrettyTableFormatter:
             header_text = f"{PrettyTableFormatter.BOLD}{PrettyTableFormatter.CYAN}┌── {symbol} CONFLUENCE ANALYSIS ──┐{PrettyTableFormatter.RESET}"
         else:
             header_text = f"{PrettyTableFormatter.BOLD}{PrettyTableFormatter.CYAN}{symbol} CONFLUENCE ANALYSIS{PrettyTableFormatter.RESET}"
-        
+
         output.append(f"\n{header_text}")
-        
+
         # Choose separator based on border style
         if border_style == "double":
             separator = "═" * 80
@@ -1813,13 +1824,13 @@ class PrettyTableFormatter:
             separator = "─" * 80
         else:
             separator = "=" * 80
-            
+
         output.append(separator)
-        
+
         # Overall score and reliability
         score_color = PrettyTableFormatter._get_score_color(confluence_score)
         overall_status = "BULLISH" if confluence_score is not None and confluence_score >= 60 else "NEUTRAL" if confluence_score is not None and confluence_score >= 40 else "BEARISH"
-        
+
         # Normalize reliability input to 0-1 range to avoid 10000% displays
         try:
             raw_rel = float(reliability)
@@ -1832,12 +1843,36 @@ class PrettyTableFormatter:
         reliability_pct = normalized_rel * 100
         reliability_color = PrettyTableFormatter.GREEN if normalized_rel >= 0.8 else PrettyTableFormatter.YELLOW if normalized_rel >= 0.5 else PrettyTableFormatter.RED
         reliability_status = "HIGH" if normalized_rel >= 0.8 else "MEDIUM" if normalized_rel >= 0.5 else "LOW"
-        
+
         score_display = "N/A" if confluence_score is None else f"{confluence_score:.2f}"
         output.append(f"Overall Score: {score_color}{score_display}{PrettyTableFormatter.RESET} ({overall_status})")
         output.append(f"Reliability: {reliability_color}{reliability_pct:.0f}%{PrettyTableFormatter.RESET} ({reliability_status})")
         output.append("")
-        
+
+        # Quality Metrics section (if available)
+        if consensus is not None or confidence is not None or disagreement is not None:
+            output.append(f"{PrettyTableFormatter.BOLD}Quality Metrics:{PrettyTableFormatter.RESET}")
+
+            if consensus is not None:
+                consensus_color = PrettyTableFormatter.GREEN if consensus >= 0.8 else PrettyTableFormatter.YELLOW if consensus >= 0.6 else PrettyTableFormatter.RED
+                consensus_status = "High Agreement" if consensus >= 0.8 else "Moderate Agreement" if consensus >= 0.6 else "Low Agreement"
+                consensus_indicator = "✅" if consensus >= 0.8 else "⚠️" if consensus >= 0.6 else "❌"
+                output.append(f"  Consensus:    {consensus_color}{consensus:.3f}{PrettyTableFormatter.RESET} {consensus_indicator} ({consensus_status})")
+
+            if confidence is not None:
+                confidence_color = PrettyTableFormatter.GREEN if confidence >= 0.5 else PrettyTableFormatter.YELLOW if confidence >= 0.3 else PrettyTableFormatter.RED
+                confidence_status = "High Quality" if confidence >= 0.5 else "Moderate Quality" if confidence >= 0.3 else "Low Quality"
+                confidence_indicator = "✅" if confidence >= 0.5 else "⚠️" if confidence >= 0.3 else "❌"
+                output.append(f"  Confidence:   {confidence_color}{confidence:.3f}{PrettyTableFormatter.RESET} {confidence_indicator} ({confidence_status})")
+
+            if disagreement is not None:
+                disagreement_color = PrettyTableFormatter.GREEN if disagreement < 0.1 else PrettyTableFormatter.YELLOW if disagreement < 0.3 else PrettyTableFormatter.RED
+                disagreement_status = "Low Conflict" if disagreement < 0.1 else "Moderate Conflict" if disagreement < 0.3 else "High Conflict"
+                disagreement_indicator = "✅" if disagreement < 0.1 else "⚠️" if disagreement < 0.3 else "❌"
+                output.append(f"  Disagreement: {disagreement_color}{disagreement:.4f}{PrettyTableFormatter.RESET} {disagreement_indicator} ({disagreement_status})")
+
+            output.append("")
+
         # Main components table
         if components:
             # Calculate weighted contributions
@@ -2204,13 +2239,14 @@ class PrettyTableFormatter:
         return "\n".join(output)
 
     @staticmethod
-    def format_enhanced_confluence_score_table(symbol, confluence_score, components, results, weights=None, reliability=0.0, border_style="double"):
+    def format_enhanced_confluence_score_table(symbol, confluence_score, components, results, weights=None, reliability=0.0,
+                                              consensus=None, confidence=None, disagreement=None, border_style="double"):
         """
         Format a comprehensive confluence analysis table with enhanced interpretations using PrettyTable.
-        
+
         This method provides the same rich interpretations and actionable insights as the EnhancedFormatter
         but uses clean PrettyTable formatting with enhanced border styling.
-        
+
         Args:
             symbol: Trading symbol
             confluence_score: Overall confluence score
@@ -2218,8 +2254,11 @@ class PrettyTableFormatter:
             results: Dictionary of detailed results for each component
             weights: Optional dictionary of component weights
             reliability: Reliability score of the analysis (0.0-1.0)
+            consensus: Quality metric - indicator agreement level (0-1)
+            confidence: Quality metric - combined signal strength (0-1)
+            disagreement: Quality metric - signal variance (lower is better)
             border_style: Border style ("default", "single", "double", "markdown")
-            
+
         Returns:
             str: Formatted table with comprehensive analysis and enhanced interpretations
         """
@@ -2264,7 +2303,31 @@ class PrettyTableFormatter:
         output.append(f"Overall Score: {score_color}{score_display}{PrettyTableFormatter.RESET} ({overall_status})")
         output.append(f"Reliability: {reliability_color}{reliability_pct:.0f}%{PrettyTableFormatter.RESET} ({reliability_status})")
         output.append("")
-        
+
+        # Quality Metrics section (if available)
+        if consensus is not None or confidence is not None or disagreement is not None:
+            output.append(f"{PrettyTableFormatter.BOLD}Quality Metrics:{PrettyTableFormatter.RESET}")
+
+            if consensus is not None:
+                consensus_color = PrettyTableFormatter.GREEN if consensus >= 0.8 else PrettyTableFormatter.YELLOW if consensus >= 0.6 else PrettyTableFormatter.RED
+                consensus_status = "High Agreement" if consensus >= 0.8 else "Moderate Agreement" if consensus >= 0.6 else "Low Agreement"
+                consensus_indicator = "✅" if consensus >= 0.8 else "⚠️" if consensus >= 0.6 else "❌"
+                output.append(f"  Consensus:    {consensus_color}{consensus:.3f}{PrettyTableFormatter.RESET} {consensus_indicator} ({consensus_status})")
+
+            if confidence is not None:
+                confidence_color = PrettyTableFormatter.GREEN if confidence >= 0.5 else PrettyTableFormatter.YELLOW if confidence >= 0.3 else PrettyTableFormatter.RED
+                confidence_status = "High Quality" if confidence >= 0.5 else "Moderate Quality" if confidence >= 0.3 else "Low Quality"
+                confidence_indicator = "✅" if confidence >= 0.5 else "⚠️" if confidence >= 0.3 else "❌"
+                output.append(f"  Confidence:   {confidence_color}{confidence:.3f}{PrettyTableFormatter.RESET} {confidence_indicator} ({confidence_status})")
+
+            if disagreement is not None:
+                disagreement_color = PrettyTableFormatter.GREEN if disagreement < 0.1 else PrettyTableFormatter.YELLOW if disagreement < 0.3 else PrettyTableFormatter.RED
+                disagreement_status = "Low Conflict" if disagreement < 0.1 else "Moderate Conflict" if disagreement < 0.3 else "High Conflict"
+                disagreement_indicator = "✅" if disagreement < 0.1 else "⚠️" if disagreement < 0.3 else "❌"
+                output.append(f"  Disagreement: {disagreement_color}{disagreement:.4f}{PrettyTableFormatter.RESET} {disagreement_indicator} ({disagreement_status})")
+
+            output.append("")
+
         # Main components table
         if components:
             # Calculate weighted contributions
