@@ -101,8 +101,8 @@ def safe_divide(
         return numerator / denominator
 
     # Handle array operations
-    numerator_array = np.asarray(numerator)
-    denominator_array = np.asarray(denominator)
+    numerator_array = np.atleast_1d(np.asarray(numerator))
+    denominator_array = np.atleast_1d(np.asarray(denominator))
 
     # Create result array initialized with default
     result = np.full_like(numerator_array, default, dtype=float)
@@ -116,16 +116,22 @@ def safe_divide(
         (np.abs(denominator_array) >= epsilon)
     )
 
-    # Perform safe divisions
+    # Perform safe divisions with broadcasting
     if np.any(safe_mask):
-        result[safe_mask] = numerator_array[safe_mask] / denominator_array[safe_mask]
+        # Handle broadcasting for mixed array/scalar inputs
+        num_safe = numerator_array if safe_mask.all() else numerator_array[safe_mask]
+        denom_safe = denominator_array if safe_mask.all() else denominator_array[safe_mask] if denominator_array.size > 1 else denominator_array[0]
+        result[safe_mask] = num_safe / denom_safe
 
     # Log warning if any unsafe divisions occurred
     if warn and not np.all(safe_mask):
         unsafe_count = np.sum(~safe_mask)
         logger.warning(f"safe_divide: {unsafe_count} unsafe division(s) detected, using default={default}")
 
-    return result if result.shape else float(result)
+    # Return scalar if single-element array, otherwise return array
+    if result.size == 1:
+        return float(result.item())
+    return result
 
 
 def safe_percentage(
