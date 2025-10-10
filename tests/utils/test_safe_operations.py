@@ -330,11 +330,13 @@ class TestEdgeCases:
         # Scalar mode
         scalar_result = safe_divide(10, 2)
 
-        # Array mode with single element
+        # Array mode with single element (now also returns scalar for single-element arrays)
         array_result = safe_divide(np.array([10]), np.array([2]))
 
-        # Extract scalar from array using item()
-        assert scalar_result == array_result.item()
+        # Both should be scalars with same value
+        assert scalar_result == array_result
+        assert isinstance(scalar_result, float)
+        assert isinstance(array_result, float)
 
     def test_zero_numerator(self):
         """Test zero numerator with non-zero denominator."""
@@ -360,6 +362,88 @@ class TestEdgeCases:
 
         # safe_sqrt
         assert safe_sqrt(-1e-7, epsilon=custom_eps) == 0.0
+
+    def test_single_element_array_returns_scalar(self):
+        """Test safe_divide with single-element array (produces 0-dimensional result)."""
+        # This tests the fix for the orderbook indexing bug
+        result = safe_divide(np.array([10.0]), 2.0)
+
+        # Should return a scalar float, not a 0-dimensional array
+        assert isinstance(result, (float, np.floating)) or (isinstance(result, np.ndarray) and result.ndim == 0)
+
+        # Value should be correct
+        if isinstance(result, np.ndarray):
+            assert float(result) == 5.0
+        else:
+            assert result == 5.0
+
+    def test_diff_single_element_scenario(self):
+        """Simulate the orderbook np.diff() scenario that caused the bug."""
+        # When you have a 2-element array and apply np.diff(), you get a 1-element array
+        price_levels = np.array([99.9, 100.0])
+        price_diffs = np.diff(price_levels)  # Results in array([0.1])
+
+        # This single-element array division should not cause 0-dimensional indexing errors
+        result = safe_divide(price_diffs, 100.0)
+
+        # Should be indexable or a scalar
+        assert not (isinstance(result, np.ndarray) and result.ndim == 0) or isinstance(result, (float, np.floating))
+
+        # Value should be correct
+        expected = 0.1 / 100.0
+        if isinstance(result, np.ndarray):
+            assert result.item() == pytest.approx(expected)
+        else:
+            assert result == pytest.approx(expected)
+
+    def test_zero_dimensional_array_handling(self):
+        """Test that 0-dimensional arrays are properly converted to scalars."""
+        # Create a 0-dimensional array directly
+        zero_d_numerator = np.array(10.0)  # 0-dimensional array
+        zero_d_denominator = np.array(2.0)  # 0-dimensional array
+
+        result = safe_divide(zero_d_numerator, zero_d_denominator)
+
+        # Result should be a scalar, not a 0-dimensional array that can't be indexed
+        if isinstance(result, np.ndarray):
+            assert result.ndim == 0, "0-dimensional arrays should stay 0-dimensional or become scalars"
+            # Should be convertible to float
+            assert float(result) == 5.0
+        else:
+            assert result == 5.0
+
+    def test_small_orderbook_array_operations(self):
+        """Test safe_divide with arrays typical of small orderbooks (3 levels)."""
+        # Simulate orderbook price gaps from a 3-level orderbook
+        # After np.diff() on 3 prices, we get 2 gaps
+        bid_gaps = np.array([0.1, 0.1])  # 2 elements
+
+        # Divide by a scalar (typical orderbook operation)
+        result = safe_divide(bid_gaps, 100.0)
+
+        # Should return an array with same shape
+        assert isinstance(result, np.ndarray)
+        assert result.shape == (2,)
+        np.testing.assert_array_almost_equal(result, [0.001, 0.001])
+
+    def test_array_masking_after_safe_divide(self):
+        """Test that results from safe_divide can be indexed/masked (regression test)."""
+        # This was the actual failure mode - safe_divide returned 0-dimensional arrays
+        # that couldn't be indexed with masks
+        numerator = np.array([10.0, 20.0, 30.0])
+        denominator = np.array([2.0, 0.0, 5.0])
+
+        result = safe_divide(numerator, denominator, default=0.0)
+
+        # Create a mask (common operation after safe_divide)
+        mask = result > 3.0
+
+        # This should not raise "too many indices for array: array is 0-dimensional"
+        filtered = result[mask]
+
+        # Should contain values 5.0 and 6.0
+        assert len(filtered) == 2
+        np.testing.assert_array_almost_equal(filtered, [5.0, 6.0])
 
 
 class TestWarningLogging:
