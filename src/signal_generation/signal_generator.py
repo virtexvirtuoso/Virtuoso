@@ -81,6 +81,7 @@ from uuid import uuid4
 from pydantic import ValidationError
 from src.core.analysis.interpretation_generator import InterpretationGenerator
 from src.core.interpretation.interpretation_manager import InterpretationManager
+from src.monitoring.quality_metrics_tracker import QualityMetricsTracker
 
 logger = logging.getLogger(__name__)
 
@@ -194,7 +195,11 @@ class SignalGenerator:
         # Initialize centralized InterpretationManager
         self.interpretation_manager = InterpretationManager()
         self.logger.info("Centralized InterpretationManager initialized")
-        
+
+        # Initialize quality metrics tracker
+        self.quality_tracker = QualityMetricsTracker()
+        self.logger.info("QualityMetricsTracker initialized for signal quality monitoring")
+
         # Verify AlertManager initialization
         if self.alert_manager and hasattr(self.alert_manager, 'discord_webhook_url') and self.alert_manager.discord_webhook_url:
             self.logger.info(f"✅ AlertManager initialized with Discord webhook URL")
@@ -658,10 +663,66 @@ class SignalGenerator:
             logger.debug(f"Confluence score: {confluence_score}")
             logger.debug(f"Buy threshold: {buy_threshold}")
             logger.debug(f"Sell threshold: {sell_threshold}")
-            
+
+            # ═══════════════════════════════════════════════════════════════════
+            # QUALITY METRICS FILTERING
+            # ═══════════════════════════════════════════════════════════════════
+            # Extract quality metrics from indicators
+            consensus = indicators.get('consensus', None)
+            confidence = indicators.get('confidence', None)
+            disagreement = indicators.get('disagreement', None)
+
+            # Apply quality-based filtering if metrics are available
+            if confidence is not None or disagreement is not None:
+                logger.info(f"[QUALITY CHECK] {symbol} - Consensus: {consensus:.3f if consensus is not None else 'N/A'}, "
+                          f"Confidence: {confidence:.3f if confidence is not None else 'N/A'}, "
+                          f"Disagreement: {disagreement:.4f if disagreement is not None else 'N/A'}")
+
+                # Filter 1: Low confidence check
+                if confidence is not None and confidence < 0.3:
+                    logger.warning(f"⊘ [{symbol}] SIGNAL FILTERED: Low confidence ({confidence:.3f} < 0.3)")
+                    logger.warning(f"   → Indicators lack conviction or are near neutral")
+                    logger.warning(f"   → Confluence score: {confluence_score:.2f}")
+
+                    # Log filtered signal to quality tracker
+                    self.quality_tracker.log_quality_metrics(
+                        symbol=symbol,
+                        confluence_score=confluence_score,
+                        consensus=consensus if consensus is not None else 0.0,
+                        confidence=confidence,
+                        disagreement=disagreement if disagreement is not None else 0.0,
+                        signal_filtered=True,
+                        filter_reason="low_confidence"
+                    )
+                    return None
+
+                # Filter 2: High disagreement check
+                if disagreement is not None and disagreement > 0.3:
+                    logger.warning(f"⊘ [{symbol}] SIGNAL FILTERED: High disagreement ({disagreement:.4f} > 0.3)")
+                    logger.warning(f"   → Indicators are conflicting, too risky")
+                    logger.warning(f"   → Confluence score: {confluence_score:.2f}")
+
+                    # Log filtered signal to quality tracker
+                    self.quality_tracker.log_quality_metrics(
+                        symbol=symbol,
+                        confluence_score=confluence_score,
+                        consensus=consensus if consensus is not None else 0.0,
+                        confidence=confidence if confidence is not None else 0.0,
+                        disagreement=disagreement,
+                        signal_filtered=True,
+                        filter_reason="high_disagreement"
+                    )
+                    return None
+
+                # Passed quality checks
+                logger.info(f"✓ [{symbol}] QUALITY CHECK PASSED - Signal eligible for generation")
+            else:
+                logger.debug(f"[QUALITY CHECK] {symbol} - Quality metrics not available, proceeding without filtering")
+            # ═══════════════════════════════════════════════════════════════════
+
             signal = None  # Initialize signal as None
             alerts_sent = False  # Track if alerts were sent
-            
+
             # Extract component scores for the formatted alert (use calculated scores)
             components = {
                 'volume': component_scores['volume'],
@@ -801,7 +862,19 @@ class SignalGenerator:
                 
                 # Check for futures premium alerts
                 await self._check_futures_premium_alerts(indicators, symbol)
-                
+
+                # Log quality metrics for passed signals
+                if consensus is not None or confidence is not None or disagreement is not None:
+                    self.quality_tracker.log_quality_metrics(
+                        symbol=symbol,
+                        confluence_score=confluence_score,
+                        consensus=consensus if consensus is not None else 0.0,
+                        confidence=confidence if confidence is not None else 0.0,
+                        disagreement=disagreement if disagreement is not None else 0.0,
+                        signal_type=signal,
+                        signal_filtered=False
+                    )
+
                 # Let the AlertManager handle all alerts in a centralized way
                 # to avoid duplication
                 return signal_result
