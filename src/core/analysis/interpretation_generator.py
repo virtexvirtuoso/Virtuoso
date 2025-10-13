@@ -426,31 +426,40 @@ class InterpretationGenerator(IInterpretationService):
         strongest_component = max(components.items(), key=lambda x: x[1]) if components else None
         
         # Interpret volume patterns with enhanced detail
-        if volume_profile == 'bearish' and volume_trend == 'decreasing':
-            message = "Volume analysis indicates selling pressure with declining participation"
-            message += ", typically seen in late-stage downtrends or profit-taking phases"
-        elif volume_profile == 'bearish' and volume_trend == 'increasing':
-            message = "Volume analysis shows increasing selling pressure with rising participation"
-            message += ", a strong bearish signal indicating accelerating distribution"
-        elif volume_profile == 'bullish' and volume_trend == 'increasing':
-            message = "Volume analysis shows strong buying interest with increasing participation"
-            message += ", a robust bullish signal suggesting accumulation and potential continuation"
-        elif volume_profile == 'bullish' and volume_trend == 'decreasing':
-            message = "Volume analysis indicates weakening buying pressure with declining participation"
-            message += ", suggesting waning momentum despite bullish bias"
-        elif volume_sma == 'high':
-            message = "Above average volume suggests significant market interest at current levels"
-            message += ", indicating strong conviction in the current price direction"
-            if score > 60:
-                message += " with primarily buying activity"
-            elif score < 40:
-                message += " with primarily selling activity"
-        elif volume_sma == 'low':
-            message = "Below average volume indicates lack of conviction in current price movement"
-            message += ", suggesting caution as price moves may not be sustainable"
+        # IMPORTANT: Check overall score first to ensure interpretation matches composite result
+        if score > 60:
+            # Bullish composite score
+            if volume_trend == 'increasing':
+                message = "Volume analysis shows strong buying interest with increasing participation"
+                message += ", a robust bullish signal suggesting accumulation and potential continuation"
+            elif volume_trend == 'decreasing':
+                message = "Volume analysis indicates bullish bias with declining participation"
+                message += ", suggesting waning momentum that may need confirmation"
+            else:
+                message = "Volume analysis shows bullish conditions with steady participation"
+                message += ", indicating sustained buying pressure"
+        elif score < 40:
+            # Bearish composite score
+            if volume_trend == 'increasing':
+                message = "Volume analysis shows increasing selling pressure with rising participation"
+                message += ", a strong bearish signal indicating accelerating distribution"
+            elif volume_trend == 'decreasing':
+                message = "Volume analysis indicates selling pressure with declining participation"
+                message += ", typically seen in late-stage downtrends or profit-taking phases"
+            else:
+                message = "Volume analysis shows bearish conditions with steady participation"
+                message += ", indicating sustained selling pressure"
         else:
-            message = "Volume patterns show typical market participation without clear directional bias"
-            message += ", indicating neutral conditions or potential consolidation phase"
+            # Neutral composite score (40-60 range)
+            if volume_sma == 'high':
+                message = "Above average volume suggests significant market interest at current levels"
+                message += ", but composite analysis shows balanced conditions without clear directional bias"
+            elif volume_sma == 'low':
+                message = "Below average volume indicates lack of conviction in current price movement"
+                message += ", suggesting caution as price moves may not be sustainable"
+            else:
+                message = "Volume patterns show typical market participation without clear directional bias"
+                message += ", indicating neutral conditions or potential consolidation phase"
         
         # Add information about strongest volume component with enhanced context
         if strongest_component:
@@ -629,8 +638,37 @@ class InterpretationGenerator(IInterpretationService):
             spread_detail = "with typical bid-ask differentials"
         
         # Compose main message with enhanced details
-        message = f"Orderbook shows {imbalance_msg} with {liquidity_msg} and {spread_msg}"
-        message += f". {imbalance_detail}, {liquidity_detail}, and {spread_detail}"
+        # IMPORTANT: Lead with composite score direction, then explain components
+        if score > 55:
+            # Bullish composite - lead with bullish structure
+            if imbalance < 40:
+                # Bullish score despite bearish imbalance - reconcile
+                message = f"Orderbook shows bullish structure with {liquidity_msg} and {spread_msg}"
+                message += f", offsetting {imbalance_msg.lower()}"
+                message += f". {liquidity_detail}, {spread_detail}"
+                if side == "ask":
+                    message += f", though {imbalance_detail.replace('suggesting', 'some')}"
+            else:
+                # Bullish score with neutral/bullish imbalance
+                message = f"Orderbook shows {imbalance_msg} with {liquidity_msg} and {spread_msg}"
+                message += f". {imbalance_detail}, {liquidity_detail}, and {spread_detail}"
+        elif score < 45:
+            # Bearish composite - lead with bearish structure
+            if imbalance > 60:
+                # Bearish score despite bullish imbalance - reconcile
+                message = f"Orderbook shows bearish structure with {liquidity_msg} and {spread_msg}"
+                message += f", overriding {imbalance_msg.lower()}"
+                message += f". {liquidity_detail}, {spread_detail}"
+                if side == "bid":
+                    message += f", though {imbalance_detail.replace('suggesting', 'some')}"
+            else:
+                # Bearish score with neutral/bearish imbalance
+                message = f"Orderbook shows {imbalance_msg} with {liquidity_msg} and {spread_msg}"
+                message += f". {imbalance_detail}, {liquidity_detail}, and {spread_detail}"
+        else:
+            # Neutral composite - use existing imbalance-based logic
+            message = f"Orderbook shows {imbalance_msg} with {liquidity_msg} and {spread_msg}"
+            message += f". {imbalance_detail}, {liquidity_detail}, and {spread_detail}"
         
         # Add depth analysis with enhanced insights
         depth = components.get('depth', 50)
@@ -654,7 +692,7 @@ class InterpretationGenerator(IInterpretationService):
             message += ". Market makers showing bearish positioning"
             message += ", often precedes downward price movement"
         
-        # Add OIR (Order Imbalance Ratio) insights - 
+        # Add OIR (Order Imbalance Ratio) insights with reconciliation logic
         oir = components.get('oir', None)
         if oir is not None:
             if oir > 70:
@@ -665,15 +703,22 @@ class InterpretationGenerator(IInterpretationService):
                 message += ", suggesting buying pressure likely to support price advance"
             elif oir < 30:
                 message += ". Order Imbalance Ratio strongly bearish"
-                message += ", indicating dominant selling pressure with high predictive power for short-term downward movement"
+                message += ", indicating dominant selling pressure"
+                # Reconcile contradiction if overall orderbook is bullish
+                if score > 55:
+                    message += ". However, strong liquidity and depth result in overall bullish orderbook structure"
+                else:
+                    message += " with high predictive power for short-term downward movement"
             elif oir < 40:
                 message += ". Order Imbalance Ratio moderately bearish"
                 message += ", suggesting selling pressure likely to weigh on price"
+                if score > 55:
+                    message += ", though offset by positive liquidity factors"
             else:
                 message += ". Order Imbalance Ratio neutral"
                 message += ", indicating balanced order flow with no clear directional bias"
         
-        # Add DI (Depth Imbalance) insights -
+        # Add DI (Depth Imbalance) insights with reconciliation logic
         di = components.get('di', None)
         if di is not None:
             if di > 65:
@@ -682,6 +727,9 @@ class InterpretationGenerator(IInterpretationService):
             elif di < 35:
                 message += ". Depth Imbalance shows significant ask-side volume excess"
                 message += ", creating substantial resistance overhead and supply pressure"
+                # Reconcile contradiction if overall orderbook is bullish
+                if score > 55:
+                    message += ". However, this is outweighed by other positive orderbook factors"
             else:
                 message += ". Depth Imbalance relatively balanced"
                 message += ", suggesting proportional liquidity distribution"
