@@ -209,7 +209,12 @@ class SignalProcessor:
                 components=components,
                 results=display_results,
                 weights=result.get('metadata', {}).get('weights', {}),
-                reliability=reliability
+                reliability=reliability,
+                consensus=result.get('consensus'),
+                confidence=result.get('confidence'),
+                disagreement=result.get('disagreement'),
+                score_base=result.get('score_base'),
+                quality_impact=result.get('quality_impact')
             )
             self.logger.info(formatted_table)
             
