@@ -1262,13 +1262,14 @@ class LogFormatter:
 
     @staticmethod
     def format_enhanced_confluence_score_table(symbol, confluence_score, components, results, weights=None, reliability=0.0,
-                                              consensus=None, confidence=None, disagreement=None, use_pretty_table=True, border_style="double"):
+                                              consensus=None, confidence=None, disagreement=None, use_pretty_table=True, border_style="double",
+                                              score_base=None, quality_impact=None):
         """
         Format a comprehensive confluence analysis table with enhanced interpretations.
 
         Args:
             symbol: Trading symbol
-            confluence_score: Overall confluence score
+            confluence_score: Quality-adjusted confluence score
             components: Dictionary of component scores
             results: Dictionary of detailed results for each component
             weights: Optional dictionary of component weights
@@ -1278,6 +1279,8 @@ class LogFormatter:
             disagreement: Quality metric - signal variance (lower is better)
             use_pretty_table: Whether to use PrettyTable formatting (default: True)
             border_style: Border style for PrettyTable ("default", "single", "double", "markdown")
+            score_base: Base score before quality adjustment (0-100)
+            quality_impact: How much quality changed the score (positive = amplification, negative = suppression)
 
         Returns:
             str: Formatted table with comprehensive analysis and enhanced interpretations
@@ -1294,7 +1297,9 @@ class LogFormatter:
                 consensus=consensus,
                 confidence=confidence,
                 disagreement=disagreement,
-                border_style=border_style
+                border_style=border_style,
+                score_base=score_base,
+                quality_impact=quality_impact
             )
 
         # Fallback to EnhancedFormatter if PrettyTable is not available or not requested
@@ -1861,7 +1866,14 @@ class PrettyTableFormatter:
 
             if confidence is not None:
                 confidence_color = PrettyTableFormatter.GREEN if confidence >= 0.5 else PrettyTableFormatter.YELLOW if confidence >= 0.3 else PrettyTableFormatter.RED
-                confidence_status = "High Quality" if confidence >= 0.5 else "Moderate Quality" if confidence >= 0.3 else "Low Quality"
+                # Distinguish between low quality (disagreement) and weak signal (neutral consensus)
+                # consensus is available from the outer scope since it's defined above
+                if consensus is not None and consensus >= 0.6:
+                    # High agreement - interpret confidence as signal strength
+                    confidence_status = "Strong Signal" if confidence >= 0.5 else "Moderate Signal" if confidence >= 0.3 else "Weak Signal"
+                else:
+                    # Low agreement - interpret as quality issue
+                    confidence_status = "High Quality" if confidence >= 0.5 else "Moderate Quality" if confidence >= 0.3 else "Low Quality"
                 confidence_indicator = "✅" if confidence >= 0.5 else "⚠️" if confidence >= 0.3 else "❌"
                 output.append(f"  Confidence:   {confidence_color}{confidence:.3f}{PrettyTableFormatter.RESET} {confidence_indicator} ({confidence_status})")
 
@@ -2240,7 +2252,8 @@ class PrettyTableFormatter:
 
     @staticmethod
     def format_enhanced_confluence_score_table(symbol, confluence_score, components, results, weights=None, reliability=0.0,
-                                              consensus=None, confidence=None, disagreement=None, border_style="double"):
+                                              consensus=None, confidence=None, disagreement=None, border_style="double",
+                                              score_base=None, quality_impact=None):
         """
         Format a comprehensive confluence analysis table with enhanced interpretations using PrettyTable.
 
@@ -2249,7 +2262,7 @@ class PrettyTableFormatter:
 
         Args:
             symbol: Trading symbol
-            confluence_score: Overall confluence score
+            confluence_score: Quality-adjusted confluence score
             components: Dictionary of component scores
             results: Dictionary of detailed results for each component
             weights: Optional dictionary of component weights
@@ -2258,6 +2271,8 @@ class PrettyTableFormatter:
             confidence: Quality metric - combined signal strength (0-1)
             disagreement: Quality metric - signal variance (lower is better)
             border_style: Border style ("default", "single", "double", "markdown")
+            score_base: Base score before quality adjustment (0-100)
+            quality_impact: How much quality changed the score (positive = amplification, negative = suppression)
 
         Returns:
             str: Formatted table with comprehensive analysis and enhanced interpretations
@@ -2298,9 +2313,21 @@ class PrettyTableFormatter:
         reliability_pct = normalized_rel * 100
         reliability_color = PrettyTableFormatter.GREEN if normalized_rel >= 0.8 else PrettyTableFormatter.YELLOW if normalized_rel >= 0.5 else PrettyTableFormatter.RED
         reliability_status = "HIGH" if normalized_rel >= 0.8 else "MEDIUM" if normalized_rel >= 0.5 else "LOW"
-        
+
         score_display = "N/A" if confluence_score is None else f"{confluence_score:.2f}"
         output.append(f"Overall Score: {score_color}{score_display}{PrettyTableFormatter.RESET} ({overall_status})")
+
+        # Show quality adjustment details if available (hybrid approach)
+        if score_base is not None and quality_impact is not None:
+            base_color = PrettyTableFormatter._get_score_color(score_base)
+            impact_color = PrettyTableFormatter.GREEN if abs(quality_impact) < 2 else PrettyTableFormatter.YELLOW if abs(quality_impact) < 5 else PrettyTableFormatter.RED
+            impact_sign = "+" if quality_impact > 0 else ""
+            # quality_impact > 0 means adjusted > base = AMPLIFICATION (pushed away from neutral)
+            # quality_impact < 0 means adjusted < base = SUPPRESSION (pulled toward neutral)
+            impact_desc = "minimal adjustment" if abs(quality_impact) < 2 else "moderate adjustment" if abs(quality_impact) < 5 else "significant amplification" if quality_impact > 0 else "significant suppression"
+            output.append(f"Base Score: {base_color}{score_base:.2f}{PrettyTableFormatter.RESET} (before quality adjustment)")
+            output.append(f"Quality Impact: {impact_color}{impact_sign}{quality_impact:.2f}{PrettyTableFormatter.RESET} points ({impact_desc})")
+
         output.append(f"Reliability: {reliability_color}{reliability_pct:.0f}%{PrettyTableFormatter.RESET} ({reliability_status})")
         output.append("")
 
@@ -2316,7 +2343,14 @@ class PrettyTableFormatter:
 
             if confidence is not None:
                 confidence_color = PrettyTableFormatter.GREEN if confidence >= 0.5 else PrettyTableFormatter.YELLOW if confidence >= 0.3 else PrettyTableFormatter.RED
-                confidence_status = "High Quality" if confidence >= 0.5 else "Moderate Quality" if confidence >= 0.3 else "Low Quality"
+                # Distinguish between low quality (disagreement) and weak signal (neutral consensus)
+                # consensus is available from the outer scope since it's defined above
+                if consensus is not None and consensus >= 0.6:
+                    # High agreement - interpret confidence as signal strength
+                    confidence_status = "Strong Signal" if confidence >= 0.5 else "Moderate Signal" if confidence >= 0.3 else "Weak Signal"
+                else:
+                    # Low agreement - interpret as quality issue
+                    confidence_status = "High Quality" if confidence >= 0.5 else "Moderate Quality" if confidence >= 0.3 else "Low Quality"
                 confidence_indicator = "✅" if confidence >= 0.5 else "⚠️" if confidence >= 0.3 else "❌"
                 output.append(f"  Confidence:   {confidence_color}{confidence:.3f}{PrettyTableFormatter.RESET} {confidence_indicator} ({confidence_status})")
 
