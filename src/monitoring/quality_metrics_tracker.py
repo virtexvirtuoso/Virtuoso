@@ -75,14 +75,16 @@ class QualityMetricsTracker:
         signal_type: Optional[str] = None,
         signal_filtered: bool = False,
         filter_reason: Optional[str] = None,
-        additional_data: Optional[Dict[str, Any]] = None
+        additional_data: Optional[Dict[str, Any]] = None,
+        score_base: Optional[float] = None,
+        quality_impact: Optional[float] = None
     ) -> None:
         """
-        Log quality metrics for a confluence analysis.
+        Log quality metrics for a confluence analysis with hybrid quality-adjusted scores.
 
         Args:
             symbol: Trading symbol
-            confluence_score: Overall confluence score (0-100)
+            confluence_score: Quality-adjusted confluence score (0-100)
             consensus: Agreement level (0-1)
             confidence: Combined quality (0-1)
             disagreement: Signal variance
@@ -90,6 +92,8 @@ class QualityMetricsTracker:
             signal_filtered: Whether signal was filtered by quality checks
             filter_reason: Reason for filtering if applicable
             additional_data: Additional metadata to log
+            score_base: Base score before quality adjustment (0-100)
+            quality_impact: How much quality changed the score (positive = amplification, negative = suppression)
         """
         try:
             # Build metrics entry
@@ -97,7 +101,11 @@ class QualityMetricsTracker:
                 'timestamp': datetime.utcnow().isoformat(),
                 'timestamp_ms': int(time.time() * 1000),
                 'symbol': symbol,
-                'confluence_score': round(confluence_score, 2),
+                'scores': {
+                    'adjusted': round(confluence_score, 2),
+                    'base': round(score_base, 2) if score_base is not None else None,
+                    'quality_impact': round(quality_impact, 2) if quality_impact is not None else None
+                },
                 'quality_metrics': {
                     'consensus': round(consensus, 4),
                     'confidence': round(confidence, 4),
