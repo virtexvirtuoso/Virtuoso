@@ -589,16 +589,20 @@ Rules:
 - Disable quality adjustment by setting `QUALITY_THRESHOLD_CONFIDENCE = 1.0` (makes all signals dampen)
 
 **Quality System Rollback:**
+
 If quality adjustment causing issues, can temporarily revert to base scores:
+
 ```python
 # Emergency: Use base score without quality adjustment
 adjusted_score = base_score  # Bypass quality adjustment
 ```
+
 Note: This is emergency-only; prefer threshold tuning over disabling
 
 ### Monitoring Commands
 
 **Check quality metrics:**
+
 ```bash
 # View recent quality logs
 tail -f logs/quality_metrics/quality_metrics_$(date +%Y%m%d).jsonl
@@ -611,6 +615,7 @@ grep "dampened" logs/quality_metrics/*.jsonl | wc -l
 ```
 
 **Check production logs for quality issues:**
+
 ```bash
 # Find low-quality signals
 ssh vps "grep 'confidence.*0\.[0-2]' /var/log/virtuoso-trading/monitoring.log"
