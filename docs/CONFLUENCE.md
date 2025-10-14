@@ -1,4 +1,4 @@
-### CONFLUENCE: Market Prism Signal Architecture
+# CONFLUENCE: Market Prism Signal Architecture
 
 This document is the canonical specification for Virtuoso's confluence (Market Prism) system. It defines components, data flow, scoring, thresholds, risk integration, API exposure, validation, and operations. All contributors should treat this as the single source of truth for design and behavior.
 
@@ -37,7 +37,7 @@ consensus = np.exp(-signal_variance * 2)  # Range: 0-1
 
 **Confidence** (Combined Quality):
 ```python
-confidence = abs(weighted_sum) × consensus  # Range: 0-1
+confidence = abs(weighted_sum) * consensus  # Range: 0-1
 ```
 - Combines signal strength with agreement level
 - Used as primary quality gate for amplification
@@ -53,9 +53,9 @@ These quality metrics determine whether signals are **amplified** (high quality)
 
 ### Normalization Utilities
 
-- `src/indicators/base_indicator.py` → weighted component score helpers
-- `src/utils/indicators.py` → rolling window normalization to [1,100]
-- `src/core/scoring/unified_scoring_framework.py` → transformation modes and caching
+- `src/indicators/base_indicator.py` -> weighted component score helpers
+- `src/utils/indicators.py` -> rolling window normalization to [1,100]
+- `src/core/scoring/unified_scoring_framework.py` -> transformation modes and caching
 
 ### Key References
 
@@ -82,8 +82,8 @@ The confluence system uses a two-stage process to generate trading signals:
 2. **Stage 2: Quality Adjustment**
    - Apply Hybrid Quality Adjustment Formula (see Section 4)
    - Modulate base score based on quality metrics (consensus, confidence, disagreement)
-   - High quality → amplify signal (up to 15%)
-   - Low quality → dampen signal toward neutral
+   - High quality -> amplify signal (up to 15%)
+   - Low quality -> dampen signal toward neutral
    - Result: **Quality-Adjusted Score** (USE THIS FOR TRADING)
 
 **Important**: The base score represents raw indicator consensus. The quality-adjusted score incorporates signal reliability and is the authoritative value for trading decisions, risk calculations, and threshold evaluation.
@@ -112,11 +112,11 @@ The confluence system applies a **Hybrid Quality Adjustment Formula** that modul
 
 Three key metrics evaluate signal quality:
 
-- **Consensus** (0-1): Agreement level between indicators, calculated as `exp(-variance × 2)`
+- **Consensus** (0-1): Agreement level between indicators, calculated as `exp(-variance * 2)`
   - High consensus (>0.8) indicates indicators are aligned
   - Low consensus (<0.5) indicates conflicting signals
 
-- **Confidence** (0-1): Combined signal strength and agreement, `abs(weighted_sum) × consensus`
+- **Confidence** (0-1): Combined signal strength and agreement, `abs(weighted_sum) * consensus`
   - Captures both direction certainty and indicator alignment
   - Used as primary quality gate for amplification
 
@@ -131,13 +131,13 @@ The system uses two adjustment paths based on quality thresholds:
 **Path 1: High-Quality Amplification** (confidence > 0.7 AND consensus > 0.8)
 - Amplifies strong, aligned signals away from neutral (50)
 - Maximum amplification: 15% beyond base score
-- Formula: `adjusted_score = 50 + (deviation × amplification_factor)`
-- Where: `amplification_factor = 1 + ((confidence - 0.7) × 0.15 / 0.3)`
+- Formula: `adjusted_score = 50 + (deviation * amplification_factor)`
+- Where: `amplification_factor = 1 + ((confidence - 0.7) * 0.15 / 0.3)`
 
 **Path 2: Low/Medium-Quality Dampening** (default path)
 - Dampens weak or conflicting signals toward neutral (50)
 - Reduces risk from low-quality setups
-- Formula: `adjusted_score = 50 + (deviation × confidence)`
+- Formula: `adjusted_score = 50 + (deviation * confidence)`
 
 #### How the Formula Works (Simple Explanation)
 
@@ -145,32 +145,32 @@ The formula uses **signed arithmetic** to automatically handle both bearish and 
 
 ```
 Step 1: deviation = base_score - 50
-  • Bearish signals (< 50): deviation is NEGATIVE
-  • Bullish signals (> 50): deviation is POSITIVE
+  - Bearish signals (< 50): deviation is NEGATIVE
+  - Bullish signals (> 50): deviation is POSITIVE
 
-Step 2: adjusted_score = 50 + (deviation × adjustment_factor)
-  • When multiplying by a fraction (dampening):
-    - Negative × fraction = smaller negative (closer to 0)
-    - Positive × fraction = smaller positive (closer to 0)
-  • Result moves score TOWARD neutral (50)
+Step 2: adjusted_score = 50 + (deviation * adjustment_factor)
+  - When multiplying by a fraction (dampening):
+    - Negative * fraction = smaller negative (closer to 0)
+    - Positive * fraction = smaller positive (closer to 0)
+  - Result moves score TOWARD neutral (50)
 
-  • When multiplying by >1 (amplification):
-    - Negative × >1 = larger negative (away from 0)
-    - Positive × >1 = larger positive (away from 0)
-  • Result moves score AWAY from neutral (50)
+  - When multiplying by >1 (amplification):
+    - Negative * >1 = larger negative (away from 0)
+    - Positive * >1 = larger positive (away from 0)
+  - Result moves score AWAY from neutral (50)
 ```
 
 **Example - Bearish Dampening:**
 ```
-Base: 45.65 → deviation = 45.65 - 50 = -4.35
-Dampen: 50 + (-4.35 × 0.073) = 50 + (-0.318) = 49.68
+Base: 45.65 -> deviation = 45.65 - 50 = -4.35
+Dampen: 50 + (-4.35 * 0.073) = 50 + (-0.318) = 49.68
 Result: Moved UP toward neutral (positive quality impact: +4.03)
 ```
 
 **Example - Bullish Dampening:**
 ```
-Base: 58.00 → deviation = 58.00 - 50 = +8.00
-Dampen: 50 + (+8.00 × 0.073) = 50 + (+0.584) = 50.58
+Base: 58.00 -> deviation = 58.00 - 50 = +8.00
+Dampen: 50 + (+8.00 * 0.073) = 50 + (+0.584) = 50.58
 Result: Moved DOWN toward neutral (negative quality impact: -7.42)
 ```
 
@@ -187,11 +187,11 @@ Formula: `quality_impact = adjusted_score - base_score`
 **Interpretation Context** (0=extreme bearish, 50=neutral, 100=extreme bullish):
 
 For **Bearish Signals** (base < 50):
-- Negative impact = amplified bearishness (moved closer to 0) ✅ HIGH QUALITY
+- Negative impact = amplified bearishness (moved closer to 0)  HIGH QUALITY
 - Positive impact = dampened toward neutral (moved toward 50)
 
 For **Bullish Signals** (base > 50):
-- Positive impact = amplified bullishness (moved closer to 100) ✅ HIGH QUALITY
+- Positive impact = amplified bullishness (moved closer to 100)  HIGH QUALITY
 - Negative impact = dampened toward neutral (moved toward 50)
 
 ### Display Format
@@ -229,8 +229,8 @@ Default quality thresholds (in `src/core/analysis/confluence.py`):
 The formula is perfectly symmetric for bearish/bullish signals:
 - Uses `deviation = base_score - 50` which is negative for bearish, positive for bullish
 - Amplification multiplies the deviation, preserving direction
-- Bearish amplification: 20 → 17 (moved toward 0)
-- Bullish amplification: 80 → 83 (moved toward 100)
+- Bearish amplification: 20 -> 17 (moved toward 0)
+- Bullish amplification: 80 -> 83 (moved toward 100)
 
 ### Quality Metrics Tracking
 
@@ -247,8 +247,8 @@ See `QUALITY_ADJUSTMENT_FORMULA_ANALYSIS.md` for comprehensive design rationale 
 
 **Trading thresholds are applied to the quality-adjusted score:**
 
-- **Buy threshold**: 70 (default) - Generate BUY signal when quality-adjusted score ≥ 70
-- **Sell threshold**: 30 (default) - Generate SELL signal when quality-adjusted score ≤ 30
+- **Buy threshold**: 70 (default) - Generate BUY signal when quality-adjusted score >= 70
+- **Sell threshold**: 30 (default) - Generate SELL signal when quality-adjusted score <= 30
 - **Neutral band**: (30, 70) - No trade signal in this range
 
 **Important**: All thresholds evaluate the **quality-adjusted score**, not the base score. This ensures trading decisions incorporate both directional signal strength AND signal reliability.
@@ -258,13 +258,13 @@ See `QUALITY_ADJUSTMENT_FORMULA_ANALYSIS.md` for comprehensive design rationale 
 ```
 Base Score: 75 (strong bullish)
 Quality-Adjusted Score: 68 (dampened due to low confidence)
-Decision: NEUTRAL (68 < 70 buy threshold) ✓ Protected from low-quality signal
+Decision: NEUTRAL (68 < 70 buy threshold)  Protected from low-quality signal
 ```
 
 ```
 Base Score: 72 (moderately bullish)
 Quality-Adjusted Score: 76 (amplified due to high quality)
-Decision: BUY (76 ≥ 70 buy threshold) ✓ Captured high-quality opportunity
+Decision: BUY (76 >= 70 buy threshold)  Captured high-quality opportunity
 ```
 
 ### Strategy Implementation
@@ -288,9 +288,9 @@ Signal API uses thresholds consistently across all dashboards and routes.
 ### Risk Components
 
 Risk config and calculators:
-- `config/config.yaml` → `risk`, `risk_management` (stop-loss/take-profit, multipliers)
-- `src/core/risk/stop_loss_calculator.py` → confidence-based sizing tied to confluence
-- `src/risk/risk_manager.py` → position sizing, SL/TP computation, portfolio limits
+- `config/config.yaml` -> `risk`, `risk_management` (stop-loss/take-profit, multipliers)
+- `src/core/risk/stop_loss_calculator.py` -> confidence-based sizing tied to confluence
+- `src/risk/risk_manager.py` -> position sizing, SL/TP computation, portfolio limits
 
 Score-aware SL example in executor:
 ```962:986:src/trade_execution/trade_executor.py
@@ -300,25 +300,25 @@ Score-aware SL example in executor:
 ### Risk Calculation Guidelines
 
 - **Position sizing**: Based on quality-adjusted score, not base score
-  - Higher quality-adjusted confluence → larger position size (within limits)
-  - Dampened scores → smaller positions (automatic risk reduction)
-  - Amplified scores → larger positions (capitalize on quality opportunities)
+  - Higher quality-adjusted confluence -> larger position size (within limits)
+  - Dampened scores -> smaller positions (automatic risk reduction)
+  - Amplified scores -> larger positions (capitalize on quality opportunities)
 
 - **Stop-loss placement**:
-  - Higher quality-adjusted confluence ⇒ wider initial SL within max multiplier
+  - Higher quality-adjusted confluence => wider initial SL within max multiplier
   - Quality-adjusted score determines SL distance from entry
   - Base score not used for risk calculations
 
 - **Quality metrics overlay** (optional):
-  - Confidence < 0.3 → Consider additional position size reduction
-  - Consensus < 0.5 → Tighter stops due to indicator disagreement
-  - Disagreement > 0.3 → Flag for manual review or skip trade
+  - Confidence < 0.3 -> Consider additional position size reduction
+  - Consensus < 0.5 -> Tighter stops due to indicator disagreement
+  - Disagreement > 0.3 -> Flag for manual review or skip trade
 
 - **Risk limits** (always enforced):
   - Max position size per symbol
   - Max leverage
   - Max portfolio drawdown
-  - Default risk:reward ≥ 2:1 unless config overrides
+  - Default risk:reward >= 2:1 unless config overrides
 
 ### Example Risk Calculation
 
@@ -327,7 +327,7 @@ Base Score: 80 (strong bullish)
 Quality-Adjusted Score: 83 (amplified, high quality)
 Position Size: Calculated from 83, not 80
 Stop Loss: Wider SL based on 83 (high confidence in trade)
-Result: Larger position with appropriate SL for quality setup ✓
+Result: Larger position with appropriate SL for quality setup 
 ```
 
 ```
@@ -335,14 +335,14 @@ Base Score: 75 (strong bullish)
 Quality-Adjusted Score: 62 (dampened, low quality)
 Position Size: Calculated from 62, not 75
 Stop Loss: Tighter SL based on 62 (lower confidence)
-Result: Smaller position, protected from low-quality signal ✓
+Result: Smaller position, protected from low-quality signal 
 ```
 
 ---
 
 ## 7) Data Flow and Realtime
 
-Acquisition → Indicators → Confluence → Signals/Alerts → Dashboard:
+Acquisition -> Indicators -> Confluence -> Signals/Alerts -> Dashboard:
 - Realtime ingest: `src/core/streaming/realtime_pipeline.py`
 - Indicator processing: `src/enhanced_real_data_server.py` (`TechnicalIndicatorProcessor`)
 - Trading signals generation: `EnhancedDataManager.get_trading_signals()`
@@ -358,9 +358,9 @@ Realtime pipeline watches for:
 ## 8) API and Dashboard Exposure
 
 Primary endpoints (selection):
-- `GET /dashboard/signals` → `src/api/routes/dashboard.py`
-- `GET /dashboard-unified/signals` → `src/api/routes/dashboard_unified.py`
-- `GET /api/signals/latest` → `src/main.py.vps_fixed`
+- `GET /dashboard/signals` -> `src/api/routes/dashboard.py`
+- `GET /dashboard-unified/signals` -> `src/api/routes/dashboard_unified.py`
+- `GET /api/signals/latest` -> `src/main.py.vps_fixed`
 - Confluence breakdown routes: `src/api/routes/confluence_breakdown.py`
 
 Dashboard integration builders:
@@ -474,7 +474,7 @@ Action items:
 
 Trading strategy:
 - `src/trade_execution/confluence_trading_strategy.py` drives periodic evaluation
-- Executor: `src/trade_execution/trade_executor.py` maps score → action, size, SL/TP, alerts
+- Executor: `src/trade_execution/trade_executor.py` maps score -> action, size, SL/TP, alerts
 
 Rules:
 - Never execute with missing analyzer; return neutral and skip
@@ -501,11 +501,11 @@ Rules:
 ### Incident Patterns
 
 **Core System Issues:**
-- **Score collapse to 50 across board** ⇒ Upstream analyzer failure or stale inputs
+- **Score collapse to 50 across board** => Upstream analyzer failure or stale inputs
   - Check: Component scores all returning neutral
   - Fix: Restart data acquisition, verify exchange connectivity
 
-- **Divergence between UI and API** ⇒ Cache invalidation or stale websocket clients
+- **Divergence between UI and API** => Cache invalidation or stale websocket clients
   - Check: Compare `/api/signals/latest` with dashboard display
   - Fix: Clear cache, reconnect websockets
 
