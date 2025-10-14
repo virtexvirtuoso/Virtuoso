@@ -214,7 +214,8 @@ class SignalProcessor:
                 confidence=result.get('confidence'),
                 disagreement=result.get('disagreement'),
                 score_base=result.get('score_base'),
-                quality_impact=result.get('quality_impact')
+                quality_impact=result.get('quality_impact'),
+                adjustment_type=result.get('adjustment_type')
             )
             self.logger.info(formatted_table)
             
