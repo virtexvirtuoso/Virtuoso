@@ -1263,7 +1263,7 @@ class LogFormatter:
     @staticmethod
     def format_enhanced_confluence_score_table(symbol, confluence_score, components, results, weights=None, reliability=0.0,
                                               consensus=None, confidence=None, disagreement=None, use_pretty_table=True, border_style="double",
-                                              score_base=None, quality_impact=None):
+                                              score_base=None, quality_impact=None, adjustment_type=None):
         """
         Format a comprehensive confluence analysis table with enhanced interpretations.
 
@@ -1299,7 +1299,8 @@ class LogFormatter:
                 disagreement=disagreement,
                 border_style=border_style,
                 score_base=score_base,
-                quality_impact=quality_impact
+                quality_impact=quality_impact,
+                adjustment_type=adjustment_type
             )
 
         # Fallback to EnhancedFormatter if PrettyTable is not available or not requested
@@ -2253,7 +2254,7 @@ class PrettyTableFormatter:
     @staticmethod
     def format_enhanced_confluence_score_table(symbol, confluence_score, components, results, weights=None, reliability=0.0,
                                               consensus=None, confidence=None, disagreement=None, border_style="double",
-                                              score_base=None, quality_impact=None):
+                                              score_base=None, quality_impact=None, adjustment_type=None):
         """
         Format a comprehensive confluence analysis table with enhanced interpretations using PrettyTable.
 
@@ -2322,9 +2323,30 @@ class PrettyTableFormatter:
             base_color = PrettyTableFormatter._get_score_color(score_base)
             impact_color = PrettyTableFormatter.GREEN if abs(quality_impact) < 2 else PrettyTableFormatter.YELLOW if abs(quality_impact) < 5 else PrettyTableFormatter.RED
             impact_sign = "+" if quality_impact > 0 else ""
-            # quality_impact > 0 means adjusted > base = AMPLIFICATION (pushed away from neutral)
-            # quality_impact < 0 means adjusted < base = SUPPRESSION (pulled toward neutral)
-            impact_desc = "minimal adjustment" if abs(quality_impact) < 2 else "moderate adjustment" if abs(quality_impact) < 5 else "significant amplification" if quality_impact > 0 else "significant suppression"
+
+            # Determine description based on adjustment_type if available
+            if adjustment_type == "amplified":
+                # High-quality signal was amplified
+                if abs(quality_impact) < 2:
+                    impact_desc = "minimal amplification"
+                elif abs(quality_impact) < 5:
+                    impact_desc = "moderate amplification"
+                else:
+                    impact_desc = "significant amplification"
+                impact_desc += " (high quality signal)"
+            elif adjustment_type == "dampened":
+                # Low/medium-quality signal was dampened
+                if abs(quality_impact) < 2:
+                    impact_desc = "minimal dampening"
+                elif abs(quality_impact) < 5:
+                    impact_desc = "moderate dampening"
+                else:
+                    impact_desc = "significant dampening"
+                impact_desc += " (low quality signal)"
+            else:
+                # Fallback for backward compatibility
+                impact_desc = "minimal adjustment" if abs(quality_impact) < 2 else "moderate adjustment" if abs(quality_impact) < 5 else "significant adjustment"
+
             output.append(f"Base Score: {base_color}{score_base:.2f}{PrettyTableFormatter.RESET} (before quality adjustment)")
             output.append(f"Quality Impact: {impact_color}{impact_sign}{quality_impact:.2f}{PrettyTableFormatter.RESET} points ({impact_desc})")
 
