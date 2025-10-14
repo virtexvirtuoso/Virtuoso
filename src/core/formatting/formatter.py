@@ -2324,11 +2324,6 @@ class PrettyTableFormatter:
             impact_color = PrettyTableFormatter.GREEN if abs(quality_impact) < 2 else PrettyTableFormatter.YELLOW if abs(quality_impact) < 5 else PrettyTableFormatter.RED
             impact_sign = "+" if quality_impact > 0 else ""
 
-            # DEBUG: Log adjustment_type value to diagnose generic descriptions
-            import logging
-            _debug_logger = logging.getLogger(__name__)
-            _debug_logger.debug(f"[ADJUSTMENT_TYPE_DEBUG] adjustment_type={repr(adjustment_type)}, type={type(adjustment_type).__name__}")
-
             # Determine description based on adjustment_type if available
             if adjustment_type == "amplified":
                 # High-quality signal was amplified
