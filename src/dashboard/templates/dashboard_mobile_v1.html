@@ -623,6 +623,207 @@
             to { transform: rotate(360deg); }
         }
 
+        /* ===== PHASE 1 UX ENHANCEMENTS ===== */
+
+        /* Loading Skeleton Animations */
+        .skeleton-card {
+            background: var(--bg-panel);
+            border: 1px solid var(--border-light);
+            border-radius: 14px;
+            padding: 14px;
+            margin-bottom: 16px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .skeleton-shimmer {
+            background: linear-gradient(
+                90deg,
+                rgba(255, 191, 0, 0) 0%,
+                rgba(255, 191, 0, 0.08) 50%,
+                rgba(255, 191, 0, 0) 100%
+            );
+            background-size: 200% 100%;
+            animation: shimmer 1.5s infinite;
+        }
+
+        @keyframes shimmer {
+            0% { background-position: -200% 0; }
+            100% { background-position: 200% 0; }
+        }
+
+        .skeleton-line {
+            height: 12px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 4px;
+            margin-bottom: 8px;
+        }
+
+        .skeleton-circle {
+            width: 40px;
+            height: 40px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 50%;
+        }
+
+        .skeleton-bar {
+            height: 30px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 4px;
+            margin-bottom: 8px;
+        }
+
+        /* Relative Timestamp Styles */
+        .timestamp-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 10px;
+            font-weight: 600;
+            padding: 2px 6px;
+            border-radius: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .timestamp-fresh {
+            background: rgba(76, 175, 80, 0.2);
+            color: var(--accent-positive);
+        }
+
+        .timestamp-recent {
+            background: rgba(255, 191, 0, 0.2);
+            color: var(--accent-warning);
+        }
+
+        .timestamp-stale {
+            background: rgba(244, 67, 54, 0.2);
+            color: var(--accent-negative);
+        }
+
+        .timestamp-pulse {
+            width: 6px;
+            height: 6px;
+            background: var(--accent-positive);
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.4; transform: scale(0.8); }
+        }
+
+        /* Visual Score Enhancements */
+        .score-icon-wrapper {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .score-fire {
+            filter: drop-shadow(0 0 8px rgba(244, 67, 54, 0.6));
+            animation: fire-pulse 1.5s infinite;
+        }
+
+        @keyframes fire-pulse {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.1); opacity: 0.8; }
+        }
+
+        .score-strong {
+            filter: drop-shadow(0 0 6px rgba(76, 175, 80, 0.5));
+        }
+
+        .score-moderate {
+            filter: drop-shadow(0 0 4px rgba(255, 191, 0, 0.4));
+        }
+
+        .score-weak {
+            opacity: 0.6;
+        }
+
+        /* Symbol Search Bar */
+        .search-container {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            background: var(--bg-primary);
+            padding: 12px 0 16px 0;
+            margin-bottom: 8px;
+        }
+
+        .search-wrapper {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+
+        .search-input {
+            width: 100%;
+            padding: 12px 44px 12px 44px;
+            background: var(--bg-panel);
+            border: 1px solid var(--border-light);
+            border-radius: 12px;
+            color: var(--text-primary);
+            font-size: 15px;
+            font-family: inherit;
+            transition: all 0.2s;
+        }
+
+        .search-input:focus {
+            outline: none;
+            border-color: var(--accent-primary);
+            box-shadow: 0 0 0 3px rgba(255, 191, 0, 0.1);
+        }
+
+        .search-input::placeholder {
+            color: var(--text-secondary);
+        }
+
+        .search-icon {
+            position: absolute;
+            left: 14px;
+            width: 20px;
+            height: 20px;
+            color: var(--text-secondary);
+            pointer-events: none;
+        }
+
+        .search-clear {
+            position: absolute;
+            right: 14px;
+            width: 20px;
+            height: 20px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            opacity: 0;
+            transition: opacity 0.2s;
+            background: none;
+            border: none;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .search-clear.visible {
+            opacity: 1;
+        }
+
+        .search-clear:active {
+            color: var(--accent-primary);
+        }
+
+        .search-results-count {
+            margin-top: 8px;
+            font-size: 12px;
+            color: var(--text-secondary);
+            text-align: center;
+        }
+
+        /* ===== END PHASE 1 ENHANCEMENTS ===== */
+
         /* Empty States */
         .empty-state {
             text-align: center;
@@ -674,6 +875,168 @@
             .bottom-nav { height: 45px; }
             .nav-icon { width: 20px; height: 20px; }
             .nav-label { font-size: 10px; }
+        }
+
+        /* Info Icon and Tooltip Styles */
+        .metric-label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 11px;
+            color: var(--text-secondary);
+            margin-bottom: 4px;
+        }
+
+        .info-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            /* PHASE 1 UX: Enlarged to 20px with 44x44px touch target */
+            width: 20px;
+            height: 20px;
+            min-width: 44px;
+            min-height: 44px;
+            border-radius: 50%;
+            border: 1.5px solid var(--text-secondary);
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .info-icon:active {
+            background: rgba(255, 191, 0, 0.15);
+            border-color: var(--accent-primary);
+            color: var(--accent-primary);
+            transform: scale(0.95);
+        }
+
+        .metric-tooltip {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: var(--bg-secondary);
+            border: 2px solid var(--accent-primary);
+            border-radius: 12px;
+            padding: 20px;
+            max-width: 90%;
+            width: 340px;
+            max-height: 70vh;
+            overflow-y: auto;
+            z-index: 2000;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+            display: none;
+            animation: tooltipFadeIn 0.2s ease;
+        }
+
+        .metric-tooltip.active {
+            display: block;
+        }
+
+        @keyframes tooltipFadeIn {
+            from {
+                opacity: 0;
+                transform: translate(-50%, -48%);
+            }
+            to {
+                opacity: 1;
+                transform: translate(-50%, -50%);
+            }
+        }
+
+        .tooltip-backdrop {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 1999;
+            display: none;
+        }
+
+        .tooltip-backdrop.active {
+            display: block;
+        }
+
+        .tooltip-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--border-light);
+        }
+
+        .tooltip-title {
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--accent-primary);
+        }
+
+        .tooltip-close {
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 24px;
+            cursor: pointer;
+            padding: 0;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 8px;
+            transition: background 0.2s;
+        }
+
+        .tooltip-close:active {
+            background: rgba(255, 191, 0, 0.1);
+        }
+
+        .tooltip-content {
+            font-size: 13px;
+            line-height: 1.6;
+            color: var(--text-primary);
+        }
+
+        .tooltip-content h4 {
+            color: var(--accent-primary);
+            font-size: 14px;
+            font-weight: 600;
+            margin: 12px 0 8px 0;
+        }
+
+        .tooltip-content p {
+            margin: 8px 0;
+            color: rgba(255, 191, 0, 0.9);
+        }
+
+        .tooltip-content ul {
+            margin: 8px 0 8px 20px;
+            padding: 0;
+        }
+
+        .tooltip-content li {
+            margin: 6px 0;
+            color: rgba(255, 191, 0, 0.85);
+        }
+
+        .tooltip-content strong {
+            color: var(--text-primary);
+            font-weight: 600;
+        }
+
+        .tooltip-example {
+            background: rgba(255, 191, 0, 0.08);
+            border-left: 3px solid var(--accent-primary);
+            padding: 10px 12px;
+            margin: 12px 0;
+            border-radius: 6px;
+            font-size: 12px;
         }
     </style>
 </head>
@@ -735,16 +1098,33 @@
                         </div>
                     </div>
                     
-                    <!-- Market Volatility -->
+                    <!-- BTC Volatility (True Crypto Volatility) -->
                     <div class="overview-metric">
-                        <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 4px;">VOLATILITY</div>
+                        <div class="metric-label">
+                            <span>BTC VOLATILITY</span>
+                            <span class="info-icon" onclick="showMetricInfo('btcVolatility')">i</span>
+                        </div>
+                        <div style="font-size: 16px; font-weight: 700; color: var(--accent-positive);" id="btcVolatility">
+                            --
+                        </div>
+                        <div style="font-size: 10px; margin-top: 2px; color: var(--text-secondary);">
+                            <span id="btcVolDays">Annualized</span>
+                        </div>
+                    </div>
+
+                    <!-- Market Dispersion (Cross-Sectional) -->
+                    <div class="overview-metric">
+                        <div class="metric-label">
+                            <span>MARKET DISPERSION</span>
+                            <span class="info-icon" onclick="showMetricInfo('marketDispersion')">i</span>
+                        </div>
                         <div style="font-size: 14px;">
-                            <span id="currentVolatility" style="font-weight: 700; color: var(--text-primary);">0%</span>
+                            <span id="currentDispersion" style="font-weight: 700; color: var(--text-primary);">0%</span>
                             <span style="color: var(--text-secondary); font-size: 12px;"> vs </span>
-                            <span id="avgVolatility" style="color: var(--text-secondary);">0%</span>
+                            <span id="avgDispersion" style="color: var(--text-secondary);">0%</span>
                         </div>
                         <div style="font-size: 10px; margin-top: 2px;">
-                            <span id="volatilityDescriptor" style="font-weight: 600; text-transform: uppercase;">-</span>
+                            <span id="dispersionDescriptor" style="font-weight: 600; text-transform: uppercase;">-</span>
                         </div>
                     </div>
                     
@@ -800,25 +1180,99 @@
             <!-- Confluence Scores -->
             <div class="mobile-card">
                 <div class="card-header">
-                    <h2 class="card-title">Confluence Scores</h2>
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                        <span class="card-badge" id="symbolsCount" style="background: rgba(255, 191, 0, 0.2); color: var(--text-primary);">
-                            0
-                        </span>
-                        <select id="sortSelector" style="background: var(--bg-secondary); border: 1px solid var(--border-light); border-radius: 6px; padding: 6px 12px; color: var(--text-primary); font-size: 12px;" onchange="sortSymbols()">
-                            <option value="score">Sort by Score</option>
-                            <option value="change">Sort by Change</option>
-                            <option value="volume">Sort by Volume</option>
-                            <option value="symbol">Sort by Symbol</option>
-                        </select>
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                        <h2 class="card-title" style="margin: 0;">Confluence Scores</h2>
+                        <span class="info-icon" onclick="showMetricInfo('confluenceScore')" style="font-size: 13px;">i</span>
                     </div>
+                    <select id="sortSelector" style="background: var(--bg-secondary); border: 1px solid var(--border-light); border-radius: 6px; padding: 6px 12px; color: var(--text-primary); font-size: 12px;" onchange="sortSymbols()">
+                        <option value="score">Sort by Score</option>
+                        <option value="change">Sort by Change</option>
+                        <option value="volume">Sort by Volume</option>
+                        <option value="symbol">Sort by Symbol</option>
+                    </select>
                 </div>
-                
+
+                <!-- PHASE 1 UX: Symbol Search Bar -->
+                <div class="search-container">
+                    <div class="search-wrapper">
+                        <i data-lucide="search" class="search-icon"></i>
+                        <input
+                            type="text"
+                            id="symbolSearch"
+                            class="search-input"
+                            placeholder="Search symbols (e.g., BTC, ETH...)"
+                            oninput="filterSymbols(this.value)"
+                            autocomplete="off"
+                        />
+                        <button class="search-clear" id="searchClear" onclick="clearSearch()">
+                            <i data-lucide="x"></i>
+                        </button>
+                    </div>
+                    <div id="searchResultsCount" class="search-results-count" style="display: none;"></div>
+                </div>
+
                 <div class="symbols-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 16px; padding: 4px;">
                     <div id="analyzedSymbolsList">
                         <!-- Confluence score cards will be populated here -->
-                        <div class="loading" style="text-align: center; padding: 40px; grid-column: 1 / -1;">
-                            <div class="spinner" style="width: 32px; height: 32px; margin: 0 auto;"></div>
+                        <!-- PHASE 1 UX: Skeleton Loading Cards -->
+                        <div id="confluenceSkeletons" style="grid-column: 1 / -1; display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 16px;">
+                            <div class="skeleton-card skeleton-shimmer">
+                                <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
+                                    <div class="skeleton-line" style="width: 60px;"></div>
+                                    <div class="skeleton-circle" style="width: 32px; height: 32px;"></div>
+                                </div>
+                                <div class="skeleton-line" style="width: 80%; margin-bottom: 12px;"></div>
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px;">
+                                    <div class="skeleton-bar" style="height: 36px;"></div>
+                                    <div class="skeleton-bar" style="height: 36px;"></div>
+                                </div>
+                                <div style="display: flex; gap: 2px;">
+                                    <div class="skeleton-bar" style="flex: 1; height: 30px;"></div>
+                                    <div class="skeleton-bar" style="flex: 1; height: 30px;"></div>
+                                    <div class="skeleton-bar" style="flex: 1; height: 30px;"></div>
+                                    <div class="skeleton-bar" style="flex: 1; height: 30px;"></div>
+                                    <div class="skeleton-bar" style="flex: 1; height: 30px;"></div>
+                                    <div class="skeleton-bar" style="flex: 1; height: 30px;"></div>
+                                </div>
+                            </div>
+                            <div class="skeleton-card skeleton-shimmer">
+                                <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
+                                    <div class="skeleton-line" style="width: 60px;"></div>
+                                    <div class="skeleton-circle" style="width: 32px; height: 32px;"></div>
+                                </div>
+                                <div class="skeleton-line" style="width: 80%; margin-bottom: 12px;"></div>
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px;">
+                                    <div class="skeleton-bar" style="height: 36px;"></div>
+                                    <div class="skeleton-bar" style="height: 36px;"></div>
+                                </div>
+                                <div style="display: flex; gap: 2px;">
+                                    <div class="skeleton-bar" style="flex: 1; height: 30px;"></div>
+                                    <div class="skeleton-bar" style="flex: 1; height: 30px;"></div>
+                                    <div class="skeleton-bar" style="flex: 1; height: 30px;"></div>
+                                    <div class="skeleton-bar" style="flex: 1; height: 30px;"></div>
+                                    <div class="skeleton-bar" style="flex: 1; height: 30px;"></div>
+                                    <div class="skeleton-bar" style="flex: 1; height: 30px;"></div>
+                                </div>
+                            </div>
+                            <div class="skeleton-card skeleton-shimmer">
+                                <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
+                                    <div class="skeleton-line" style="width: 60px;"></div>
+                                    <div class="skeleton-circle" style="width: 32px; height: 32px;"></div>
+                                </div>
+                                <div class="skeleton-line" style="width: 80%; margin-bottom: 12px;"></div>
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px;">
+                                    <div class="skeleton-bar" style="height: 36px;"></div>
+                                    <div class="skeleton-bar" style="height: 36px;"></div>
+                                </div>
+                                <div style="display: flex; gap: 2px;">
+                                    <div class="skeleton-bar" style="flex: 1; height: 30px;"></div>
+                                    <div class="skeleton-bar" style="flex: 1; height: 30px;"></div>
+                                    <div class="skeleton-bar" style="flex: 1; height: 30px;"></div>
+                                    <div class="skeleton-bar" style="flex: 1; height: 30px;"></div>
+                                    <div class="skeleton-bar" style="flex: 1; height: 30px;"></div>
+                                    <div class="skeleton-bar" style="flex: 1; height: 30px;"></div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -841,12 +1295,30 @@
                         </h4>
                         <div id="topGainersList" style="display: flex; flex-direction: column; gap: 8px;">
                             <!-- Winners will be populated here -->
-                            <div class="loading" style="text-align: center; padding: 20px;">
-                                <div class="spinner" style="width: 24px; height: 24px; margin: 0 auto;"></div>
+                            <!-- PHASE 1 UX: Skeleton Loading for Gainers -->
+                            <div id="gainersSkeletons">
+                                <div class="skeleton-shimmer" style="padding: 10px; background: rgba(76, 175, 80, 0.1); border-radius: 8px; margin-bottom: 8px;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                                        <div class="skeleton-line" style="width: 50px;"></div>
+                                        <div class="skeleton-line" style="width: 45px;"></div>
+                                    </div>
+                                </div>
+                                <div class="skeleton-shimmer" style="padding: 10px; background: rgba(76, 175, 80, 0.1); border-radius: 8px; margin-bottom: 8px;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                                        <div class="skeleton-line" style="width: 50px;"></div>
+                                        <div class="skeleton-line" style="width: 45px;"></div>
+                                    </div>
+                                </div>
+                                <div class="skeleton-shimmer" style="padding: 10px; background: rgba(76, 175, 80, 0.1); border-radius: 8px;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                                        <div class="skeleton-line" style="width: 50px;"></div>
+                                        <div class="skeleton-line" style="width: 45px;"></div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
-                    
+
                     <!-- Losers Column -->
                     <div>
                         <h4 style="font-size: 13px; font-weight: 600; color: var(--accent-negative); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px;">
@@ -854,8 +1326,26 @@
                         </h4>
                         <div id="topLosersList" style="display: flex; flex-direction: column; gap: 8px;">
                             <!-- Losers will be populated here -->
-                            <div class="loading" style="text-align: center; padding: 20px;">
-                                <div class="spinner" style="width: 24px; height: 24px; margin: 0 auto;"></div>
+                            <!-- PHASE 1 UX: Skeleton Loading for Losers -->
+                            <div id="losersSkeletons">
+                                <div class="skeleton-shimmer" style="padding: 10px; background: rgba(244, 67, 54, 0.1); border-radius: 8px; margin-bottom: 8px;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                                        <div class="skeleton-line" style="width: 50px;"></div>
+                                        <div class="skeleton-line" style="width: 45px;"></div>
+                                    </div>
+                                </div>
+                                <div class="skeleton-shimmer" style="padding: 10px; background: rgba(244, 67, 54, 0.1); border-radius: 8px; margin-bottom: 8px;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                                        <div class="skeleton-line" style="width: 50px;"></div>
+                                        <div class="skeleton-line" style="width: 45px;"></div>
+                                    </div>
+                                </div>
+                                <div class="skeleton-shimmer" style="padding: 10px; background: rgba(244, 67, 54, 0.1); border-radius: 8px;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                                        <div class="skeleton-line" style="width: 50px;"></div>
+                                        <div class="skeleton-line" style="width: 45px;"></div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -1322,10 +1812,22 @@
                 const symbolsData = await symbolsResponse.json();
                 const marketData = await marketResponse.json();
                 const mobileData = await mobileDataResponse.json();
-                
+
                 updateDashboard(summaryData);
                 updateSymbols(symbolsData);
-                updateMarketOverview(marketData);
+
+                // CRITICAL FIX: Calculate gainers/losers from confluence_scores if not provided
+                const marketOverview = mobileData.market_overview || marketData;
+                if (mobileData.confluence_scores && (!marketOverview.gainers || !marketOverview.losers)) {
+                    const validScores = mobileData.confluence_scores.filter(s =>
+                        s && s.symbol && s.symbol !== 'SYSTEM_STATUS' && !s.symbol.includes('SYSTEM')
+                    );
+                    marketOverview.gainers = validScores.filter(s => (s.change_24h || 0) > 0).length;
+                    marketOverview.losers = validScores.filter(s => (s.change_24h || 0) < 0).length;
+                    console.log('Calculated market breadth:', {gainers: marketOverview.gainers, losers: marketOverview.losers});
+                }
+
+                updateMarketOverview(marketOverview);
                 
                 // Use our new mobile-data endpoint for top movers
                 if (mobileData.status === 'success') {
@@ -1875,17 +2377,150 @@
             }
         }
 
+        // ===== PHASE 1 UX: HELPER FUNCTIONS =====
+
+        // Relative timestamp formatter with color coding
+        function formatRelativeTime(timestamp) {
+            if (!timestamp) return { text: 'Unknown', class: 'timestamp-stale', showPulse: false };
+
+            const now = Date.now();
+            const diff = now - timestamp;
+            const seconds = Math.floor(diff / 1000);
+            const minutes = Math.floor(seconds / 60);
+
+            if (seconds < 30) {
+                return { text: 'Just now', class: 'timestamp-fresh', showPulse: true };
+            } else if (seconds < 120) {
+                return { text: `${seconds}s ago`, class: 'timestamp-fresh', showPulse: false };
+            } else if (minutes < 5) {
+                return { text: `${minutes}m ago`, class: 'timestamp-recent', showPulse: false };
+            } else if (minutes < 60) {
+                return { text: `${minutes}m ago`, class: 'timestamp-stale', showPulse: false };
+            } else {
+                const hours = Math.floor(minutes / 60);
+                return { text: `${hours}h ago`, class: 'timestamp-stale', showPulse: false };
+            }
+        }
+
+        // Score visual enhancement with emoji and glow effects
+        function getScoreIconAndStyle(score) {
+            if (score >= 80) {
+                return {
+                    emoji: '🔥',
+                    label: 'FIRE',
+                    class: 'score-fire',
+                    color: '#ef4444'
+                };
+            } else if (score >= 70) {
+                return {
+                    emoji: '⚡',
+                    label: 'STRONG',
+                    class: 'score-strong',
+                    color: '#4caf50'
+                };
+            } else if (score >= 50) {
+                return {
+                    emoji: '📊',
+                    label: 'MODERATE',
+                    class: 'score-moderate',
+                    color: '#ffbf00'
+                };
+            } else {
+                return {
+                    emoji: '💤',
+                    label: 'WEAK',
+                    class: 'score-weak',
+                    color: '#9ca3af'
+                };
+            }
+        }
+
+        // Symbol search functionality with fuzzy matching
+        let allSymbolCards = [];
+        function filterSymbols(query) {
+            const searchClearBtn = document.getElementById('searchClear');
+            const resultsCount = document.getElementById('searchResultsCount');
+
+            // Show/hide clear button
+            if (query.length > 0) {
+                searchClearBtn.classList.add('visible');
+            } else {
+                searchClearBtn.classList.remove('visible');
+                // Show all cards when search is cleared
+                allSymbolCards.forEach(card => card.style.display = 'block');
+                resultsCount.style.display = 'none';
+                lucide.createIcons();
+                return;
+            }
+
+            // Normalize query for fuzzy matching
+            const normalizedQuery = query.toUpperCase().replace(/[^A-Z0-9]/g, '');
+            let visibleCount = 0;
+
+            // Filter cards
+            allSymbolCards.forEach(card => {
+                const symbolName = card.id.replace('symbol-card-', '').toUpperCase();
+                const normalizedSymbol = symbolName.replace(/[^A-Z0-9]/g, '');
+
+                // Fuzzy match: check if query chars appear in order
+                let queryIndex = 0;
+                for (let i = 0; i < normalizedSymbol.length && queryIndex < normalizedQuery.length; i++) {
+                    if (normalizedSymbol[i] === normalizedQuery[queryIndex]) {
+                        queryIndex++;
+                    }
+                }
+
+                if (queryIndex === normalizedQuery.length) {
+                    card.style.display = 'block';
+                    visibleCount++;
+                } else {
+                    card.style.display = 'none';
+                }
+            });
+
+            // Show results count
+            resultsCount.textContent = `${visibleCount} symbol${visibleCount !== 1 ? 's' : ''} found`;
+            resultsCount.style.display = 'block';
+
+            // Reinitialize icons for visible cards
+            lucide.createIcons();
+        }
+
+        // Clear search function
+        function clearSearch() {
+            const searchInput = document.getElementById('symbolSearch');
+            searchInput.value = '';
+            filterSymbols('');
+            searchInput.focus();
+        }
+
+        // Auto-refresh relative timestamps every 30 seconds
+        setInterval(() => {
+            document.querySelectorAll('[data-timestamp]').forEach(element => {
+                const timestamp = parseInt(element.getAttribute('data-timestamp'));
+                const timeInfo = formatRelativeTime(timestamp);
+                const badge = element.querySelector('.timestamp-badge');
+                if (badge) {
+                    badge.className = `timestamp-badge ${timeInfo.class}`;
+                    badge.innerHTML = `
+                        ${timeInfo.showPulse ? '<span class="timestamp-pulse"></span>' : ''}
+                        <span>${timeInfo.text}</span>
+                    `;
+                }
+            });
+        }, 30000);
+
+        // ===== END PHASE 1 HELPER FUNCTIONS =====
+
         // Store symbols data for sorting
         let currentSymbolsData = [];
-        
+
         function updateSymbols(data) {
             const symbolsList = document.getElementById('analyzedSymbolsList');
-            const symbolsCount = document.getElementById('symbolsCount');
-            
+
             const symbols = data.symbols || data.top_symbols || [];
             currentSymbolsData = symbols; // Store for sorting
-            symbolsCount.textContent = symbols.length;
-            
+
             renderSymbols(symbols);
             
             // Initialize Lucide icons for the new elements
@@ -1894,12 +2529,25 @@
         
         function renderSymbols(symbols) {
             const symbolsList = document.getElementById('analyzedSymbolsList');
+
+            // PHASE 1 UX: Hide skeleton loading cards
+            const skeletons = document.getElementById('confluenceSkeletons');
+            if (skeletons) {
+                skeletons.style.display = 'none';
+            }
+
             symbolsList.innerHTML = '';
-            
+
             if (symbols.length > 0) {
                 symbols.forEach(symbol => {
                     symbolsList.innerHTML += createAnalyzedSymbolItem(symbol);
                 });
+
+                // PHASE 1 UX: Store all symbol cards for search functionality
+                setTimeout(() => {
+                    allSymbolCards = Array.from(document.querySelectorAll('.symbol-card'));
+                    console.log(`[Phase 1] ${allSymbolCards.length} symbol cards ready for search`);
+                }, 100);
             } else {
                 symbolsList.innerHTML = '<div class="empty-state" style="text-align: center; color: var(--text-secondary); padding: 20px; grid-column: 1 / -1;">No symbols data available</div>';
             }
@@ -1996,51 +2644,72 @@
                 trendBar.style.background = 'var(--accent-negative)';
             }
             
-            // Volatility
-            const currentVol = parseFloat(data.volatility || data.current_volatility || 0);
-            const avgVol = parseFloat(data.avg_volatility || data.volatility_average || 0);
-            document.getElementById('currentVolatility').textContent = currentVol.toFixed(1) + '%';
-            document.getElementById('avgVolatility').textContent = avgVol.toFixed(1) + '%';
-            
-            // Volatility descriptor
-            const descriptorElement = document.getElementById('volatilityDescriptor');
-            let descriptor = '';
-            let descriptorColor = '';
-            
-            if (currentVol < 3) {
-                descriptor = 'Very Low';
-                descriptorColor = 'var(--accent-positive)';
-            } else if (currentVol < 5) {
-                descriptor = 'Low';
-                descriptorColor = 'var(--accent-positive)';
-            } else if (currentVol < 10) {
-                descriptor = 'Normal';
-                descriptorColor = 'var(--text-primary)';
-            } else if (currentVol < 15) {
-                descriptor = 'Elevated';
-                descriptorColor = '#FFA500';
-            } else if (currentVol < 20) {
-                descriptor = 'High';
-                descriptorColor = 'var(--accent-negative)';
-            } else if (currentVol < 30) {
-                descriptor = 'Very High';
-                descriptorColor = 'var(--accent-negative)';
+            // BTC Volatility (TRUE crypto volatility - annualized)
+            const btcVol = parseFloat(data.btc_volatility || 0);
+            const btcVolDays = parseInt(data.btc_vol_days || 0);
+            const btcVolElement = document.getElementById('btcVolatility');
+            const btcVolDaysElement = document.getElementById('btcVolDays');
+
+            if (btcVolDays >= 2 && btcVol > 0) {
+                btcVolElement.textContent = btcVol.toFixed(1) + '%';
+                btcVolDaysElement.textContent = `${btcVolDays} days`;
+
+                // Color based on volatility level
+                if (btcVol > 100) {
+                    btcVolElement.style.color = 'var(--accent-negative)';  // Extreme
+                } else if (btcVol > 70) {
+                    btcVolElement.style.color = 'var(--accent-warning)';   // High
+                } else {
+                    btcVolElement.style.color = 'var(--accent-positive)';  // Normal
+                }
             } else {
-                descriptor = 'Extreme';
-                descriptorColor = '#FF0000';
+                btcVolElement.textContent = 'Building...';
+                btcVolDaysElement.textContent = `${btcVolDays}/2 days`;
+                btcVolElement.style.color = 'var(--text-secondary)';
             }
-            
-            descriptorElement.textContent = descriptor;
-            descriptorElement.style.color = descriptorColor;
-            
-            // Color current volatility based on comparison
-            const volElement = document.getElementById('currentVolatility');
-            if (currentVol > avgVol * 1.2) {
-                volElement.style.color = 'var(--accent-negative)';
-            } else if (currentVol > avgVol) {
-                volElement.style.color = 'var(--accent-warning)';
+
+            // Market Dispersion (cross-sectional volatility)
+            const currentDisp = parseFloat(data.market_dispersion || data.volatility || 0);
+            const avgDisp = parseFloat(data.avg_market_dispersion || data.avg_volatility || currentDisp || 0);
+            document.getElementById('currentDispersion').textContent = currentDisp.toFixed(1) + '%';
+            document.getElementById('avgDispersion').textContent = avgDisp.toFixed(1) + '%';
+
+            // Dispersion descriptor
+            const dispDescElement = document.getElementById('dispersionDescriptor');
+            let dispDescriptor = '';
+            let dispColor = '';
+
+            if (currentDisp < 3) {
+                dispDescriptor = 'Tight';
+                dispColor = 'var(--accent-positive)';
+            } else if (currentDisp < 6) {
+                dispDescriptor = 'Low';
+                dispColor = 'var(--accent-positive)';
+            } else if (currentDisp < 10) {
+                dispDescriptor = 'Normal';
+                dispColor = 'var(--text-primary)';
+            } else if (currentDisp < 15) {
+                dispDescriptor = 'Wide';
+                dispColor = '#FFA500';
+            } else if (currentDisp < 20) {
+                dispDescriptor = 'Very Wide';
+                dispColor = 'var(--accent-negative)';
             } else {
-                volElement.style.color = 'var(--accent-positive)';
+                dispDescriptor = 'Extreme';
+                dispColor = '#FF0000';
+            }
+
+            dispDescElement.textContent = dispDescriptor;
+            dispDescElement.style.color = dispColor;
+
+            // Color current dispersion based on comparison to average
+            const dispElement = document.getElementById('currentDispersion');
+            if (currentDisp > avgDisp * 1.2) {
+                dispElement.style.color = 'var(--accent-negative)';
+            } else if (currentDisp > avgDisp) {
+                dispElement.style.color = 'var(--accent-warning)';
+            } else {
+                dispElement.style.color = 'var(--accent-positive)';
             }
             
             // BTC Dominance
@@ -2048,7 +2717,8 @@
             document.getElementById('btcDominance').textContent = btcDom.toFixed(1) + '%';
             
             // Total Volume
-            const totalVol = parseFloat(data.total_volume || data.volume_24h || 0);
+            // CRITICAL FIX: API returns total_volume_24h, not total_volume
+            const totalVol = parseFloat(data.total_volume_24h || data.total_volume || data.volume_24h || 0);
             const formattedVolume = formatVolume(totalVol);
             document.getElementById('totalVolume').textContent = formattedVolume;
         }
@@ -2068,7 +2738,13 @@
         function updateTopMovers(data) {
             const gainersList = document.getElementById('topGainersList');
             const losersList = document.getElementById('topLosersList');
-            
+
+            // PHASE 1 UX: Hide skeleton loading cards
+            const gainersSkeletons = document.getElementById('gainersSkeletons');
+            const losersSkeletons = document.getElementById('losersSkeletons');
+            if (gainersSkeletons) gainersSkeletons.style.display = 'none';
+            if (losersSkeletons) losersSkeletons.style.display = 'none';
+
             // Clear loading state
             gainersList.innerHTML = '';
             losersList.innerHTML = '';
@@ -2279,15 +2955,18 @@
             const signalStrength = symbol.signal_strength || symbol.strength || 'weak';
             const timestamp = symbol.timestamp || Date.now();
             
-            // Generate unique ID for expand/collapse
-            const cardId = `card_${symbolName.replace(/[^a-zA-Z0-9]/g, '_')}`;
-            
-            // Determine score color and get trend icon
-            let scoreColor = 'var(--text-secondary)';
+            // PHASE 1 UX: Generate unique ID with symbol-card prefix for search
+            const cardId = `symbol-card-${symbolName.replace(/[^a-zA-Z0-9]/g, '')}`;
+
+            // PHASE 1 UX: Get score icon and styling enhancements
+            const scoreStyle = getScoreIconAndStyle(confluenceScore);
+
+            // Determine score color and get trend icon (kept for backwards compatibility)
+            let scoreColor = scoreStyle.color;
             let scoreBg = 'rgba(255, 255, 255, 0.05)';
-            let scoreLevel = 'WEAK';
+            let scoreLevel = scoreStyle.label;
             let trendIcon = 'minus';
-            
+
             if (confluenceScore >= 70) {
                 scoreColor = 'var(--accent-positive)';
                 scoreBg = 'rgba(76, 175, 80, 0.1)';
@@ -2304,6 +2983,9 @@
                 scoreLevel = 'WEAK';
                 trendIcon = 'trending-down';
             }
+
+            // PHASE 1 UX: Format relative timestamp
+            const timeInfo = formatRelativeTime(timestamp);
             
             // Format symbol name (remove 1000 prefix and USDT suffix for display)
             let displaySymbol = symbolName;
@@ -2327,29 +3009,35 @@
             const priceRange = high_24h > 0 && low_24h > 0 ? ((high_24h - low_24h) / low_24h * 100).toFixed(2) : 0;
             
             // Component scores for mini visualization
+            // CRITICAL FIX: API returns components as direct numbers, not objects with .score property
             const componentScores = {
-                technical: components.technical?.score || 50,
-                volume: components.volume?.score || 50,
-                orderflow: components.orderflow?.score || 50,
-                sentiment: components.sentiment?.score || 50,
-                orderbook: components.orderbook?.score || 50,
-                price_structure: components.price_structure?.score || 50
+                technical: components.technical || 50,
+                volume: components.volume || 50,
+                orderflow: components.orderflow || 50,
+                sentiment: components.sentiment || 50,
+                orderbook: components.orderbook || 50,
+                price_structure: components.price_structure || 50
             };
             
             return `
                 <div class="symbol-card" id="${cardId}" style="background: var(--bg-secondary); border: 1px solid var(--border-light); border-radius: 14px; cursor: pointer; transition: all 0.2s ease; position: relative; overflow: hidden;">
                     <!-- Score indicator bar -->
                     <div style="position: absolute; top: 0; left: 0; right: 0; height: 4px; background: ${scoreColor}; opacity: 0.9;"></div>
-                    
+
+                    <!-- Subtle scroll indicator on right edge -->
+                    <div id="${cardId}_scroll_hint" style="position: absolute; right: 0; top: 50%; transform: translateY(-50%); width: 3px; height: 40px; background: linear-gradient(to bottom, transparent, rgba(255, 191, 0, 0.3), transparent); border-radius: 2px 0 0 2px; opacity: 0.6; transition: opacity 0.3s;"></div>
+
                     <!-- Main card content (always visible) -->
                     <div style="padding: 14px;" onclick="toggleCardExpansion('${cardId}')">
                         <!-- Header with symbol and score -->
+                        <!-- PHASE 1 UX: Enhanced header with emoji score indicators -->
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
                             <div style="display: flex; align-items: center; gap: 6px;">
                                 <span style="font-weight: 700; font-size: 17px; color: var(--text-primary);">${displaySymbol}</span>
                                 <i data-lucide="${trendIcon}" style="width: 15px; height: 15px; color: ${scoreColor};"></i>
                             </div>
-                            <div style="background: ${scoreBg}; padding: 4px 8px; border-radius: 8px;">
+                            <div class="score-icon-wrapper ${scoreStyle.class}" style="background: ${scoreBg}; padding: 4px 8px; border-radius: 8px; display: flex; align-items: center; gap: 4px;">
+                                <span style="font-size: 16px;">${scoreStyle.emoji}</span>
                                 <span style="font-size: 14px; font-weight: 700; color: ${scoreColor};">${Math.round(confluenceScore)}</span>
                             </div>
                         </div>
@@ -2424,13 +3112,15 @@
                         </div>
                         
                         <!-- Reliability and timestamp -->
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <!-- PHASE 1 UX: Relative timestamp with color coding -->
+                        <div style="display: flex; justify-content: space-between; align-items: center;" data-timestamp="${timestamp}">
                             <div>
                                 <span style="font-size: 9px; color: var(--text-secondary);">Reliability: </span>
                                 <span style="font-size: 11px; font-weight: 600; color: ${reliability >= 80 ? 'var(--accent-positive)' : reliability >= 60 ? 'var(--accent-warning)' : 'var(--accent-negative)'};">${reliability.toFixed(1)}%</span>
                             </div>
-                            <div style="font-size: 9px; color: var(--text-secondary);">
-                                ${new Date(timestamp).toLocaleTimeString()}
+                            <div class="timestamp-badge ${timeInfo.class}">
+                                ${timeInfo.showPulse ? '<span class="timestamp-pulse"></span>' : ''}
+                                <span>${timeInfo.text}</span>
                             </div>
                         </div>
                         
@@ -2574,12 +3264,18 @@
         function toggleCardExpansion(cardId) {
             const expandedContent = document.getElementById(`${cardId}_expanded`);
             const chevron = document.getElementById(`${cardId}_chevron`);
-            
+            const scrollHint = document.getElementById(`${cardId}_scroll_hint`);
+
             if (expandedContent.style.display === 'none') {
                 // Expand
                 expandedContent.style.display = 'block';
                 chevron.style.transform = 'rotate(180deg)';
-                
+
+                // Hide scroll hint when expanded
+                if (scrollHint) {
+                    scrollHint.style.opacity = '0';
+                }
+
                 // Smooth animation
                 expandedContent.style.opacity = '0';
                 expandedContent.style.maxHeight = '0';
@@ -2593,7 +3289,12 @@
                 expandedContent.style.opacity = '0';
                 expandedContent.style.maxHeight = '0';
                 chevron.style.transform = 'rotate(0deg)';
-                
+
+                // Show scroll hint when collapsed
+                if (scrollHint) {
+                    scrollHint.style.opacity = '0.6';
+                }
+
                 setTimeout(() => {
                     expandedContent.style.display = 'none';
                     expandedContent.style.transition = '';
@@ -2880,9 +3581,172 @@
                 }, userSettings.refreshRate);
             }
         }
+
+        // Metric Info Tooltip Functions
+        function showMetricInfo(metricType) {
+            // Hide any open tooltips first
+            hideAllTooltips();
+
+            // Show the requested tooltip
+            const tooltipId = metricType + 'Tooltip';
+            const tooltip = document.getElementById(tooltipId);
+            const backdrop = document.getElementById('tooltipBackdrop');
+
+            if (tooltip && backdrop) {
+                tooltip.classList.add('active');
+                backdrop.classList.add('active');
+
+                // Prevent body scroll when tooltip is open
+                document.body.style.overflow = 'hidden';
+            }
+        }
+
+        function hideAllTooltips() {
+            const tooltips = document.querySelectorAll('.metric-tooltip');
+            const backdrop = document.getElementById('tooltipBackdrop');
+
+            tooltips.forEach(tooltip => {
+                tooltip.classList.remove('active');
+            });
+
+            if (backdrop) {
+                backdrop.classList.remove('active');
+            }
+
+            // Re-enable body scroll
+            document.body.style.overflow = '';
+        }
+
+        // Close tooltip on escape key
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'Escape') {
+                hideAllTooltips();
+            }
+        });
     </script>
 
+    <!-- Tooltip Backdrop -->
+    <div class="tooltip-backdrop" id="tooltipBackdrop" onclick="hideAllTooltips()"></div>
+
+    <!-- BTC Volatility Tooltip -->
+    <div class="metric-tooltip" id="btcVolatilityTooltip">
+        <div class="tooltip-header">
+            <div class="tooltip-title">BTC Volatility</div>
+            <button class="tooltip-close" onclick="hideAllTooltips()">&times;</button>
+        </div>
+        <div class="tooltip-content">
+            <p><strong>What it measures:</strong> Annualized standard deviation of Bitcoin's daily returns</p>
+
+            <h4>📊 Calculation Method</h4>
+            <p>Uses log returns for mathematical precision:</p>
+            <ul>
+                <li>Daily returns = ln(P_today / P_yesterday)</li>
+                <li>Daily volatility = std dev of returns</li>
+                <li>Annualized = daily vol × √365</li>
+            </ul>
+
+            <h4>📈 Data Requirements</h4>
+            <p>Needs 2-30 days of daily Bitcoin price snapshots. System takes one snapshot every 24 hours.</p>
+
+            <h4>🎯 What It Tells You</h4>
+            <p>How risky Bitcoin is based on actual price variation over time. This is <strong>true crypto volatility</strong> - the standard measure used in traditional finance.</p>
+
+            <div class="tooltip-example">
+                <strong>Example Ranges:</strong><br>
+                • 30-50%: Low volatility (calm market)<br>
+                • 50-70%: Normal volatility<br>
+                • 70-100%: High volatility (elevated risk)<br>
+                • &gt;100%: Extreme volatility (major moves)
+            </div>
+
+            <h4>💡 Key Insight</h4>
+            <p>This metric looks at BTC's price behavior <strong>over time</strong>. Even if all coins move together, BTC volatility can be high if prices swing wildly day-to-day.</p>
+        </div>
+    </div>
+
+    <!-- Market Dispersion Tooltip -->
+    <div class="metric-tooltip" id="marketDispersionTooltip">
+        <div class="tooltip-header">
+            <div class="tooltip-title">Market Dispersion</div>
+            <button class="tooltip-close" onclick="hideAllTooltips()">&times;</button>
+        </div>
+        <div class="tooltip-content">
+            <p><strong>What it measures:</strong> Standard deviation of 24h returns across all 585 perpetual futures</p>
+
+            <h4>📊 Calculation Method</h4>
+            <p>Measures return spread at a single point in time:</p>
+            <ul>
+                <li>Get 24h % change for all 585 symbols</li>
+                <li>Calculate std dev of these changes</li>
+                <li>Updated every minute</li>
+            </ul>
+
+            <h4>📈 Data Requirements</h4>
+            <p>Uses current 24h price changes from exchange. Works immediately - no historical data needed.</p>
+
+            <h4>🎯 What It Tells You</h4>
+            <p>How correlated the market is. Low dispersion means coins move together (high correlation). High dispersion means divergent movement (low correlation).</p>
+
+            <div class="tooltip-example">
+                <strong>Interpretation Guide:</strong><br>
+                • &lt;3%: Tight - highly correlated<br>
+                • 3-6%: Low dispersion<br>
+                • 6-10%: Normal dispersion<br>
+                • 10-15%: Wide - divergent movement<br>
+                • &gt;15%: Extreme - market fragmentation
+            </div>
+
+            <h4>💡 Key Insight</h4>
+            <p>This metric looks at the <strong>spread of returns</strong> across coins <strong>right now</strong>. If all coins are +10%, dispersion is near 0% (tight). If some are +20% and others -10%, dispersion is high (wide).</p>
+
+            <h4>🔄 Comparison</h4>
+            <p><strong>vs BTC Volatility:</strong> That measures BTC over time. This measures all coins at one moment. They're independent - you can have high BTC volatility with low dispersion (all coins swinging together) or low BTC volatility with high dispersion (stable but divergent).</p>
+        </div>
+    </div>
+
+    <!-- Confluence Score Tooltip -->
+    <div class="metric-tooltip" id="confluenceScoreTooltip">
+        <div class="tooltip-header">
+            <div class="tooltip-title">Confluence Score</div>
+            <button class="tooltip-close" onclick="hideAllTooltips()">&times;</button>
+        </div>
+        <div class="tooltip-content">
+            <p><strong>What it measures:</strong> Combined signal strength from 6 market dimensions (0-100 scale)</p>
+
+            <h4>🎯 The 6 Dimensions</h4>
+            <ul>
+                <li><strong>Order Flow (30%)</strong> - Buy/sell pressure</li>
+                <li><strong>Order Book (20%)</strong> - Bid/ask depth</li>
+                <li><strong>Volume (18%)</strong> - Volume indicators</li>
+                <li><strong>Price Structure (15%)</strong> - Support/resistance</li>
+                <li><strong>Technical (10%)</strong> - RSI, MACD, EMAs</li>
+                <li><strong>Sentiment (7%)</strong> - Market mood</li>
+            </ul>
+
+            <div class="tooltip-example">
+                <strong>Score Guide:</strong><br>
+                • 0-35: Bearish (sell)<br>
+                • 35-65: Neutral<br>
+                • 65-100: Bullish (buy)
+            </div>
+
+            <h4>💡 Key Point</h4>
+            <p>Scores are weighted by dimension importance, then combined into a single signal.</p>
+
+            <h4>🔄 Example Scenario</h4>
+            <div class="tooltip-example">
+                <strong>BTCUSDT Score: 78 (Bullish)</strong><br>
+                • Order Flow: 85 (strong buying pressure)<br>
+                • Order Book: 75 (bullish depth)<br>
+                • Volume: 72 (above average)<br>
+                • Price Structure: 68 (near resistance)<br>
+                • Technical: 80 (RSI bullish, MACD positive)<br>
+                • Sentiment: 65 (positive funding rate)
+            </div>
+        </div>
+    </div>
+
         <!-- Cache Status Indicator removed -->
-        
+
 </body>
 </html>

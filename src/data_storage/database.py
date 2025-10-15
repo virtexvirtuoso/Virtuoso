@@ -17,7 +17,7 @@ except ImportError:
             return MockQueryAPI()
         def close(self):
             pass
-    
+
     class MockPoint:
         def __init__(self, measurement):
             self.measurement = measurement
@@ -27,17 +27,17 @@ except ImportError:
             return self
         def time(self, timestamp):
             return self
-    
+
     class MockWriteAPI:
         def write(self, *args, **kwargs):
             pass
         def close(self):
             pass
-    
+
     class MockQueryAPI:
         def query_data_frame(self, *args, **kwargs):
             return None
-    
+
     InfluxDBClient = MockInfluxDBClient
     Point = MockPoint
     SYNCHRONOUS = None
@@ -48,6 +48,7 @@ from typing import Dict, Any, Optional, List, Union, Callable, Sequence, Tuple
 from datetime import datetime, timedelta
 from dataclasses import dataclass
 import os
+import json
 
 class DatabaseManager:
     """Database manager class for handling data storage operations."""
@@ -381,19 +382,43 @@ class DatabaseClient:
             self.logger.error(f"Error normalizing timestamp for field '{field_name}': {e}")
             return float(time.time())
 
+    @staticmethod
+    def deserialize_json_fields(data: Dict[str, Any]) -> Dict[str, Any]:
+        """Deserialize JSON fields from database results.
+
+        Args:
+            data: Dictionary containing database results with _json suffixed keys
+
+        Returns:
+            Dictionary with deserialized JSON fields (without _json suffix)
+        """
+        result = {}
+        for key, value in data.items():
+            if key.endswith('_json') and isinstance(value, str):
+                # Deserialize JSON string back to dict/list
+                original_key = key[:-5]  # Remove '_json' suffix
+                try:
+                    result[original_key] = json.loads(value)
+                except json.JSONDecodeError as e:
+                    logger.warning(f"Failed to deserialize JSON field '{key}': {e}")
+                    result[key] = value  # Keep as string if deserialization fails
+            else:
+                result[key] = value
+        return result
+
     def _validate_and_convert_field_value(self, key: str, value: Any) -> Tuple[str, Any, bool]:
         """Validate and convert field values for InfluxDB compatibility.
-        
+
         Args:
             key: Field name
             value: Field value
-            
+
         Returns:
             tuple: (field_name, converted_value, should_include)
         """
         if value is None:
             return key, None, False
-            
+
         # Handle timestamp fields specially
         if 'timestamp' in key.lower():
             try:
@@ -402,7 +427,7 @@ class DatabaseClient:
             except Exception as e:
                 self.logger.warning(f"Failed to normalize timestamp field '{key}': {e}")
                 return key, None, False
-        
+
         # Handle numeric values
         if isinstance(value, (int, float)):
             # Check for invalid numeric values
@@ -411,18 +436,31 @@ class DatabaseClient:
                 self.logger.debug(f"Skipping invalid numeric value for field '{key}': {value}")
                 return key, None, False
             return key, float(value), True
-            
+
         # Handle string values
         elif isinstance(value, str):
             # Don't store empty strings
             if not value.strip():
                 return key, None, False
             return key, value, True
-            
+
         # Handle boolean values
         elif isinstance(value, bool):
             return key, value, True
-            
+
+        # Handle dict and list by serializing to JSON
+        elif isinstance(value, (dict, list)):
+            try:
+                # Serialize to JSON string for storage
+                json_str = json.dumps(value, default=str)
+                # Add _json suffix to indicate it's serialized JSON
+                json_key = f"{key}_json"
+                self.logger.debug(f"Serialized '{key}' ({type(value).__name__}) to JSON string (len={len(json_str)})")
+                return json_key, json_str, True
+            except Exception as e:
+                self.logger.warning(f"Failed to serialize '{key}' to JSON: {e}")
+                return key, None, False
+
         else:
             self.logger.debug(f"Skipping unsupported field type for '{key}': {type(value)}")
             return key, None, False
@@ -457,23 +495,14 @@ class DatabaseClient:
                 .time(datetime.utcnow())
             
             # Add fields from analysis data with proper type conversion
+            # Complex types (dict/list) are now automatically serialized to JSON in _validate_and_convert_field_value
             fields_added = 0
             for key, value in analysis.items():
                 field_name, converted_value, should_include = self._validate_and_convert_field_value(key, value)
-                
+
                 if should_include and converted_value is not None:
                     point.field(field_name, converted_value)
                     fields_added += 1
-                elif isinstance(value, dict) and value is not None:
-                    # Flatten nested dictionaries with validation
-                    for sub_key, sub_value in value.items():
-                        nested_field_name = f"{key}_{sub_key}"
-                        nested_field_name, nested_converted_value, nested_should_include = self._validate_and_convert_field_value(
-                            nested_field_name, sub_value
-                        )
-                        if nested_should_include and nested_converted_value is not None:
-                            point.field(nested_field_name, nested_converted_value)
-                            fields_added += 1
             
             # Add signals if provided with proper validation
             if signals and isinstance(signals, list):

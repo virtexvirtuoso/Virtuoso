@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  # Redis for caching
+  redis:
+    image: redis:alpine
+    container_name: virtuoso-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    restart: unless-stopped
+    networks:
+      - virtuoso-network
+
+  # Memcached for L2 cache
+  memcached:
+    image: memcached:alpine
+    container_name: virtuoso-memcached
+    ports:
+      - "11211:11211"
+    command: memcached -m 256
+    restart: unless-stopped
+    networks:
+      - virtuoso-network
+
+networks:
+  virtuoso-network:
+    driver: bridge

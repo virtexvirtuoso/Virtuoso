@@ -523,7 +523,9 @@ class MetricsManager:
                                 continue
                         else:
                             # More detailed diagnostics for skipped values
-                            self.logger.debug(f"Skipping non-numeric score for {indicator}: {score} (type: {score_type}, is_numpy: {is_numpy}, numpy_type: {numpy_type})")
+                            # Truncate large data structures to avoid verbose logs
+                            score_preview = str(score)[:200] + "..." if len(str(score)) > 200 else str(score)
+                            self.logger.debug(f"Skipping non-numeric score for {indicator}: {score_preview} (type: {score_type}, is_numpy: {is_numpy}, numpy_type: {numpy_type})")
                             continue
                             
                         await self.update_metric(

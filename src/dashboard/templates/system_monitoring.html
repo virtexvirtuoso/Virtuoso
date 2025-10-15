@@ -1,0 +1,861 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>System Monitoring - Virtuoso</title>
+    <meta name="description" content="Live performance metrics and component status">
+    <meta name="theme-color" content="#ffbf00">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --bg-primary: #fff8e0;
+            --bg-secondary: #ffffff;
+            --bg-card: rgba(255, 255, 255, 0.95);
+            --text-primary: #0a1525;
+            --text-secondary: #4a5568;
+            --text-muted: #718096;
+            --accent-primary: #ffbf00;
+            --accent-hover: #ff9900;
+            --accent-soft: rgba(255, 191, 0, 0.1);
+            --border-light: #e2d5a0;
+            --border-subtle: rgba(226, 213, 160, 0.3);
+            --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.04);
+            --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.06);
+            --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.08);
+            --success: #10b981;
+            --success-bg: rgba(16, 185, 129, 0.1);
+            --warning: #ff9900;
+            --warning-bg: rgba(255, 153, 0, 0.1);
+            --error: #ef4444;
+            --error-bg: rgba(239, 68, 68, 0.1);
+            --gradient-primary: linear-gradient(135deg, rgba(255, 191, 0, 0.05) 0%, rgba(255, 191, 0, 0.02) 100%);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: var(--bg-primary);
+            background-image:
+                radial-gradient(circle at 20% 20%, rgba(255, 191, 0, 0.03) 0%, transparent 50%),
+                radial-gradient(circle at 80% 80%, rgba(255, 191, 0, 0.02) 0%, transparent 50%);
+            color: var(--text-primary);
+            line-height: 1.6;
+            min-height: 100vh;
+            padding: 24px;
+            font-weight: 400;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 48px;
+            position: relative;
+        }
+
+        .logo {
+            font-size: 2.25rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-hover) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+        }
+
+        .logo-icon {
+            font-size: 2.5rem;
+            color: var(--accent-primary);
+        }
+
+        .header h1 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+        }
+
+        .header p {
+            color: var(--text-muted);
+            font-size: 1rem;
+            font-weight: 400;
+        }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 24px;
+            margin-bottom: 40px;
+        }
+
+        .metric-card {
+            background: var(--bg-card);
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--border-subtle);
+            border-radius: 20px;
+            padding: 32px;
+            text-align: center;
+            box-shadow: var(--shadow-md);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .metric-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, var(--accent-primary), var(--accent-hover));
+        }
+
+        .metric-card:hover {
+            transform: translateY(-4px);
+            box-shadow: var(--shadow-lg);
+            border-color: var(--accent-primary);
+        }
+
+        .metric-value {
+            font-size: 3rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-hover) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 12px;
+            line-height: 1;
+        }
+
+        .metric-label {
+            font-size: 13px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            font-weight: 600;
+            margin-bottom: 16px;
+        }
+
+        .metric-change {
+            font-size: 12px;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-weight: 500;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .change-positive {
+            background: var(--success-bg);
+            color: var(--success);
+        }
+
+        .change-negative {
+            background: var(--error-bg);
+            color: var(--error);
+        }
+
+        .performance-card {
+            background: var(--bg-card);
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--border-subtle);
+            border-radius: 20px;
+            padding: 40px;
+            margin-bottom: 32px;
+            box-shadow: var(--shadow-md);
+            transition: all 0.3s ease;
+        }
+
+        .performance-card:hover {
+            box-shadow: var(--shadow-lg);
+        }
+
+        .performance-card h3 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-bottom: 32px;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .section-icon {
+            font-size: 1.5rem;
+            color: var(--accent-primary);
+        }
+
+        .performance-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 24px;
+        }
+
+        .performance-item {
+            text-align: center;
+            padding: 28px 24px;
+            background: var(--gradient-primary);
+            border-radius: 16px;
+            border: 1px solid var(--border-subtle);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .performance-item::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: var(--accent-primary);
+            transform: scaleX(0);
+            transition: transform 0.3s ease;
+        }
+
+        .performance-item:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-md);
+            border-color: var(--accent-primary);
+        }
+
+        .performance-item:hover::before {
+            transform: scaleX(1);
+        }
+
+        .performance-icon {
+            font-size: 2.5rem;
+            margin-bottom: 16px;
+            color: var(--accent-primary);
+            filter: drop-shadow(0 2px 4px rgba(255, 191, 0, 0.2));
+        }
+
+        .performance-item h4 {
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 12px;
+        }
+
+        .performance-value {
+            font-size: 1.75rem;
+            font-weight: 700;
+            margin: 16px 0;
+            color: var(--text-primary);
+        }
+
+        .back-link {
+            display: inline-flex;
+            align-items: center;
+            color: var(--accent-primary);
+            text-decoration: none;
+            margin-bottom: 32px;
+            font-weight: 500;
+            padding: 12px 20px;
+            border-radius: 12px;
+            border: 1px solid var(--border-subtle);
+            background: var(--bg-card);
+            transition: all 0.3s ease;
+            gap: 8px;
+        }
+
+        .back-link:hover {
+            color: var(--accent-hover);
+            transform: translateX(-4px);
+            box-shadow: var(--shadow-sm);
+        }
+
+        .status-bar {
+            height: 6px;
+            background: rgba(0, 0, 0, 0.08);
+            border-radius: 6px;
+            overflow: hidden;
+            margin-top: 16px;
+            position: relative;
+        }
+
+        .status-fill {
+            height: 100%;
+            border-radius: 6px;
+            transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+        }
+
+        .status-fill.good {
+            background: linear-gradient(90deg, var(--success), #059669);
+        }
+
+        .status-fill.warning {
+            background: linear-gradient(90deg, var(--warning), #d97706);
+        }
+
+        .status-fill.critical {
+            background: linear-gradient(90deg, var(--error), #dc2626);
+        }
+
+        .status-text {
+            font-weight: 600;
+            font-size: 0.875rem;
+        }
+
+        .status-text.operational {
+            color: var(--success);
+        }
+
+        .status-text.warning {
+            color: var(--warning);
+        }
+
+        .status-text.error {
+            color: var(--error);
+        }
+
+        .status-detail {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-top: 8px;
+            font-weight: 400;
+        }
+
+        .live-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            background: var(--success);
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+            box-shadow: 0 0 8px rgba(16, 185, 129, 0.4);
+        }
+
+        @keyframes pulse {
+            0% {
+                opacity: 1;
+                transform: scale(1);
+                box-shadow: 0 0 8px rgba(16, 185, 129, 0.4);
+            }
+            50% {
+                opacity: 0.7;
+                transform: scale(1.1);
+                box-shadow: 0 0 16px rgba(16, 185, 129, 0.6);
+            }
+            100% {
+                opacity: 1;
+                transform: scale(1);
+                box-shadow: 0 0 8px rgba(16, 185, 129, 0.4);
+            }
+        }
+
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            body {
+                padding: 16px;
+            }
+
+            .header {
+                margin-bottom: 32px;
+            }
+
+            .logo {
+                font-size: 1.875rem;
+            }
+
+            .metrics-grid {
+                grid-template-columns: 1fr;
+                gap: 16px;
+            }
+
+            .metric-card {
+                padding: 24px;
+            }
+
+            .metric-value {
+                font-size: 2.5rem;
+            }
+
+            .performance-card {
+                padding: 24px;
+            }
+
+            .performance-grid {
+                grid-template-columns: 1fr;
+                gap: 16px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .logo {
+                flex-direction: column;
+                gap: 8px;
+            }
+
+            .header h1 {
+                flex-direction: column;
+                gap: 8px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="/links" class="back-link">
+            <span>←</span>
+            Back to Links
+        </a>
+
+        <div class="header">
+            <div class="logo">
+                <span class="logo-icon">◧</span>
+                System Monitoring
+            </div>
+            <h1>
+                Live Performance Metrics
+                <span class="live-indicator"></span>
+            </h1>
+            <p>Real-time monitoring of system components and performance</p>
+        </div>
+
+        <div class="metrics-grid">
+            <div class="metric-card">
+                <div class="metric-value">99.9%</div>
+                <div class="metric-label">Uptime</div>
+                <div class="metric-change change-positive">
+                    <span>↗</span>
+                    +0.1% vs last week
+                </div>
+            </div>
+
+            <div class="metric-card">
+                <div class="metric-value">45ms</div>
+                <div class="metric-label">Response Time</div>
+                <div class="metric-change change-positive">
+                    <span>↘</span>
+                    -5ms vs last hour
+                </div>
+            </div>
+
+            <div class="metric-card">
+                <div class="metric-value">1,247</div>
+                <div class="metric-label">Requests/min</div>
+                <div class="metric-change change-positive">
+                    <span>↗</span>
+                    +12% vs last hour
+                </div>
+            </div>
+
+            <div class="metric-card">
+                <div class="metric-value">0</div>
+                <div class="metric-label">Error Count</div>
+                <div class="metric-change change-positive">
+                    <span>✓</span>
+                    No errors in 24h
+                </div>
+            </div>
+        </div>
+
+        <div class="performance-card">
+            <h3>
+                <span class="section-icon">⚙</span>
+                System Resources
+            </h3>
+            <div class="performance-grid">
+                <div class="performance-item">
+                    <div class="performance-icon">⧉</div>
+                    <h4>Memory Usage</h4>
+                    <div class="performance-value">67%</div>
+                    <div class="status-bar">
+                        <div class="status-fill warning" style="width: 67%;"></div>
+                    </div>
+                </div>
+
+                <div class="performance-item">
+                    <div class="performance-icon">⚡</div>
+                    <h4>CPU Usage</h4>
+                    <div class="performance-value">23%</div>
+                    <div class="status-bar">
+                        <div class="status-fill good" style="width: 23%;"></div>
+                    </div>
+                </div>
+
+                <div class="performance-item">
+                    <div class="performance-icon">◐</div>
+                    <h4>Disk Usage</h4>
+                    <div class="performance-value">34%</div>
+                    <div class="status-bar">
+                        <div class="status-fill good" style="width: 34%;"></div>
+                    </div>
+                </div>
+
+                <div class="performance-item">
+                    <div class="performance-icon">◯</div>
+                    <h4>Network I/O</h4>
+                    <div class="performance-value">125 MB/s</div>
+                    <div class="status-bar">
+                        <div class="status-fill good" style="width: 45%;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="performance-card">
+            <h3>
+                <span class="section-icon">⚡</span>
+                Trading System Components
+            </h3>
+            <div class="performance-grid">
+                <div class="performance-item">
+                    <div class="performance-icon">⟳</div>
+                    <h4>Signal Generator</h4>
+                    <div class="status-text operational">Operational</div>
+                    <div class="status-detail">Last signal: 2 min ago</div>
+                </div>
+
+                <div class="performance-item">
+                    <div class="performance-icon">◉</div>
+                    <h4>Market Data Feed</h4>
+                    <div class="status-text operational">Connected</div>
+                    <div class="status-detail">30+ symbols tracked</div>
+                </div>
+
+                <div class="performance-item">
+                    <div class="performance-icon">⚠</div>
+                    <h4>Alert System</h4>
+                    <div class="status-text operational">Active</div>
+                    <div class="status-detail">12 active alerts</div>
+                </div>
+
+                <div class="performance-item">
+                    <div class="performance-icon">↻</div>
+                    <h4>Cache System</h4>
+                    <div class="status-text operational">Optimized</div>
+                    <div class="status-detail">Hit rate: 94%</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // System monitoring JavaScript
+        let updateInterval;
+        let isUpdating = false;
+        let lastUpdateTime = null;
+
+        // Configuration
+        const CONFIG = {
+            updateIntervalMs: 30000, // 30 seconds
+            apiEndpoint: '/api/system/status',
+            retryAttempts: 3,
+            retryDelayMs: 5000
+        };
+
+        // DOM elements cache
+        const elements = {
+            uptime: null,
+            responseTime: null,
+            requestsPerMin: null,
+            errorCount: null,
+            cpuUsage: null,
+            cpuBar: null,
+            memoryUsage: null,
+            memoryBar: null,
+            diskUsage: null,
+            diskBar: null,
+            networkIO: null,
+            networkBar: null,
+            signalGenerator: null,
+            marketDataFeed: null,
+            alertSystem: null,
+            cacheSystem: null,
+            liveIndicator: null
+        };
+
+        // Cache DOM elements
+        function initializeElements() {
+            // Main metrics
+            elements.uptime = document.querySelector('.metric-card:nth-child(1) .metric-value');
+            elements.responseTime = document.querySelector('.metric-card:nth-child(2) .metric-value');
+            elements.requestsPerMin = document.querySelector('.metric-card:nth-child(3) .metric-value');
+            elements.errorCount = document.querySelector('.metric-card:nth-child(4) .metric-value');
+
+            // System resources
+            const systemGrid = document.querySelector('.performance-grid');
+            if (systemGrid) {
+                const resourceItems = systemGrid.querySelectorAll('.performance-item');
+                if (resourceItems.length >= 4) {
+                    // Memory
+                    elements.memoryUsage = resourceItems[0].querySelector('.performance-value');
+                    elements.memoryBar = resourceItems[0].querySelector('.status-fill');
+
+                    // CPU
+                    elements.cpuUsage = resourceItems[1].querySelector('.performance-value');
+                    elements.cpuBar = resourceItems[1].querySelector('.status-fill');
+
+                    // Disk
+                    elements.diskUsage = resourceItems[2].querySelector('.performance-value');
+                    elements.diskBar = resourceItems[2].querySelector('.status-fill');
+
+                    // Network
+                    elements.networkIO = resourceItems[3].querySelector('.performance-value');
+                    elements.networkBar = resourceItems[3].querySelector('.status-fill');
+                }
+            }
+
+            // Trading system components
+            const tradingGrid = document.querySelectorAll('.performance-grid')[1];
+            if (tradingGrid) {
+                const componentItems = tradingGrid.querySelectorAll('.performance-item');
+                if (componentItems.length >= 4) {
+                    elements.signalGenerator = componentItems[0].querySelector('.status-text');
+                    elements.marketDataFeed = componentItems[1].querySelector('.status-text');
+                    elements.alertSystem = componentItems[2].querySelector('.status-text');
+                    elements.cacheSystem = componentItems[3].querySelector('.status-text');
+                }
+            }
+
+            elements.liveIndicator = document.querySelector('.live-indicator');
+        }
+
+        // Format bytes to human readable format
+        function formatBytes(bytes) {
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        // Get status bar class based on percentage
+        function getStatusClass(percentage) {
+            if (percentage < 50) return 'good';
+            if (percentage < 80) return 'warning';
+            return 'critical';
+        }
+
+        // Update component status
+        function updateComponentStatus(element, status) {
+            if (!element) return;
+
+            element.className = 'status-text';
+            if (status === 'operational' || status === 'active' || status === 'connected' || status === 'optimized') {
+                element.classList.add('operational');
+                element.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+            } else {
+                element.classList.add('error');
+                element.textContent = 'Error';
+            }
+        }
+
+        // Update live indicator
+        function updateLiveIndicator(success) {
+            if (!elements.liveIndicator) return;
+
+            if (success) {
+                elements.liveIndicator.style.background = 'var(--success)';
+                elements.liveIndicator.style.boxShadow = '0 0 8px rgba(16, 185, 129, 0.4)';
+            } else {
+                elements.liveIndicator.style.background = 'var(--error)';
+                elements.liveIndicator.style.boxShadow = '0 0 8px rgba(239, 68, 68, 0.4)';
+            }
+        }
+
+        // Update UI with fetched data
+        function updateUI(data) {
+            try {
+                const { system, trading_system, performance } = data;
+
+                // Update main metrics
+                if (elements.uptime && system.uptime) {
+                    elements.uptime.textContent = system.uptime;
+                }
+
+                if (elements.responseTime && performance.response_time_ms) {
+                    elements.responseTime.textContent = `${performance.response_time_ms}ms`;
+                }
+
+                if (elements.requestsPerMin && performance.requests_per_minute) {
+                    elements.requestsPerMin.textContent = performance.requests_per_minute.toLocaleString();
+                }
+
+                if (elements.errorCount && performance.error_count_24h !== undefined) {
+                    elements.errorCount.textContent = performance.error_count_24h;
+                }
+
+                // Update system resources
+                if (system.cpu && elements.cpuUsage && elements.cpuBar) {
+                    elements.cpuUsage.textContent = `${system.cpu.percent}%`;
+                    elements.cpuBar.style.width = `${system.cpu.percent}%`;
+                    elements.cpuBar.className = `status-fill ${getStatusClass(system.cpu.percent)}`;
+                }
+
+                if (system.memory && elements.memoryUsage && elements.memoryBar) {
+                    elements.memoryUsage.textContent = `${system.memory.percent}%`;
+                    elements.memoryBar.style.width = `${system.memory.percent}%`;
+                    elements.memoryBar.className = `status-fill ${getStatusClass(system.memory.percent)}`;
+                }
+
+                if (system.disk && elements.diskUsage && elements.diskBar) {
+                    elements.diskUsage.textContent = `${system.disk.percent}%`;
+                    elements.diskBar.style.width = `${system.disk.percent}%`;
+                    elements.diskBar.className = `status-fill ${getStatusClass(system.disk.percent)}`;
+                }
+
+                if (system.network && elements.networkIO && elements.networkBar) {
+                    elements.networkIO.textContent = `${system.network.sent_mb + system.network.recv_mb} MB/s`;
+                    const networkPercent = Math.min(((system.network.sent_mb + system.network.recv_mb) / 1000) * 100, 100);
+                    elements.networkBar.style.width = `${networkPercent}%`;
+                    elements.networkBar.className = `status-fill ${getStatusClass(networkPercent)}`;
+                }
+
+                // Update trading system components
+                if (trading_system.components) {
+                    updateComponentStatus(elements.signalGenerator, trading_system.components.signal_generator);
+                    updateComponentStatus(elements.marketDataFeed, trading_system.components.market_data_feed);
+                    updateComponentStatus(elements.alertSystem, trading_system.components.alert_system);
+                    updateComponentStatus(elements.cacheSystem, trading_system.components.cache_system);
+                }
+
+                updateLiveIndicator(true);
+                lastUpdateTime = new Date();
+
+                console.log('✅ System monitoring data updated successfully');
+
+            } catch (error) {
+                console.error('❌ Error updating UI:', error);
+                updateLiveIndicator(false);
+            }
+        }
+
+        // Fetch system status from API
+        async function fetchSystemStatus(retryCount = 0) {
+            if (isUpdating) return;
+
+            isUpdating = true;
+
+            try {
+                console.log('🔄 Fetching system status...');
+
+                const response = await fetch(CONFIG.apiEndpoint, {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    cache: 'no-cache'
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+
+                updateUI(data);
+
+            } catch (error) {
+                console.error('❌ Failed to fetch system status:', error);
+                updateLiveIndicator(false);
+
+                // Retry logic
+                if (retryCount < CONFIG.retryAttempts) {
+                    console.log(`🔄 Retrying in ${CONFIG.retryDelayMs}ms... (attempt ${retryCount + 1}/${CONFIG.retryAttempts})`);
+                    setTimeout(() => {
+                        fetchSystemStatus(retryCount + 1);
+                    }, CONFIG.retryDelayMs);
+                } else {
+                    console.error('❌ Max retry attempts reached. Will try again on next interval.');
+                }
+            } finally {
+                isUpdating = false;
+            }
+        }
+
+        // Start automatic updates
+        function startMonitoring() {
+            console.log('🚀 Starting system monitoring...');
+
+            // Initial fetch
+            fetchSystemStatus();
+
+            // Set up interval
+            updateInterval = setInterval(() => {
+                fetchSystemStatus();
+            }, CONFIG.updateIntervalMs);
+
+            console.log(`⏰ Auto-refresh enabled (every ${CONFIG.updateIntervalMs / 1000} seconds)`);
+        }
+
+        // Stop automatic updates
+        function stopMonitoring() {
+            if (updateInterval) {
+                clearInterval(updateInterval);
+                updateInterval = null;
+                console.log('⏸️ System monitoring stopped');
+            }
+        }
+
+        // Page visibility API for efficient updates
+        function handleVisibilityChange() {
+            if (document.hidden) {
+                stopMonitoring();
+                console.log('📱 Page hidden - monitoring paused');
+            } else {
+                startMonitoring();
+                console.log('📱 Page visible - monitoring resumed');
+            }
+        }
+
+        // Initialize when DOM is loaded
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('🎯 System monitoring dashboard initialized');
+
+            // Cache DOM elements
+            initializeElements();
+
+            // Start monitoring
+            startMonitoring();
+
+            // Handle page visibility changes
+            document.addEventListener('visibilitychange', handleVisibilityChange);
+
+            // Handle page unload
+            window.addEventListener('beforeunload', function() {
+                stopMonitoring();
+            });
+        });
+
+        // Global functions for debugging
+        window.systemMonitoring = {
+            start: startMonitoring,
+            stop: stopMonitoring,
+            fetchNow: () => fetchSystemStatus(),
+            getLastUpdate: () => lastUpdateTime,
+            config: CONFIG
+        };
+    </script>
+</body>
+</html>

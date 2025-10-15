@@ -67,25 +67,35 @@ class ConfluenceCacheService:
             
             # Extract interpretations - preserve existing ones
             interpretations = analysis_result.get('interpretations', {})
+
+            # DEBUG: Log what we received
+            self.logger.info(f"[INTERP-CACHE] {symbol} - Received interpretations at top level: {list(interpretations.keys()) if interpretations else 'NONE'}")
+
             # Check for market_interpretations which contains proper formatted interpretations
             if not interpretations and 'results' in analysis_result:
                 results = analysis_result.get('results', {})
                 if 'market_interpretations' in results:
                     # Convert market_interpretations list to dict format
                     market_interps = results['market_interpretations']
+                    self.logger.info(f"[INTERP-CACHE] {symbol} - Found {len(market_interps)} market_interpretations in results")
                     interpretations = {}
                     for interp in market_interps:
                         comp_name = interp.get('component', '')
                         interp_text = interp.get('interpretation', '')
                         if comp_name and interp_text:
                             interpretations[comp_name] = interp_text
+                            self.logger.debug(f"[INTERP-CACHE] {symbol} - Extracted {comp_name}: {interp_text[:80]}")
+                    self.logger.info(f"[INTERP-CACHE] {symbol} - Converted to dict with keys: {list(interpretations.keys())}")
             
             # Only generate basic interpretations if absolutely none exist
             if not interpretations:
                 # Generate basic interpretations if not present
+                self.logger.warning(f"[INTERP-CACHE] {symbol} - No interpretations found, generating basic fallbacks")
                 interpretations = self._generate_basic_interpretations(
                     symbol, confluence_score, sentiment, components
                 )
+            else:
+                self.logger.info(f"[INTERP-CACHE] {symbol} - Using {len(interpretations)} interpretations from analysis_result")
             
             # Create the breakdown structure expected by mobile-data endpoint
             breakdown = {
@@ -109,7 +119,15 @@ class ConfluenceCacheService:
                 json.dumps(breakdown).encode(),
                 exptime=CacheTTL.LONG  # 5 minutes TTL
             )
-            
+
+            # DEBUG: Log what we're actually caching
+            cached_interp_keys = list(breakdown.get('interpretations', {}).keys())
+            self.logger.info(f"[INTERP-CACHE] {symbol} - CACHED breakdown with {len(cached_interp_keys)} interpretations: {cached_interp_keys}")
+            if cached_interp_keys:
+                sample_key = cached_interp_keys[0]
+                sample_text = breakdown['interpretations'][sample_key]
+                self.logger.info(f"[INTERP-CACHE] {symbol} - Sample cached {sample_key}: {sample_text[:100]}")
+
             # Also cache a simple score version
             simple_key = CacheKeys.confluence_score(symbol)
             simple_data = {
@@ -122,7 +140,7 @@ class ConfluenceCacheService:
                 json.dumps(simple_data).encode(),
                 exptime=CacheTTL.LONG
             )
-            
+
             self.logger.info(f"✅ Cached confluence breakdown for {symbol}: {confluence_score:.2f} ({sentiment})")
             return True
             

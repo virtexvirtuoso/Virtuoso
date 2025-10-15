@@ -131,7 +131,7 @@ class NamingMapper:
     
     def _log_initialization(self):
         """Log initialization details for debugging."""
-        logger.info(f"NamingMapper initialized with {len(self.NAMING_MAPPINGS)} mappings")
+        logger.debug(f"NamingMapper initialized with {len(self.NAMING_MAPPINGS)} mappings")
         logger.debug(f"Handling variations for: {list(set(self.NAMING_MAPPINGS.values()))}")
     
     def normalize_key(self, key: str, context: Optional[str] = None) -> str:

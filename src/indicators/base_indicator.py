@@ -53,6 +53,7 @@ from src.core.logger import Logger
 import inspect
 import copy
 from src.core.validation import ValidationService, ValidationContext
+from src.utils.normalization import MultiIndicatorNormalizer, NormalizationConfig
 
 # BaseIndicator API Standardization:
 # - All indicators now use calculate() as the standard entry point
@@ -218,7 +219,12 @@ class BaseIndicator(ABC):
         else:
             self.cache = None
             self.logger.debug("Indicator caching disabled")
-        
+
+        # Initialize signal normalization system (Phase 1 - Week 1)
+        # This ensures all indicators use consistent z-score normalization
+        self.normalizer = MultiIndicatorNormalizer()
+        self.logger.debug("Signal normalizer initialized")
+
         # Timeframe config from root level (optional for some indicators)
         self.TIMEFRAME_CONFIG = {}
         if 'timeframes' in config:
@@ -485,6 +491,9 @@ class BaseIndicator(ABC):
                 return
                 
             comp_total = sum(self.component_weights.values())
+            if comp_total < 1e-10:
+                self.logger.error(f"Component weights sum to zero or negative: {comp_total}")
+                raise ValueError("Component weights must sum to a positive value")
             if not np.isclose(comp_total, 1.0, rtol=1e-5):
                 self.logger.warning(f"Component weights sum to {comp_total}, normalizing")
                 self.component_weights = {k: v/comp_total for k, v in self.component_weights.items()}
@@ -965,7 +974,11 @@ class BaseIndicator(ABC):
         return self._REQUIRED_DATA.get(self.indicator_type, [])
 
     def _normalize_value(self, value: float, min_val: float, max_val: float, scale: float = 100.0) -> float:
-        """Normalize a value to a given scale (default 0-100)."""
+        """Normalize a value to a given scale (default 0-100).
+
+        DEPRECATED: Use register_indicator_normalization() and normalize_indicator_value()
+        for new code. This method is kept for backward compatibility only.
+        """
         try:
             if max_val == min_val:
                 return scale/2  # Return middle value
@@ -974,6 +987,92 @@ class BaseIndicator(ABC):
         except Exception as e:
             self.logger.error(f"Error normalizing value: {str(e)}")
             return scale/2
+
+    def register_indicator_normalization(
+        self,
+        indicator_name: str,
+        config: Optional[NormalizationConfig] = None
+    ) -> None:
+        """
+        Register an indicator for z-score normalization (Phase 1 - Week 1).
+
+        This should be called in __init__ for each indicator that needs normalization.
+
+        Args:
+            indicator_name: Name of the indicator (e.g., 'cvd', 'obv', 'adl')
+            config: Normalization configuration (uses default if None)
+
+        Example:
+            >>> # In indicator __init__:
+            >>> self.register_indicator_normalization('cvd',
+            ...     NormalizationConfig.for_accumulative_indicator())
+        """
+        self.normalizer.register_indicator(indicator_name, config)
+        self.logger.debug(f"Registered normalization for indicator: {indicator_name}")
+
+    def update_indicator_value(self, indicator_name: str, value: float) -> None:
+        """
+        Update the rolling statistics for an indicator (Phase 1 - Week 1).
+
+        Call this BEFORE normalizing to update the rolling window.
+
+        Args:
+            indicator_name: Name of the indicator
+            value: Raw value to add to rolling statistics
+
+        Example:
+            >>> cvd_raw = 1234.56
+            >>> self.update_indicator_value('cvd', cvd_raw)
+        """
+        self.normalizer.update(indicator_name, value)
+
+    def normalize_indicator_value(self, indicator_name: str, value: float) -> float:
+        """
+        Normalize an indicator value using z-score normalization (Phase 1 - Week 1).
+
+        Returns z-score typically in range [-3, +3], winsorized to prevent extreme outliers.
+        Returns 0.0 if insufficient historical data.
+
+        Args:
+            indicator_name: Name of the indicator
+            value: Value to normalize
+
+        Returns:
+            Normalized z-score (typically -3 to +3)
+
+        Example:
+            >>> cvd_raw = 1250.00
+            >>> self.update_indicator_value('cvd', cvd_raw)  # Update stats first
+            >>> cvd_normalized = self.normalize_indicator_value('cvd', cvd_raw)
+            >>> print(f"Z-score: {cvd_normalized:.2f}")
+        """
+        return self.normalizer.normalize(indicator_name, value)
+
+    def is_indicator_normalizer_ready(self, indicator_name: str) -> bool:
+        """
+        Check if normalizer has enough samples for reliable z-scores (Phase 1 - Week 1).
+
+        Args:
+            indicator_name: Name of the indicator
+
+        Returns:
+            True if normalizer has sufficient samples, False otherwise
+        """
+        return self.normalizer.is_ready(indicator_name)
+
+    def get_indicator_normalization_stats(self, indicator_name: str) -> Dict[str, float]:
+        """
+        Get current normalization statistics for an indicator (Phase 1 - Week 1).
+
+        Useful for debugging and monitoring.
+
+        Args:
+            indicator_name: Name of the indicator
+
+        Returns:
+            Dict with 'mean', 'std', 'samples', 'ready' keys
+        """
+        return self.normalizer.get_stats(indicator_name)
 
     def _compute_weighted_score(self, scores: Dict[str, float]) -> float:
         """Calculate weighted score from components."""

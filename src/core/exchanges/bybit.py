@@ -5054,6 +5054,10 @@ class BybitExchange(BaseExchange):
                         turnover24h = self.safe_float(ticker, 'turnover24h') or 0
 
                         # Use turnover24h as quoteVolume for consistency with top_symbols logic
+                        # Bybit uses 'price24hPcnt' as decimal (e.g., 0.05 for 5%)
+                        price_change_decimal = self.safe_float(ticker, 'price24hPcnt') or 0
+                        price_change_percent = price_change_decimal * 100  # Convert to percentage
+
                         normalized_ticker = {
                             'symbol': symbol,  # Keep Bybit format (e.g., 'BTCUSDT')
                             'quoteVolume': turnover24h,  # Use turnover as quote volume
@@ -5061,7 +5065,7 @@ class BybitExchange(BaseExchange):
                             'turnover24h': turnover24h,  # Keep original field
                             'lastPrice': self.safe_float(ticker, 'lastPrice') or 0,
                             'volume24h': volume24h,
-                            'priceChangePercent': self.safe_float(ticker, 'priceChangePercent') or 0
+                            'priceChangePercent': price_change_percent  # 24h price change as percentage
                         }
 
                         normalized_tickers.append(normalized_ticker)

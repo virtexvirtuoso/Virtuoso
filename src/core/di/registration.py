@@ -522,7 +522,16 @@ def register_monitoring_services(container: ServiceContainer) -> ServiceContaine
                 exchange_manager = await container.get_service(ExchangeManager)
             except Exception as e:
                 logger.debug(f"ExchangeManager not available: {e}")
-                
+
+            # CRITICAL FIX: Get primary exchange for market-wide ticker fetching
+            primary_exchange = None
+            if exchange_manager:
+                try:
+                    primary_exchange = await exchange_manager.get_primary_exchange()
+                    logger.debug(f"Primary exchange for MarketMonitor: {getattr(primary_exchange, 'id', 'unknown')}")
+                except Exception as e:
+                    logger.debug(f"Could not get primary exchange: {e}")
+
             try:
                 from ...core.database.database_client import DatabaseClient
                 database_client = await container.get_service(DatabaseClient)
@@ -573,6 +582,7 @@ def register_monitoring_services(container: ServiceContainer) -> ServiceContaine
             
             # Create monitor with proper constructor injection
             monitor = MarketMonitor(
+                exchange=primary_exchange,  # ADDED: Pass exchange for market-wide ticker fetching
                 config=config_dict,
                 logger=logging.getLogger('src.monitoring.monitor'),
                 exchange_manager=exchange_manager,

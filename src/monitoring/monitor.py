@@ -304,8 +304,11 @@ class MarketMonitor:
                 from .cache_data_aggregator import CacheDataAggregator
                 from src.api.cache_adapter_direct import DirectCacheAdapter
                 cache_adapter = DirectCacheAdapter()
-                self.cache_data_aggregator = CacheDataAggregator(cache_adapter, self.config)
-                self.logger.info("✅ Cache data aggregator initialized - circular dependency fixed")
+                # CRITICAL: Pass exchange for market-wide ticker fetching
+                # DEBUG: Check if exchange exists before passing
+                self.logger.info(f"🔍 DEBUG: self.exchange = {self.exchange}, type = {type(self.exchange)}, id = {getattr(self.exchange, 'id', 'NO_ID')}")
+                self.cache_data_aggregator = CacheDataAggregator(cache_adapter, self.config, self.exchange)
+                self.logger.info("✅ Cache data aggregator initialized with exchange for market-wide metrics")
             except Exception as e:
                 self.logger.warning(f"Cache data aggregator initialization failed: {e}")
                 self.cache_data_aggregator = None
@@ -1417,18 +1420,10 @@ class MarketMonitor:
             for component, score in components.items():
                 self.logger.debug(f"{component}: {score}")
             
-            # Display comprehensive confluence score table
-            from src.core.formatting import LogFormatter
-            formatter_results = result.get('results', {})
-            formatted_table = LogFormatter.format_enhanced_confluence_score_table(
-                symbol=symbol,
-                confluence_score=confluence_score,
-                components=components,
-                results=formatter_results,
-                weights=result.get('metadata', {}).get('weights', {}),
-                reliability=reliability
-            )
-            self.logger.info(formatted_table)
+            # Note: Confluence breakdown is already logged by confluence.py:611 with full quality metrics
+            # Removing duplicate logging here to avoid log spam and confusion
+            # The breakdown in confluence.py includes: Base Score, Quality Impact, Consensus, Confidence, Disagreement
+            # If you need to re-enable this, ensure all quality parameters are passed to avoid incomplete breakdowns
             
             # Generate signal if score meets thresholds
             self.logger.info(f"=== Signal Generation Check for {symbol} ===")

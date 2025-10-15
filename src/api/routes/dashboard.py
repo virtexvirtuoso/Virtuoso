@@ -161,29 +161,35 @@ async def get_dashboard_overview() -> Dict[str, Any]:
         if USE_DIRECT_CACHE:
             overview = await direct_cache.get_dashboard_overview()
 
-            # CRITICAL FIX: Enrich with breakdown data
-            signals = overview.get('signals', [])
-            if signals:
-                enriched_signals = []
-                for signal in signals:
-                    symbol = signal.get('symbol')
-                    if symbol:
-                        # Query breakdown cache for this symbol
-                        breakdown = await confluence_cache_service.get_cached_breakdown(symbol)
-                        if breakdown:
-                            # Enrich signal with breakdown data
-                            signal['components'] = breakdown.get('components', {})
-                            signal['interpretations'] = breakdown.get('interpretations', {})
-                            signal['reliability'] = breakdown.get('reliability', 0)
-                            signal['has_breakdown'] = True
-                        else:
-                            signal['has_breakdown'] = False
-                    enriched_signals.append(signal)
+            # TYPE SAFETY: Ensure overview is a dict before calling .get()
+            if not isinstance(overview, dict):
+                logger.error(f"Direct cache returned non-dict type: {type(overview)}")
+                # Fall through to try other methods instead of crashing
+            else:
+                # CRITICAL FIX: Enrich with breakdown data
+                signals = overview.get('signals', [])
+                if signals:
+                    enriched_signals = []
+                    for signal in signals:
+                        symbol = signal.get('symbol')
+                        if symbol:
+                            # Query breakdown cache for this symbol
+                            breakdown = await confluence_cache_service.get_cached_breakdown(symbol)
+                            # TYPE SAFETY: Check breakdown is a dict before calling .get()
+                            if breakdown and isinstance(breakdown, dict):
+                                # Enrich signal with breakdown data
+                                signal['components'] = breakdown.get('components', {})
+                                signal['interpretations'] = breakdown.get('interpretations', {})
+                                signal['reliability'] = breakdown.get('reliability', 0)
+                                signal['has_breakdown'] = True
+                            else:
+                                signal['has_breakdown'] = False
+                        enriched_signals.append(signal)
 
-                overview['signals'] = enriched_signals
-                logger.info(f"✅ Enriched {len(enriched_signals)} signals with breakdown data")
+                    overview['signals'] = enriched_signals
+                    logger.info(f"✅ Enriched {len(enriched_signals)} signals with breakdown data")
 
-            return overview
+                return overview
 
         # Check Memcached for real-time status
         symbol_count = 0
@@ -196,16 +202,24 @@ async def get_dashboard_overview() -> Dict[str, Any]:
             # Check if we have symbols data
             symbols_data = mc_client.get(b'virtuoso:symbols')
             if symbols_data:
-                data = json.loads(symbols_data.decode('utf-8'))
-                symbol_count = len(data.get('symbols', []))
+                try:
+                    data = json.loads(symbols_data.decode('utf-8'))
+                    # TYPE SAFETY: Ensure data is a dict
+                    if isinstance(data, dict):
+                        symbol_count = len(data.get('symbols', []))
+                except (json.JSONDecodeError, AttributeError) as e:
+                    logger.debug(f"Failed to parse symbols_data: {e}")
                 logger.info(f"Memcached has {symbol_count} symbols with confluence scores")
 
             mc_client.close()
         except Exception as mc_error:
             logger.debug(f"Memcached check: {mc_error}")
 
+        # DISABLED: Dashboard integration proxy tries to connect to non-existent port 8004
+        # Since web_server.py has its own ExchangeManager, we don't need the proxy
         # Get dashboard integration service
-        integration = get_dashboard_integration()
+        integration = None  # Disabled - using direct data access instead
+        # integration = get_dashboard_integration()
         if not integration:
             logger.warning("Dashboard integration service not available")
             return {
@@ -228,6 +242,27 @@ async def get_dashboard_overview() -> Dict[str, Any]:
         # Get dashboard overview from integration service
         overview_data = await integration.get_dashboard_overview()
 
+        # TYPE SAFETY: Ensure overview_data is a dict before calling .get()
+        if not isinstance(overview_data, dict):
+            logger.error(f"Integration returned non-dict type: {type(overview_data)}, value: {overview_data}")
+            # Return fallback data instead of crashing
+            return {
+                "status": "error",
+                "message": "Integration service returned invalid data type",
+                "timestamp": datetime.utcnow().isoformat(),
+                "signals": {"total": 0, "strong": 0, "medium": 0, "weak": 0},
+                "alerts": {"total": 0, "critical": 0, "warning": 0},
+                "alpha_opportunities": {"total": 0, "high_confidence": 0, "medium_confidence": 0},
+                "system_status": {
+                    "monitoring": "error",
+                    "data_feed": "disconnected",
+                    "alerts": "disabled",
+                    "websocket": "disconnected",
+                    "last_update": 0,
+                    "symbols_tracked": 0
+                }
+            }
+
         # CRITICAL FIX: Enrich signals with breakdown data
         signals = overview_data.get('signals', [])
         if signals:
@@ -237,7 +272,8 @@ async def get_dashboard_overview() -> Dict[str, Any]:
                 if symbol:
                     # Query breakdown cache for this symbol
                     breakdown = await confluence_cache_service.get_cached_breakdown(symbol)
-                    if breakdown:
+                    # TYPE SAFETY: Check breakdown is a dict before calling .get()
+                    if breakdown and isinstance(breakdown, dict):
                         # Enrich signal with breakdown data
                         signal['components'] = breakdown.get('components', {})
                         signal['interpretations'] = breakdown.get('interpretations', {})
@@ -258,7 +294,9 @@ async def get_dashboard_overview() -> Dict[str, Any]:
         return overview_data
 
     except Exception as e:
-        logger.error(f"Error getting dashboard overview: {e}")
+        import traceback
+        tb = traceback.format_exc()
+        logger.error(f"Error getting dashboard overview: {e}\nTraceback:\n{tb}")
         raise HTTPException(status_code=500, detail=f"Error getting dashboard overview: {str(e)}")
 
 
@@ -604,40 +642,77 @@ async def confluence_analysis_page():
 async def get_confluence_analysis(symbol: str) -> Dict[str, Any]:
     """Get full confluence analysis for a specific symbol."""
     try:
-        # Get dashboard integration
-        integration = get_dashboard_integration()
-        if not integration:
-            return {"error": "Dashboard integration not available", "analysis": None}
-            
-        # Check if confluence cache has data for this symbol
-        if hasattr(integration, '_confluence_cache') and symbol in integration._confluence_cache:
-            cache_data = integration._confluence_cache[symbol]
-            formatted_analysis = cache_data.get('formatted_analysis', None)
-            
-            if formatted_analysis:
-                return {
-                    "symbol": symbol,
-                    "analysis": formatted_analysis,
-                    "timestamp": cache_data.get('timestamp', 0),
-                    "score": cache_data.get('score', 50)
-                }
-            else:
-                return {
-                    "symbol": symbol,
-                    "analysis": f"Detailed analysis for {symbol} coming soon!",
-                    "timestamp": cache_data.get('timestamp', 0),
-                    "score": cache_data.get('score', 50)
-                }
-        else:
+        # CRITICAL FIX: Query confluence_cache_service directly instead of integration cache
+        from src.core.cache.confluence_cache_service import confluence_cache_service
+
+        # Try to get cached breakdown for this symbol
+        breakdown = await confluence_cache_service.get_cached_breakdown(symbol)
+
+        if breakdown and isinstance(breakdown, dict):
+            # Format the breakdown into readable analysis text
+            score = breakdown.get('confluence_score', 50)
+            components = breakdown.get('components', {})
+            interpretations = breakdown.get('interpretations', {})
+            reliability = breakdown.get('reliability', 0)
+
+            # Build formatted analysis text
+            analysis_lines = []
+            analysis_lines.append(f"═══════════════════════════════════════════════════════════════")
+            analysis_lines.append(f"  CONFLUENCE ANALYSIS: {symbol}")
+            analysis_lines.append(f"═══════════════════════════════════════════════════════════════")
+            analysis_lines.append(f"")
+            analysis_lines.append(f"Overall Confluence Score: {score:.2f}/100")
+            analysis_lines.append(f"Signal Reliability: {reliability:.1f}%")
+            analysis_lines.append(f"")
+            analysis_lines.append(f"───────────────────────────────────────────────────────────────")
+            analysis_lines.append(f"COMPONENT SCORES")
+            analysis_lines.append(f"───────────────────────────────────────────────────────────────")
+
+            # Display component scores
+            for component, component_score in components.items():
+                bar_length = int(component_score / 2)  # Scale to 50 chars max
+                bar = "█" * bar_length + "░" * (50 - bar_length)
+                analysis_lines.append(f"{component.upper():20s} [{bar}] {component_score:.2f}")
+
+            analysis_lines.append(f"")
+            analysis_lines.append(f"───────────────────────────────────────────────────────────────")
+            analysis_lines.append(f"DETAILED INTERPRETATIONS")
+            analysis_lines.append(f"───────────────────────────────────────────────────────────────")
+            analysis_lines.append(f"")
+
+            # Display interpretations
+            for component, interpretation in interpretations.items():
+                analysis_lines.append(f"▸ {component.upper()}")
+                analysis_lines.append(f"  {interpretation}")
+                analysis_lines.append(f"")
+
+            analysis_lines.append(f"═══════════════════════════════════════════════════════════════")
+
+            formatted_analysis = "\n".join(analysis_lines)
+
             return {
                 "symbol": symbol,
-                "analysis": f"No analysis available for {symbol}",
-                "timestamp": 0,
-                "score": 50
+                "analysis": formatted_analysis,
+                "timestamp": breakdown.get('timestamp', 0),
+                "score": score,
+                "components": components,
+                "interpretations": interpretations,
+                "reliability": reliability
             }
-            
+
+        # Fallback: No data available
+        return {
+            "symbol": symbol,
+            "analysis": f"No analysis available for {symbol}. The monitoring system may not be tracking this symbol yet.",
+            "timestamp": 0,
+            "score": 50
+        }
+
     except Exception as e:
         logger.error(f"Error getting confluence analysis: {e}")
+        import traceback
+        tb = traceback.format_exc()
+        logger.error(f"Traceback:\n{tb}")
         return {"error": str(e), "analysis": None}
 
 @router.get("/confluence-scores")  
@@ -792,357 +867,145 @@ async def get_mobile_dashboard_data_direct(request: Request) -> Dict[str, Any]:
 
 @router.get("/mobile-data")
 async def get_mobile_dashboard_data() -> Dict[str, Any]:
-    """Optimized endpoint for mobile dashboard with shared cache bridge integration."""
+    """
+    REFACTORED: Optimized endpoint for mobile dashboard using cache adapter with fallback.
+
+    This endpoint now uses the WebServiceCacheAdapter which:
+    - Automatically fetches live data when cache is stale/empty
+    - Handles schema translation from cache to dashboard format
+    - Provides confluence scores with component breakdowns
+    - Includes proper error handling and fallback mechanisms
+
+    Previously: 210 lines of direct memcached access with no fallback
+    Now: Clean adapter pattern with automatic live data fallback
+    """
     try:
-        # CRITICAL FIX: Use shared cache bridge for live mobile data
+        # CRITICAL FIX: Use web cache adapter with automatic fallback to live data
         if web_cache:
             try:
                 mobile_data = await web_cache.get_mobile_data()
-                if mobile_data and mobile_data.get('confluence_scores'):
-                    logger.info(f"✅ Mobile data from shared cache: {len(mobile_data.get('confluence_scores', []))} confluence scores")
-                    return mobile_data
-                logger.warning("Shared cache returned empty mobile data")
-            except Exception as e:
-                logger.error(f"Shared cache error in mobile data: {e}")
 
-        # Fallback to direct memcached access
-        import aiomcache
-        import json
+                if mobile_data and mobile_data.get('data_source') != 'fallback':
+                    confluence_count = len(mobile_data.get('confluence_scores', []))
+                    logger.info(f"✅ Mobile data from shared cache: {confluence_count} confluence scores, source={mobile_data.get('data_source')}")
 
-        # Get integration if available
-        integration = get_dashboard_integration()
+                    # Flatten structure for frontend compatibility
+                    # JavaScript expects flat structure: data.market_regime, data.gainers, etc.
+                    market_overview = mobile_data.get('market_overview', {})
+                    top_movers = mobile_data.get('top_movers', {})
+                    confluence_scores = mobile_data.get('confluence_scores', [])
 
-        # Fetch actual data from cache
-        cache_client = aiomcache.Client("localhost", 11211)
+                    # Add flattened fields at top level while keeping nested for backward compatibility
+                    mobile_data.update({
+                        # Flatten market_overview fields to top level
+                        "market_regime": market_overview.get("market_regime", "NEUTRAL"),
+                        "regime": market_overview.get("market_regime", "NEUTRAL"),  # Alias
+                        "trend_strength": market_overview.get("trend_strength", 0),
+                        "trend_score": market_overview.get("trend_strength", 0),  # Alias
 
-        # Get overview and breadth data
-        overview_data = await cache_client.get(b"market:overview")
-        breadth_data = await cache_client.get(b"market:breadth")
-        
-        # Parse market overview with real data
-        market_overview = {
-            "market_regime": "NEUTRAL",
-            "trend_strength": 0,
-            "current_volatility": 0,
-            "avg_volatility": 20,
-            "btc_dominance": 0,
-            "total_volume_24h": 0
-        }
-        
-        if overview_data:
-            overview = json.loads(overview_data.decode())
-            market_overview = {
-                "market_regime": overview.get("market_regime", "NEUTRAL"),
-                "trend_strength": overview.get("trend_strength", 0),
-                "current_volatility": overview.get("current_volatility", overview.get("volatility", 0)),
-                "avg_volatility": overview.get("avg_volatility", 20),
-                "btc_dominance": overview.get("btc_dominance", 0),
-                "total_volume_24h": overview.get("total_volume_24h", overview.get("total_volume", 0)),
-                "volatility": overview.get("current_volatility", overview.get("volatility", 0))  # Add for compatibility
-            }
-        
-        # Parse market breadth
-        market_breadth = {
-            "up_count": 0,
-            "down_count": 0,
-            "breadth_percentage": 50.0,
-            "sentiment": "neutral"
-        }
-        
-        if breadth_data:
-            breadth = json.loads(breadth_data.decode())
-            market_breadth = {
-                "up_count": breadth.get("up_count", 0),
-                "down_count": breadth.get("down_count", 0),
-                "breadth_percentage": breadth.get("breadth_percentage", 50.0),
-                "sentiment": breadth.get("sentiment", "neutral")
-            }
-        
-        await cache_client.close()
-        
-        # Response structure with real cache data
-        response = {
-            "market_overview": market_overview,
-            "market_breadth": market_breadth,
-            "confluence_scores": [],
-            "top_movers": {
-                "gainers": [],
-                "losers": []
-            },
-            "timestamp": datetime.utcnow().isoformat(),
-            "status": "success"
-        }
-        
-        # Try to get data from main service first
-        try:
-            async with aiohttp.ClientSession() as session:
-                # Get signals from main service
-                async with session.get("http://localhost:8004/api/dashboard-cached/signals", timeout=2) as resp:
-                    if resp.status == 200:
-                        signals = await resp.json()
-                        if signals and isinstance(signals, list) and len(signals) > 0:
-                            logger.info(f"Using {len(signals)} signals from main service")
-                            response["status"] = "main_service"
-                            
-                            # Process signals for mobile format
-                            confluence_scores = []
-                            for signal in signals[:15]:
-                                confluence_scores.append({
-                                    "symbol": signal.get('symbol', ''),
-                                    "score": round(signal.get('score', 50), 2),
-                                    "price": signal.get('price', 0),
-                                    "change_24h": round(signal.get('change_24h', 0), 2),
-                                    "volume_24h": signal.get('volume', 0),
-                                    "components": signal.get('components', {
-                                        "technical": 50,
-                                        "volume": 50,
-                                        "orderflow": 50,
-                                        "sentiment": 50,
-                                        "orderbook": 50,
-                                        "price_structure": 50
-                                    })
-                                })
-                            response["confluence_scores"] = confluence_scores
-                            
-                            # Calculate top movers from signals
-                            sorted_signals = sorted(signals, key=lambda x: x.get('change_24h', 0))
-                            gainers = [s for s in sorted_signals if s.get('change_24h', 0) > 0][-5:]
-                            losers = [s for s in sorted_signals if s.get('change_24h', 0) < 0][:5]
-                            
-                            if gainers:
-                                response["top_movers"]["gainers"] = [
-                                    {
-                                        "symbol": g['symbol'],
-                                        "change": round(g['change_24h'], 2),
-                                        "price": g.get('price', 0),
-                                        "volume_24h": g.get('volume', 0),
-                                        "display_symbol": g['symbol'].replace('USDT', '')
-                                    } for g in reversed(gainers)
-                                ]
-                            
-                            if losers:
-                                response["top_movers"]["losers"] = [
-                                    {
-                                        "symbol": l['symbol'],
-                                        "change": round(l['change_24h'], 2),
-                                        "price": l.get('price', 0),
-                                        "volume_24h": l.get('volume', 0),
-                                        "display_symbol": l['symbol'].replace('USDT', '')
-                                    } for l in losers
-                                ]
-                            
-                            # If we got good data from main service, return it
-                            if response["confluence_scores"]:
-                                return response
-                                
-        except Exception as e:
-            logger.debug(f"Could not fetch from main service: {e}")
-        
-        if not integration:
-            response["status"] = "no_integration"
-            # Still try to get market data directly
-            try:
-                async with aiohttp.ClientSession() as session:
-                    url = "https://api.bybit.com/v5/market/tickers?category=linear"
-                    async with session.get(url, timeout=5) as resp:
-                        if resp.status == 200:
-                            bybit_data = await resp.json()
-                            if bybit_data.get('retCode') == 0 and 'result' in bybit_data:
-                                tickers = bybit_data['result']['list']
-                                
-                                # Process all symbols
-                                all_changes = []
-                                for ticker in tickers:
-                                    try:
-                                        symbol = ticker['symbol']
-                                        if symbol.endswith('USDT') and 'PERP' not in symbol:
-                                            change_24h = float(ticker['price24hPcnt']) * 100
-                                            turnover_24h = float(ticker['turnover24h'])
-                                            
-                                            if turnover_24h > 500000:  # $500k minimum
-                                                all_changes.append({
-                                                    "symbol": symbol,
-                                                    "change": round(change_24h, 2),
-                                                    "turnover": turnover_24h,
-                                                    "price": float(ticker.get('lastPrice', 0)),
-                                                    "volume_24h": float(ticker.get('volume24h', 0))
-                                                })
-                                    except (ValueError, KeyError):
-                                        continue
-                                
-                                # Sort and get top gainers
-                                gainers = [x for x in all_changes if x['change'] > 0]
-                                gainers.sort(key=lambda x: x['change'], reverse=True)
-                                response["top_movers"]["gainers"] = [
-                                    {
-                                        "symbol": g['symbol'], 
-                                        "change": g['change'],
-                                        "price": g['price'],
-                                        "volume_24h": g['volume_24h'],
-                                        "display_symbol": g['symbol'].replace('1000', '').replace('USDT', '')
-                                    } 
-                                    for g in gainers[:5]
-                                ]
-                                
-                                # Sort and get top losers
-                                losers = [x for x in all_changes if x['change'] < 0]
-                                losers.sort(key=lambda x: x['change'])
-                                response["top_movers"]["losers"] = [
-                                    {
-                                        "symbol": l['symbol'], 
-                                        "change": l['change'],
-                                        "price": l['price'],
-                                        "volume_24h": l['volume_24h'],
-                                        "display_symbol": l['symbol'].replace('1000', '').replace('USDT', '')
-                                    } 
-                                    for l in losers[:5]
-                                ]
-            except Exception as e:
-                logger.warning(f"Error fetching market data without integration: {e}")
-            
-            return response
-            
-        # Try to get data from integration service with timeout
-        try:
-            # Get dashboard data if available
-            if hasattr(integration, '_dashboard_data'):
-                data = integration._dashboard_data
-                
-                # Only override market overview if cache data is not good
-                # Check if we have valid cache data (trend_strength > 0 means cache is working)
-                cache_has_data = (
-                    response["market_overview"].get('trend_strength', 0) > 0 or 
-                    response["market_overview"].get('btc_dominance', 0) > 0
-                )
-                
-                if not cache_has_data:
-                    # No good cache data, try to use integration data
-                    market_data = data.get('market_overview', {})
-                    if market_data:  # Only override if integration has data
-                        response["market_overview"] = {
-                            "market_regime": market_data.get('regime', 'NEUTRAL'),
-                            "trend_strength": market_data.get('trend_strength', 0),
-                            "current_volatility": market_data.get('volatility', 0),
-                            "volatility": market_data.get('volatility', 0),
-                            "avg_volatility": 20,
-                            "btc_dominance": market_data.get('btc_dominance', 0),
-                            "total_volume_24h": market_data.get('total_volume_24h', 0)
-                        }
-                
-                # Extract confluence scores from signals
-                signals = data.get('signals', [])
-                confluence_scores = []
-                for signal in signals[:15]:  # Limit to top 15
-                    # Get component scores if available, otherwise use defaults
-                    components = signal.get('components', {})
-                    confluence_scores.append({
-                        "symbol": signal.get('symbol', ''),
-                        "score": round(signal.get('score', 50), 2),
-                        "price": signal.get('price', 0),
-                        "change_24h": round(signal.get('change_24h', 0), 2),
-                        "volume_24h": signal.get('volume', 0),
-                        "components": {
-                            "technical": round(components.get('technical', 50), 2),
-                            "volume": round(components.get('volume', 50), 2),
-                            "orderflow": round(components.get('orderflow', 50), 2),
-                            "sentiment": round(components.get('sentiment', 50), 2),
-                            "orderbook": round(components.get('orderbook', 50), 2),
-                            "price_structure": round(components.get('price_structure', 50), 2)
-                        }
+                        # BTC Realized Volatility (True crypto volatility)
+                        "btc_volatility": market_overview.get("btc_volatility", 0),
+                        "btc_daily_volatility": market_overview.get("btc_daily_volatility", 0),
+                        "btc_price": market_overview.get("btc_price", 0),
+                        "btc_vol_days": market_overview.get("btc_vol_days", 0),
+
+                        # Market Dispersion
+                        "market_dispersion": market_overview.get("market_dispersion", 0),
+                        "avg_market_dispersion": market_overview.get("avg_market_dispersion", 0),
+
+                        # DEPRECATED: Keep for backward compatibility
+                        "current_volatility": market_overview.get("volatility", market_overview.get("market_dispersion", 0)),
+                        "avg_volatility": market_overview.get("avg_volatility", market_overview.get("avg_market_dispersion", 0)),
+
+                        "btc_dominance": market_overview.get("btc_dominance", 0),
+                        "total_volume_24h": market_overview.get("total_volume_24h", 0),
+                        "average_change": market_overview.get("average_change", 0),
+                        # Flatten top_movers to top level
+                        "gainers": top_movers.get("gainers", []),
+                        "top_gainers": top_movers.get("gainers", []),  # Alias
+                        "losers": top_movers.get("losers", []),
+                        # Add symbols array (confluence scores)
+                        "symbols": confluence_scores,
+                        "top_symbols": confluence_scores,  # Alias
                     })
-                response["confluence_scores"] = confluence_scores
-                
-                # Always fetch broader market data for comprehensive top movers
-                try:
-                    # Get broader market data from Bybit
-                    async with aiohttp.ClientSession() as session:
-                        url = "https://api.bybit.com/v5/market/tickers?category=linear"
-                        async with session.get(url, timeout=5) as resp:
-                            if resp.status == 200:
-                                bybit_data = await resp.json()
-                                if bybit_data.get('retCode') == 0 and 'result' in bybit_data:
-                                    tickers = bybit_data['result']['list']
-                                    
-                                    # Process all symbols
-                                    all_changes = []
-                                    for ticker in tickers:
-                                        try:
-                                            symbol = ticker['symbol']
-                                            if symbol.endswith('USDT') and 'PERP' not in symbol:
-                                                change_24h = float(ticker['price24hPcnt']) * 100
-                                                turnover_24h = float(ticker['turnover24h'])
-                                                
-                                                if turnover_24h > 500000:  # $500k minimum
-                                                    all_changes.append({
-                                                        "symbol": symbol,
-                                                        "change": round(change_24h, 2),
-                                                        "turnover": turnover_24h
-                                                    })
-                                        except (ValueError, KeyError):
-                                            continue
-                                    
-                                    # Sort and get top gainers (limit to 5)
-                                    gainers = [x for x in all_changes if x['change'] > 0]
-                                    gainers.sort(key=lambda x: x['change'], reverse=True)
-                                    response["top_movers"]["gainers"] = [
-                                        {
-                                            "symbol": g['symbol'], 
-                                            "change": g['change'],
-                                            "price": float(next((t['lastPrice'] for t in tickers if t['symbol'] == g['symbol']), 0)),
-                                            "volume_24h": float(next((t['volume24h'] for t in tickers if t['symbol'] == g['symbol']), 0)),
-                                            "display_symbol": g['symbol'].replace('1000', '').replace('USDT', '')
-                                        } 
-                                        for g in gainers[:5]
-                                    ]
-                                    
-                                    # Sort and get top losers (limit to 5)
-                                    losers = [x for x in all_changes if x['change'] < 0]
-                                    losers.sort(key=lambda x: x['change'])
-                                    response["top_movers"]["losers"] = [
-                                        {
-                                            "symbol": l['symbol'], 
-                                            "change": l['change'],
-                                            "price": float(next((t['lastPrice'] for t in tickers if t['symbol'] == l['symbol']), 0)),
-                                            "volume_24h": float(next((t['volume24h'] for t in tickers if t['symbol'] == l['symbol']), 0)),
-                                            "display_symbol": l['symbol'].replace('1000', '').replace('USDT', '')
-                                        } 
-                                        for l in losers[:5]
-                                    ]
-                                        
-                except Exception as e:
-                    logger.warning(f"Error fetching broader market data: {e}")
-                    # Fallback to signals data if market data fetch fails
-                    sorted_by_change = sorted(signals, key=lambda x: x.get('change_24h', 0))
-                    response["top_movers"]["losers"] = [
-                        {"symbol": s['symbol'], "change": round(s['change_24h'], 2)} 
-                        for s in sorted_by_change[:5] if s.get('change_24h', 0) < 0
-                    ]
-                    response["top_movers"]["gainers"] = [
-                        {"symbol": s['symbol'], "change": round(s['change_24h'], 2)} 
-                        for s in sorted_by_change[-5:] if s.get('change_24h', 0) > 0
-                    ]
-                
-        except Exception as e:
-            logger.warning(f"Error extracting data from integration: {e}")
-            response["status"] = "partial_data"
-            
-        # Removed legacy LSR logging referencing undefined confluence_data
-        return response
-        
+
+                    return mobile_data
+
+                logger.warning("Shared cache returned fallback data for mobile dashboard")
+            except Exception as e:
+                logger.error(f"Shared cache error in mobile data endpoint: {e}")
+
+        # Fallback: Use direct cache adapter if web_cache not available
+        if USE_DIRECT_CACHE:
+            try:
+                mobile_data = await direct_cache.get_mobile_data()
+                logger.info(f"✅ Mobile data from direct cache adapter")
+
+                # Apply same flattening for consistency
+                market_overview = mobile_data.get('market_overview', {})
+                top_movers = mobile_data.get('top_movers', {})
+                confluence_scores = mobile_data.get('confluence_scores', [])
+
+                mobile_data.update({
+                    "market_regime": market_overview.get("market_regime", "NEUTRAL"),
+                    "regime": market_overview.get("market_regime", "NEUTRAL"),
+                    "trend_strength": market_overview.get("trend_strength", 0),
+                    "trend_score": market_overview.get("trend_strength", 0),
+                    "current_volatility": market_overview.get("volatility", 0),
+                    "avg_volatility": market_overview.get("avg_volatility", 0),  # Added: average volatility
+                    "btc_dominance": market_overview.get("btc_dominance", 0),
+                    "total_volume_24h": market_overview.get("total_volume_24h", 0),
+                    "gainers": top_movers.get("gainers", []),
+                    "top_gainers": top_movers.get("gainers", []),
+                    "losers": top_movers.get("losers", []),
+                    "symbols": confluence_scores,
+                    "top_symbols": confluence_scores,
+                })
+
+                return mobile_data
+            except Exception as e:
+                logger.error(f"Direct cache adapter error in mobile data: {e}")
+
+        # Last resort: Return empty structure with clear error message
+        logger.error("No cache adapter available for mobile data - returning empty structure")
+        return {
+            "status": "error",
+            "error": "No cache adapter available",
+            "message": "Cache service unavailable - please check service status",
+            "market_overview": {
+                "market_regime": "UNKNOWN",
+                "trend_strength": 0,
+                "current_volatility": 0,
+                "btc_dominance": 0,
+                "total_volume_24h": 0,
+                "average_change": 0
+            },
+            "confluence_scores": [],
+            "top_movers": {"gainers": [], "losers": []},
+            "timestamp": datetime.utcnow().isoformat(),
+            "data_source": "error_fallback"
+        }
+
     except Exception as e:
-        logger.error(f"Error in mobile dashboard endpoint: {e}")
+        import traceback
+        tb = traceback.format_exc()
+        logger.error(f"Error in mobile dashboard endpoint: {e}\nTraceback:\n{tb}")
         return {
             "status": "error",
             "error": str(e),
-            "timestamp": datetime.utcnow().isoformat()
+            "message": "Internal server error - check logs for details",
+            "timestamp": datetime.utcnow().isoformat(),
+            "data_source": "error"
         }
 
 @router.get("/performance")
 async def get_dashboard_performance() -> Dict[str, Any]:
     """Get dashboard performance metrics."""
     try:
+        # DISABLED: Integration depends on non-existent port 8004
         # Direct data access without cache layer
-        local_integration = get_dashboard_integration()
+        local_integration = None  # Disabled
+        # local_integration = get_dashboard_integration()
         if local_integration:
             performance_data = await local_integration.get_performance_metrics()
             return performance_data
@@ -1185,9 +1048,16 @@ async def get_dashboard_symbols() -> Dict[str, Any]:
             mc_client.close()
             
             if symbols_data:
-                data = json.loads(symbols_data.decode('utf-8'))
-                logger.info(f"Retrieved {len(data.get('symbols', []))} symbols from Memcached")
-                return data
+                try:
+                    data = json.loads(symbols_data.decode('utf-8'))
+                    # TYPE SAFETY: Ensure data is a dict
+                    if isinstance(data, dict):
+                        logger.info(f"Retrieved {len(data.get('symbols', []))} symbols from Memcached")
+                        return data
+                    else:
+                        logger.warning(f"Symbols data is not a dict: {type(data)}")
+                except (json.JSONDecodeError, AttributeError) as e:
+                    logger.warning(f"Failed to parse symbols_data: {e}")
             
             logger.warning("No symbols in Memcached, checking integration service")
         except Exception as mc_error:
