@@ -1974,6 +1974,7 @@ class AlertManager:
                     # Generate PDF using the report generator
                     pdf_result = await self.pdf_generator.generate_report(
                         signal_data=report_data,
+                        ohlcv_data=ohlcv_data,
                         output_path=f"reports/pdf/{symbol.lower()}_{signal_type.lower()}_{confluence_score:.1f}p{int(confluence_score*10)%10}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
                     )
                     

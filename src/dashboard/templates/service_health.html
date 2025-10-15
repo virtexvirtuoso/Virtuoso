@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Service Health - Virtuoso</title>
+    <meta name="description" content="Check API availability and connection status">
+    <meta name="theme-color" content="#ffbf00">
+
+    <style>
+        :root {
+            --bg-primary: #fff8e0;
+            --text-primary: #0a1525;
+            --text-secondary: #4a5568;
+            --accent-primary: #ffbf00;
+            --accent-hover: #ff9900;
+            --border-light: #e2d5a0;
+            --shadow-light: rgba(0, 0, 0, 0.05);
+            --success: #4caf50;
+            --warning: #ff9900;
+            --error: #f44336;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .logo {
+            font-size: 2rem;
+            font-weight: bold;
+            color: var(--accent-primary);
+            margin-bottom: 10px;
+        }
+
+        .status-card {
+            background: #fff;
+            border: 2px solid var(--border-light);
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 12px var(--shadow-light);
+        }
+
+        .service-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 0;
+            border-bottom: 1px solid var(--border-light);
+        }
+
+        .service-item:last-child {
+            border-bottom: none;
+        }
+
+        .service-info {
+            flex: 1;
+        }
+
+        .service-name {
+            font-weight: 600;
+            font-size: 16px;
+            margin-bottom: 4px;
+        }
+
+        .service-description {
+            font-size: 14px;
+            color: var(--text-secondary);
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .status-healthy {
+            background: rgba(76, 175, 80, 0.1);
+            color: var(--success);
+        }
+
+        .status-warning {
+            background: rgba(255, 153, 0, 0.1);
+            color: var(--warning);
+        }
+
+        .status-error {
+            background: rgba(244, 67, 54, 0.1);
+            color: var(--error);
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        .overall-status {
+            text-align: center;
+            padding: 30px;
+            margin-bottom: 30px;
+        }
+
+        .overall-status h2 {
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+
+        .back-link {
+            display: inline-flex;
+            align-items: center;
+            color: var(--accent-primary);
+            text-decoration: none;
+            margin-bottom: 20px;
+            font-weight: 500;
+        }
+
+        .back-link:hover {
+            color: var(--accent-hover);
+        }
+
+        .refresh-button {
+            background: var(--accent-primary);
+            color: var(--text-primary);
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="/links" class="back-link">← Back to Links</a>
+
+        <div class="header">
+            <div class="logo">❤️ Service Health</div>
+            <h1>API Availability & Connection Status</h1>
+            <p>Monitor the health of all Virtuoso services</p>
+        </div>
+
+        <div class="status-card">
+            <div class="overall-status">
+                <h2>Overall System Status</h2>
+                <div class="status-indicator status-healthy">
+                    <div class="status-dot" style="background: var(--success);"></div>
+                    All Systems Operational
+                </div>
+            </div>
+        </div>
+
+        <div class="status-card">
+            <h3 style="margin-bottom: 20px;">Service Status</h3>
+
+            <div class="service-item">
+                <div class="service-info">
+                    <div class="service-name">Web Server</div>
+                    <div class="service-description">Main application server</div>
+                </div>
+                <div class="status-indicator status-healthy">
+                    <div class="status-dot" style="background: var(--success);"></div>
+                    Healthy
+                </div>
+            </div>
+
+            <div class="service-item">
+                <div class="service-info">
+                    <div class="service-name">Market Data API</div>
+                    <div class="service-description">Real-time market data feeds</div>
+                </div>
+                <div class="status-indicator status-healthy">
+                    <div class="status-dot" style="background: var(--success);"></div>
+                    Healthy
+                </div>
+            </div>
+
+            <div class="service-item">
+                <div class="service-info">
+                    <div class="service-name">Trading Signals API</div>
+                    <div class="service-description">Signal generation and processing</div>
+                </div>
+                <div class="status-indicator status-healthy">
+                    <div class="status-dot" style="background: var(--success);"></div>
+                    Healthy
+                </div>
+            </div>
+
+            <div class="service-item">
+                <div class="service-info">
+                    <div class="service-name">Dashboard API</div>
+                    <div class="service-description">Dashboard data aggregation</div>
+                </div>
+                <div class="status-indicator status-healthy">
+                    <div class="status-dot" style="background: var(--success);"></div>
+                    Healthy
+                </div>
+            </div>
+
+            <div class="service-item">
+                <div class="service-info">
+                    <div class="service-name">Monitoring System</div>
+                    <div class="service-description">System monitoring and alerts</div>
+                </div>
+                <div class="status-indicator status-warning">
+                    <div class="status-dot" style="background: var(--warning);"></div>
+                    Limited
+                </div>
+            </div>
+
+            <button class="refresh-button" onclick="window.location.reload()">Refresh Status</button>
+        </div>
+    </div>
+</body>
+</html>

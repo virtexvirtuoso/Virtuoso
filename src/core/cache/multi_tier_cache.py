@@ -88,14 +88,16 @@ class MultiTierCacheAdapter:
     and performance optimization for high-frequency trading data.
     """
     
-    def __init__(self, 
+    def __init__(self,
                  memcached_host: str = '127.0.0.1',
                  memcached_port: int = 11211,
-                 redis_host: str = '127.0.0.1', 
+                 redis_host: str = '127.0.0.1',
                  redis_port: int = 6379,
                  l1_max_size: int = 1000,
-                 l1_default_ttl: int = 30):
-        
+                 l1_default_ttl: int = 30,
+                 cross_process_mode: bool = True,
+                 cross_process_l1_ttl: int = 2):
+
         # Configuration
         self.memcached_host = memcached_host
         self.memcached_port = memcached_port
@@ -103,6 +105,21 @@ class MultiTierCacheAdapter:
         self.redis_port = redis_port
         self.l1_max_size = l1_max_size
         self.l1_default_ttl = l1_default_ttl
+
+        # Cross-process cache sharing configuration
+        self.cross_process_mode = cross_process_mode
+        self.cross_process_l1_ttl = cross_process_l1_ttl  # Very short TTL for cross-process keys
+
+        # Define cross-process key patterns (shared between monitoring and web server)
+        self.cross_process_prefixes = {
+            'analysis:',      # Trading signals and analysis
+            'market:',        # Market data, overview, movers
+            'confluence:',    # Confluence scores and breakdowns
+            'dashboard:',     # Dashboard-specific data
+            'system:',        # System-wide alerts and status
+            'unified:',       # Unified schema data
+            'virtuoso:'       # Legacy virtuoso keys
+        }
         
         # Layer 1: High-performance LRU cache (ultra-fast)
         if HighPerformanceLRUCache:
@@ -152,8 +169,8 @@ class MultiTierCacheAdapter:
                 'default': 300
             }
         }
-        
-        logger.info("Multi-tier cache adapter initialized")
+
+        logger.info(f"Multi-tier cache adapter initialized (cross_process_mode={cross_process_mode}, cross_process_l1_ttl={cross_process_l1_ttl}s)")
     
     async def _get_memcached_client(self) -> aiomcache.Client:
         """Get or create Memcached client"""
@@ -187,8 +204,22 @@ class MultiTierCacheAdapter:
                 
         return self._redis_client
     
+    def _is_cross_process_key(self, key: str) -> bool:
+        """Check if key is used for cross-process communication"""
+        if not self.cross_process_mode:
+            return False
+
+        for prefix in self.cross_process_prefixes:
+            if key.startswith(prefix):
+                return True
+        return False
+
     def _get_ttl_for_layer(self, key: str, layer: CacheLayer) -> int:
         """Get appropriate TTL for key and cache layer"""
+        # For cross-process keys in L1, use very short TTL
+        if layer == CacheLayer.L1_MEMORY and self._is_cross_process_key(key):
+            return self.cross_process_l1_ttl
+
         layer_config = self.tier_ttls.get(layer, {})
         return layer_config.get(key, layer_config.get('default', 60))
 
@@ -306,7 +337,15 @@ class MultiTierCacheAdapter:
                 
                 # Deserialize data
                 try:
-                    return json.loads(data.decode())
+                    result = json.loads(data.decode())
+                    # DOUBLE-DECODE FIX: Handle double-JSON-encoded data
+                    if isinstance(result, str) and (result.startswith('{') or result.startswith('[')):
+                        try:
+                            result = json.loads(result)
+                            logger.debug(f"Double-decoded L2 {key}")
+                        except (json.JSONDecodeError, ValueError):
+                            pass  # Not JSON, return as-is
+                    return result
                 except (json.JSONDecodeError, UnicodeDecodeError) as e:
                     logger.warning(f"L2 deserialization failed for {key}: {e}")
                     return None
@@ -339,7 +378,15 @@ class MultiTierCacheAdapter:
                     
                     # Deserialize data
                     try:
-                        return json.loads(data.decode())
+                        result = json.loads(data.decode())
+                        # DOUBLE-DECODE FIX: Handle double-JSON-encoded data
+                        if isinstance(result, str) and (result.startswith('{') or result.startswith('[')):
+                            try:
+                                result = json.loads(result)
+                                logger.debug(f"Double-decoded L3 {key}")
+                            except (json.JSONDecodeError, ValueError):
+                                pass  # Not JSON, return as-is
+                        return result
                     except (json.JSONDecodeError, UnicodeDecodeError) as e:
                         logger.warning(f"L3 deserialization failed for {key}: {e}")
                         return None
@@ -364,32 +411,40 @@ class MultiTierCacheAdapter:
     async def get(self, key: str, default: Any = None) -> Tuple[Any, CacheLayer]:
         """
         Get value from multi-tier cache with automatic promotion
-        
+
+        For cross-process keys, L1 is either skipped or has very short TTL
+        to ensure fresh data across process boundaries.
+
         Returns:
             Tuple of (value, cache_layer_hit)
         """
-        # Try L1 first (fastest)
-        value = await self._get_l1(key)
-        if value is not None:
-            return value, CacheLayer.L1_MEMORY
-        
-        # Try L2 (fast)
+        is_cross_process = self._is_cross_process_key(key)
+
+        # Try L1 first (fastest) - but only for non-cross-process keys or with awareness of short TTL
+        if not is_cross_process or self.cross_process_l1_ttl > 0:
+            value = await self._get_l1(key)
+            if value is not None:
+                if is_cross_process:
+                    logger.debug(f"L1 HIT for cross-process key: {key} (TTL: {self.cross_process_l1_ttl}s)")
+                return value, CacheLayer.L1_MEMORY
+
+        # Try L2 (fast, shared across processes)
         value = await self._get_l2(key)
         if value is not None:
-            # Promote to L1 for faster future access
+            # Promote to L1 for faster future access (with appropriate TTL)
             await self._set_l1(key, value)
             self.stats.promotions += 1
             return value, CacheLayer.L2_MEMCACHED
-        
-        # Try L3 (persistent)
+
+        # Try L3 (persistent, shared across processes)
         value = await self._get_l3(key)
         if value is not None:
-            # Promote to L2 and L1
+            # Promote to L2 and L1 (with appropriate TTLs)
             await self._set_l2(key, value)
             await self._set_l1(key, value)
             self.stats.promotions += 2  # Promoted through 2 layers
             return value, CacheLayer.L3_REDIS
-        
+
         # Cache miss
         self.stats.total_misses += 1
         logger.debug(f"CACHE MISS: {key}")
@@ -398,15 +453,29 @@ class MultiTierCacheAdapter:
     async def set(self, key: str, value: Any, ttl_override: int = None):
         """
         Set value in all cache tiers with appropriate TTLs
+
+        For cross-process keys, L1 gets a very short TTL to avoid stale data
+        across process boundaries while still providing some performance benefit.
         """
-        # Set in all layers with tier-appropriate TTLs
+        is_cross_process = self._is_cross_process_key(key)
+
+        # For cross-process keys, use short TTL for L1 unless overridden
+        l1_ttl = ttl_override
+        if is_cross_process and ttl_override is None:
+            l1_ttl = self.cross_process_l1_ttl
+
+        # Set in all layers with appropriate TTLs
         await asyncio.gather(
-            self._set_l1(key, value, ttl_override),
+            self._set_l1(key, value, l1_ttl),
             self._set_l2(key, value, ttl_override),
             self._set_l3(key, value, ttl_override),
             return_exceptions=True
         )
-        logger.debug(f"MULTI-TIER SET: {key}")
+
+        if is_cross_process:
+            logger.debug(f"MULTI-TIER SET (cross-process): {key} (L1 TTL: {l1_ttl}s)")
+        else:
+            logger.debug(f"MULTI-TIER SET: {key}")
     
     async def delete(self, key: str):
         """Delete from all cache tiers"""

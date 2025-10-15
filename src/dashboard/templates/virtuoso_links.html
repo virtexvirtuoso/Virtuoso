@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Virtuoso | Advanced Trading Intelligence</title>
+    <meta name="description" content="Professional crypto trading signals powered by 6-dimensional analysis">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Virtuoso Links">
+    <meta name="theme-color" content="#ffbf00">
+    
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    
+    <style>
+        /* Linktree-Inspired Design */
+        :root {
+            --bg-primary: #fff8e0;  /* Warm yellow background like Theoriq */
+            --text-primary: #0a1525;
+            --text-secondary: #4a5568;
+            --accent-primary: #ffbf00;
+            --accent-hover: #ff9900;
+            --border-light: #e2d5a0;
+            --shadow-light: rgba(0, 0, 0, 0.05);
+            --shadow-hover: rgba(0, 0, 0, 0.15);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        html {
+            -webkit-overflow-scrolling: touch;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            min-height: 100vh;
+            overflow-x: hidden;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* Main Container */
+        .container {
+            width: 100%;
+            max-width: 480px;
+            margin: 0 auto;
+            padding: 20px 0;
+        }
+
+        /* Profile Header */
+        .profile-header {
+            text-align: center;
+            margin-bottom: 40px;
+            animation: fadeInUp 0.6s ease-out;
+        }
+
+        .profile-avatar {
+            width: 120px;
+            height: 120px;
+            background: linear-gradient(135deg, var(--accent-primary), var(--accent-hover));
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 20px;
+            box-shadow: 0 8px 32px var(--shadow-light);
+            position: relative;
+        }
+
+        .profile-avatar::before {
+            content: '';
+            position: absolute;
+            inset: 4px;
+            background: var(--bg-primary);
+            border-radius: 50%;
+        }
+
+        .profile-icon {
+            width: 48px;
+            height: 48px;
+            color: var(--accent-primary);
+            z-index: 1;
+        }
+        
+        /* Logo option - uncomment and add your logo URL */
+        .profile-logo {
+            width: 100px;
+            height: 100px;
+            object-fit: contain;
+            z-index: 1;
+            /* Use this instead of the icon if you have a logo */
+            display: none;
+        }
+        
+        /* When using logo, hide the icon */
+        .profile-avatar.has-logo .profile-icon {
+            display: none;
+        }
+        
+        .profile-avatar.has-logo .profile-logo {
+            display: block;
+        }
+        
+        /* Alternative logo placement - above the name */
+        .logo-header {
+            width: 180px;
+            height: 60px;
+            margin: 0 auto 20px;
+            display: none; /* Set to 'block' when you have a logo */
+        }
+        
+        .logo-header img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        .profile-name {
+            font-family: 'Space Mono', monospace;
+            font-size: 32px;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 8px;
+        }
+
+        .profile-tagline {
+            font-size: 18px;
+            color: var(--text-secondary);
+            margin-bottom: 12px;
+        }
+
+        .profile-subtitle {
+            font-size: 14px;
+            color: var(--text-secondary);
+            opacity: 0.8;
+            line-height: 1.6;
+        }
+        
+        /* Mobile-optimized subtitle badges */
+        .profile-features {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 0;
+            margin-top: 16px;
+        }
+        
+        .feature-badge {
+            background: linear-gradient(90deg, transparent, rgba(255, 191, 0, 0.08), transparent);
+            border: none;
+            border-radius: 0;
+            padding: 6px 16px;
+            font-size: 12px;
+            color: var(--text-primary);
+            font-weight: 600;
+            white-space: nowrap;
+            cursor: default;
+            position: relative;
+            user-select: none;
+        }
+        
+        /* Add subtle divider between badges */
+        .feature-badge:not(:last-child)::after {
+            content: '';
+            position: absolute;
+            right: -4px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 1px;
+            height: 14px;
+            background: rgba(255, 191, 0, 0.2);
+        }
+        
+        .feature-badge i {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            margin-right: 4px;
+            vertical-align: middle;
+        }
+
+        /* Links Section */
+        .links-container {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        /* Link Button Styles */
+        .link-button {
+            background: transparent;
+            border: 2px solid var(--border-light);
+            border-radius: 24px;
+            padding: 20px;
+            text-decoration: none;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+            min-height: 80px;
+            animation: fadeInUp 0.6s ease-out;
+            animation-fill-mode: both;
+        }
+
+        .link-button:nth-child(1) { animation-delay: 0.1s; }
+        .link-button:nth-child(2) { animation-delay: 0.2s; }
+        .link-button:nth-child(3) { animation-delay: 0.3s; }
+        .link-button:nth-child(4) { animation-delay: 0.4s; }
+        .link-button:nth-child(5) { animation-delay: 0.5s; }
+        .link-button:nth-child(6) { animation-delay: 0.6s; }
+
+        .link-button:hover {
+            border-color: var(--accent-primary);
+            box-shadow: 0 8px 32px var(--shadow-hover);
+            transform: translateY(-2px);
+        }
+
+        .link-button.primary {
+            background: var(--accent-primary);
+            border-color: var(--accent-primary);
+            color: var(--text-primary);
+        }
+
+        .link-button.primary:hover {
+            background: var(--accent-hover);
+            border-color: var(--accent-hover);
+        }
+
+        /* Link Content */
+        .link-icon {
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(255, 191, 0, 0.1);
+            border-radius: 12px;
+            flex-shrink: 0;
+        }
+
+        .link-button.primary .link-icon {
+            background: rgba(10, 21, 37, 0.1);
+        }
+
+        .link-content {
+            flex: 1;
+            text-align: left;
+        }
+
+        .link-title {
+            font-weight: 600;
+            font-size: 16px;
+            margin-bottom: 2px;
+        }
+
+        .link-description {
+            font-size: 13px;
+            color: var(--text-secondary);
+            opacity: 0.8;
+        }
+
+        .link-button.primary .link-description {
+            color: var(--text-primary);
+            opacity: 0.7;
+        }
+
+        /* Link Thumbnail for featured items */
+        .link-thumbnail {
+            width: 48px;
+            height: 48px;
+            background: var(--accent-primary);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        /* Social Links Section */
+        .social-section {
+            margin-top: 40px;
+            text-align: center;
+            padding: 20px;
+            background: linear-gradient(135deg, rgba(255, 191, 0, 0.03), rgba(255, 191, 0, 0.01));
+            border-radius: 20px;
+            border: 1px solid rgba(255, 191, 0, 0.1);
+        }
+
+        .social-title {
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-bottom: 18px;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            font-weight: 600;
+            opacity: 0.8;
+        }
+
+        .social-links {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .social-link {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 10px 18px;
+            background: rgba(255, 191, 0, 0.1);
+            border: 1px solid var(--accent-primary);
+            border-radius: 18px;
+            text-decoration: none;
+            color: var(--text-primary);
+            font-size: 13px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            min-width: 100px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .social-link::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 0;
+            height: 100%;
+            background: var(--accent-primary);
+            transition: width 0.3s ease;
+            z-index: -1;
+        }
+
+        .social-link:hover {
+            border-color: var(--accent-hover);
+            color: var(--bg-primary);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(255, 191, 0, 0.3);
+        }
+
+        .social-link:hover::before {
+            width: 100%;
+        }
+
+        .social-icon {
+            width: 16px;
+            height: 16px;
+            flex-shrink: 0;
+            display: inline-block;
+            vertical-align: middle;
+            transition: transform 0.3s ease;
+        }
+        
+        .social-link:hover .social-icon {
+            transform: scale(1.1);
+        }
+
+        /* Footer */
+        .footer {
+            margin-top: 60px;
+            text-align: center;
+            padding: 20px;
+            border-top: 1px solid var(--border-light);
+        }
+
+        .footer-text {
+            font-size: 12px;
+            color: var(--text-secondary);
+            opacity: 0.7;
+        }
+
+        /* Animations */
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Responsive Design */
+        @media (max-width: 480px) {
+            .container {
+                padding: 10px 0;
+            }
+            
+            .profile-name {
+                font-size: 28px;
+            }
+            
+            .profile-tagline {
+                font-size: 16px;
+            }
+            
+            .profile-features {
+                gap: 6px;
+                margin-top: 12px;
+            }
+            
+            .feature-badge {
+                font-size: 11px;
+                padding: 4px 12px;
+                background: linear-gradient(90deg, transparent, rgba(255, 191, 0, 0.06), transparent);
+            }
+            
+            /* Hide dividers on mobile for cleaner look */
+            .feature-badge:not(:last-child)::after {
+                display: none;
+            }
+            
+            .link-button {
+                padding: 16px;
+                min-height: 70px;
+            }
+            
+            .social-links {
+                gap: 8px;
+                padding: 0 10px;
+            }
+            
+            .social-link {
+                padding: 8px 14px;
+                font-size: 12px;
+                min-width: 85px;
+                border-radius: 16px;
+            }
+            
+            .social-icon {
+                width: 14px;
+                height: 14px;
+            }
+        }
+
+        /* Hover effects for touch devices */
+        @media (hover: none) {
+            .link-button:active {
+                transform: scale(0.98);
+                border-color: var(--accent-primary);
+            }
+            
+            .social-link:active {
+                transform: scale(0.96);
+                border-color: var(--accent-primary);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Profile Header -->
+        <div class="profile-header">
+            <!-- Option 1: Logo above the profile name (uncomment and add your logo URL) -->
+            <!-- <div class="logo-header">
+                <img src="/logo.png" alt="Virtuoso Logo">
+            </div> -->
+            
+            <!-- Option 2: Logo inside the avatar circle (add class="has-logo" to use) -->
+            <div class="profile-avatar">
+                <i data-lucide="trending-up" class="profile-icon"></i>
+                <!-- <img src="/logo.png" alt="Virtuoso Logo" class="profile-logo"> -->
+            </div>
+            <h1 class="profile-name">Virtuoso</h1>
+            <p class="profile-tagline">Advanced Trading Intelligence</p>
+            <!-- Mobile-optimized feature badges -->
+            <div class="profile-features">
+                <span class="feature-badge">
+                    <i data-lucide="layers" style="width: 14px; height: 14px; display: inline-block; vertical-align: middle;"></i>
+                    6D Analysis
+                </span>
+                <span class="feature-badge">
+                    <i data-lucide="zap" style="width: 14px; height: 14px; display: inline-block; vertical-align: middle;"></i>
+                    Pro Signals
+                </span>
+                <span class="feature-badge">
+                    <i data-lucide="sparkles" style="width: 14px; height: 14px; display: inline-block; vertical-align: middle;"></i>
+                    AI Powered
+                </span>
+            </div>
+        </div>
+
+        <!-- Main Links -->
+        <div class="links-container">
+            <!-- Primary CTA -->
+            <a href="/mobile" class="link-button primary">
+                <div class="link-thumbnail">
+                    <i data-lucide="bar-chart" style="width: 24px; height: 24px; color: #0a1525;"></i>
+                </div>
+                <div class="link-content">
+                    <div class="link-title">Live Trading Dashboard</div>
+                    <div class="link-description">Real-time signals • 30+ crypto pairs • Mobile optimized</div>
+                </div>
+            </a>
+
+            <!-- Education/Demo -->
+            <a href="/education" class="link-button">
+                <div class="link-icon">
+                    <i data-lucide="graduation-cap" style="width: 20px; height: 20px; color: var(--accent-primary);"></i>
+                </div>
+                <div class="link-content">
+                    <div class="link-title">How Virtuoso Works</div>
+                    <div class="link-description">Learn about our 6-dimensional analysis system</div>
+                </div>
+            </a>
+
+            <!-- Virtuosa Page - Temporarily Hidden -->
+            <!-- <a href="/virtuosa" class="link-button">
+                <div class="link-icon">
+                    <i data-lucide="heart" style="width: 20px; height: 20px; color: var(--accent-primary);"></i>
+                </div>
+                <div class="link-content">
+                    <div class="link-title">Virtuosa</div>
+                    <div class="link-description">Financial independence guide for modern women</div>
+                </div>
+            </a> -->
+
+            <!-- API/Technical -->
+            <a href="/api/docs" class="link-button">
+                <div class="link-icon">
+                    <i data-lucide="code" style="width: 20px; height: 20px; color: var(--accent-primary);"></i>
+                </div>
+                <div class="link-content">
+                    <div class="link-title">API Documentation</div>
+                    <div class="link-description">Integration docs for developers • WebSocket feeds</div>
+                </div>
+            </a>
+
+            <!-- System Monitoring -->
+            <a href="/system-monitoring" class="link-button">
+                <div class="link-icon">
+                    <i data-lucide="activity" style="width: 20px; height: 20px; color: var(--accent-primary);"></i>
+                </div>
+                <div class="link-content">
+                    <div class="link-title">System Monitoring</div>
+                    <div class="link-description">Live performance metrics and component status</div>
+                </div>
+            </a>
+
+            <!-- Service Health -->
+            <a href="/service-health" class="link-button">
+                <div class="link-icon">
+                    <i data-lucide="heart-pulse" style="width: 20px; height: 20px; color: var(--accent-primary);"></i>
+                </div>
+                <div class="link-content">
+                    <div class="link-title">Service Health</div>
+                    <div class="link-description">Check API availability and connection status</div>
+                </div>
+            </a>
+        </div>
+
+        <!-- Social Links -->
+        <div class="social-section">
+            <div class="social-title">Connect With Us</div>
+            <div class="social-links">
+                <a href="https://discord.gg/PKEZFbpzT9" target="_blank" rel="noopener noreferrer" class="social-link">
+                    <svg class="social-icon" viewBox="0 0 24 24" fill="currentColor" style="width: 18px; height: 18px;">
+                        <path d="M20.317 4.3698a19.7913 19.7913 0 00-4.8851-1.5152.0741.0741 0 00-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 00-.0785-.037 19.7363 19.7363 0 00-4.8852 1.515.0699.0699 0 00-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 00.0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 00.0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 00-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 01-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 01.0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 01.0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 01-.0066.1276 12.2986 12.2986 0 01-1.873.8914.0766.0766 0 00-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 00.0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 00.0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 00-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9555 2.4189-2.1569 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189Z"/>
+                    </svg>
+                    Discord
+                </a>
+                <a href="https://t.me/ferntrades" target="_blank" rel="noopener noreferrer" class="social-link">
+                    <svg class="social-icon" viewBox="0 0 24 24" fill="currentColor" style="width: 18px; height: 18px;">
+                        <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/>
+                    </svg>
+                    Telegram
+                </a>
+                <a href="https://x.com/virtuosocrypto_" target="_blank" rel="noopener noreferrer" class="social-link">
+                    <svg class="social-icon" viewBox="0 0 24 24" fill="currentColor" style="width: 18px; height: 18px;">
+                        <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+                    </svg>
+                    X
+                </a>
+                <a href="https://github.com/virtuoso-trading" target="_blank" rel="noopener noreferrer" class="social-link">
+                    <i data-lucide="github" class="social-icon"></i>
+                    GitHub
+                </a>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            <p class="footer-text">
+                © 2024 Virtuoso Trading Intelligence<br>
+                Professional crypto analysis • Not financial advice
+            </p>
+        </div>
+    </div>
+
+    <script>
+        // Initialize Lucide icons
+        if (typeof lucide !== 'undefined') {
+            lucide.createIcons();
+        }
+
+        // Add click tracking
+        document.querySelectorAll('.link-button, .social-link').forEach(link => {
+            link.addEventListener('click', (e) => {
+                const linkText = e.currentTarget.querySelector('.link-title')?.textContent || 
+                                e.currentTarget.textContent.trim();
+                console.log(`Link clicked: ${linkText}`);
+                
+                // Add visual feedback
+                e.currentTarget.style.transform = 'scale(0.98)';
+                setTimeout(() => {
+                    e.currentTarget.style.transform = '';
+                }, 150);
+            });
+        });
+
+        // Smooth scrolling
+        document.documentElement.style.scrollBehavior = 'smooth';
+
+        // Add loading state management
+        window.addEventListener('load', () => {
+            document.body.style.opacity = '1';
+        });
+
+        // Removed placeholder link handler since all links are now active
+    </script>
+</body>
+</html>

@@ -1,0 +1,190 @@
+version: '3.8'
+
+services:
+  # Main Virtuoso application with enhanced configuration
+  virtuoso:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: virtuoso-ccxt:production
+    container_name: virtuoso-main
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8001:8001"  # Monitoring API (localhost only)
+      - "127.0.0.1:8002:8002"  # Config API (localhost only)
+      - "127.0.0.1:8003:8003"  # Main Web Server (localhost only)
+    environment:
+      - MEMCACHED_HOST=memcached
+      - REDIS_HOST=redis
+      - ENABLE_MULTI_TIER_CACHE=true
+      - ENABLE_UNIFIED_ENDPOINTS=true
+      - CACHE_WARM_ON_STARTUP=true
+      - HEALTH_CHECK_INTERVAL=30
+      - LOG_LEVEL=INFO
+    env_file:
+      - .env
+    depends_on:
+      redis:
+        condition: service_healthy
+      memcached:
+        condition: service_healthy
+    volumes:
+      - ./config:/app/config:ro
+      - ./logs:/app/logs
+      - ./data:/app/data
+    networks:
+      - virtuoso-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health/simple"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 4G
+        reservations:
+          cpus: '1'
+          memory: 1G
+    labels:
+      - "com.virtuoso.monitoring=true"
+      - "prometheus.io/scrape=true"
+      - "prometheus.io/port=8001"
+
+  # Optimized Redis with persistence and connection pooling
+  redis:
+    image: redis:7-alpine
+    container_name: virtuoso-redis
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis-data:/data
+      - ./config/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    command: >
+      redis-server
+      --maxmemory 2gb
+      --maxmemory-policy allkeys-lru
+      --appendonly yes
+      --appendfsync everysec
+      --tcp-keepalive 60
+      --timeout 300
+      --tcp-backlog 511
+      --databases 16
+      --save 900 1
+      --save 300 10
+      --save 60 10000
+      --rdbcompression yes
+      --rdbchecksum yes
+      --stop-writes-on-bgsave-error no
+    networks:
+      - virtuoso-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    sysctls:
+      - net.core.somaxconn=1024
+    labels:
+      - "backup.enable=true"
+      - "backup.frequency=daily"
+
+  # Optimized Memcached with increased memory and connections
+  memcached:
+    image: memcached:alpine
+    container_name: virtuoso-memcached
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:11211:11211"
+    command: >
+      memcached
+      -m 1024
+      -I 10m
+      -c 2048
+      -v
+      -t 4
+      -R 200
+      -b 2048
+      -C
+    networks:
+      - virtuoso-network
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "11211"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 1500M
+
+  # Cache warmer service - runs periodically to keep cache hot
+  cache-warmer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: virtuoso-ccxt:production
+    container_name: virtuoso-cache-warmer
+    restart: unless-stopped
+    environment:
+      - MEMCACHED_HOST=memcached
+      - REDIS_HOST=redis
+      - CACHE_WARMER_MODE=true
+    depends_on:
+      - redis
+      - memcached
+      - virtuoso
+    networks:
+      - virtuoso-network
+    command: >
+      sh -c "
+      while true; do
+        echo 'Warming cache...';
+        python scripts/cache_warmer.py;
+        sleep 300;
+      done
+      "
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+
+  # Nginx for production (optional, remove if using external load balancer)
+  nginx:
+    image: nginx:alpine
+    container_name: virtuoso-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - nginx-cache:/var/cache/nginx
+    depends_on:
+      - virtuoso
+    networks:
+      - virtuoso-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  redis-data:
+    driver: local
+  nginx-cache:
+    driver: local
+
+networks:
+  virtuoso-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

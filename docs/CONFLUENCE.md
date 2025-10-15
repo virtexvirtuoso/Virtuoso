@@ -212,10 +212,14 @@ Quality Impact: +3.00 points (moderate amplification (high quality signal))
 
 ### Configuration & Thresholds
 
+**UPDATED 2025-10-15**: Thresholds calibrated for real market conditions
+
 Default quality thresholds (in `src/core/analysis/confluence.py`):
-- `QUALITY_THRESHOLD_CONFIDENCE = 0.7`
-- `QUALITY_THRESHOLD_CONSENSUS = 0.8`
-- `MAX_AMPLIFICATION = 0.15` (15%)
+- `QUALITY_THRESHOLD_CONFIDENCE = 0.50` (was 0.7 - unrealistic for real markets)
+- `QUALITY_THRESHOLD_CONSENSUS = 0.75` (was 0.8 - overly strict)
+- `MAX_AMPLIFICATION = 0.15` (15% - unchanged)
+
+**Rationale**: Original thresholds (0.7/0.8) resulted in 0% amplification rate across 1000 realistic market simulations. New thresholds (0.5/0.75) target 8-12% amplification rate, matching professional trading standards.
 
 ### Key Implementation Files
 

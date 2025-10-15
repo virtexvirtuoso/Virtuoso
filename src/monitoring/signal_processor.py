@@ -239,9 +239,24 @@ class SignalProcessor:
             else:
                 self.logger.info(f"Generated NEUTRAL signal for {symbol} with score {confluence_score:.2f} in neutral zone (buy: {buy_threshold}, sell: {sell_threshold}, buffer: {neutral_buffer})")
 
-            
+
             # Cache confluence breakdown for mobile dashboard
             try:
+                # DEBUG: Log interpretations before caching
+                if 'results' in result and 'market_interpretations' in result['results']:
+                    interps = result['results']['market_interpretations']
+                    self.logger.info(f"[INTERP-FLOW] {symbol} - About to cache {len(interps)} interpretations from results")
+                    if interps:
+                        sample = interps[0]
+                        if isinstance(sample, dict):
+                            self.logger.info(f"[INTERP-FLOW] {symbol} - Sample interpretation (dict): {sample.get('component', 'N/A')}: {sample.get('interpretation', 'N/A')[:100]}")
+                        else:
+                            self.logger.info(f"[INTERP-FLOW] {symbol} - Sample interpretation (str): {str(sample)[:100]}")
+                elif 'interpretations' in result:
+                    self.logger.info(f"[INTERP-FLOW] {symbol} - Found interpretations at top level: {list(result['interpretations'].keys()) if isinstance(result['interpretations'], dict) else len(result['interpretations'])}")
+                else:
+                    self.logger.warning(f"[INTERP-FLOW] {symbol} - No interpretations found in result before caching!")
+
                 cache_success = await confluence_cache_service.cache_confluence_breakdown(symbol, result)
                 if cache_success:
                     self.logger.debug(f"✅ Cached confluence breakdown for {symbol}")

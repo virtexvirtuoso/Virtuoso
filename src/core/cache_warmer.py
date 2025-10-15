@@ -42,20 +42,25 @@ class CacheWarmer:
         self.last_successful_warming = 0
         
     def setup_warming_tasks(self):
-        """Setup cache warming tasks with priorities"""
+        """Setup cache warming tasks with priorities
+
+        IMPORTANT: Disabled warming for cross-process keys to avoid overwriting real data
+        from monitoring service. Cross-process keys (analysis:signals, market:overview, etc.)
+        are now populated by the monitoring service using unified schemas.
+        """
         self.warming_tasks = [
-            # Critical dashboard data (highest priority)
-            WarmingTask('market:overview', priority=1, interval_seconds=30),
-            WarmingTask('analysis:signals', priority=1, interval_seconds=30),
-            WarmingTask('market:movers', priority=2, interval_seconds=45),
+            # DISABLED: Cross-process keys are populated by monitoring service
+            # WarmingTask('market:overview', priority=1, interval_seconds=30),
+            # WarmingTask('analysis:signals', priority=1, interval_seconds=30),
+            # WarmingTask('market:movers', priority=2, interval_seconds=45),
+
+            # Process-local keys only
             WarmingTask('market:tickers', priority=2, interval_seconds=60),
             WarmingTask('analysis:market_regime', priority=3, interval_seconds=120),
-            
-            # Additional dashboard data
             WarmingTask('market:breadth', priority=4, interval_seconds=90),
             WarmingTask('market:btc_dominance', priority=5, interval_seconds=180),
         ]
-        
+
         # Sort by priority
         self.warming_tasks.sort(key=lambda x: x.priority)
     
@@ -266,11 +271,34 @@ class CacheWarmer:
 
         This method fixes the circular dependency by generating realistic data
         directly without calling APIs that depend on cached data.
+
+        IMPORTANT: Skip warming if real data already exists in cache!
         """
         try:
             import json
             from datetime import datetime, timezone
             import random
+
+            # CRITICAL FIX: Check if real data already exists before overwriting
+            try:
+                from src.core.cache_system import optimized_cache_system
+                client = await optimized_cache_system._get_client()
+
+                if client:
+                    # Check if key exists
+                    existing_data = await client.get(cache_key.encode())
+                    if existing_data:
+                        # Decode and check if it's real data (not cache_warmer generated)
+                        try:
+                            decoded = json.loads(existing_data.decode())
+                            # If status is not 'cache_warmer_generated', it's real data - DON'T OVERWRITE
+                            if isinstance(decoded, dict) and decoded.get('status') != 'cache_warmer_generated':
+                                logger.debug(f"⏭️  Skipping {cache_key} - real data already exists")
+                                return True  # Success - data exists, no need to warm
+                        except:
+                            pass  # If can't decode, proceed with warming
+            except:
+                pass  # If can't check cache, proceed with warming
 
             current_time = time.time()
             current_datetime = datetime.now(timezone.utc).isoformat()
@@ -279,15 +307,27 @@ class CacheWarmer:
             independent_data = None
 
             if cache_key == 'market:overview':
-                # Generate realistic market overview
+                # Generate realistic market overview with COMPLETE structure
+                # IMPORTANT: Must match main.py lines 1669-1680 for mobile dashboard compatibility
                 independent_data = {
+                    # Core fields required by mobile dashboard
+                    'total_symbols': 0,
+                    'total_volume': 0,
+                    'total_volume_24h': 0,
+                    'market_regime': 'Initializing',
+                    'trend_strength': 0,
+                    'current_volatility': 0,
+                    'avg_volatility': 20.0,
+                    'btc_dominance': 57.6,
+                    'average_change_24h': 0,
+                    'timestamp': int(current_time),
+                    # Legacy fields for backward compatibility
                     'total_symbols_monitored': 0,
                     'active_signals_1h': 0,
                     'bullish_signals': 0,
                     'bearish_signals': 0,
                     'avg_confluence_score': 0.0,
                     'max_confluence_score': 0.0,
-                    'market_regime': 'Initializing',
                     'signal_quality': 'Pending',
                     'last_updated': current_time,
                     'datetime': current_datetime,

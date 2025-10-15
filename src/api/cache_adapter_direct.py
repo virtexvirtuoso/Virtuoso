@@ -79,14 +79,17 @@ class DirectCacheAdapter:
         self.redis_port = int(os.getenv('REDIS_PORT', 6379))
         self.enable_fallback = os.getenv('ENABLE_CACHE_FALLBACK', 'true').lower() == 'true'
         
-        # CRITICAL FIX: Initialize multi-tier cache instead of direct cache
+        # CRITICAL FIX: Initialize multi-tier cache with cross-process support
+        # Enable cross-process mode to fix isolation between monitoring and web server
         self.multi_tier_cache = MultiTierCacheAdapter(
             memcached_host=self.memcached_host,
             memcached_port=self.memcached_port,
             redis_host=self.redis_host,
             redis_port=self.redis_port,
             l1_max_size=1000,  # Optimized L1 cache size
-            l1_default_ttl=30   # Optimized L1 TTL
+            l1_default_ttl=30,   # Optimized L1 TTL for local keys
+            cross_process_mode=True,  # Enable cross-process cache sharing
+            cross_process_l1_ttl=2    # 2-second TTL for cross-process keys in L1
         )
         
         # Performance monitoring (legacy compatibility)
@@ -393,12 +396,25 @@ class DirectCacheAdapter:
         signals = await self._get('analysis:signals', {})
         regime = await self._get('analysis:market_regime', 'unknown')
         movers = await self._get('market:movers', {})
+
+        # TYPE SAFETY: Ensure all cached values are dicts (not error strings)
+        if not isinstance(overview, dict):
+            logger.warning(f"overview is not a dict: {type(overview)}")
+            overview = {}
+        if not isinstance(signals, dict):
+            logger.warning(f"signals is not a dict: {type(signals)}")
+            signals = {}
+        if not isinstance(movers, dict):
+            logger.warning(f"movers is not a dict: {type(movers)}")
+            movers = {}
         
         # Enhanced DEBUG logging to trace the data issue
         has_overview = bool(overview)
-        has_signals = bool(signals and signals.get('signals'))
-        signal_count = len(signals.get('signals', [])) if signals else 0
-        overview_symbols = overview.get('total_symbols', 0) if overview else 0
+        # TYPE SAFETY: Check signals is a dict before calling .get()
+        # NOTE: Cache uses 'recent_signals' key, not 'signals'
+        has_signals = bool(signals and isinstance(signals, dict) and (signals.get('signals') or signals.get('recent_signals')))
+        signal_count = len(signals.get('recent_signals', signals.get('signals', []))) if (signals and isinstance(signals, dict)) else 0
+        overview_symbols = overview.get('total_symbols', 0) if (overview and isinstance(overview, dict)) else 0
         
         logger.info(f"CACHE READ: overview={has_overview} (symbols={overview_symbols}), signals={has_signals} (count={signal_count}), regime={regime}, movers={bool(movers)}")
         
@@ -472,7 +488,8 @@ class DirectCacheAdapter:
         # Calculate values with proper fallbacks
         total_symbols = overview.get('total_symbols', 0)
         total_volume = overview.get('total_volume', overview.get('total_volume_24h', 0))
-        signal_list = signals.get('signals', []) if signals else []
+        # Support both 'signals' and 'recent_signals' keys
+        signal_list = signals.get('recent_signals', signals.get('signals', [])) if signals else []
         gainers = movers.get('gainers', []) if movers else []
         losers = movers.get('losers', []) if movers else []
 
@@ -743,7 +760,7 @@ class DirectCacheAdapter:
                     "sentiment": breakdown_data.get('sentiment', 'NEUTRAL'),
                     "reliability": breakdown_data.get('reliability', 75),
                     "price": signal.get('price', 0),
-                    "change_24h": round(signal.get('price_change_percent', 0), 2),
+                    "change_24h": round(signal.get('price_change_percent', signal.get('change_24h', 0)), 2),
                     "volume_24h": signal.get('volume_24h', signal.get('volume', 0)),
                     "high_24h": signal.get('high_24h', high_24h),
                     "low_24h": signal.get('low_24h', low_24h),
@@ -816,7 +833,21 @@ class DirectCacheAdapter:
             "market_overview": {
                 "market_regime": overview.get('market_regime', regime),
                 "trend_strength": overview.get('trend_strength', 0),
-                "volatility": overview.get('volatility', 0),
+
+                # NEW: BTC Realized Volatility (True crypto volatility)
+                "btc_volatility": overview.get('btc_volatility', 0),
+                "btc_daily_volatility": overview.get('btc_daily_volatility', 0),
+                "btc_price": overview.get('btc_price', 0),
+                "btc_vol_days": overview.get('btc_vol_days', 0),
+
+                # NEW: Market Dispersion (cross-sectional volatility)
+                "market_dispersion": overview.get('market_dispersion', 0),
+                "avg_market_dispersion": overview.get('avg_market_dispersion', 0),
+
+                # DEPRECATED: Keep for backward compatibility
+                "volatility": overview.get('current_volatility', overview.get('market_dispersion', 0)),
+                "avg_volatility": overview.get('avg_volatility', overview.get('avg_market_dispersion', 0)),
+
                 "btc_dominance": overview.get('btc_dominance', btc_dominance),
                 "total_volume_24h": overview.get('total_volume_24h', overview.get('total_volume', 0)),
                 "gainers": overview.get('gainers', 0),

@@ -186,9 +186,24 @@ class InterpretationManager:
                 self._processing_stats['context_enhancements'] += 1
             
             # Detect component interactions and confluence
+            # Extract component scores if available in raw_interpretations
+            component_scores = None
+            if isinstance(raw_interpretations, dict) and 'components' in raw_interpretations:
+                component_scores = raw_interpretations.get('components', {})
+            elif isinstance(raw_interpretations, list):
+                # Try to extract scores from list of dicts
+                component_scores = {}
+                for item in raw_interpretations:
+                    if isinstance(item, dict) and 'component' in item:
+                        comp_name = item.get('component')
+                        comp_score = item.get('score')
+                        if comp_name and comp_score is not None:
+                            component_scores[comp_name] = comp_score
+
             validated_interpretations = self._analyze_component_interactions(
                 validated_interpretations,
-                market_context
+                market_context,
+                component_scores if component_scores else None
             )
             
             # Create interpretation set
@@ -723,33 +738,55 @@ class InterpretationManager:
         return ""
     
     def _analyze_component_interactions(
-        self, 
+        self,
         interpretations: List[ComponentInterpretation],
-        market_context: Optional[MarketContext] = None
+        market_context: Optional[MarketContext] = None,
+        component_scores: Optional[Dict[str, float]] = None
     ) -> List[ComponentInterpretation]:
-        """Analyze interactions between components and detect confluence/divergence."""
+        """Analyze interactions between components and detect confluence/divergence.
+
+        Args:
+            interpretations: List of component interpretations
+            market_context: Optional market context
+            component_scores: Optional dict of component names to scores (0-100)
+                            Used for accurate confluence detection instead of text keywords
+        """
         if len(interpretations) < 2:
             return interpretations
-        
+
         try:
-            # Group interpretations by sentiment
+            # Group components by sentiment using SCORES if available, otherwise text
             bullish_components = []
             bearish_components = []
             neutral_components = []
-            
-            for interp in interpretations:
-                text_lower = interp.interpretation_text.lower()
-                if any(word in text_lower for word in ['bullish', 'buy', 'long', 'positive', 'strength']):
-                    bullish_components.append(interp)
-                elif any(word in text_lower for word in ['bearish', 'sell', 'short', 'negative', 'weakness']):
-                    bearish_components.append(interp)
-                else:
-                    neutral_components.append(interp)
-            
+
+            if component_scores:
+                # Use actual component scores for accurate detection
+                for interp in interpretations:
+                    comp_name = interp.component_name
+                    score = component_scores.get(comp_name, 50)
+
+                    if score > 55:
+                        bullish_components.append(interp)
+                    elif score < 45:
+                        bearish_components.append(interp)
+                    else:
+                        neutral_components.append(interp)
+            else:
+                # Fallback to text keyword matching (legacy behavior)
+                for interp in interpretations:
+                    text_lower = interp.interpretation_text.lower()
+                    if any(word in text_lower for word in ['bullish', 'buy', 'long', 'positive', 'strength']):
+                        bullish_components.append(interp)
+                    elif any(word in text_lower for word in ['bearish', 'sell', 'short', 'negative', 'weakness']):
+                        bearish_components.append(interp)
+                    else:
+                        neutral_components.append(interp)
+
             # Detect confluence (3+ components agreeing)
             confluence_detected = False
             confluence_direction = None
-            
+
             if len(bullish_components) >= 3:
                 confluence_detected = True
                 confluence_direction = 'bullish'

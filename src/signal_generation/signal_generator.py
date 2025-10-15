@@ -665,59 +665,33 @@ class SignalGenerator:
             logger.debug(f"Sell threshold: {sell_threshold}")
 
             # ═══════════════════════════════════════════════════════════════════
-            # QUALITY METRICS FILTERING
+            # QUALITY METRICS MONITORING (HYBRID APPROACH)
             # ═══════════════════════════════════════════════════════════════════
-            # Extract quality metrics from indicators
+            # Extract quality metrics from indicators for monitoring and logging
+            # Note: With hybrid approach, quality is integrated into confluence_score
+            # No separate filtering needed - weak signals automatically score low
             consensus = indicators.get('consensus', None)
             confidence = indicators.get('confidence', None)
             disagreement = indicators.get('disagreement', None)
+            score_base = indicators.get('score_base', None)
+            quality_impact = indicators.get('quality_impact', None)
 
-            # Apply quality-based filtering if metrics are available
-            if confidence is not None or disagreement is not None:
-                logger.info(f"[QUALITY CHECK] {symbol} - Consensus: {consensus:.3f if consensus is not None else 'N/A'}, "
-                          f"Confidence: {confidence:.3f if confidence is not None else 'N/A'}, "
-                          f"Disagreement: {disagreement:.4f if disagreement is not None else 'N/A'}")
+            # Log quality metrics for monitoring (no filtering, just visibility)
+            if confidence is not None:
+                logger.info(f"[QUALITY METRICS] {symbol}")
+                logger.info(f"  Adjusted Score: {confluence_score:.2f} (used for trading decisions)")
+                if score_base is not None:
+                    logger.info(f"  Base Score: {score_base:.2f} (before quality adjustment)")
+                if quality_impact is not None:
+                    logger.info(f"  Quality Impact: {quality_impact:+.2f} points ({'suppressed' if quality_impact < 0 else 'amplified'})")
+                logger.info(f"  Confidence: {confidence:.3f} | Consensus: {consensus:.3f if consensus else 'N/A'} | "
+                          f"Disagreement: {disagreement:.4f if disagreement else 'N/A'}")
 
-                # Filter 1: Low confidence check
-                if confidence is not None and confidence < 0.3:
-                    logger.warning(f"⊘ [{symbol}] SIGNAL FILTERED: Low confidence ({confidence:.3f} < 0.3)")
-                    logger.warning(f"   → Indicators lack conviction or are near neutral")
-                    logger.warning(f"   → Confluence score: {confluence_score:.2f}")
-
-                    # Log filtered signal to quality tracker
-                    self.quality_tracker.log_quality_metrics(
-                        symbol=symbol,
-                        confluence_score=confluence_score,
-                        consensus=consensus if consensus is not None else 0.0,
-                        confidence=confidence,
-                        disagreement=disagreement if disagreement is not None else 0.0,
-                        signal_filtered=True,
-                        filter_reason="low_confidence"
-                    )
-                    return None
-
-                # Filter 2: High disagreement check
-                if disagreement is not None and disagreement > 0.3:
-                    logger.warning(f"⊘ [{symbol}] SIGNAL FILTERED: High disagreement ({disagreement:.4f} > 0.3)")
-                    logger.warning(f"   → Indicators are conflicting, too risky")
-                    logger.warning(f"   → Confluence score: {confluence_score:.2f}")
-
-                    # Log filtered signal to quality tracker
-                    self.quality_tracker.log_quality_metrics(
-                        symbol=symbol,
-                        confluence_score=confluence_score,
-                        consensus=consensus if consensus is not None else 0.0,
-                        confidence=confidence if confidence is not None else 0.0,
-                        disagreement=disagreement,
-                        signal_filtered=True,
-                        filter_reason="high_disagreement"
-                    )
-                    return None
-
-                # Passed quality checks
-                logger.info(f"✓ [{symbol}] QUALITY CHECK PASSED - Signal eligible for generation")
-            else:
-                logger.debug(f"[QUALITY CHECK] {symbol} - Quality metrics not available, proceeding without filtering")
+                # Interpretation hint
+                if quality_impact is not None and quality_impact < -5:
+                    logger.info(f"  → Signal significantly suppressed by low quality")
+                elif quality_impact is not None and abs(quality_impact) < 2:
+                    logger.info(f"  → High quality signal, minimal adjustment")
             # ═══════════════════════════════════════════════════════════════════
 
             signal = None  # Initialize signal as None
@@ -736,30 +710,69 @@ class SignalGenerator:
             
             # Prepare results object with detailed interpretations for each component
             results = {}
+
+            # Extract full indicator results if available
+            full_results = indicators.get('results', {})
+
             for component_name, component_score in components.items():
                 # Get the appropriate interpretation method based on component name
                 # Use InterpretationGenerator instead of local interpretation methods
-                
+
                 try:
-                    # Prepare component data for the InterpretationGenerator
+                    # CRITICAL FIX: Extract full indicator data from results instead of creating empty dicts
+                    # Map component names to their corresponding indicator keys
+                    indicator_key_map = {
+                        'technical': 'technical',
+                        'momentum': 'technical',  # Momentum is mapped to technical
+                        'volume': 'volume',
+                        'orderflow': 'orderflow',
+                        'orderbook': 'orderbook',
+                        'sentiment': 'sentiment',
+                        'price_structure': 'price_structure',
+                        'futures_premium': 'futures_premium'
+                    }
+
+                    indicator_key = indicator_key_map.get(component_name, component_name)
+                    full_indicator_data = full_results.get(indicator_key, {})
+
+                    # DEBUG: Log what data we're extracting
+                    if component_name in ['orderbook', 'sentiment', 'price_structure']:
+                        self.logger.info(f"[COMPONENT-DATA] {component_name}: full_indicator_data keys = {list(full_indicator_data.keys()) if isinstance(full_indicator_data, dict) else 'NOT A DICT'}")
+                        if isinstance(full_indicator_data, dict):
+                            has_signals = bool(full_indicator_data.get('signals'))
+                            has_components = bool(full_indicator_data.get('components'))
+                            has_metadata = bool(full_indicator_data.get('metadata'))
+                            self.logger.info(f"[COMPONENT-DATA] {component_name}: has_signals={has_signals}, has_components={has_components}, has_metadata={has_metadata}")
+                            if has_components:
+                                comp_keys = list(full_indicator_data.get('components', {}).keys())[:5]
+                                self.logger.info(f"[COMPONENT-DATA] {component_name}: component keys = {comp_keys}")
+
+                    # Extract rich data from the full indicator results
                     component_data = {
                         'score': component_score,
-                        'signals': {},
-                        'components': {},
-                        'metadata': {'raw_values': indicators}
+                        'signals': full_indicator_data.get('signals', {}),
+                        'components': full_indicator_data.get('components', {}),
+                        'metadata': full_indicator_data.get('metadata', {'raw_values': indicators})
                     }
-                    
-                    # Extract sub-components if available
-                    extract_method = getattr(self, f"_extract_{component_name}_components", None)
-                    sub_components = {}
-                    if extract_method:
-                        sub_components = extract_method(indicators)
-                        component_data['components'] = sub_components
-                    
-                    # Get detailed interpretation from InterpretationGenerator
-                    interpretation = self.interpretation_generator.get_component_interpretation(
-                        component_name, component_data
-                    )
+
+                    # If no rich data found, try legacy extract methods as fallback
+                    if not component_data['components']:
+                        extract_method = getattr(self, f"_extract_{component_name}_components", None)
+                        if extract_method:
+                            sub_components = extract_method(indicators)
+                            component_data['components'] = sub_components
+
+                    # CRITICAL FIX: Use interpretation from indicator if available, otherwise generate new one
+                    if 'interpretation' in full_indicator_data and full_indicator_data['interpretation']:
+                        # Use the interpretation that the indicator already generated
+                        interpretation = full_indicator_data['interpretation']
+                        self.logger.debug(f"Using pre-generated interpretation for {component_name}: {interpretation[:100]}")
+                    else:
+                        # Generate interpretation if indicator didn't provide one
+                        interpretation = self.interpretation_generator.get_component_interpretation(
+                            component_name, component_data
+                        )
+                        self.logger.debug(f"Generated new interpretation for {component_name}: {interpretation[:100]}")
                     
                     raw_interpretations.append({
                         'component': component_name,

@@ -1,0 +1,85 @@
+# Virtuoso CCXT - Complete Working Docker Stack
+version: '3.8'
+
+services:
+  # Main Virtuoso application
+  virtuoso:
+    build:
+      context: .
+      dockerfile: Dockerfile.working
+    image: virtuoso-ccxt:working
+    container_name: virtuoso-main
+    ports:
+      - "8001:8001"  # Monitoring API
+      - "8002:8002"  # Configuration/Docs API
+      - "8003:8003"  # Main Web Server
+    environment:
+      - MEMCACHED_HOST=memcached
+      - REDIS_HOST=redis
+      - ENABLE_MULTI_TIER_CACHE=true
+      - ENABLE_UNIFIED_ENDPOINTS=true
+      # Add your API keys here or use .env file
+      - BYBIT_API_KEY=${BYBIT_API_KEY:-}
+      - BYBIT_API_SECRET=${BYBIT_API_SECRET:-}
+      - BINANCE_API_KEY=${BINANCE_API_KEY:-}
+      - BINANCE_SECRET=${BINANCE_SECRET:-}
+      - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL:-}
+    depends_on:
+      - memcached
+      - redis
+    volumes:
+      - ./config:/app/config
+      - ./logs:/app/logs
+      - ./data:/app/data
+      - ./exports:/app/exports
+      - ./reports:/app/reports
+    restart: unless-stopped
+    networks:
+      - virtuoso-network
+    command: >
+      sh -c "
+      echo '🚀 Starting Virtuoso Trading System...' &&
+      python src/web_server.py
+      "
+
+  # Memcached for L2 cache
+  memcached:
+    image: memcached:alpine
+    container_name: virtuoso-memcached
+    ports:
+      - "11211:11211"
+    command: memcached -m 512 -I 10m
+    restart: unless-stopped
+    networks:
+      - virtuoso-network
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "11211"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis for L3 cache and pub/sub
+  redis:
+    image: redis:alpine
+    container_name: virtuoso-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --maxmemory 1gb --maxmemory-policy allkeys-lru --appendonly yes
+    restart: unless-stopped
+    networks:
+      - virtuoso-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  redis-data:
+    driver: local
+
+networks:
+  virtuoso-network:
+    driver: bridge

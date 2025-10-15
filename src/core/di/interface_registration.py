@@ -389,13 +389,17 @@ def _register_monitoring_services(container: ServiceContainer, config: Dict[str,
         signal_service = await container.get_service(ISignalService)
         market_data_service = await container.get_service(IMarketDataService)
         analysis_service = await container.get_service(IAnalysisService)
-        
+
+        # CRITICAL FIX: Get primary exchange for market-wide ticker fetching
+        primary_exchange = await exchange_manager.get_primary_exchange()
+
         # Optional dependencies
         database_client = None
         portfolio_analyzer = None
         top_symbols_manager = None
-        
+
         return MarketMonitor(
+            exchange=primary_exchange,  # ADDED: Pass exchange for market-wide metrics
             config=config_dict,
             logger=logging.getLogger('monitoring'),
             exchange_manager=exchange_manager,
