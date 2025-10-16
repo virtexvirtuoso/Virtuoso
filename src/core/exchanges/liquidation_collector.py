@@ -106,10 +106,13 @@ class LiquidationDataCollector:
             # Try to subscribe to WebSocket liquidations if available (optional)
             if hasattr(exchange, 'subscribe_liquidations'):
                 try:
-                    await exchange.subscribe_liquidations(symbols)
-                    self.logger.info(f"Subscribed to Bybit liquidations via WebSocket for {len(symbols)} symbols")
+                    result = await exchange.subscribe_liquidations(symbols)
+                    if result:
+                        self.logger.info(f"✅ Subscribed to Bybit liquidations via WebSocket for {len(symbols)} symbols")
+                    else:
+                        self.logger.info(f"WebSocket liquidation subscription unavailable, using REST polling fallback")
                 except Exception as e:
-                    self.logger.info(f"WebSocket liquidation subscription unavailable, will use REST polling: {e}")
+                    self.logger.info(f"WebSocket liquidation subscription failed, using REST polling fallback: {e}")
 
             # Poll for REST API liquidation data (primary mechanism)
             while self.is_collecting:
