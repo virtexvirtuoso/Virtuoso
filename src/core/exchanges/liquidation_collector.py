@@ -60,12 +60,12 @@ class LiquidationDataCollector:
         for exchange_id, exchange in self.exchange_manager.exchanges.items():
             if hasattr(exchange, 'subscribe_liquidations'):
                 task = create_tracked_task(
-                    self._collect_from_exchange(exchange), name="_collect_from_exchange_task"
+                    self._collect_from_exchange(exchange_id, exchange, symbols), name="_collect_from_exchange_task"
                 )
                 tasks.append(task)
-        
+
         # Start periodic REST API collection for exchanges that don't support WebSocket
-        tasks.append(create_tracked_task(self._periodic_rest_collection(), name="_periodic_rest_collection_task"))
+        tasks.append(create_tracked_task(self._periodic_rest_collection(symbols), name="_periodic_rest_collection_task"))
         
         try:
             await asyncio.gather(*tasks)
