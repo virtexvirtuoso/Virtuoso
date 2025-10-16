@@ -105,7 +105,7 @@ class LiquidationDataCollector:
         try:
             # Bybit provides liquidation data via WebSocket
             if hasattr(exchange, 'subscribe_liquidations'):
-                await exchange.subscribe_liquidations(symbols, self._handle_bybit_liquidation)
+                await exchange.subscribe_liquidations(symbols)
             
             # Also check for REST API liquidation data
             while self.is_collecting:
