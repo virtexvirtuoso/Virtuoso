@@ -103,11 +103,15 @@ class LiquidationDataCollector:
     async def _collect_bybit_liquidations(self, exchange, symbols: List[str]):
         """Collect liquidation data from Bybit WebSocket."""
         try:
-            # Bybit provides liquidation data via WebSocket
+            # Try to subscribe to WebSocket liquidations if available (optional)
             if hasattr(exchange, 'subscribe_liquidations'):
-                await exchange.subscribe_liquidations(symbols)
-            
-            # Also check for REST API liquidation data
+                try:
+                    await exchange.subscribe_liquidations(symbols)
+                    self.logger.info(f"Subscribed to Bybit liquidations via WebSocket for {len(symbols)} symbols")
+                except Exception as e:
+                    self.logger.info(f"WebSocket liquidation subscription unavailable, will use REST polling: {e}")
+
+            # Poll for REST API liquidation data (primary mechanism)
             while self.is_collecting:
                 for symbol in symbols:
                     try:
