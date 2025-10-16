@@ -768,12 +768,21 @@ async def initialize_components():
     logger.info("✅ MarketMonitor initialized via DI container with all dependencies validated")
 
     # Initialize MarketDataManager WebSocket connections for liquidation monitoring
+    symbol_names = []  # Initialize to handle exception cases
     try:
         max_symbols = config_manager.config.get('market', {}).get('symbols', {}).get('max_symbols', 15)
         symbols = await top_symbols_manager.get_top_symbols(limit=max_symbols)
-        if symbols:
-            logger.info(f"🔌 Initializing WebSocket connections for {len(symbols)} symbols (includes liquidation feeds)...")
-            await market_data_manager.initialize(symbols)
+
+        # Extract symbol names from dict format if needed (handles both dict and string formats)
+        if symbols and isinstance(symbols[0], dict):
+            symbol_names = [s.get('symbol', s) if isinstance(s, dict) else s for s in symbols]
+            logger.debug(f"Converted {len(symbols)} symbol dicts to symbol names: {symbol_names[:3]}...")
+        else:
+            symbol_names = symbols if symbols else []
+
+        if symbol_names:
+            logger.info(f"🔌 Initializing WebSocket connections for {len(symbol_names)} symbols (includes liquidation feeds)...")
+            await market_data_manager.initialize(symbol_names)
             logger.info(f"✅ MarketDataManager WebSocket initialized - liquidation alerts now active")
         else:
             logger.warning("⚠️ No symbols available for WebSocket initialization - will retry during monitoring cycle")
@@ -785,9 +794,9 @@ async def initialize_components():
     # Start LiquidationDetectionEngine real data collection
     if liquidation_detector:
         try:
-            if symbols:
-                logger.info(f"🔌 Starting LiquidationDetectionEngine data collection for {len(symbols)} symbols...")
-                collection_started = await liquidation_detector.start_real_liquidation_collection(symbols)
+            if symbol_names:
+                logger.info(f"🔌 Starting LiquidationDetectionEngine data collection for {len(symbol_names)} symbols...")
+                collection_started = await liquidation_detector.start_real_liquidation_collection(symbol_names)
                 if collection_started:
                     logger.info("✅ LiquidationDetectionEngine data collection started - real liquidation monitoring active")
                 else:
