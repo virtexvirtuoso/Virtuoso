@@ -1867,14 +1867,6 @@ class BybitExchange(BaseExchange):
         except Exception as e:
             self.logger.error(f"Error subscribing to symbol feeds: {str(e)}")
 
-    async def get_recent_liquidations(self, symbol: str) -> List[Dict[str, Any]]:
-        """Get recent liquidation events from WebSocket buffer."""
-        try:
-            return self.ws.get_recent_liquidations(symbol)
-        except Exception as e:
-            self.logger.error(f"Error fetching liquidations: {str(e)}")
-            return []
-
     async def fetch_exchange_info(self) -> Optional[Dict[str, Any]]:
         """Fetch exchange information including trading rules."""
         try:
