@@ -766,7 +766,41 @@ async def initialize_components():
         raise RuntimeError(error_msg)
 
     logger.info("✅ MarketMonitor initialized via DI container with all dependencies validated")
-    
+
+    # Initialize MarketDataManager WebSocket connections for liquidation monitoring
+    try:
+        max_symbols = config_manager.config.get('market', {}).get('symbols', {}).get('max_symbols', 15)
+        symbols = await top_symbols_manager.get_top_symbols(limit=max_symbols)
+        if symbols:
+            logger.info(f"🔌 Initializing WebSocket connections for {len(symbols)} symbols (includes liquidation feeds)...")
+            await market_data_manager.initialize(symbols)
+            logger.info(f"✅ MarketDataManager WebSocket initialized - liquidation alerts now active")
+        else:
+            logger.warning("⚠️ No symbols available for WebSocket initialization - will retry during monitoring cycle")
+    except Exception as e:
+        logger.error(f"❌ Failed to initialize MarketDataManager WebSocket: {e}")
+        logger.warning("⚠️ Liquidation alerts will not function until WebSocket is initialized")
+        logger.debug(traceback.format_exc())
+
+    # Start LiquidationDetectionEngine real data collection
+    if liquidation_detector:
+        try:
+            if symbols:
+                logger.info(f"🔌 Starting LiquidationDetectionEngine data collection for {len(symbols)} symbols...")
+                collection_started = await liquidation_detector.start_real_liquidation_collection(symbols)
+                if collection_started:
+                    logger.info("✅ LiquidationDetectionEngine data collection started - real liquidation monitoring active")
+                else:
+                    logger.warning("⚠️ LiquidationDetectionEngine failed to start collection")
+            else:
+                logger.warning("⚠️ No symbols available for liquidation detection - will retry during monitoring cycle")
+        except Exception as e:
+            logger.error(f"❌ Failed to start LiquidationDetectionEngine collection: {e}")
+            logger.warning("⚠️ Real liquidation data collection will not function")
+            logger.debug(traceback.format_exc())
+    else:
+        logger.warning("⚠️ LiquidationDetectionEngine not initialized - skipping real data collection")
+
     # Connect monitor and confluence_analyzer to signal_generator for direct OHLCV cache access
     signal_generator.monitor = market_monitor
     signal_generator.confluence_analyzer = confluence_analyzer
