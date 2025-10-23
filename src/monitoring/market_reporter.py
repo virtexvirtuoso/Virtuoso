@@ -107,6 +107,9 @@ except ImportError:
             PDF_CLASSES_AVAILABLE = True
             logging.getLogger(__name__).info("Using basic PDF generation fallback")
 
+# Ensure logs directory exists (required for CI environments)
+os.makedirs('logs', exist_ok=True)
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
