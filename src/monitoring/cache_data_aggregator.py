@@ -713,16 +713,39 @@ class CacheDataAggregator:
     async def _update_analysis_signals(self) -> None:
         """Generate and cache analysis signals data using unified schema."""
         try:
-            # Get recent signals (last 2 hours)
-            cutoff_time = time.time() - 7200
+            # Get recent signals (last 10 minutes - matches current monitoring window)
+            # CRITICAL FIX: Reduced from 7200s (2 hours) to 600s (10 minutes)
+            # This prevents mixing old high-scoring signals with current top symbols
+            # 10 minutes = 2x cache TTL (300s) and 2x symbol selection interval (300s)
+            cutoff_time = time.time() - 600
             recent_signals = [s for s in self.signal_buffer if s['timestamp'] > cutoff_time]
 
             # Sort by confluence score (highest first)
             recent_signals.sort(key=lambda x: x['confluence_score'], reverse=True)
 
+            # CRITICAL FIX: Deduplicate by symbol, keeping only highest score per symbol
+            # This ensures all 15 monitored symbols appear in cache (not just top 20 signals)
+            seen_symbols = {}
+            for signal in recent_signals:
+                symbol = signal['symbol']
+                if symbol not in seen_symbols:
+                    seen_symbols[symbol] = signal
+
+            # Get unique symbols sorted by score
+            unique_signals = list(seen_symbols.values())
+            unique_signals.sort(key=lambda x: x['confluence_score'], reverse=True)
+
+            # Log signal filtering for debugging
+            logger.debug(
+                f"Signal buffer: {len(self.signal_buffer)} total signals, "
+                f"{len(recent_signals)} from last 10 minutes, "
+                f"{len(unique_signals)} unique symbols, "
+                f"writing top {min(len(unique_signals), 20)}"
+            )
+
             # Prepare signals for unified schema (convert to expected format)
             formatted_signals = []
-            for signal in recent_signals[:20]:  # Top 20 signals
+            for signal in unique_signals[:20]:  # Top 20 unique symbols
                 # Get market data for the symbol
                 market_data = self.market_data_buffer.get(signal['symbol'], {})
 
@@ -752,9 +775,10 @@ class CacheDataAggregator:
             )
 
             if success:
+                unique_symbols = len(set(s['symbol'] for s in formatted_signals))
                 logger.debug(
                     f"✅ Updated analysis:signals with UNIFIED SCHEMA - "
-                    f"{len(formatted_signals)} signals"
+                    f"{len(formatted_signals)} signals ({unique_symbols} unique symbols)"
                 )
             else:
                 logger.error("Failed to write signals with unified schema")

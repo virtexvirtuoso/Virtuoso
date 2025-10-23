@@ -8,10 +8,9 @@ This is the definitive test to validate that signal frequency tracking
 and rich Discord alerts with PDF attachments work perfectly together.
 
 This test focuses specifically on the core integration that the user requested:
-"Is there a way that we can have the signal frequency tracking enabled 
+"Is there a way that we can have the signal frequency tracking enabled
 but still have the rich formatting of the alerts with a PDF attachments?"
 
-Author: Claude AI Assistant  
 Purpose: Final validation of the complete integration
 """
 

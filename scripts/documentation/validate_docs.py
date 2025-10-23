@@ -26,7 +26,6 @@ Options:
     --min-coverage: Minimum documentation coverage percentage (default: 80)
     --check-links: Validate internal links (default: True)
 
-Author: Claude Code Assistant
 Version: 1.0.0
 """
 
