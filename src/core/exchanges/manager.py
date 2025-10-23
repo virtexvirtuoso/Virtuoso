@@ -160,17 +160,29 @@ class ExchangeManager:
         Returns:
             bool: True if exchange is healthy, False otherwise
         """
-        try:
-            # Simple health check - use fetch_status if available
-            if hasattr(exchange, 'fetch_status'):
-                status = await asyncio.wait_for(exchange.fetch_status(), timeout=5.0)
-                return status.get('online', False) if isinstance(status, dict) else True
-            else:
-                # If no fetch_status, assume healthy (will fail gracefully later if not)
-                return True
-        except Exception as e:
-            self.logger.debug(f"Exchange {exchange.exchange_id} health check failed: {str(e)}")
-            return False
+        max_retries = 2
+        timeout = 15.0  # Increased from 5.0 to allow for API latency spikes
+
+        for attempt in range(max_retries):
+            try:
+                # Simple health check - use fetch_status if available
+                if hasattr(exchange, 'fetch_status'):
+                    status = await asyncio.wait_for(exchange.fetch_status(), timeout=timeout)
+                    return status.get('online', False) if isinstance(status, dict) else True
+                else:
+                    # If no fetch_status, assume healthy (will fail gracefully later if not)
+                    return True
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    # Retry on first failure without logging
+                    await asyncio.sleep(1.0)  # Brief delay before retry
+                    continue
+                else:
+                    # Only log WARNING after 2 consecutive failures
+                    self.logger.debug(f"Exchange {exchange.exchange_id} health check failed after {max_retries} attempts: {str(e)}")
+                    return False
+
+        return False
         
     async def cleanup(self):
         """Cleanup all exchange connections"""

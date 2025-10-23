@@ -620,21 +620,34 @@ class BybitExchange(BaseExchange):
             
             self._last_session_creation = current_time
             
-            # Close existing session and connector if any
+            # Close existing session and connector if any - with robust cleanup
             if self.session:
                 try:
                     if not self.session.closed:
                         await self.session.close()
+                        # Wait for connector cleanup to complete
+                        await asyncio.sleep(0.1)
                 except Exception as e:
-                    self.logger.debug(f"Error closing old session: {e}")
-                self.session = None
-            
+                    self.logger.error(f"⚠️ Failed to close session properly (fd leak risk): {e}")
+                    # Force close connector if normal close failed
+                    try:
+                        if hasattr(self.session, '_connector') and self.session._connector:
+                            await self.session._connector.close()
+                    except:
+                        pass
+                finally:
+                    self.session = None
+
             if self.connector:
                 try:
-                    await self.connector.close()
+                    if not self.connector.closed:
+                        await self.connector.close()
+                        # Wait for socket cleanup
+                        await asyncio.sleep(0.1)
                 except Exception as e:
-                    self.logger.debug(f"Error closing old connector: {e}")
-                self.connector = None
+                    self.logger.error(f"⚠️ Failed to close connector properly (fd leak risk): {e}")
+                finally:
+                    self.connector = None
                 
             # Create TCP connector with connection pooling
             self.connector = aiohttp.TCPConnector(
@@ -683,15 +696,20 @@ class BybitExchange(BaseExchange):
                 try:
                     if self.session and not self.session.closed:
                         await self.session.close()
-                except Exception:
-                    pass
+                        await asyncio.sleep(0.1)  # Wait for cleanup
+                except Exception as e:
+                    self.logger.error(f"⚠️ Failed to close session in health check (fd leak risk): {e}")
+                finally:
+                    self.session = None
+
                 try:
                     if self.connector and not self.connector.closed:
                         await self.connector.close()
-                except Exception:
-                    pass
-                self.session = None
-                self.connector = None
+                        await asyncio.sleep(0.1)  # Wait for cleanup
+                except Exception as e:
+                    self.logger.error(f"⚠️ Failed to close connector in health check (fd leak risk): {e}")
+                finally:
+                    self.connector = None
                 await self._create_session()
                 return True
                 
@@ -1120,18 +1138,16 @@ class BybitExchange(BaseExchange):
     async def connect_ws(self) -> bool:
         """Connect to Bybit WebSocket with enhanced resilience and proper configuration"""
         try:
-            # Get config with protocol validation
-            ws_config = self.config.get('websocket', {})
-            if not ws_config.get('enabled', False):
+            # Use the WebSocket config already extracted in __init__
+            if not self.ws_config.get('enabled', False):
                 self.logger.info("WebSocket is disabled in config")
                 return False
 
-            # Get the correct endpoint from config
-            if self.config.get("data_unavailable", False):
-                ws_url = ws_config.get("data_unavailable")
+            # Use the WebSocket endpoint already set in __init__
+            ws_url = self.ws_endpoint
+            if self.testnet:
                 self.logger.debug(f"Using testnet WebSocket endpoint: {ws_url}")
             else:
-                ws_url = ws_config.get('mainnet_endpoint')
                 self.logger.debug(f"Using mainnet WebSocket endpoint: {ws_url}")
 
             if not ws_url:
@@ -2041,26 +2057,28 @@ class BybitExchange(BaseExchange):
             self.logger.error(f"Error closing exchange connections: {str(e)}")
 
     async def test_connection(self) -> bool:
-        """Test API connectivity."""
+        """Test API connectivity using persistent session to avoid fd leaks."""
         max_retries = 3
         retry_delay = 1.0
-        
+
         for attempt in range(max_retries):
             try:
-                # Use v5 API endpoint for time
-                async with aiohttp.ClientSession() as session:
-                    url = f"{self.rest_endpoint}/v5/market/time"
-                    async with session.get(url) as response:
-                        if response.status == 200:
-                            data = await response.json()
-                            if data and data.get('retCode') == 0:
-                                self.logger.debug("API connection test successful")
-                                return True
-                            else:
-                                error_text = data.get('retMsg', 'Unknown error') if data else 'No response data'
-                                self.logger.error(f"API connection test failed: {error_text}")
+                # Ensure we have a healthy session
+                await self._ensure_healthy_session()
+
+                # Use persistent session instead of creating new ones
+                url = f"{self.rest_endpoint}/v5/market/time"
+                async with self.session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        if data and data.get('retCode') == 0:
+                            self.logger.debug("API connection test successful")
+                            return True
                         else:
-                            self.logger.error(f"API connection test failed: {response.status}")
+                            error_text = data.get('retMsg', 'Unknown error') if data else 'No response data'
+                            self.logger.error(f"API connection test failed: {error_text}")
+                    else:
+                        self.logger.error(f"API connection test failed: {response.status}")
                             
                         if attempt == max_retries - 1:
                             return False

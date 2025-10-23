@@ -11,7 +11,11 @@ from src.core.error.unified_exceptions import DataUnavailableError
 from src.core.exchanges.rate_limiter import BybitRateLimiter
 from src.core.exchanges.websocket_manager import WebSocketManager
 from src.core.market.smart_intervals import SmartIntervalsManager, MarketActivity
+from src.core.cache.liquidation_cache import LiquidationCacheManager
+from src.core.models.liquidation import LiquidationEvent
+from src.data_storage.liquidation_storage import LiquidationStorage
 from src.utils.task_tracker import create_tracked_task
+from src.utils.data_validation import TimestampValidator
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +74,31 @@ class MarketDataManager:
         
         # Initialize smart intervals manager
         self.smart_intervals = SmartIntervalsManager(config.get('market_data', {}))
-        
+
+        # Initialize liquidation cache manager
+        cache_config = self.config.get('caching', {})  # Fixed: was 'cache', now 'caching'
+        cache_type = cache_config.get('backend', 'memcached')  # Fixed: was 'type', now 'backend'
+
+        # Get backend-specific configuration
+        backend_config = cache_config.get(cache_type, {})
+        self.liquidation_cache = LiquidationCacheManager(
+            cache_type=cache_type,
+            host=backend_config.get('host', 'localhost'),
+            port=backend_config.get('port', 11211 if cache_type == 'memcached' else 6379),
+            db=backend_config.get('db', 0) if cache_type == 'redis' else None
+        )
+        self.logger.info(f"Liquidation cache initialized with {cache_type} backend")
+
+        # Initialize optional database persistence for liquidations
+        self.liquidation_storage = None
+        liquidation_persistence = self.config.get('liquidation_persistence', {})
+        if liquidation_persistence.get('enabled', False):
+            database_url = self.config.get('database', {}).get('url', 'sqlite:///./data/virtuoso.db')
+            self.liquidation_storage = LiquidationStorage(database_url)
+            self.logger.info(f"Liquidation database persistence enabled: {database_url}")
+        else:
+            self.logger.info("Liquidation database persistence disabled")
+
         # Configure refresh intervals (in seconds) - now using smart intervals
         self.base_refresh_intervals = {
             'ticker': 60,      # Base: 1 minute (will be adjusted by smart intervals)
@@ -98,6 +126,24 @@ class MarketDataManager:
             'data_freshness': {},
             'last_update_time': 0
         }
+
+        # Initialize timestamp validator for multi-timeframe synchronization
+        validation_config = self.config.get('data_validation', {}).get('timestamp_sync', {})
+        if validation_config.get('enabled', False):
+            max_delta = validation_config.get('max_delta_seconds', 60)
+            strict_mode = validation_config.get('strict_mode', False)
+            self.timestamp_validator = TimestampValidator(
+                max_delta_seconds=max_delta,
+                strict_mode=strict_mode
+            )
+            self.timestamp_validation_enabled = True
+            self.timestamp_validation_fallback = validation_config.get('fallback_to_base', True)
+            self.logger.info(f"Timestamp validation enabled: max_delta={max_delta}s, strict={strict_mode}, fallback={self.timestamp_validation_fallback}")
+        else:
+            self.timestamp_validator = None
+            self.timestamp_validation_enabled = False
+            self.timestamp_validation_fallback = False
+            self.logger.info("Timestamp validation disabled")
         
         # Get WebSocket logging throttle from config
         ws_throttle = self.config.get('market_data', {}).get('websocket_update_throttle', 5)
@@ -1528,50 +1574,91 @@ class MarketDataManager:
         # Process each liquidation event in the array
         for liq_data in liquidation_data_array:
             # Format liquidation data using official field names
-            liquidation = {
+            liquidation_dict = {
                 'symbol': liq_data.get('s', symbol),
                 'side': liq_data.get('S', ''),
                 'price': float(liq_data.get('p', 0)),
                 'amount': float(liq_data.get('v', 0)),
                 'timestamp': int(liq_data.get('T', ts))
             }
-            
-            # Add to liquidations list in cache
-            if 'liquidations' not in self.data_cache[liquidation['symbol']]:
-                self.data_cache[liquidation['symbol']]['liquidations'] = []
-            
-            self.data_cache[liquidation['symbol']]['liquidations'].append(liquidation)
-            
+
+            # Create LiquidationEvent object for cache
+            liquidation_event = LiquidationEvent(
+                symbol=liquidation_dict['symbol'],
+                exchange='bybit',  # TODO: Get from config or context
+                side=liquidation_dict['side'],
+                price=liquidation_dict['price'],
+                quantity=liquidation_dict['amount'],
+                timestamp=liquidation_dict['timestamp']
+            )
+
+            # Store in liquidation cache (Redis/Memcached)
+            # Get recent liquidations to update
+            symbols = [liquidation_dict['symbol']]
+            exchanges = ['bybit']
+            recent_liquidations = self.liquidation_cache.get_liquidation_events(
+                symbols=symbols,
+                exchanges=exchanges,
+                lookback_minutes=1440  # 24 hours
+            ) or []
+
+            # Add new liquidation and store back
+            recent_liquidations.append(liquidation_event)
+            self.liquidation_cache.set_liquidation_events(
+                symbols=symbols,
+                exchanges=exchanges,
+                lookback_minutes=1440,
+                events=recent_liquidations
+            )
+
+            # Also persist to database if enabled
+            if self.liquidation_storage is not None:
+                try:
+                    # Use asyncio to persist without blocking
+                    persist_task = create_tracked_task(
+                        self.liquidation_storage.store_liquidation_event(liquidation_event),
+                        name="liquidation_persistence"
+                    )
+                    # Fire and forget - don't wait for completion
+                except Exception as db_error:
+                    logger.error(f"Error persisting liquidation to database: {db_error}")
+
+            # Also maintain backward compatibility with in-memory cache
+            if 'liquidations' not in self.data_cache[liquidation_dict['symbol']]:
+                self.data_cache[liquidation_dict['symbol']]['liquidations'] = []
+
+            self.data_cache[liquidation_dict['symbol']]['liquidations'].append(liquidation_dict)
+
             # Keep only recent liquidations (last 24 hours)
             recent_time = time.time() * 1000 - 24 * 60 * 60 * 1000
-            self.data_cache[liquidation['symbol']]['liquidations'] = [
-                l for l in self.data_cache[liquidation['symbol']]['liquidations'] 
+            self.data_cache[liquidation_dict['symbol']]['liquidations'] = [
+                l for l in self.data_cache[liquidation_dict['symbol']]['liquidations']
                 if l['timestamp'] >= recent_time
             ]
-            
-            logger.info(f"Liquidation detected for {liquidation['symbol']}: {liquidation['side']} {liquidation['amount']} @ {liquidation['price']}")
+
+            logger.info(f"Liquidation detected for {liquidation_dict['symbol']}: {liquidation_dict['side']} {liquidation_dict['amount']} @ {liquidation_dict['price']} (cached)")
             
             # Send to AlertManager if it's available
             if hasattr(self, 'alert_manager') and self.alert_manager is not None:
                 # Prepare data for the alert manager format
                 liquidation_data = {
-                    'symbol': liquidation['symbol'],
-                    'side': liquidation['side'],
-                    'price': liquidation['price'],
-                    'size': liquidation['amount'],  # Use 'amount' as 'size' for consistency with AlertManager
-                    'timestamp': liquidation['timestamp']
+                    'symbol': liquidation_dict['symbol'],
+                    'side': liquidation_dict['side'],
+                    'price': liquidation_dict['price'],
+                    'size': liquidation_dict['amount'],  # Use 'amount' as 'size' for consistency with AlertManager
+                    'timestamp': liquidation_dict['timestamp']
                 }
                 
                 # Use asyncio to call the coroutine with proper error handling
                 task = create_tracked_task(
-                    self.alert_manager.check_liquidation_threshold(liquidation['symbol'], liquidation_data, name="auto_tracked_task")
+                    self.alert_manager.check_liquidation_threshold(liquidation_dict['symbol'], liquidation_data, name="auto_tracked_task")
                 )
                 # Add error callback to handle any exceptions
                 def handle_liquidation_alert_error(task):
                     try:
                         task.result()  # This will raise any exception that occurred
                     except Exception as e:
-                        logger.error(f"Error in liquidation threshold check for {liquidation['symbol']}: {e}")
+                        logger.error(f"Error in liquidation threshold check for {liquidation_dict['symbol']}: {e}")
                         import traceback
                         logger.debug(traceback.format_exc())
                 
@@ -1672,7 +1759,30 @@ class MarketDataManager:
                         raise
                     self.logger.error(f"Error fetching OHLCV data: {str(e)}")
                     self.logger.debug(traceback.format_exc())
-        
+
+        # Validate multi-timeframe timestamp synchronization
+        if self.timestamp_validation_enabled and market_data.get('ohlcv'):
+            try:
+                is_valid, error_message = self.timestamp_validator.validate_multi_timeframe_sync(
+                    market_data['ohlcv']
+                )
+
+                if not is_valid:
+                    self.logger.warning(f"Timestamp validation failed for {symbol}: {error_message}")
+
+                    # If fallback is enabled and we have base timeframe data
+                    if self.timestamp_validation_fallback and 'base' in market_data['ohlcv']:
+                        self.logger.info(f"Falling back to base timeframe only for {symbol}")
+                        # Keep only base timeframe data
+                        base_data = market_data['ohlcv']['base']
+                        market_data['ohlcv'] = {'base': base_data}
+                else:
+                    self.logger.debug(f"Timestamp validation passed for {symbol}")
+
+            except Exception as e:
+                self.logger.error(f"Error during timestamp validation for {symbol}: {str(e)}")
+                self.logger.debug(traceback.format_exc())
+
         # Log summary of what we're returning
         ohlcv_summary = ', '.join([f"{tf}: {len(df)}" for tf, df in market_data.get('ohlcv', {}).items()])
         self.logger.debug(f"Market data for {symbol} includes: ticker={bool(market_data.get('ticker'))}, "

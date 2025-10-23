@@ -10,6 +10,9 @@ import asyncio
 from src.core.analysis.confluence import ConfluenceAnalyzer
 from src.api.cache_adapter_direct import cache_adapter
 
+# Initialize logger early
+logger = logging.getLogger(__name__)
+
 # Import shared cache bridge for live data
 try:
     from src.core.cache.web_service_adapter import get_web_service_cache_adapter

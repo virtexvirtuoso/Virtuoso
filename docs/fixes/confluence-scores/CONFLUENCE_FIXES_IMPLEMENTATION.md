@@ -1,5 +1,7 @@
 # Confluence System Fixes: Transformation to Real-Market Practicality
 
+**⚠️ IMPORTANT UPDATE (2025-10-17):** This document describes the October 15, 2025 deployment. A critical circular reasoning bug was discovered and fixed on October 16, 2025 with **SNR-Based Confidence**. The confidence formula described in this document was replaced. See `docs/fixes/SNR_CONFIDENCE_DEPLOYMENT.md` for the current implementation.
+
 ## Executive Summary
 
 This document outlines comprehensive fixes to transform the confluence system from academically perfect but practically unusable to real-market ready. **6 mathematical inconsistencies and bugs were identified** through rigorous audit.

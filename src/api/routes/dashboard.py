@@ -414,19 +414,71 @@ async def get_alpha_opportunities() -> List[Dict[str, Any]]:
 async def get_market_overview() -> Dict[str, Any]:
     """Get market overview data for dashboard using shared cache bridge."""
     try:
-        # CRITICAL FIX: Use shared cache bridge for live data
+        # CRITICAL FIX: Use mobile-data endpoint internally since it has the correct structure
         if web_cache:
             try:
-                live_data = await web_cache.get_market_overview()
-                if live_data and live_data.get('total_symbols', 0) > 0:
-                    logger.info(f"✅ Dashboard market overview from shared cache: {live_data.get('total_symbols')} symbols")
+                # Get mobile data which has the complete market overview
+                mobile_data = await web_cache.get_mobile_data()
+                # Only use data if it's NOT fallback data (same check as mobile-data endpoint)
+                if mobile_data and mobile_data.get('data_source') != 'fallback' and mobile_data.get('market_overview'):
+                    market_overview = mobile_data['market_overview']
+                    logger.info(f"✅ Dashboard market overview from mobile-data cache (source: {mobile_data.get('data_source')})")
+
+                    # Return flattened structure for compatibility
                     return {
-                        **live_data,
-                        "data_source": "shared_cache_live"
+                        "market_regime": market_overview.get('market_regime', 'unknown'),
+                        "regime": market_overview.get('market_regime', 'unknown'),
+                        "trend_strength": market_overview.get('trend_strength', 0),
+                        "trend_score": market_overview.get('trend_strength', 0),
+                        "volatility": market_overview.get('volatility', 0),
+                        "current_volatility": market_overview.get('market_dispersion', 0),
+                        "avg_volatility": market_overview.get('avg_market_dispersion', 0),
+                        "btc_price": market_overview.get('btc_price', 0),
+                        "btc_volatility": market_overview.get('btc_volatility', 0),
+                        "btc_dominance": market_overview.get('btc_dominance', 59.3),
+                        "total_volume": market_overview.get('total_volume_24h', 0),
+                        "total_volume_24h": market_overview.get('total_volume_24h', 0),
+                        "gainers": market_overview.get('gainers', 0),
+                        "losers": market_overview.get('losers', 0),
+                        "average_change": market_overview.get('average_change', 0),
+                        "active_symbols": len(mobile_data.get('confluence_scores', [])),
+                        "data_source": "mobile_data_cache",
+                        "timestamp": mobile_data.get('timestamp', int(time.time()))
                     }
-                logger.warning("Shared cache returned empty data for dashboard market overview")
+                logger.warning(f"Shared cache returned fallback/empty data for dashboard market overview: {mobile_data.get('data_source') if mobile_data else 'None'}")
             except Exception as e:
                 logger.error(f"Shared cache error in dashboard market overview: {e}")
+
+        # Fallback to direct cache adapter if available (same as mobile-data endpoint)
+        if USE_DIRECT_CACHE:
+            try:
+                mobile_data = await direct_cache.get_mobile_data()
+                if mobile_data and mobile_data.get('market_overview'):
+                    market_overview = mobile_data['market_overview']
+                    logger.info(f"✅ Dashboard market overview from direct cache adapter")
+
+                    return {
+                        "market_regime": market_overview.get('market_regime', 'unknown'),
+                        "regime": market_overview.get('market_regime', 'unknown'),
+                        "trend_strength": market_overview.get('trend_strength', 0),
+                        "trend_score": market_overview.get('trend_strength', 0),
+                        "volatility": market_overview.get('volatility', 0),
+                        "current_volatility": market_overview.get('market_dispersion', 0),
+                        "avg_volatility": market_overview.get('avg_market_dispersion', 0),
+                        "btc_price": market_overview.get('btc_price', 0),
+                        "btc_volatility": market_overview.get('btc_volatility', 0),
+                        "btc_dominance": market_overview.get('btc_dominance', 59.3),
+                        "total_volume": market_overview.get('total_volume_24h', 0),
+                        "total_volume_24h": market_overview.get('total_volume_24h', 0),
+                        "gainers": market_overview.get('gainers', 0),
+                        "losers": market_overview.get('losers', 0),
+                        "average_change": market_overview.get('average_change', 0),
+                        "active_symbols": len(mobile_data.get('confluence_scores', [])),
+                        "data_source": "direct_cache",
+                        "timestamp": mobile_data.get('timestamp', int(time.time()))
+                    }
+            except Exception as e:
+                logger.error(f"Direct cache error in market overview: {e}")
 
         # Fallback to integration service
         integration = get_dashboard_integration()
@@ -895,6 +947,20 @@ async def get_mobile_dashboard_data() -> Dict[str, Any]:
                     top_movers = mobile_data.get('top_movers', {})
                     confluence_scores = mobile_data.get('confluence_scores', [])
 
+                    # Deduplicate confluence scores - keep highest score per symbol
+                    if confluence_scores:
+                        seen_symbols = {}
+                        for score_data in confluence_scores:
+                            symbol = score_data.get('symbol')
+                            current_score = score_data.get('score', 0)
+                            if symbol not in seen_symbols or current_score > seen_symbols[symbol].get('score', 0):
+                                seen_symbols[symbol] = score_data
+                        confluence_scores = list(seen_symbols.values())
+                        # Sort by score descending
+                        confluence_scores.sort(key=lambda x: x.get('score', 0), reverse=True)
+                        # Update mobile_data with deduplicated scores
+                        mobile_data['confluence_scores'] = confluence_scores
+
                     # Add flattened fields at top level while keeping nested for backward compatibility
                     mobile_data.update({
                         # Flatten market_overview fields to top level
@@ -945,6 +1011,20 @@ async def get_mobile_dashboard_data() -> Dict[str, Any]:
                 market_overview = mobile_data.get('market_overview', {})
                 top_movers = mobile_data.get('top_movers', {})
                 confluence_scores = mobile_data.get('confluence_scores', [])
+
+                # Deduplicate confluence scores - keep highest score per symbol
+                if confluence_scores:
+                    seen_symbols = {}
+                    for score_data in confluence_scores:
+                        symbol = score_data.get('symbol')
+                        current_score = score_data.get('score', 0)
+                        if symbol not in seen_symbols or current_score > seen_symbols[symbol].get('score', 0):
+                            seen_symbols[symbol] = score_data
+                    confluence_scores = list(seen_symbols.values())
+                    # Sort by score descending
+                    confluence_scores.sort(key=lambda x: x.get('score', 0), reverse=True)
+                    # Update mobile_data with deduplicated scores
+                    mobile_data['confluence_scores'] = confluence_scores
 
                 mobile_data.update({
                     "market_regime": market_overview.get("market_regime", "NEUTRAL"),

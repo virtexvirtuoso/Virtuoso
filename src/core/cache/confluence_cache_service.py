@@ -84,7 +84,9 @@ class ConfluenceCacheService:
                         interp_text = interp.get('interpretation', '')
                         if comp_name and interp_text:
                             interpretations[comp_name] = interp_text
-                            self.logger.debug(f"[INTERP-CACHE] {symbol} - Extracted {comp_name}: {interp_text[:80]}")
+                            # Ensure interp_text is a string before slicing
+                            interp_str = str(interp_text) if not isinstance(interp_text, str) else interp_text
+                            self.logger.debug(f"[INTERP-CACHE] {symbol} - Extracted {comp_name}: {interp_str[:80]}")
                     self.logger.info(f"[INTERP-CACHE] {symbol} - Converted to dict with keys: {list(interpretations.keys())}")
             
             # Only generate basic interpretations if absolutely none exist
@@ -126,7 +128,9 @@ class ConfluenceCacheService:
             if cached_interp_keys:
                 sample_key = cached_interp_keys[0]
                 sample_text = breakdown['interpretations'][sample_key]
-                self.logger.info(f"[INTERP-CACHE] {symbol} - Sample cached {sample_key}: {sample_text[:100]}")
+                # Ensure sample_text is a string before slicing
+                sample_str = str(sample_text) if not isinstance(sample_text, str) else sample_text
+                self.logger.info(f"[INTERP-CACHE] {symbol} - Sample cached {sample_key}: {sample_str[:100]}")
 
             # Also cache a simple score version
             simple_key = CacheKeys.confluence_score(symbol)

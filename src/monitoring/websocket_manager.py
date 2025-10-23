@@ -18,8 +18,8 @@ from typing import Dict, List, Any, Optional, Callable
 from datetime import datetime
 
 from src.core.exchanges.websocket_manager import WebSocketManager as CoreWebSocketManager
-# from src.core.cache.liquidation_cache import liquidation_cache  # Module doesn't exist
-liquidation_cache = None  # Placeholder
+from src.core.cache.liquidation_cache import LiquidationCacheManager
+from src.core.models.liquidation import LiquidationEvent
 
 
 class MonitoringWebSocketManager:
@@ -91,7 +91,18 @@ class MonitoringWebSocketManager:
         # Connection status
         self.is_connected = False
         self.last_message_time = None
-        
+
+        # Initialize liquidation cache
+        cache_config = config.get('cache', {})
+        cache_type = cache_config.get('type', 'redis')
+        self.liquidation_cache = LiquidationCacheManager(
+            cache_type=cache_type,
+            host=cache_config.get('host', 'localhost'),
+            port=cache_config.get('port', 6379),
+            db=cache_config.get('db', 0)
+        )
+        self.logger.info(f"Liquidation cache initialized with {cache_type} backend for monitoring")
+
         self.logger.info(f"Monitoring WebSocket Manager initialized for {symbol}")
 
     async def initialize(self) -> None:
@@ -373,13 +384,34 @@ class MonitoringWebSocketManager:
             
             # Update liquidation cache
             try:
-                liquidation_cache.update_liquidation(
+                # Create LiquidationEvent object
+                liquidation_event = LiquidationEvent(
                     symbol=liquidation['symbol'],
+                    exchange=self.exchange_id,
                     side=liquidation['side'],
-                    size=liquidation['size'],
                     price=liquidation['price'],
+                    quantity=liquidation['size'],
                     timestamp=liquidation['timestamp']
                 )
+
+                # Get recent liquidations and update
+                symbols = [liquidation['symbol']]
+                exchanges = [self.exchange_id]
+                recent_liquidations = self.liquidation_cache.get_liquidation_events(
+                    symbols=symbols,
+                    exchanges=exchanges,
+                    lookback_minutes=1440  # 24 hours
+                ) or []
+
+                # Add new liquidation and store back
+                recent_liquidations.append(liquidation_event)
+                self.liquidation_cache.set_liquidation_events(
+                    symbols=symbols,
+                    exchanges=exchanges,
+                    lookback_minutes=1440,
+                    events=recent_liquidations
+                )
+                self.logger.debug(f"Liquidation cached: {liquidation['symbol']}")
             except Exception as cache_error:
                 self.logger.error(f"Error updating liquidation cache: {str(cache_error)}")
             

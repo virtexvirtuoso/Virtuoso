@@ -253,7 +253,7 @@ class WebSocketManager:
 
                 # Start message handler for this connection
                 handler_task = create_tracked_task(
-                    self._handle_messages(ws, topics, connection_id, session, name="auto_tracked_task"),
+                    self._handle_messages(ws, topics, connection_id, session),
                     name=f"ws_handler_{connection_id}"
                 )
 
@@ -339,12 +339,24 @@ class WebSocketManager:
                         if symbol in self.message_queues:
                             await self.message_queues[symbol].put(data)
                         
-                    except json.JSONDecodeError:
-                        self.logger.error(f"Invalid JSON in WebSocket message: {msg.data[:200]}...")
+                    except json.JSONDecodeError as e:
+                        # Enhanced error logging: always show full traceback and message preview
+                        msg_preview = msg.data[:100] if hasattr(msg, 'data') else 'N/A'
+                        self.logger.error(f"[JSON_ERROR] Invalid JSON in WebSocket message: {msg_preview}...")
+                        self.logger.error(f"[JSON_ERROR] Details: {str(e)}")
+                        self.logger.error(f"[JSON_ERROR] Full traceback:\n{traceback.format_exc()}")
+                        self.status['errors'] += 1
+                    except asyncio.TimeoutError as e:
+                        # Network timeout error
+                        self.logger.error(f"[TIMEOUT_ERROR] WebSocket message processing timeout: {str(e)}")
+                        self.logger.error(f"[TIMEOUT_ERROR] Full traceback:\n{traceback.format_exc()}")
                         self.status['errors'] += 1
                     except Exception as e:
-                        self.logger.error(f"Error processing WebSocket message: {str(e)}")
-                        self.logger.debug(traceback.format_exc())
+                        # Generic error with full context
+                        msg_preview = msg.data[:100] if hasattr(msg, 'data') else 'N/A'
+                        self.logger.error(f"[PROCESSING_ERROR] Error processing WebSocket message: {str(e)}")
+                        self.logger.error(f"[PROCESSING_ERROR] Message preview: {msg_preview}...")
+                        self.logger.error(f"[PROCESSING_ERROR] Full traceback:\n{traceback.format_exc()}")
                         self.status['errors'] += 1
                 
                 elif msg.type == aiohttp.WSMsgType.ERROR:
@@ -359,9 +371,16 @@ class WebSocketManager:
         except asyncio.CancelledError:
             self.logger.info(f"WebSocket message handler for {connection_id} cancelled")
             raise
+        except asyncio.TimeoutError as e:
+            # Network timeout in main handler
+            self.logger.error(f"[HANDLER_TIMEOUT] WebSocket message handler timeout for {connection_id}: {str(e)}")
+            self.logger.error(f"[HANDLER_TIMEOUT] Full traceback:\n{traceback.format_exc()}")
         except Exception as e:
-            self.logger.error(f"Error in WebSocket message handler: {str(e)}")
-            self.logger.debug(traceback.format_exc())
+            # Enhanced error logging for outer handler - always log full traceback
+            error_type = type(e).__name__
+            self.logger.error(f"[HANDLER_ERROR] Error in WebSocket message handler for {connection_id}")
+            self.logger.error(f"[HANDLER_ERROR] Error type: {error_type}, Details: {str(e)}")
+            self.logger.error(f"[HANDLER_ERROR] Full traceback:\n{traceback.format_exc()}")
         finally:
             # Mark connection as closed
             if connection_id in self.connections:
