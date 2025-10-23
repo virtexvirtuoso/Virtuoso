@@ -41,6 +41,7 @@ venv311/
 .env.local
 .env.production
 .env.development
+.env.performance
 config/.env
 config/*.env
 *.key
@@ -133,6 +134,17 @@ Thumbs.db
 .cursor/
 .cursorignore
 .cursorrules
+.editorconfig
+
+# Git configuration
+.gitmessage
+.pre-commit-config.yaml
+
+# Server configuration files
+nginx.conf
+apache.conf
+*.nginx.conf
+*.apache.conf
 
 # Test files
 *.test
@@ -316,6 +328,7 @@ ssh_keys/
 known_hosts
 
 # Deployment and sync files
+.rsync-exclude
 scripts/.rsync-exclude
 rsync.log
 deployment.log
