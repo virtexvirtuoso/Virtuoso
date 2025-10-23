@@ -1,2 +1,0 @@
-❌ Report Generation Failed
-'SessionAnalyzer' object has no attribute '_generate_report'

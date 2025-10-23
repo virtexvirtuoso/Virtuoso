@@ -201,6 +201,7 @@ reports/pdfs/
 reports/json/
 reports/charts/
 reports/session_reports/
+src/reports/session_reports/
 reports/analysis/cache_rationalization/archives/
 reports/*_SUMMARY.md
 reports/*_summary.md
@@ -213,6 +214,11 @@ test-reports/
 !reports/charts/.gitkeep
 !reports/session_reports/.gitkeep
 !exports/.gitkeep
+
+# Demo and example outputs
+examples/demo/
+examples/*/output/
+examples/*_output/
 
 # Generated report files
 *_report.pdf
@@ -228,6 +234,10 @@ coverage/
 .coverage
 .pytest_cache/
 htmlcov/
+# Integration test results
+src/data_acquisition/*/integration_tests/
+*/integration_tests/*_test_*.json
+*/integration_tests/*_test_results_*.txt
 
 # Jupyter Notebook
 .ipynb_checkpoints
@@ -329,6 +339,10 @@ backups/
 .bfg-report/
 *.bfg-report-*
 
+# Patch files (belong in git history as commits)
+patches/
+*.patch
+
 # VPS specific files
 scripts/*vps*.sh
 scripts/deploy_*.sh
@@ -349,6 +363,11 @@ monitoring_data/
 metrics/
 *.metrics
 *.benchmark
+
+# Diagnostic and debug outputs
+src/web/static/diagnostics/
+*/diagnostics/*.txt
+*diagnostic_report_*.txt
 
 # Trading data and results
 trading_data/
