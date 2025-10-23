@@ -369,6 +369,7 @@ patches/
 # VPS specific files
 scripts/*vps*.sh
 scripts/deploy_*.sh
+scripts/deploy_*.py
 .ssh/
 ssh_keys/
 *.ppk
@@ -383,6 +384,14 @@ scripts/setup_automated_cleanup.sh
 scripts/maintenance/cleanup_*.sh
 scripts/monitoring/setup_backup_schedule.sh
 scripts/core/backup.sh
+
+# Deployment directories and operational scripts
+scripts/deployment/
+scripts/fixes/
+scripts/consolidation/
+scripts/batch_*.py
+scripts/update_*.sh
+scripts/update_*.py
 
 # Deployment and sync files
 .rsync-exclude
