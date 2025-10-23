@@ -307,7 +307,8 @@ class MarketMonitor:
                 # CRITICAL: Pass exchange for market-wide ticker fetching
                 # DEBUG: Check if exchange exists before passing
                 self.logger.info(f"🔍 DEBUG: self.exchange = {self.exchange}, type = {type(self.exchange)}, id = {getattr(self.exchange, 'id', 'NO_ID')}")
-                self.cache_data_aggregator = CacheDataAggregator(cache_adapter, self.config, self.exchange)
+                # Note: shared_cache can be set later via set_shared_cache() method
+                self.cache_data_aggregator = CacheDataAggregator(cache_adapter, self.config, self.exchange, shared_cache=getattr(self, 'shared_cache', None))
                 self.logger.info("✅ Cache data aggregator initialized with exchange for market-wide metrics")
             except Exception as e:
                 self.logger.warning(f"Cache data aggregator initialization failed: {e}")
@@ -436,7 +437,29 @@ class MarketMonitor:
     def alert_manager_component(self):
         """Get alert manager component."""
         return self._alert_manager_component
-    
+
+    def set_shared_cache(self, shared_cache_bridge):
+        """
+        Set the shared cache bridge for cross-process communication.
+
+        This should be called after initialization to enable the monitoring system
+        to write data that the web server can read.
+
+        Args:
+            shared_cache_bridge: SharedCacheBridge instance
+        """
+        self.shared_cache = shared_cache_bridge
+
+        # Update cache_data_aggregator if it exists
+        if hasattr(self, 'cache_data_aggregator') and self.cache_data_aggregator:
+            if hasattr(self.cache_data_aggregator, 'cache_writer'):
+                self.cache_data_aggregator.cache_writer.shared_cache = shared_cache_bridge
+                self.logger.info("✅ Shared cache bridge set on cache_data_aggregator.cache_writer")
+            self.cache_data_aggregator.shared_cache = shared_cache_bridge
+            self.logger.info("✅ Shared cache bridge enabled for monitoring system")
+        else:
+            self.logger.warning("⚠️ cache_data_aggregator not available - shared cache set but not connected")
+
     async def initialize(self) -> bool:
         """Initialize all monitoring components asynchronously."""
         try:
@@ -734,8 +757,10 @@ class MarketMonitor:
             self.logger.info(f"Processing {len(symbols)} symbols")
             
             # Process symbols concurrently with controlled concurrency
-            max_concurrent = self.config.get('max_concurrent_symbols', 10)
+            # Read from config.monitoring.performance.max_concurrent_symbols
+            max_concurrent = self.config.get('monitoring', {}).get('performance', {}).get('max_concurrent_symbols', 10)
             semaphore = asyncio.Semaphore(max_concurrent)
+            self.logger.info(f"Processing symbols with concurrency limit: {max_concurrent}")
             
             async def process_symbol_with_semaphore(symbol):
                 async with semaphore:
@@ -745,7 +770,12 @@ class MarketMonitor:
             tasks = [process_symbol_with_semaphore(symbol) for symbol in symbols]
             self.logger.info(f"📋 Created {len(tasks)} tasks for symbol processing")
 
+            # Performance tracking (time already imported at module level)
+            cycle_start_time = time.time()
+
             results = await asyncio.gather(*tasks, return_exceptions=True)
+
+            cycle_elapsed_time = time.time() - cycle_start_time
 
             # Enhanced result validation to detect both exceptions AND silent failures
             exceptions = [r for r in results if isinstance(r, Exception)]
@@ -760,8 +790,13 @@ class MarketMonitor:
             if none_results:
                 self.logger.error(f"⚠️ {len(none_results)} tasks completed but did no work (silent failures)")
 
+            # Performance metrics logging
             if successful_tasks > 0:
-                self.logger.info(f"✅ {successful_tasks} symbol processing tasks completed successfully")
+                avg_time_per_symbol = cycle_elapsed_time / len(symbols)
+                self.logger.info(
+                    f"✅ {successful_tasks}/{len(symbols)} symbols processed successfully in {cycle_elapsed_time:.2f}s "
+                    f"(avg: {avg_time_per_symbol:.2f}s/symbol, concurrency: {max_concurrent})"
+                )
             else:
                 self.logger.error("🚨 NO TASKS COMPLETED SUCCESSFULLY - SYSTEM MALFUNCTION DETECTED")
             
@@ -1027,10 +1062,46 @@ class MarketMonitor:
             return
 
         subtype = 'accumulation' if significant_acc else 'distribution'
+
+        # Prepare whale trades list for display (top 10)
+        whale_trades_list = []
+        if trades:
+            recent_cutoff = current_time - 1800
+            for t in trades:
+                ts = float(t.get('timestamp') or t.get('time') or 0) / (1000.0 if (t.get('timestamp') and t.get('timestamp') > 1e12) else 1.0)
+                if ts and ts < recent_cutoff:
+                    continue
+                size = float(t.get('amount') or t.get('size') or 0)
+                price = float(t.get('price') or current_price)
+                side = (t.get('side') or '').lower()
+                if size > 0 and size >= (whale_threshold / 2.0):
+                    whale_trades_list.append({
+                        'side': side,
+                        'size': size,
+                        'price': price,
+                        'value': size * price,
+                        'time': ts
+                    })
+            whale_trades_list = whale_trades_list[:10]  # Top 10 for display
+
+        # Format whale bids and asks for alert display (top 10 each)
+        # Convert from [price, size] format to (price, size, usd_value) tuples
+        top_whale_bids = [(float(order[0]), float(order[1]), float(order[0]) * float(order[1]))
+                         for order in whale_bids[:10]]
+        top_whale_asks = [(float(order[0]), float(order[1]), float(order[0]) * float(order[1]))
+                         for order in whale_asks[:10]]
+
+        # Calculate trade_confirmation for manipulation detection
+        net_trade_volume = whale_buy_volume - whale_sell_volume
+        trade_confirmation = False
+        if whale_trades_count > 0:
+            trade_confirmation = (trade_imbalance > 0 and net_volume > 0) or (trade_imbalance < 0 and net_volume < 0)
+
         details = {
             'type': 'whale_activity',
             'subtype': subtype,
             'symbol': symbol,
+            'market_data': market_data,  # QUICK WIN: Pass full market data for OI/Liquidation/LSR context
             'data': {
                 'whale_bid_volume': whale_bid_volume,
                 'whale_ask_volume': whale_ask_volume,
@@ -1049,6 +1120,10 @@ class MarketMonitor:
                 'whale_buy_volume': whale_buy_volume,
                 'whale_sell_volume': whale_sell_volume,
                 'trade_imbalance': trade_imbalance,
+                'trade_confirmation': trade_confirmation,
+                'top_whale_trades': whale_trades_list,
+                'top_whale_bids': top_whale_bids,
+                'top_whale_asks': top_whale_asks,
             }
         }
 

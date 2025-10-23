@@ -231,6 +231,11 @@ class AlertManager:
         self.large_order_cooldown = 300  # Default 5 minutes cooldown between large order alerts for the same symbol
         self.whale_activity_cooldown = 900  # Default 15 minutes cooldown between whale activity alerts for the same symbol
 
+        # QUICK WIN ENHANCEMENT: OI, Liquidation, and LSR tracking for manipulation alerts
+        self._oi_history = {}  # Symbol -> deque of (timestamp, oi_value) tuples
+        self._oi_history_limit = 100  # Keep last 100 OI readings per symbol (~30 min at 20s intervals)
+        self.liquidation_cache = None  # Will be set externally if available
+
         # Manipulation detection configuration
         self.manipulation_thresholds = {
             'volume': {
@@ -954,11 +959,15 @@ class AlertManager:
                     
                     # Essential calculations only
                     volume_multiple = self._calculate_volume_multiple(abs(net_usd_value))
-                    
-                    # Plain English interpretation
+
+                    # Get market_data for enhanced context (OI, liquidations, LSR)
+                    market_data = details.get('market_data', None)
+
+                    # Plain English interpretation with enhanced context
                     interpretation = self._generate_plain_english_interpretation(
-                        signal_strength, subtype, symbol, abs(net_usd_value), 
-                        whale_trades_count, whale_buy_volume, whale_sell_volume, signal_context
+                        signal_strength, subtype, symbol, abs(net_usd_value),
+                        whale_trades_count, whale_buy_volume, whale_sell_volume, signal_context,
+                        market_data=market_data
                     )
                     
                     # Get individual trades/orders for display
@@ -5240,19 +5249,293 @@ class AlertManager:
         """Analyze historical patterns for context."""
         # This could be enhanced with actual historical analysis
         # For now, provide basic pattern insights
-        
+
         if usd_value > 10000000:  # > $10M
             return f"Pattern: Large {subtype} - historically leads to 2-5% moves"
-        elif usd_value > 5000000:  # > $5M  
+        elif usd_value > 5000000:  # > $5M
             return f"Pattern: Significant {subtype} - typically 1-3% impact"
         else:
             return f"Pattern: Moderate {subtype} - usually 0.5-1.5% movement"
 
-    def _generate_plain_english_interpretation(self, signal_strength: str, subtype: str, symbol: str, 
-                                             usd_value: float, trades_count: int, buy_volume: float, 
-                                             sell_volume: float, signal_context: str) -> str:
-        """Generate plain English interpretation of the whale activity."""
-        
+    # ========================================================================
+    # QUICK WIN #1: Open Interest Context
+    # ========================================================================
+
+    def _track_oi_change(self, symbol: str, oi_value: float) -> None:
+        """Track Open Interest changes over time.
+
+        Args:
+            symbol: Trading pair symbol
+            oi_value: Current Open Interest value
+        """
+        current_time = time.time()
+
+        if symbol not in self._oi_history:
+            self._oi_history[symbol] = deque(maxlen=self._oi_history_limit)
+
+        self._oi_history[symbol].append((current_time, oi_value))
+
+    def _calculate_oi_change(self, symbol: str, current_oi: float, timeframe: int = 900) -> Optional[float]:
+        """Calculate Open Interest percentage change over timeframe.
+
+        Args:
+            symbol: Trading pair symbol
+            current_oi: Current OI value
+            timeframe: Lookback period in seconds (default 15 min)
+
+        Returns:
+            Percentage change or None if insufficient data
+        """
+        if symbol not in self._oi_history or not self._oi_history[symbol]:
+            return None
+
+        current_time = time.time()
+        cutoff_time = current_time - timeframe
+
+        # Find oldest OI value within timeframe
+        for timestamp, oi_value in self._oi_history[symbol]:
+            if timestamp >= cutoff_time:
+                if oi_value > 0:
+                    change = (current_oi - oi_value) / oi_value
+                    return change
+                break
+
+        return None
+
+    def _get_oi_context(self, symbol: str, current_oi: float) -> str:
+        """Generate Open Interest context string for alerts.
+
+        Args:
+            symbol: Trading pair symbol
+            current_oi: Current OI value
+
+        Returns:
+            Formatted OI context string or empty string
+        """
+        oi_change = self._calculate_oi_change(symbol, current_oi, timeframe=900)  # 15 min
+
+        if oi_change is None:
+            return ""
+
+        if abs(oi_change) < 0.02:  # Less than 2% change
+            return ""
+
+        # Format context based on change magnitude
+        oi_pct = oi_change * 100
+        if oi_change > 0:
+            action = "building" if oi_change > 0.05 else "increasing"
+            interpretation = f"📊 **OI Change:** +{oi_pct:.1f}% ({action} positions - potential trend continuation)"
+        else:
+            action = "closing rapidly" if oi_change < -0.05 else "decreasing"
+            interpretation = f"📊 **OI Change:** {oi_pct:.1f}% ({action} positions - trend exhaustion signal)"
+
+        return f"\n{interpretation}"
+
+    # ========================================================================
+    # QUICK WIN #2: Liquidation Correlation
+    # ========================================================================
+
+    def _check_liquidation_correlation(self, symbol: str, timeframe: int = 300) -> Optional[Dict[str, Any]]:
+        """Check for recent liquidations that may indicate manipulation.
+
+        Args:
+            symbol: Trading pair symbol
+            timeframe: Lookback period in seconds (default 5 min)
+
+        Returns:
+            Liquidation correlation data or None
+        """
+        if not self.liquidation_cache:
+            return None
+
+        try:
+            # Get recent liquidations from LiquidationDataCollector
+            # API signature: get_recent_liquidations(symbol, exchange=None, minutes=60)
+            minutes = int(timeframe / 60)  # Convert seconds to minutes
+
+            if hasattr(self.liquidation_cache, 'get_recent_liquidations'):
+                recent_liqs = self.liquidation_cache.get_recent_liquidations(
+                    symbol=symbol,
+                    exchange=None,  # Search all exchanges
+                    minutes=minutes
+                )
+            else:
+                return None
+
+            if not recent_liqs or len(recent_liqs) == 0:
+                return None
+
+            # Calculate liquidation metrics
+            total_liq_volume = 0
+            long_liqs = 0
+            short_liqs = 0
+
+            for liq in recent_liqs:
+                # LiquidationEvent has specific attributes (not size/price/side)
+                # Get liquidated_amount_usd directly
+                liquidated_usd = float(getattr(liq, 'liquidated_amount_usd', 0))
+
+                # If liquidated_amount_usd not available, calculate from trigger_price
+                if liquidated_usd == 0:
+                    trigger_price = float(getattr(liq, 'trigger_price', 0))
+                    # Try to estimate size if available
+                    size = float(getattr(liq, 'size', 0))
+                    if size > 0 and trigger_price > 0:
+                        liquidated_usd = size * trigger_price
+
+                total_liq_volume += liquidated_usd
+
+                # Determine if long or short liquidation from liquidation_type
+                liq_type = str(getattr(liq, 'liquidation_type', ''))
+                if 'LONG' in liq_type.upper():
+                    long_liqs += 1
+                elif 'SHORT' in liq_type.upper():
+                    short_liqs += 1
+                else:
+                    # Fallback: try side attribute (for backward compatibility)
+                    side = str(getattr(liq, 'side', '')).lower()
+                    if side == 'buy':  # Long liquidation
+                        long_liqs += 1
+                    elif side == 'sell':  # Short liquidation
+                        short_liqs += 1
+
+            # Only report if significant liquidations occurred
+            if total_liq_volume < 1_000_000:  # Less than $1M
+                return None
+
+            return {
+                'liquidation_spike': True,
+                'volume_usd': total_liq_volume,
+                'count': len(recent_liqs),
+                'long_liquidations': long_liqs,
+                'short_liquidations': short_liqs,
+                'timeframe_min': timeframe / 60
+            }
+
+        except Exception as e:
+            self.logger.debug(f"Error checking liquidation correlation: {e}")
+            return None
+
+    def _get_liquidation_context(self, symbol: str) -> str:
+        """Generate liquidation context string for alerts.
+
+        Args:
+            symbol: Trading pair symbol
+
+        Returns:
+            Formatted liquidation context string or empty string
+        """
+        liq_data = self._check_liquidation_correlation(symbol, timeframe=300)
+
+        if not liq_data:
+            return ""
+
+        volume = liq_data['volume_usd']
+        count = liq_data['count']
+        long_liqs = liq_data['long_liquidations']
+        short_liqs = liq_data['short_liquidations']
+        timeframe = liq_data['timeframe_min']
+
+        # Determine predominant side
+        if long_liqs > short_liqs * 2:
+            side_info = f"mostly LONG positions ({long_liqs}/{count})"
+            manipulation_hint = "possible LONG SQUEEZE"
+        elif short_liqs > long_liqs * 2:
+            side_info = f"mostly SHORT positions ({short_liqs}/{count})"
+            manipulation_hint = "possible SHORT SQUEEZE"
+        else:
+            side_info = f"{long_liqs} longs, {short_liqs} shorts"
+            manipulation_hint = "cascade event"
+
+        # Format volume
+        if volume >= 1_000_000:
+            volume_str = f"${volume/1_000_000:.1f}M"
+        else:
+            volume_str = f"${volume/1_000:.0f}K"
+
+        interpretation = (
+            f"🔥 **Liquidation Spike:** {volume_str} across {count} traders in {timeframe:.0f} min\n"
+            f"   └─ {side_info} - {manipulation_hint}"
+        )
+
+        return f"\n{interpretation}"
+
+    # ========================================================================
+    # QUICK WIN #3: Long/Short Ratio Warnings
+    # ========================================================================
+
+    def _get_lsr_warning(self, lsr_value: float) -> str:
+        """Generate Long/Short Ratio warning string.
+
+        Args:
+            lsr_value: Long/Short Ratio (e.g., 2.0 = 67% long)
+
+        Returns:
+            Formatted LSR warning string or empty string
+        """
+        if lsr_value is None:
+            return ""
+
+        # Calculate percentages
+        long_pct = (lsr_value / (1 + lsr_value)) * 100
+        short_pct = 100 - long_pct
+
+        # Generate warnings for crowded positions (> 65% on one side)
+        if long_pct > 65:
+            emoji = "⚠️"
+            if long_pct > 75:
+                risk_level = "EXTREME"
+                emoji = "🚨"
+            elif long_pct > 70:
+                risk_level = "HIGH"
+            else:
+                risk_level = "MODERATE"
+
+            warning = (
+                f"{emoji} **Crowd Position:** {long_pct:.0f}% LONG ({risk_level} squeeze risk)\n"
+                f"   └─ Over-leveraged longs vulnerable to stop hunts & liquidation cascades"
+            )
+            return f"\n{warning}"
+
+        elif short_pct > 65:
+            emoji = "⚠️"
+            if short_pct > 75:
+                risk_level = "EXTREME"
+                emoji = "🚨"
+            elif short_pct > 70:
+                risk_level = "HIGH"
+            else:
+                risk_level = "MODERATE"
+
+            warning = (
+                f"{emoji} **Crowd Position:** {short_pct:.0f}% SHORT ({risk_level} squeeze risk)\n"
+                f"   └─ Over-leveraged shorts vulnerable to pumps & forced covering"
+            )
+            return f"\n{warning}"
+
+        return ""
+
+    def _generate_plain_english_interpretation(self, signal_strength: str, subtype: str, symbol: str,
+                                             usd_value: float, trades_count: int, buy_volume: float,
+                                             sell_volume: float, signal_context: str,
+                                             market_data: Optional[Dict[str, Any]] = None) -> str:
+        """Generate plain English interpretation of the whale activity with enhanced context.
+
+        Args:
+            signal_strength: Signal classification (EXECUTING/CONFLICTING)
+            subtype: accumulation or distribution
+            symbol: Trading pair
+            usd_value: USD volume
+            trades_count: Number of trades
+            buy_volume: Buy volume
+            sell_volume: Sell volume
+            signal_context: Context string
+            market_data: Optional market data for enhanced context (OI, liquidations, LSR)
+
+        Returns:
+            Enhanced interpretation string with market context
+        """
+
         # Volume size context
         if usd_value > 10000000:
             size_context = "massive"
@@ -5312,7 +5595,41 @@ class AlertManager:
                     volume=abs(usd_value),
                     trade_count=trades_count
                 )
-        
+
+        # ========================================================================
+        # QUICK WIN ENHANCEMENTS: Add market context
+        # ========================================================================
+        enhanced_context = ""
+
+        if market_data:
+            # Track and add Open Interest context
+            funding_data = market_data.get('funding', {})
+            if funding_data:
+                current_oi = float(funding_data.get('openInterest', 0))
+                if current_oi > 0:
+                    self._track_oi_change(symbol, current_oi)
+                    oi_context = self._get_oi_context(symbol, current_oi)
+                    if oi_context:
+                        enhanced_context += oi_context
+
+            # Add liquidation correlation context
+            liq_context = self._get_liquidation_context(symbol)
+            if liq_context:
+                enhanced_context += liq_context
+
+            # Add Long/Short Ratio warning
+            lsr_data = market_data.get('long_short_ratio', {})
+            if lsr_data:
+                lsr_value = lsr_data.get('longShortRatio')
+                if lsr_value:
+                    lsr_warning = self._get_lsr_warning(float(lsr_value))
+                    if lsr_warning:
+                        enhanced_context += lsr_warning
+
+        # Append enhanced context if available
+        if enhanced_context:
+            interpretation += enhanced_context
+
         return interpretation
 
     def _calculate_manipulation_severity(self, volume: float, trade_count: int, buy_sell_ratio: float) -> str:

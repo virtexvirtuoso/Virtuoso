@@ -681,6 +681,14 @@ async def initialize_components():
             database_url=database_url
         )
         logger.info("✅ LiquidationDetectionEngine initialized")
+
+        # QUICK WIN INTEGRATION: Link liquidation collector to alert_manager for enhanced alerts
+        if hasattr(liquidation_detector, 'liquidation_collector'):
+            alert_manager.liquidation_cache = liquidation_detector.liquidation_collector
+            logger.info("✅ Liquidation cache linked to AlertManager for enhanced manipulation detection")
+        else:
+            logger.warning("⚠️ Liquidation collector not found on detector")
+
     except Exception as e:
         logger.error(f"Failed to initialize liquidation detection engine: {e}")
         logger.warning("⚠️ Continuing without liquidation detection engine")
@@ -4329,6 +4337,47 @@ async def run_application():
             logger.info("📌 Using DirectCacheAdapter without warming (data on demand)")
         except Exception as e:
             logger.error(f"❌ Could not start cache warming: {e}")
+
+        # ============================================================================
+        # 🔗 SHARED CACHE BRIDGE - Cross-Process Communication
+        # ============================================================================
+        # Initialize SharedCacheBridge to enable cross-process cache sharing between
+        # monitoring system and web server. This fixes the issue where dashboard shows
+        # 0 signals despite monitoring writing 20 signals.
+        shared_cache_bridge = None
+        try:
+            logger.info("🔗 Initializing shared cache bridge for cross-process communication...")
+            from src.core.cache.shared_cache_bridge import get_shared_cache_bridge, initialize_shared_cache
+
+            cache_bridge_initialized = await initialize_shared_cache()
+            if cache_bridge_initialized:
+                shared_cache_bridge = get_shared_cache_bridge()
+                logger.info("✅ Shared cache bridge enabled - monitoring data will be visible to web service")
+
+                # Display bridge metrics
+                metrics = shared_cache_bridge.get_bridge_metrics()
+                logger.info(f"   Bridge status: {metrics.get('bridge_status', 'unknown')}")
+                logger.info(f"   Redis: {metrics.get('cache_infrastructure', {}).get('redis_connected', False)}")
+                logger.info(f"   Memcached: {metrics.get('cache_infrastructure', {}).get('memcached_connected', False)}")
+            else:
+                logger.warning("⚠️ Shared cache bridge initialization failed - using local cache only")
+        except ImportError as e:
+            logger.warning(f"⚠️ Shared cache bridge not available: {e}")
+            logger.info("📌 Continuing with local cache only (web server won't see monitoring data)")
+        except Exception as e:
+            logger.error(f"❌ Could not initialize shared cache bridge: {e}")
+            logger.debug(f"Shared cache bridge error: {traceback.format_exc()}")
+
+        # Connect shared cache bridge to market monitor
+        if shared_cache_bridge and market_monitor:
+            try:
+                logger.info("🔗 Connecting shared cache bridge to market monitor...")
+                market_monitor.set_shared_cache(shared_cache_bridge)
+                logger.info("✅ Market monitor connected to shared cache bridge")
+                logger.info("   Monitoring data will now be visible to web server via shared cache")
+            except Exception as e:
+                logger.error(f"❌ Failed to connect shared cache bridge to market monitor: {e}")
+                logger.debug(f"Connection error: {traceback.format_exc()}")
 
         # ============================================================================
         # 🚨 CRITICAL: MONITORING LOOP STARTUP - DO NOT DELETE 🚨
