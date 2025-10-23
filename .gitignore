@@ -170,9 +170,13 @@ tests/__pycache__/
 *.tmp
 *.temp
 *.bak
+*.bak[0-9]*
 *.backup
 *_backup.*
 *.bak.*
+*.bak_*
+*_backup_*
+*.connector_backup*
 temp/
 path/
 
@@ -194,6 +198,10 @@ volume_indicators_new.py
 !requirements.json
 !configuration.json
 *.png
+# Test images
+assets/images/*_test_*.png
+assets/images/ao_test_*.png
+assets/images/*divergence_test_data.png
 
 # Reports and exports
 reports/pdf/
@@ -277,6 +285,13 @@ src/indicators/price_structure_indicators.py
 /confluence_alert_*.html
 /*_test_*.html
 
+# Comprehensive test and diagnostic scripts
+scripts/comprehensive_*.py
+scripts/comprehensive_*.sh
+scripts/*_comprehensive_*.py
+scripts/additional_*_tests.py
+scripts/final_*_test.py
+
 # Test and validation files now organized in /tests directory
 # Prevent future files from being created in root
 /validation_*.py
@@ -359,6 +374,16 @@ ssh_keys/
 *.ppk
 known_hosts
 
+# Cleanup and maintenance scripts
+scripts/cleanup_*.sh
+scripts/*_cleanup*.sh
+scripts/emergency_cleanup.sh
+scripts/phase*_cleanup.sh
+scripts/setup_automated_cleanup.sh
+scripts/maintenance/cleanup_*.sh
+scripts/monitoring/setup_backup_schedule.sh
+scripts/core/backup.sh
+
 # Deployment and sync files
 .rsync-exclude
 scripts/.rsync-exclude
@@ -374,8 +399,10 @@ metrics/
 
 # Diagnostic and debug outputs
 src/web/static/diagnostics/
+static/diagnostics/
 */diagnostics/*.txt
 *diagnostic_report_*.txt
+scripts/diagnostics/
 
 # Trading data and results
 trading_data/
@@ -401,6 +428,7 @@ memcached_data/
 
 # Docker
 docker-compose.override.yml
+docker/docker-compose.test.yml
 .dockerignore
 *.dockerfile.local
 
@@ -414,3 +442,10 @@ PHASE*_PRIVATE.md
 *_PRIVATE.md
 INTERNAL_*.md
 SECRET_*.md
+
+# Phase and beta templates (deprecated)
+src/dashboard/templates/dashboard_phase*.html
+src/dashboard/templates/dashboard_beta*.html
+src/dashboard/templates/mobile_beta*.html
+src/dashboard/templates/*_phase*.html
+src/core/reporting/templates/test_*.html
