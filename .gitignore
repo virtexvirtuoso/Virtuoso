@@ -55,6 +55,14 @@ config/*.env
 config/production.yaml
 config/production.yml
 
+# Operational configuration files
+config/alpha_*.yaml
+config/*_optimization*.yaml
+config/optuna_config.yaml
+config/momentum_strategy_config.yaml
+config/timeout_fix.yaml
+config/vps_optimization_config.py
+
 # AI Assistant Instructions
 CLAUDE.md
 CLAUDE.local.md
@@ -389,9 +397,50 @@ scripts/core/backup.sh
 scripts/deployment/
 scripts/fixes/
 scripts/consolidation/
+scripts/testing/
+scripts/implementation/
+scripts/analysis/
+scripts/reporters/
+scripts/systemd/
+scripts/monitoring/
+scripts/security/
+scripts/dangerous_monkey_patching/
+scripts/core/
 scripts/batch_*.py
 scripts/update_*.sh
 scripts/update_*.py
+scripts/add_*.py
+scripts/add_*.sh
+scripts/apply_*.py
+scripts/demo_*.py
+scripts/run_*.py
+scripts/run_*.sh
+scripts/simple_*.py
+scripts/test_*.py
+scripts/fix_*.py
+scripts/fix_*.sh
+scripts/setup_*.py
+scripts/setup_*.sh
+scripts/install_*.sh
+scripts/install_*.py
+scripts/performance_*.py
+scripts/benchmark_*.py
+scripts/check_*.py
+scripts/debug_*.py
+scripts/create_*.py
+scripts/cache_*.py
+scripts/diagnose_*.py
+scripts/emergency_*.py
+scripts/emergency_*.sh
+scripts/final_*.py
+scripts/final_*.sh
+scripts/enhance_*.py
+scripts/validate_*.py
+scripts/verify_*.py
+scripts/start_*.py
+scripts/start_*.sh
+scripts/sync_*.py
+scripts/sync_*.sh
 
 # Deployment and sync files
 .rsync-exclude
