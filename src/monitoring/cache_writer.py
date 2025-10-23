@@ -55,24 +55,30 @@ class MonitoringCacheWriter:
     - Reduces cache-related bugs
     """
 
-    def __init__(self, cache_adapter, config: Optional[Dict[str, Any]] = None):
+    def __init__(self, cache_adapter, config: Optional[Dict[str, Any]] = None, shared_cache=None):
         """
         Initialize monitoring cache writer.
 
         Args:
             cache_adapter: Cache adapter instance (DirectCacheAdapter or MultiTierCache)
             config: Optional configuration dictionary
+            shared_cache: Optional SharedCacheBridge for cross-process communication
         """
         self.cache_adapter = cache_adapter
         self.config = config or {}
+        self.shared_cache = shared_cache
 
         # Statistics
         self.write_count = 0
         self.write_errors = 0
         self.validation_failures = 0
         self.last_write_time = 0
+        self.shared_cache_writes = 0
 
-        logger.info("MonitoringCacheWriter initialized with unified schemas")
+        if self.shared_cache:
+            logger.info("MonitoringCacheWriter initialized with unified schemas + SharedCacheBridge")
+        else:
+            logger.info("MonitoringCacheWriter initialized with unified schemas (local cache only)")
 
     async def write_market_overview(
         self,
@@ -126,6 +132,21 @@ class MonitoringCacheWriter:
                 cache_data,  # Pass dict, not JSON string
                 ttl=ttl
             )
+
+            # ALSO write to shared cache if available (cross-process communication)
+            if self.shared_cache:
+                try:
+                    from src.core.cache.shared_cache_bridge import DataSource
+                    await self.shared_cache.publish_data_update(
+                        key=schema.CACHE_KEY,
+                        data=cache_data,
+                        source=DataSource.TRADING_SERVICE,
+                        ttl=ttl
+                    )
+                    self.shared_cache_writes += 1
+                    logger.debug(f"Published market overview to shared cache for web service visibility")
+                except Exception as e:
+                    logger.warning(f"Failed to publish market overview to shared cache: {e}")
 
             self.write_count += 1
             self.last_write_time = time.time()
@@ -182,6 +203,21 @@ class MonitoringCacheWriter:
                 cache_data,  # Pass dict, not JSON string
                 ttl=ttl
             )
+
+            # ALSO write to shared cache if available (cross-process communication)
+            if self.shared_cache:
+                try:
+                    from src.core.cache.shared_cache_bridge import DataSource
+                    await self.shared_cache.publish_data_update(
+                        key=schema.CACHE_KEY,
+                        data=cache_data,
+                        source=DataSource.TRADING_SERVICE,
+                        ttl=ttl
+                    )
+                    self.shared_cache_writes += 1
+                    logger.debug(f"Published signals to shared cache for web service visibility")
+                except Exception as e:
+                    logger.warning(f"Failed to publish signals to shared cache: {e}")
 
             self.write_count += 1
             logger.debug(

@@ -39,7 +39,7 @@ class CacheDataAggregator:
     system to populate cache keys directly with generated analysis data.
     """
 
-    def __init__(self, cache_adapter, config: Optional[Dict[str, Any]] = None, exchange=None):
+    def __init__(self, cache_adapter, config: Optional[Dict[str, Any]] = None, exchange=None, shared_cache=None):
         """
         Initialize the cache data aggregator.
 
@@ -47,13 +47,15 @@ class CacheDataAggregator:
             cache_adapter: Direct cache adapter instance
             config: Configuration dictionary
             exchange: CCXT exchange instance for fetching market-wide data
+            shared_cache: Optional SharedCacheBridge for cross-process communication
         """
         self.cache_adapter = cache_adapter
         self.config = config or {}
         self.exchange = exchange
+        self.shared_cache = shared_cache
 
-        # Initialize unified cache writer
-        self.cache_writer = MonitoringCacheWriter(cache_adapter, config)
+        # Initialize unified cache writer with shared cache support
+        self.cache_writer = MonitoringCacheWriter(cache_adapter, config, shared_cache)
 
         # Data aggregation storage
         self.signal_buffer = deque(maxlen=100)  # Store recent signals
@@ -121,7 +123,7 @@ class CacheDataAggregator:
                 # If no ticker, try ohlcv
                 if not price:
                     ohlcv = raw_market_data.get('ohlcv')
-                    if ohlcv and isinstance(ohlcv, list) and len(ohlcv) > 0:
+                    if ohlcv is not None and isinstance(ohlcv, list) and len(ohlcv) > 0:
                         # OHLCV format: [timestamp, open, high, low, close, volume]
                         price = ohlcv[-1][4] if len(ohlcv[-1]) > 4 else None
 
@@ -247,16 +249,25 @@ class CacheDataAggregator:
                         if len(self.price_changes) < 5:
                             logger.info(f"[DEBUG] {symbol}: ohlcv type={type(ohlcv)}, is dict={isinstance(ohlcv, dict)}")
 
-                        if ohlcv and isinstance(ohlcv, dict):
+                        if ohlcv is not None and isinstance(ohlcv, dict):
                             base_ohlcv = ohlcv.get('base', [])
                             if len(self.price_changes) < 5:
-                                logger.info(f"[DEBUG] {symbol}: base_ohlcv length={len(base_ohlcv) if base_ohlcv else 0}")
+                                logger.info(f"[DEBUG] {symbol}: base_ohlcv length={len(base_ohlcv) if base_ohlcv is not None else 0}")
 
-                            if base_ohlcv and len(base_ohlcv) > 24:  # Need at least 24 candles for 24h change
-                                price_24h_ago = base_ohlcv[-24][4]  # Close price 24 candles ago
-                                if price_24h_ago > 0:
-                                    price_change_percent = ((current_price - price_24h_ago) / price_24h_ago) * 100
-                                    logger.info(f"✅ Calculated 24h change for {symbol}: {price_change_percent:.2f}%")
+                            if base_ohlcv is not None and len(base_ohlcv) > 24:  # Need at least 24 candles for 24h change
+                                # Handle both DataFrame and list formats
+                                try:
+                                    import pandas as pd
+                                    if isinstance(base_ohlcv, pd.DataFrame):
+                                        price_24h_ago = base_ohlcv.iloc[-24, 4]  # Close price (index 4) 24 candles ago
+                                    else:
+                                        price_24h_ago = base_ohlcv[-24][4]  # List format
+
+                                    if price_24h_ago > 0:
+                                        price_change_percent = ((current_price - price_24h_ago) / price_24h_ago) * 100
+                                        logger.info(f"✅ Calculated 24h change for {symbol}: {price_change_percent:.2f}%")
+                                except (IndexError, KeyError, ValueError) as idx_err:
+                                    logger.debug(f"{symbol}: Could not calculate 24h change from OHLCV: {idx_err}")
                 else:
                     if len(self.price_changes) < 5:
                         logger.info(f"[DEBUG] {symbol}: Already has price_change_percent={price_change_percent}")
@@ -428,12 +439,17 @@ class CacheDataAggregator:
             }
         """
         try:
+            # CRITICAL FIX: Always get current BTC price from live tickers
+            current_btc_price = 0.0
+            if 'BTCUSDT' in self.market_wide_tickers:
+                current_btc_price = float(self.market_wide_tickers['BTCUSDT'].get('lastPrice', 0))
+
             # Need at least 2 days of data to calculate volatility
             if len(self.btc_price_history) < 2:
                 return {
                     'btc_volatility': 0.0,
                     'btc_daily_volatility': 0.0,
-                    'btc_current_price': 0.0,
+                    'btc_current_price': current_btc_price,  # Use live price instead of 0
                     'days_of_data': 0
                 }
 
@@ -454,7 +470,7 @@ class CacheDataAggregator:
                 return {
                     'btc_volatility': 0.0,
                     'btc_daily_volatility': 0.0,
-                    'btc_current_price': prices[-1]['price'] if prices else 0.0,
+                    'btc_current_price': current_btc_price,  # Use live price instead of historical
                     'days_of_data': len(prices)
                 }
 
@@ -468,26 +484,33 @@ class CacheDataAggregator:
             daily_volatility_pct = daily_volatility * 100
             annualized_volatility_pct = annualized_volatility * 100
 
-            current_price = prices[-1]['price'] if prices else 0.0
-
             logger.info(
                 f"📊 BTC Realized Volatility: {annualized_volatility_pct:.1f}% annualized "
-                f"({daily_volatility_pct:.2f}% daily, {len(daily_returns)} days)"
+                f"({daily_volatility_pct:.2f}% daily, {len(daily_returns)} days) | "
+                f"Current BTC Price: ${current_btc_price:,.2f}"
             )
 
             return {
                 'btc_volatility': round(annualized_volatility_pct, 2),
                 'btc_daily_volatility': round(daily_volatility_pct, 2),
-                'btc_current_price': current_price,
+                'btc_current_price': current_btc_price,  # Always use live price
                 'days_of_data': len(daily_returns)
             }
 
         except Exception as e:
             logger.error(f"Error calculating BTC realized volatility: {e}", exc_info=True)
+            # Try to at least return current price even if volatility calculation fails
+            try:
+                current_btc_price = 0.0
+                if 'BTCUSDT' in self.market_wide_tickers:
+                    current_btc_price = float(self.market_wide_tickers['BTCUSDT'].get('lastPrice', 0))
+            except:
+                current_btc_price = 0.0
+
             return {
                 'btc_volatility': 0.0,
                 'btc_daily_volatility': 0.0,
-                'btc_current_price': 0.0,
+                'btc_current_price': current_btc_price,
                 'days_of_data': 0
             }
 
@@ -721,9 +744,11 @@ class CacheDataAggregator:
                 formatted_signals.append(formatted_signal)
 
             # Use unified cache writer
+            # TTL increased from 120s to 300s to match symbol selection cache
+            # This ensures all 15 symbols remain visible until next refresh
             success = await self.cache_writer.write_signals(
                 formatted_signals,
-                ttl=120
+                ttl=300  # 5 minutes - matches symbol selection cache TTL
             )
 
             if success:

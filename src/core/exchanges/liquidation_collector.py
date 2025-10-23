@@ -44,9 +44,12 @@ class LiquidationDataCollector:
             'liquidations_per_exchange': defaultdict(int),
             'last_update': None
         }
-        
+
         # Running flag
         self.is_collecting = False
+
+        # Background collection tasks
+        self.collection_tasks = []
     
     async def start_collection(self, symbols: List[str]):
         """Start collecting liquidation data for specified symbols."""
@@ -66,12 +69,15 @@ class LiquidationDataCollector:
 
         # Start periodic REST API collection for exchanges that don't support WebSocket
         tasks.append(create_tracked_task(self._periodic_rest_collection(symbols), name="_periodic_rest_collection_task"))
-        
-        try:
-            await asyncio.gather(*tasks)
-        except Exception as e:
-            self.logger.error(f"Error in liquidation collection: {e}")
-            self.is_collecting = False
+
+        # Don't await the tasks - they run forever in the background
+        # Just store them so we can manage them later
+        self.collection_tasks = tasks
+
+        self.logger.info(f"✅ Started {len(tasks)} background liquidation collection tasks")
+
+        # Return immediately - tasks run in background
+        return True
     
     async def stop_collection(self):
         """Stop all liquidation data collection."""

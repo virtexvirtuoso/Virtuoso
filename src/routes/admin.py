@@ -22,8 +22,15 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 # Security configuration
-ADMIN_PASSWORD_HASH = os.getenv("ADMIN_PASSWORD_HASH", "")
-DEFAULT_ADMIN_PASSWORD = "admin123"  # Change this!
+# SECURITY: ADMIN_PASSWORD_HASH must be set in environment variables
+# Generate with: python -c "import hashlib; print(hashlib.sha256(b'your-secure-password').hexdigest())"
+ADMIN_PASSWORD_HASH = os.getenv("ADMIN_PASSWORD_HASH")
+if not ADMIN_PASSWORD_HASH:
+    raise ValueError(
+        "ADMIN_PASSWORD_HASH environment variable must be set! "
+        "Generate a secure password hash with: "
+        "python -c \"import hashlib; print(hashlib.sha256(b'your-secure-password').hexdigest())\""
+    )
 SESSION_TIMEOUT_HOURS = 24
 
 # Resolve paths
@@ -50,13 +57,19 @@ def generate_session_token() -> str:
     return secrets.token_urlsafe(32)
 
 def verify_admin_password(password: str) -> bool:
-    """Verify admin password against hash."""
-    if ADMIN_PASSWORD_HASH:
-        return hash_password(password) == ADMIN_PASSWORD_HASH
-    else:
-        # Fallback to default password if no hash is set
-        logger.warning("Using default admin password - please set ADMIN_PASSWORD_HASH environment variable!")
-        return password == DEFAULT_ADMIN_PASSWORD
+    """Verify admin password against hash.
+
+    Args:
+        password: Plain text password to verify
+
+    Returns:
+        True if password matches the hash, False otherwise
+
+    Note:
+        ADMIN_PASSWORD_HASH must be set in environment variables.
+        The application will not start if it's missing.
+    """
+    return hash_password(password) == ADMIN_PASSWORD_HASH
 
 def create_admin_session() -> AdminSession:
     """Create new admin session."""

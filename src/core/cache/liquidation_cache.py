@@ -66,12 +66,9 @@ class LiquidationCacheManager:
                     password=password,
                     decode_responses=True,
                     socket_connect_timeout=5,
-                    socket_keepalive=True,
-                    socket_keepalive_options={
-                        1: 1,  # TCP_KEEPINTVL
-                        2: 1,  # TCP_KEEPCNT
-                        3: 1,  # TCP_KEEPIDLE
-                    }
+                    socket_keepalive=True
+                    # Removed socket_keepalive_options - not supported by redis-py in this format
+                    # The C-style socket options (1, 2, 3) cause "Error 22: Invalid argument"
                 )
                 
                 # Test connection

@@ -155,9 +155,9 @@ class ManipulationDetector:
                 
             # Perform manipulation analysis
             metrics = await self._analyze_manipulation_metrics(symbol, market_data)
-            
-            # Calculate confidence score
-            confidence_score = self._calculate_confidence_score(metrics)
+
+            # Calculate confidence score with symbol for z-scores and volatility adjustment
+            confidence_score = self._calculate_confidence_score(metrics, symbol)
             
             # Update stats
             self.stats['total_analyses'] += 1
@@ -172,16 +172,30 @@ class ManipulationDetector:
             if confidence_score >= alert_threshold:
                 # Generate manipulation alert
                 alert = self._create_manipulation_alert(symbol, metrics, confidence_score)
-                
+
+                # CRITICAL FIX: Persist alert to history for monitoring features
+                if symbol not in self._manipulation_history:
+                    self._manipulation_history[symbol] = []
+
+                alert_dict = {
+                    'timestamp': alert.timestamp,
+                    'manipulation_type': alert.manipulation_type,
+                    'confidence_score': alert.confidence_score,
+                    'severity': alert.severity,
+                    'description': alert.description,
+                    'metrics': alert.metrics.copy()
+                }
+                self._manipulation_history[symbol].append(alert_dict)
+
                 # Update alert tracking
                 self._last_alerts[symbol] = time.time()
                 self.stats['alerts_generated'] += 1
-                
+
                 if confidence_score >= 0.8:
                     self.stats['manipulation_detected'] += 1
-                    
+
                 self.logger.warning(f"Manipulation detected for {symbol}: {alert.description} (confidence: {confidence_score:.2f})")
-                
+
                 return alert
                 
             return None
@@ -298,65 +312,234 @@ class ManipulationDetector:
             if (oi_increase and price_decrease) or (oi_decrease and price_increase):
                 metrics['divergence_detected'] = True
                 metrics['divergence_strength'] = abs(metrics['oi_change_15m_pct']) + abs(metrics['price_change_15m_pct'])
-                
+
+        # QUICK WIN #4: Check for coordinated manipulation patterns
+        metrics['coordinated_pattern'] = False
+        metrics['coordination_strength'] = 0.0
+        metrics['pattern_type'] = None
+
+        # Pattern 1: Large OI increase + volume spike + small price change = potential manipulation
+        # This suggests someone is building large positions without moving the price (stealth accumulation)
+        if (abs(metrics['oi_change_15m_pct']) > 0.02 and
+            metrics['volume_spike_ratio'] > 2.0 and
+            abs(metrics['price_change_15m_pct']) < 0.005):
+            metrics['coordinated_pattern'] = True
+            metrics['coordination_strength'] = 0.8
+            metrics['pattern_type'] = 'OI_VOLUME_NO_PRICE'
+
+        # Pattern 2: Price pump + volume spike + OI decrease = potential dump setup
+        # Rising price with decreasing OI suggests position closing (distribution phase)
+        elif (metrics['price_change_15m_pct'] > 0.015 and
+              metrics['volume_spike_ratio'] > 2.5 and
+              metrics['oi_change_15m_pct'] < -0.01):
+            metrics['coordinated_pattern'] = True
+            metrics['coordination_strength'] = 0.9
+            metrics['pattern_type'] = 'PUMP_BEFORE_DUMP'
+
+        # Pattern 3: Price crash + volume spike + OI spike (negative) = liquidation cascade
+        # Falling price with decreasing OI and high volume suggests forced liquidations
+        elif (metrics['price_change_15m_pct'] < -0.02 and
+              metrics['volume_spike_ratio'] > 3.0 and
+              metrics['oi_change_15m_pct'] < -0.02):
+            metrics['coordinated_pattern'] = True
+            metrics['coordination_strength'] = 0.95
+            metrics['pattern_type'] = 'LIQUIDATION_CASCADE'
+
+        # Pattern 4: Large OI spike + small volume = potential position manipulation
+        # Large OI change without corresponding volume suggests artificial position building
+        elif (abs(metrics['oi_change_15m_pct']) > 0.03 and
+              metrics['volume_spike_ratio'] < 1.5):
+            metrics['coordinated_pattern'] = True
+            metrics['coordination_strength'] = 0.75
+            metrics['pattern_type'] = 'OI_WITHOUT_VOLUME'
+
         return metrics
         
-    def _calculate_confidence_score(self, metrics: Dict[str, Any]) -> float:
+    def _calculate_confidence_score(self, metrics: Dict[str, Any], symbol: str = None) -> float:
         """
-        Calculate confidence score for manipulation detection.
-        
+        Calculate confidence score for manipulation detection - ENHANCED with QUICK WINS.
+
         Args:
             metrics: Calculated metrics dictionary
-            
+            symbol: Trading pair symbol (for z-score calculation)
+
         Returns:
             Confidence score between 0 and 1
         """
         weights = self.manipulation_config.get('weights', {})
         score = 0.0
-        
-        # OI change score
+
+        # Get z-scores if we have enough data (QUICK WIN #3)
+        z_scores = {}
+        if symbol:
+            z_scores = self._calculate_z_scores(symbol, metrics)
+            # Store z-scores in metrics for alert description
+            if z_scores:
+                metrics['z_scores'] = z_scores
+
+        # OI change score with volatility adjustment and z-score boost (QUICK WIN #1 + #3)
         oi_weight = weights.get('oi_change', 0.3)
-        oi_15m_threshold = self.manipulation_config.get('oi_change_15m_threshold', 0.02)
-        oi_1h_threshold = self.manipulation_config.get('oi_change_1h_threshold', 0.05)
-        
+        base_oi_15m_threshold = self.manipulation_config.get('oi_change_15m_threshold', 0.02)
+        base_oi_1h_threshold = self.manipulation_config.get('oi_change_1h_threshold', 0.05)
+
+        # Apply volatility adjustment to thresholds
+        if symbol:
+            oi_15m_threshold = self._get_volatility_adjusted_threshold(symbol, base_oi_15m_threshold)
+            oi_1h_threshold = self._get_volatility_adjusted_threshold(symbol, base_oi_1h_threshold)
+        else:
+            oi_15m_threshold = base_oi_15m_threshold
+            oi_1h_threshold = base_oi_1h_threshold
+
         oi_score = 0
         if abs(metrics.get('oi_change_15m_pct', 0)) > oi_15m_threshold:
             oi_score += 0.5
+            # Z-score boost: >3 sigma is highly significant (QUICK WIN #3)
+            if 'oi' in z_scores and z_scores['oi'] > 3:
+                oi_score = min(1.0, oi_score + 0.3)
         if abs(metrics.get('oi_change_1h_pct', 0)) > oi_1h_threshold:
             oi_score += 0.5
-            
+
         score += oi_weight * oi_score
-        
-        # Volume spike score
+
+        # Volume spike score with z-score boost (QUICK WIN #3)
         volume_weight = weights.get('volume_spike', 0.25)
         volume_threshold = self.manipulation_config.get('volume_spike_threshold', 2.0)
-        
+
         volume_ratio = metrics.get('volume_spike_ratio', 0)
         if volume_ratio > volume_threshold:
             volume_score = min(1.0, (volume_ratio - volume_threshold) / volume_threshold)
+            # Z-score boost for extreme volume spikes
+            if 'volume' in z_scores and z_scores['volume'] > 3:
+                volume_score = min(1.0, volume_score + 0.2)
             score += volume_weight * volume_score
-            
-        # Price movement score
+
+        # Price movement score with z-score boost (QUICK WIN #3)
         price_weight = weights.get('price_movement', 0.25)
         price_15m_threshold = self.manipulation_config.get('price_change_15m_threshold', 0.01)
         price_5m_threshold = self.manipulation_config.get('price_change_5m_threshold', 0.005)
-        
+
         price_score = 0
         if abs(metrics.get('price_change_15m_pct', 0)) > price_15m_threshold:
             price_score += 0.5
+            # Z-score boost for extreme price movements
+            if 'price' in z_scores and z_scores['price'] > 2.5:
+                price_score = min(1.0, price_score + 0.3)
         if abs(metrics.get('price_change_5m_pct', 0)) > price_5m_threshold:
             price_score += 0.5
-            
+
         score += price_weight * price_score
-        
-        # Divergence score
+
+        # Divergence score (unchanged)
         divergence_weight = weights.get('divergence', 0.2)
         if metrics.get('divergence_detected', False):
             divergence_score = min(1.0, metrics.get('divergence_strength', 0) / 0.02)  # Normalize to 2%
             score += divergence_weight * divergence_score
-            
+
+        # QUICK WIN #4: Boost confidence for coordinated patterns
+        if metrics.get('coordinated_pattern', False):
+            coordination_boost = 0.15 * metrics.get('coordination_strength', 0)
+            score += coordination_boost
+
         return min(1.0, score)
-        
+
+    def _get_volatility_adjusted_threshold(self, symbol: str, base_threshold: float) -> float:
+        """
+        Adjust threshold based on recent volatility - QUICK WIN #1.
+
+        Higher volatility = higher threshold (reduces false positives in volatile markets)
+        Lower volatility = keep base threshold (maintains sensitivity in calm markets)
+
+        Args:
+            symbol: Trading pair symbol
+            base_threshold: Base threshold value
+
+        Returns:
+            Volatility-adjusted threshold (1x to 2.5x base)
+        """
+        historical_data = self._historical_data.get(symbol, [])
+
+        if len(historical_data) < 20:
+            return base_threshold
+
+        # Calculate recent price volatility
+        prices = [d['price'] for d in historical_data[-20:] if d['price'] > 0]
+        if len(prices) < 2:
+            return base_threshold
+
+        # Calculate returns and volatility with division by zero safety
+        # CRITICAL FIX: Filter out zero denominators to prevent crashes
+        returns = np.array([
+            prices[i] / prices[i-1] - 1
+            for i in range(1, len(prices))
+            if prices[i-1] > 0  # Safety check for division by zero
+        ])
+
+        if len(returns) < 2:
+            return base_threshold
+
+        volatility = np.std(returns)
+
+        # Adjust: Higher volatility = higher threshold (1x to 2.5x)
+        # Typical crypto volatility per interval: 0.01-0.05 (1%-5%)
+        # At 2% volatility (baseline), multiplier = 1.0
+        # At 4% volatility, multiplier = 2.0
+        # At 6%+ volatility, multiplier = 2.5 (capped)
+        multiplier = 1.0 + min(1.5, volatility / 0.02)
+
+        return base_threshold * multiplier
+
+    def _calculate_z_scores(self, symbol: str, metrics: Dict[str, Any]) -> Dict[str, float]:
+        """
+        Calculate z-scores for statistical significance - QUICK WIN #3.
+
+        Z-scores measure how many standard deviations away from the mean:
+        - |z| < 2: Normal variation (68% of data)
+        - |z| > 2: Unusual (5% of data)
+        - |z| > 3: Very unusual (0.3% of data - strong manipulation signal)
+
+        Args:
+            symbol: Trading pair symbol
+            metrics: Current metrics dictionary
+
+        Returns:
+            Dictionary of z-scores for each metric
+        """
+        historical_data = self._historical_data.get(symbol, [])
+
+        # Need at least 30 data points for meaningful statistics
+        if len(historical_data) < 30:
+            return {}
+
+        df = pd.DataFrame(historical_data)
+        z_scores = {}
+
+        try:
+            # OI change z-score
+            if 'open_interest' in df.columns:
+                oi_changes = df['open_interest'].pct_change().dropna()
+                if len(oi_changes) > 0 and oi_changes.std() > 0:
+                    current_oi_change = metrics.get('oi_change_15m_pct', 0)
+                    z_scores['oi'] = abs((current_oi_change - oi_changes.mean()) / oi_changes.std())
+
+            # Volume z-score
+            if 'volume' in df.columns:
+                volumes = df['volume']
+                if volumes.std() > 0:
+                    current_vol = metrics.get('volume', volumes.mean())
+                    z_scores['volume'] = (current_vol - volumes.mean()) / volumes.std()
+
+            # Price change z-score
+            if 'price' in df.columns:
+                price_changes = df['price'].pct_change().dropna()
+                if len(price_changes) > 0 and price_changes.std() > 0:
+                    current_price_change = metrics.get('price_change_15m_pct', 0)
+                    z_scores['price'] = abs((current_price_change - price_changes.mean()) / price_changes.std())
+
+        except Exception as e:
+            self.logger.debug(f"Error calculating z-scores for {symbol}: {e}")
+
+        return z_scores
+
     def _create_manipulation_alert(self, symbol: str, metrics: Dict[str, Any], confidence_score: float) -> ManipulationAlert:
         """
         Create manipulation alert from metrics and confidence score.
@@ -399,25 +582,44 @@ class ManipulationDetector:
         else:
             severity = 'low'
             
-        # Create description
+        # Create enhanced description with QUICK WIN #5
         description_parts = []
-        
+
         if 'OI_SPIKE' in manipulation_type:
             oi_pct = metrics.get('oi_change_15m_pct', 0) * 100
-            description_parts.append(f"OI change: {oi_pct:+.1f}%")
-            
+            oi_abs = metrics.get('oi_change_15m', 0)
+            description_parts.append(f"OI: {oi_pct:+.1f}% (${oi_abs:,.0f})")
+
         if 'VOLUME_SPIKE' in manipulation_type:
             volume_ratio = metrics.get('volume_spike_ratio', 0)
-            description_parts.append(f"Volume spike: {volume_ratio:.1f}x average")
-            
+            description_parts.append(f"Vol: {volume_ratio:.1f}x avg")
+
         if 'PRICE_MOVEMENT' in manipulation_type:
             price_pct = metrics.get('price_change_15m_pct', 0) * 100
-            description_parts.append(f"Price change: {price_pct:+.1f}%")
-            
+            description_parts.append(f"Price: {price_pct:+.1f}%")
+
         if 'OI_PRICE_DIVERGENCE' in manipulation_type:
-            description_parts.append("OI-Price divergence detected")
-            
-        description = f"Potential manipulation detected: {', '.join(description_parts)}"
+            description_parts.append("⚠️ OI/Price divergence")
+
+        # Add coordinated pattern warning (QUICK WIN #4)
+        if metrics.get('coordinated_pattern', False):
+            pattern_type = metrics.get('pattern_type', 'UNKNOWN')
+            pattern_name = pattern_type.replace('_', ' ').title()
+            description_parts.append(f"🎯 {pattern_name}")
+
+        # Add z-score significance indicator (QUICK WIN #3)
+        # CRITICAL FIX: Convert dict_values to list before max() to prevent crashes
+        z_scores = metrics.get('z_scores', {})
+        if z_scores:
+            z_values = list(z_scores.values())
+            if z_values:  # Check list is not empty before calling max()
+                max_z = max(z_values)
+                if max_z > 3:
+                    description_parts.append(f"📊 {max_z:.1f}σ outlier")
+                elif max_z > 2.5:
+                    description_parts.append(f"📊 {max_z:.1f}σ unusual")
+
+        description = f"⚠️ Manipulation: {', '.join(description_parts)}"
         
         return ManipulationAlert(
             symbol=symbol,
@@ -446,11 +648,11 @@ class ManipulationDetector:
         }
         
         self._historical_data[symbol].append(data_point)
-        
-        # Keep only recent data (last 2 hours)
-        cutoff_time = current_time - (2 * 60 * 60)
+
+        # Keep only recent data (last 24 hours) - QUICK WIN: Extended window for better pattern detection
+        cutoff_time = current_time - (24 * 60 * 60)
         self._historical_data[symbol] = [
-            dp for dp in self._historical_data[symbol] 
+            dp for dp in self._historical_data[symbol]
             if dp['timestamp'] >= cutoff_time
         ]
         

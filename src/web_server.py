@@ -38,6 +38,9 @@ from datetime import datetime
 from src.config.manager import ConfigManager
 from src.core.exchanges.manager import ExchangeManager
 
+# Import shared cache bridge for cross-process communication
+from src.core.cache.shared_cache_bridge import get_shared_cache_bridge, initialize_shared_cache
+
 # Create FastAPI app
 app = FastAPI(
     title="Virtuoso Trading System - Web Server",
@@ -89,6 +92,20 @@ async def startup_event():
         # Store in app state for API routes to use
         app.state.config_manager = config_manager
         app.state.exchange_manager = exchange_manager
+
+        # Initialize shared cache bridge for cross-process communication
+        print("Initializing shared cache bridge...")
+        try:
+            cache_initialized = await initialize_shared_cache()
+            if cache_initialized:
+                app.state.shared_cache = get_shared_cache_bridge()
+                print("✅ Shared cache bridge enabled - web service can now read monitoring data")
+            else:
+                app.state.shared_cache = None
+                print("⚠️ Shared cache bridge initialization failed - will use direct API calls")
+        except Exception as e:
+            print(f"⚠️ Could not initialize shared cache bridge: {e}")
+            app.state.shared_cache = None
 
         print("✅ Web server startup complete")
 
@@ -509,6 +526,105 @@ async def dashboard_data():
                 "status": "error",
                 "last_update": datetime.now().isoformat()
             }
+        }
+
+@app.get("/api/dashboard/signals-from-cache")
+async def get_signals_from_cache():
+    """Get signals from shared cache (cross-process data from monitoring system)"""
+    try:
+        if not hasattr(app.state, 'shared_cache') or app.state.shared_cache is None:
+            return {
+                "status": "error",
+                "message": "Shared cache not initialized",
+                "signals": [],
+                "cache_enabled": False
+            }
+
+        # Get signals from shared cache
+        signals_data, is_cross_service = await app.state.shared_cache.get_shared_data("analysis:signals")
+
+        if signals_data:
+            return {
+                "status": "success",
+                "signals": signals_data.get('signals', []),
+                "cache_hit": True,
+                "cross_service_hit": is_cross_service,
+                "timestamp": signals_data.get('timestamp', int(time.time())),
+                "cache_enabled": True
+            }
+        else:
+            return {
+                "status": "no_data",
+                "message": "No signals found in cache",
+                "signals": [],
+                "cache_hit": False,
+                "cache_enabled": True
+            }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": str(e),
+            "signals": [],
+            "cache_enabled": True
+        }
+
+@app.get("/api/dashboard/mobile-data-from-cache")
+async def get_mobile_data_from_cache():
+    """Get mobile dashboard data from shared cache"""
+    try:
+        if not hasattr(app.state, 'shared_cache') or app.state.shared_cache is None:
+            return {
+                "status": "error",
+                "message": "Shared cache not initialized"
+            }
+
+        # Get various data from shared cache
+        signals_data, _ = await app.state.shared_cache.get_shared_data("analysis:signals")
+        market_overview, _ = await app.state.shared_cache.get_shared_data("market:overview")
+        market_regime, _ = await app.state.shared_cache.get_shared_data("analysis:market_regime")
+
+        return {
+            "status": "success",
+            "signals": signals_data.get('signals', []) if signals_data else [],
+            "market_overview": market_overview or {},
+            "market_regime": market_regime or "unknown",
+            "timestamp": int(time.time() * 1000),
+            "data_source": "shared_cache"
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": str(e),
+            "timestamp": int(time.time() * 1000)
+        }
+
+@app.get("/api/cache/metrics")
+async def get_cache_metrics():
+    """Get cache bridge metrics and health status"""
+    try:
+        if not hasattr(app.state, 'shared_cache') or app.state.shared_cache is None:
+            return {
+                "status": "error",
+                "message": "Shared cache not initialized",
+                "cache_enabled": False
+            }
+
+        # Get bridge metrics
+        metrics = app.state.shared_cache.get_bridge_metrics()
+        health = await app.state.shared_cache.health_check()
+
+        return {
+            "status": "success",
+            "cache_enabled": True,
+            "metrics": metrics,
+            "health": health,
+            "timestamp": int(time.time() * 1000)
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": str(e),
+            "cache_enabled": False
         }
 
 @app.get("/service-health")
