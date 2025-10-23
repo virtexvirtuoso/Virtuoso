@@ -24,7 +24,6 @@ Options:
     --update-existing: Update existing docs (default: False)
     --format: Output format (markdown, rst, html) (default: markdown)
 
-Author: Claude Code Assistant
 Version: 1.0.0
 """
 
