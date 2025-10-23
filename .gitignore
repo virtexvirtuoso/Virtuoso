@@ -382,6 +382,7 @@ scripts/deploy_*.py
 ssh_keys/
 *.ppk
 known_hosts
+systemd/
 
 # Cleanup and maintenance scripts
 scripts/cleanup_*.sh
