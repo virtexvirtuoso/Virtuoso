@@ -6782,15 +6782,31 @@ class MarketMonitor:
                     'whale_sell_volume': sell_volume,
                     'net_trade_volume': net_trade_volume,
                     'trade_imbalance': trade_imbalance,
-                    'trade_confirmation': (trade_imbalance > 0 and net_volume > 0) or 
-                                         (trade_imbalance < 0 and net_volume < 0)
+                    'trade_confirmation': (trade_imbalance > 0 and net_volume > 0) or
+                                         (trade_imbalance < 0 and net_volume < 0),
+                    'top_whale_trades': whale_trades[:10]  # Top 10 whale trades for display
                 })
-                
+
                 self.logger.debug(f"Trades analysis for {symbol}: " +
                                 f"Whale trades: {len(whale_trades)}, " +
                                 f"Buy volume: {buy_volume:.2f}, Sell volume: {sell_volume:.2f}, " +
                                 f"Net volume: {net_trade_volume:.2f}, Imbalance: {trade_imbalance:.2f}")
-            
+
+            # Format whale bids and asks for alert display (top 10 each)
+            # Convert from [price, size] format to (price, size, usd_value) tuples
+            top_whale_bids = [(float(order[0]), float(order[1]), float(order[0]) * float(order[1]))
+                             for order in whale_bids[:10]]
+            top_whale_asks = [(float(order[0]), float(order[1]), float(order[0]) * float(order[1]))
+                             for order in whale_asks[:10]]
+
+            # Add orderbook data to current activity
+            current_activity.update({
+                'top_whale_bids': top_whale_bids,
+                'top_whale_asks': top_whale_asks,
+                'whale_bid_orders': len(whale_bids),
+                'whale_ask_orders': len(whale_asks)
+            })
+
             # Store current activity data
             self._last_whale_activity[symbol] = current_activity
             
