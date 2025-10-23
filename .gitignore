@@ -145,6 +145,12 @@ nginx.conf
 apache.conf
 *.nginx.conf
 *.apache.conf
+logrotate.conf
+*logrotate.conf
+*/logrotate*.conf
+memcached*.conf
+redis*.conf
+fstab-*
 
 # Test files
 *.test
@@ -195,6 +201,10 @@ reports/pdfs/
 reports/json/
 reports/charts/
 reports/session_reports/
+reports/analysis/cache_rationalization/archives/
+reports/*_SUMMARY.md
+reports/*_summary.md
+reports/phase*.md
 exports/
 test-reports/
 # Keep the directories but not their contents
