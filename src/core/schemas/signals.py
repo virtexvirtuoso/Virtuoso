@@ -178,8 +178,8 @@ class SignalsSchema(CacheSchema):
 
     Statistics:
         total_signals: Total number of signals generated
-        buy_signals: Number of bullish signals
-        sell_signals: Number of bearish signals
+        long_signals: Number of bullish/long signals
+        short_signals: Number of bearish/short signals
         avg_confluence_score: Average confluence score
         avg_reliability: Average reliability score
 
@@ -196,8 +196,8 @@ class SignalsSchema(CacheSchema):
 
     # Statistics
     total_signals: int = 0
-    buy_signals: int = 0
-    sell_signals: int = 0
+    long_signals: int = 0
+    short_signals: int = 0
     avg_confluence_score: float = 50.0
     avg_reliability: float = 75.0
 
@@ -210,13 +210,13 @@ class SignalsSchema(CacheSchema):
             self.total_signals = len(self.signals)
 
             # Count sentiment types
-            self.buy_signals = sum(
+            self.long_signals = sum(
                 1 for s in self.signals
-                if s.get('sentiment', '').upper() in ['BULLISH', 'BUY']
+                if s.get('sentiment', '').upper() in ['BULLISH', 'LONG']
             )
-            self.sell_signals = sum(
+            self.short_signals = sum(
                 1 for s in self.signals
-                if s.get('sentiment', '').upper() in ['BEARISH', 'SELL']
+                if s.get('sentiment', '').upper() in ['BEARISH', 'SHORT']
             )
 
             # Calculate averages

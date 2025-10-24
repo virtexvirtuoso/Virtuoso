@@ -366,10 +366,10 @@ class OptimizedAlertFormatter:
         components = data.get('components', {})
 
         # Determine pattern based on signal
-        if signal_direction == 'BUY':
+        if signal_direction == 'LONG':
             pattern = self.pattern_names['confluence_breakout']
             action = f"Enter long position at ${entry:,.2f} or better"
-        elif signal_direction == 'SELL':
+        elif signal_direction == 'SHORT':
             pattern = self.pattern_names['confluence_reversal']
             action = f"Enter short position at ${entry:,.2f} or better"
         else:

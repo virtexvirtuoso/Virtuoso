@@ -1382,17 +1382,17 @@ class MetricsManager:
             }
             
             # Add signal type flag (1 for the detected type, 0 for others)
-            if signal_type == 'BUY':
-                metrics['signal_buy'] = 1.0
-                metrics['signal_sell'] = 0.0
+            if signal_type == 'LONG':
+                metrics['signal_long'] = 1.0
+                metrics['signal_short'] = 0.0
                 metrics['signal_neutral'] = 0.0
-            elif signal_type == 'SELL':
-                metrics['signal_buy'] = 0.0
-                metrics['signal_sell'] = 1.0
+            elif signal_type == 'SHORT':
+                metrics['signal_long'] = 0.0
+                metrics['signal_short'] = 1.0
                 metrics['signal_neutral'] = 0.0
             else:
-                metrics['signal_buy'] = 0.0
-                metrics['signal_sell'] = 0.0
+                metrics['signal_long'] = 0.0
+                metrics['signal_short'] = 0.0
                 metrics['signal_neutral'] = 1.0
             
             # Add component scores if available

@@ -1640,17 +1640,24 @@ class ContinuousAnalysisManager:
             # Aggregate market overview data
             total_symbols = len(analyses)
             total_volume = 0
-            signals_count = {'strong_buy': 0, 'buy': 0, 'neutral': 0, 'sell': 0, 'strong_sell': 0}
+            signals_count = {'strong_long': 0, 'long': 0, 'neutral': 0, 'short': 0, 'strong_short': 0}
             top_movers = []
-            
+
             for symbol, analysis in analyses.items():
                 if analysis:
                     # Add to total volume
                     if 'volume_24h' in analysis:
                         total_volume += analysis.get('volume_24h', 0)
-                    
-                    # Count signals
+
+                    # Count signals (handle both old and new formats)
                     signal = analysis.get('signal', 'neutral').lower()
+                    # Map old format to new
+                    signal_mapping = {
+                        'strong_buy': 'strong_long', 'buy': 'long',
+                        'strong_sell': 'strong_short', 'sell': 'short',
+                        'bullish': 'long', 'bearish': 'short'
+                    }
+                    signal = signal_mapping.get(signal, signal)
                     if signal in signals_count:
                         signals_count[signal] += 1
                     
@@ -1666,8 +1673,8 @@ class ContinuousAnalysisManager:
             top_movers.sort(key=lambda x: abs(x['change']), reverse=True)
             
             # Calculate market regime (simple version)
-            bullish = signals_count['strong_buy'] + signals_count['buy']
-            bearish = signals_count['strong_sell'] + signals_count['sell']
+            bullish = signals_count['strong_long'] + signals_count['long']
+            bearish = signals_count['strong_short'] + signals_count['short']
             market_regime = 'BULLISH' if bullish > bearish else 'BEARISH' if bearish > bullish else 'NEUTRAL'
             
             # Calculate trend strength (0-100)

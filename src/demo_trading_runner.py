@@ -367,7 +367,7 @@ class DemoTradingRunner:
                     logger.info(f"Processing signal for {symbol}: {signal_type} with score {score}")
                     
                     # Skip neutral signals
-                    if signal_type not in ['BUY', 'SELL']:
+                    if signal_type not in ['LONG', 'SHORT']:
                         logger.debug(f"Ignoring NEUTRAL signal for {symbol}")
                         continue
                         

@@ -164,7 +164,7 @@ class MetricsTracker:
                 metrics.update({
                     'analysis_results_count': float(len(analysis_results)),
                     'avg_confluence_score': float(sum(r.get('confluence_score', 0) for r in analysis_results) / len(analysis_results)),
-                    'signals_generated': float(sum(1 for r in analysis_results if r.get('signal_type') in ['BUY', 'SELL']))
+                    'signals_generated': float(sum(1 for r in analysis_results if r.get('signal_type') in ['LONG', 'SHORT']))
                 })
             
             # Update monitoring metrics as system metrics

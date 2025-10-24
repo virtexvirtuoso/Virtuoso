@@ -19,8 +19,8 @@ Key Features:
 Signal Generation Logic:
 1. Receives confluence scores from MarketMonitor (0-100 scale)
 2. Evaluates scores against configurable thresholds:
-   - Buy Signal: Score > buy_threshold (default 60)
-   - Sell Signal: Score < sell_threshold (default 40)
+   - Long Signal: Score > long_threshold (default 60)
+   - Short Signal: Score < short_threshold (default 40)
    - Neutral: Score between thresholds with buffer zone
 3. Calculates signal strength based on score distance from threshold
 4. Validates signals across multiple timeframes for confirmation
@@ -41,7 +41,7 @@ Configuration:
 Usage Example:
     generator = SignalGenerator(config, alert_manager)
     signal = await generator.generate_signal(analysis_result)
-    if signal['type'] == 'BUY':
+    if signal['type'] == 'LONG':
         await execute_trade(signal)
 
 Author: Virtuoso Team
@@ -110,8 +110,8 @@ class SignalGenerator:
         
         # Set thresholds with defaults matching config.yaml defaults
         self.thresholds = {
-            'buy': float(threshold_config.get('buy', 60)),
-            'sell': float(threshold_config.get('sell', 40)),
+            'long': float(threshold_config.get('long', threshold_config.get('buy', 60))),
+            'short': float(threshold_config.get('short', threshold_config.get('sell', 40))),
             'neutral_buffer': float(threshold_config.get('neutral_buffer', 5))
         }
         
@@ -434,10 +434,10 @@ class SignalGenerator:
                 # Map direction to signal type
                 if 'direction' in indicators and 'signal' not in indicators:
                     direction = indicators['direction'].upper()
-                    if direction == 'BUY':
-                        indicators['signal'] = 'BUY'
-                    elif direction == 'SELL':
-                        indicators['signal'] = 'SELL'
+                    if direction == 'LONG':
+                        indicators['signal'] = 'LONG'
+                    elif direction == 'SHORT':
+                        indicators['signal'] = 'SHORT'
                     else:
                         indicators['signal'] = 'NEUTRAL'
                 
@@ -566,7 +566,7 @@ class SignalGenerator:
         Returns:
             Dict[str, Any]: Signal data containing:
                 - 'id': str - Unique signal identifier (UUID)
-                - 'type': str - Signal type ('BUY', 'SELL', 'NEUTRAL')
+                - 'type': str - Signal type ('LONG', 'SHORT', 'NEUTRAL')
                 - 'symbol': str - Trading pair
                 - 'price': float - Signal generation price
                 - 'confluence_score': float - Overall score (0-100)
@@ -580,8 +580,8 @@ class SignalGenerator:
                 - 'metadata': Dict - Additional signal metadata
                 
         Signal Logic:
-            - BUY: confluence_score > buy_threshold (default 60)
-            - SELL: confluence_score < sell_threshold (default 40)
+            - LONG: confluence_score > long_threshold (default 60)
+            - SHORT: confluence_score < short_threshold (default 40)
             - NEUTRAL: score between thresholds or within buffer zone
             
         Signal Strength Calculation:
@@ -599,7 +599,7 @@ class SignalGenerator:
             ... }
             >>> signal = await generator.generate_signal(indicators)
             >>> print(f"Signal: {signal['type']} with strength {signal['strength']}")
-            Signal: BUY with strength 0.75
+            Signal: LONG with strength 0.75
         """
         try:
             # Get confluence score and current price from indicators
@@ -656,13 +656,13 @@ class SignalGenerator:
             logger.debug(f"Extracted score: {confluence_score}")
 
             # Use thresholds from the self.thresholds dictionary loaded during initialization
-            buy_threshold = self.thresholds['buy']
-            sell_threshold = self.thresholds['sell']
+            long_threshold = self.thresholds['long']
+            short_threshold = self.thresholds['short']
             
             logger.debug(f"Signal check for {symbol}:")
             logger.debug(f"Confluence score: {confluence_score}")
-            logger.debug(f"Buy threshold: {buy_threshold}")
-            logger.debug(f"Sell threshold: {sell_threshold}")
+            logger.debug(f"Long threshold: {long_threshold}")
+            logger.debug(f"Short threshold: {short_threshold}")
 
             # ═══════════════════════════════════════════════════════════════════
             # QUALITY METRICS MONITORING (HYBRID APPROACH)
@@ -806,9 +806,9 @@ class SignalGenerator:
                 }
             
             # Generate signals based on configured thresholds
-            if confluence_score >= buy_threshold:
-                logger.info(f"Generating BUY signal - Score {confluence_score} >= {buy_threshold}")
-                signal = "BUY"
+            if confluence_score >= long_threshold:
+                logger.info(f"Generating LONG signal - Score {confluence_score} >= {long_threshold}")
+                signal = "LONG"
                 # Determine signal strength and emoji
                 if confluence_score >= 80:
                     strength = "Very Strong"
@@ -823,9 +823,9 @@ class SignalGenerator:
                 # Create the signal but do NOT send any alerts here - let AlertManager handle it
                 # This avoids double alerting
                 
-            elif confluence_score <= sell_threshold:
-                logger.info(f"Generating SELL signal - Score {confluence_score} <= {sell_threshold}")
-                signal = "SELL"
+            elif confluence_score <= short_threshold:
+                logger.info(f"Generating SHORT signal - Score {confluence_score} <= {short_threshold}")
+                signal = "SHORT"
                 # Determine signal strength and emoji
                 if confluence_score <= 20:
                     strength = "Very Strong"
@@ -936,15 +936,15 @@ class SignalGenerator:
                 components=components,
                 results=results,
                 reliability=reliability,
-                buy_threshold=self.thresholds['buy'],
-                sell_threshold=self.thresholds['sell']
+                long_threshold=self.thresholds['long'],
+                short_threshold=self.thresholds['short']
             )
             
             # Determine signal direction
-            if score >= self.thresholds['buy']:
-                direction = 'BUY'
-            elif score <= self.thresholds['sell']:
-                direction = 'SELL'
+            if score >= self.thresholds['long']:
+                direction = 'LONG'
+            elif score <= self.thresholds['short']:
+                direction = 'SHORT'
             else:
                 direction = 'NEUTRAL'
             
@@ -990,8 +990,8 @@ class SignalGenerator:
                 'components': components,
                 'results': results,
                 'reliability': reliability,  # Use reliability directly without normalization
-                'buy_threshold': self.thresholds['buy'],
-                'sell_threshold': self.thresholds['sell'],
+                'long_threshold': self.thresholds['long'],
+                'short_threshold': self.thresholds['short'],
                 'price': price,
                 'transaction_id': transaction_id,
                 'signal_id': signal_id,
@@ -1040,8 +1040,8 @@ class SignalGenerator:
                 components=components,
                 results=results,
                 reliability=reliability,  # Use reliability directly without normalization
-                buy_threshold=self.thresholds['buy'],
-                sell_threshold=self.thresholds['sell'],
+                long_threshold=self.thresholds['long'],
+                short_threshold=self.thresholds['short'],
                 price=price,
                 transaction_id=transaction_id,
                 signal_id=signal_id,
@@ -1565,8 +1565,8 @@ class SignalGenerator:
         components: Dict[str, Any],
         results: Dict[str, Any], 
         reliability: float,
-        buy_threshold: float,
-        sell_threshold: float
+        long_threshold: float,
+        short_threshold: float
     ) -> Dict[str, Any]:
         """
         Generate enhanced formatted data for Discord alerts with proper component analysis.
@@ -1582,12 +1582,12 @@ class SignalGenerator:
             signal_id = str(uuid.uuid4())[:8]
             
             self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] Generating enhanced formatted data for {symbol}")
-            
+
             # Determine signal direction
-            if confluence_score >= buy_threshold:
-                signal_direction = "BUY"
-            elif confluence_score <= sell_threshold:
-                signal_direction = "SELL"
+            if confluence_score >= long_threshold:
+                signal_direction = "LONG"
+            elif confluence_score <= short_threshold:
+                signal_direction = "SHORT"
             else:
                 signal_direction = "NEUTRAL"
                 
@@ -1668,7 +1668,7 @@ class SignalGenerator:
                         # Prepare market data for context
                         market_data = {
                             'market_overview': {
-                                'regime': 'BULLISH' if signal_direction == 'BUY' else 'BEARISH' if signal_direction == 'SELL' else 'NEUTRAL',
+                                'regime': 'BULLISH' if signal_direction == 'LONG' else 'BEARISH' if signal_direction == 'SHORT' else 'NEUTRAL',
                                 'volatility': results.get('volatility', {}).get('atr_percentage', 2.0),
                                 'trend_strength': components.get('technical', 50.0) / 100.0,
                                 'volume_change': components.get('volume', 50.0) / 100.0
@@ -1713,7 +1713,7 @@ class SignalGenerator:
             # Generate actionable insights based on signal direction and market state
             actionable_insights = []
             
-            if signal_direction == "SELL":
+            if signal_direction == "SHORT":
                 if market_state == "TRENDING_BEARISH":
                     actionable_insights.extend([
                         f"🔴 Strong bearish trend confirmed - High confidence signal",
@@ -1740,7 +1740,7 @@ class SignalGenerator:
                 if components.get('technical', 0) < 40:
                     actionable_insights.append("Technical indicators align with bearish trend")
                 
-            elif signal_direction == "BUY":
+            elif signal_direction == "LONG":
                 if market_state == "TRENDING_BULLISH":
                     actionable_insights.extend([
                         f"🚀 Strong bullish trend confirmed - High confidence signal",
@@ -2204,10 +2204,10 @@ class SignalGenerator:
                 
             # Determine signal direction
             direction = signal_data.get('direction', 'NEUTRAL').upper()
-            if score >= self.thresholds['buy']:
-                direction = "BUY"
-            elif score <= self.thresholds['sell']:
-                direction = "SELL"
+            if score >= self.thresholds['long']:
+                direction = "LONG"
+            elif score <= self.thresholds['short']:
+                direction = "SHORT"
             else:
                 # Default to direction from signal data or leave as NEUTRAL
                 pass
@@ -2351,12 +2351,12 @@ class SignalGenerator:
                 self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] Generating enhanced formatted data")
                 enhanced_data = self._generate_enhanced_formatted_data(
                     symbol, 
-                    score, 
-                    serialized_components, 
-                    serialized_results, 
+                    score,
+                    serialized_components,
+                    serialized_results,
                     reliability,
-                    self.thresholds['buy'],
-                    self.thresholds['sell']
+                    self.thresholds['long'],
+                    self.thresholds['short']
                 )
                 
                 # Store the enhanced data in standardized_data
@@ -2371,8 +2371,8 @@ class SignalGenerator:
                     'components': serialized_components,
                     'results': serialized_results,
                     'reliability': reliability,  # Already in 0-1 range
-                    'buy_threshold': self.thresholds['buy'],
-                    'sell_threshold': self.thresholds['sell'],
+                    'long_threshold': self.thresholds['long'],
+                    'short_threshold': self.thresholds['short'],
                     'price': price,
                     'transaction_id': transaction_id,
                     'signal_id': signal_id
@@ -2422,8 +2422,8 @@ class SignalGenerator:
                     components=serialized_components,
                     results=serialized_results,
                     reliability=reliability,  # Use reliability directly without normalization
-                    buy_threshold=self.thresholds['buy'],
-                    sell_threshold=self.thresholds['sell'],
+                    long_threshold=self.thresholds['long'],
+                    short_threshold=self.thresholds['short'],
                     price=price,
                     transaction_id=transaction_id,
                     signal_id=signal_id,
@@ -2528,7 +2528,7 @@ class SignalGenerator:
         # Direction/signal standardization
         if 'direction' in standardized:
             direction = standardized['direction'].upper()
-            if direction in ['BUY', 'SELL', 'NEUTRAL'] and 'signal' not in standardized:
+            if direction in ['LONG', 'SHORT', 'NEUTRAL'] and 'signal' not in standardized:
                 standardized['signal'] = direction
         
         # Ensure components dictionary exists

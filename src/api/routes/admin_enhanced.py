@@ -256,7 +256,7 @@ async def test_alert_system(
             "signal": {
                 "type": "signal",
                 "symbol": "BTCUSDT",
-                "action": "BUY",
+                "action": "LONG",
                 "score": 75.5,
                 "confidence": 85,
                 "message": "Test signal alert from admin dashboard"

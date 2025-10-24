@@ -113,12 +113,12 @@ class ConfluenceParameterSpaces:
     @staticmethod
     def confluence_signal_thresholds(trial: optuna.Trial) -> Dict[str, float]:
         """
-        Optimize signal generation thresholds for buy/sell decisions.
+        Optimize signal generation thresholds for long/short decisions.
         Critical parameters that directly affect signal generation.
         """
         return {
-            'buy_threshold': trial.suggest_float('buy_threshold', 65.0, 75.0, step=0.5),
-            'sell_threshold': trial.suggest_float('sell_threshold', 30.0, 40.0, step=0.5),
+            'long_threshold': trial.suggest_float('long_threshold', 65.0, 75.0, step=0.5),
+            'short_threshold': trial.suggest_float('short_threshold', 30.0, 40.0, step=0.5),
             'neutral_buffer': trial.suggest_float('neutral_buffer', 0.0, 5.0, step=0.5),
             
             # Additional confidence thresholds
@@ -335,8 +335,11 @@ class ConfluenceParameterSpaces:
             # Check signal thresholds are logical
             if 'signal_thresholds' in parameters:
                 thresholds = parameters['signal_thresholds']
-                if thresholds.get('buy_threshold', 70) <= thresholds.get('sell_threshold', 35):
-                    logger.warning("Buy threshold must be higher than sell threshold")
+                # Support both old and new names for backward compatibility
+                long_threshold = thresholds.get('long_threshold', thresholds.get('buy_threshold', 70))
+                short_threshold = thresholds.get('short_threshold', thresholds.get('sell_threshold', 35))
+                if long_threshold <= short_threshold:
+                    logger.warning("Long threshold must be higher than short threshold")
                     return False
             
             return True
@@ -358,8 +361,8 @@ class ConfluenceParameterSpaces:
                     'sentiment': {'range': [0.02, 0.20], 'current': 0.07}
                 },
                 'signal_thresholds': {
-                    'buy_threshold': {'range': [65.0, 75.0], 'current': 69.5},
-                    'sell_threshold': {'range': [30.0, 40.0], 'current': 35.0},
+                    'long_threshold': {'range': [65.0, 75.0], 'current': 69.5},
+                    'short_threshold': {'range': [30.0, 40.0], 'current': 35.0},
                     'neutral_buffer': {'range': [0.0, 5.0], 'current': 0.0}
                 },
                 'total_parameters': '100+',

@@ -19,8 +19,8 @@ class SignalStrength(str, Enum):
 
 class SignalType(str, Enum):
     """Signal type enumeration."""
-    BUY = "BUY"
-    SELL = "SELL"
+    LONG = "LONG"
+    SHORT = "SHORT"
     NEUTRAL = "NEUTRAL"
 
 class SignalComponent(BaseModel):

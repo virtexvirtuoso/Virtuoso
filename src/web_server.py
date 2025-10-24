@@ -404,10 +404,10 @@ async def top_signals():
 
                                 # Simple signal logic based on price action
                                 if change > 3:
-                                    signal_type = "BUY"
+                                    signal_type = "LONG"
                                     confidence = min(0.75 + (change / 100), 0.95)
                                 elif change < -3:
-                                    signal_type = "SELL"
+                                    signal_type = "SHORT"
                                     confidence = min(0.75 + (abs(change) / 100), 0.95)
                                 else:
                                     signal_type = "HOLD"

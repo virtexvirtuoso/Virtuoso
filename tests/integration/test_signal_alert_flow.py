@@ -91,8 +91,8 @@ def mock_alert_manager():
         'top_weighted_subcomponents': None,
         'signal_type': None
     }
-    alert_manager.buy_threshold = 70.0
-    alert_manager.sell_threshold = 30.0
+    alert_manager.long_threshold = 70.0
+    alert_manager.short_threshold = 30.0
     return alert_manager
 
 @pytest.fixture
@@ -100,7 +100,7 @@ def signal_generator(mock_alert_manager):
     """Create a SignalGenerator with mocked dependencies."""
     return MockSignalGenerator(config=SAMPLE_CONFIG, alert_manager=mock_alert_manager)
 
-def create_test_signal(symbol='BTCUSDT', score=75, price=50000.0, signal_type='BUY'):
+def create_test_signal(symbol='BTCUSDT', score=75, price=50000.0, signal_type = 'LONG'):
     """Create a test signal with specified parameters."""
     return {
         'symbol': symbol,
@@ -129,7 +129,7 @@ def create_test_signal(symbol='BTCUSDT', score=75, price=50000.0, signal_type='B
 async def test_buy_signal_generates_alert(signal_generator, mock_alert_manager):
     """Test that a buy signal properly generates an alert."""
     # Create a buy signal
-    buy_signal = create_test_signal(score=75, signal_type='BUY')
+    buy_signal = create_test_signal(score=75, signal_type = 'LONG')
     
     # Process the signal
     await signal_generator.process_signal(buy_signal)
@@ -149,7 +149,7 @@ async def test_buy_signal_generates_alert(signal_generator, mock_alert_manager):
 async def test_sell_signal_generates_alert(signal_generator, mock_alert_manager):
     """Test that a sell signal properly generates an alert."""
     # Create a sell signal
-    sell_signal = create_test_signal(score=25, signal_type='SELL')
+    sell_signal = create_test_signal(score=25, signal_type = 'SHORT')
     
     # Process the signal
     await signal_generator.process_signal(sell_signal)

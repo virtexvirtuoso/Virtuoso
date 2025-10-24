@@ -751,7 +751,7 @@ class ReportGenerator:
                     stop_calc = get_stop_loss_calculator(config)
 
                 # Get expected stop loss percentage using the same logic as AlertManager
-                signal_type = signal_data.get("signal_type", "BUY").upper()
+                signal_type = signal_data.get("signal_type", "LONG").upper()
                 confluence_score = signal_data.get("confluence_score", 50)
 
                 expected_stop_pct = stop_calc.calculate_stop_loss_percentage(
@@ -765,7 +765,7 @@ class ReportGenerator:
                 # Fallback to simple risk config if calculator fails
                 self._log(f"[PDF_GEN:{report_id}] StopLossCalculator failed, using fallback: {calc_error}", logging.WARNING)
                 risk_config = config.get('risk', {})
-                if signal_type == 'BUY':
+                if signal_type == 'LONG':
                     expected_stop_pct = risk_config.get('long_stop_percentage', 3.5)
                 else:
                     expected_stop_pct = risk_config.get('short_stop_percentage', 3.5)
@@ -2689,7 +2689,7 @@ class ReportGenerator:
                 "timestamp": formatted_timestamp,
                 "signal_type": signal_type,
                 # Map signal_type to valid CSS color values instead of using signal_type directly
-                "signal_color": "#4CAF50" if signal_type == "BUY" else "#F44336" if signal_type == "SELL" else "#FFC107",  # Green for BUY, Red for SELL, Amber for NEUTRAL
+                "signal_color": "#4CAF50" if signal_type == "LONG" else "#F44336" if signal_type == "SHORT" else "#FFC107",  # Green for LONG, Red for SHORT, Amber for NEUTRAL
                 "component_data": component_data,
                 "insights": insights,
                 "actionable_insights": actionable_insights,
@@ -4150,10 +4150,10 @@ class ReportGenerator:
 
             # Create filename with signal information
             signal_type_short = (
-                "BUY"
-                if signal_type.upper() == "BULLISH"
-                else "SELL"
-                if signal_type.upper() == "BEARISH"
+                "LONG"
+                if signal_type.upper() in ["LONG", "BULLISH"]
+                else "SHORT"
+                if signal_type.upper() in ["SHORT", "BEARISH"]
                 else "NEUT"
             )
             filename = (
@@ -4593,8 +4593,8 @@ class ReportGenerator:
             
             # Map signal types to proper CSS colors to avoid WeasyPrint warnings
             signal_color = '#4CAF50'  # Default green color
-            if signal_type == 'SELL':
-                signal_color = '#F44336'  # Red for sell
+            if signal_type == 'SHORT':
+                signal_color = '#F44336'  # Red for short
             elif signal_type == 'NEUTRAL':
                 signal_color = '#2196F3'  # Blue for neutral
                 

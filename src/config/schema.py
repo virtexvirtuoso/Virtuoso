@@ -178,14 +178,14 @@ class BitcoinBetaAnalysisConfig(BaseModel):
 
 # Confluence Configuration
 class ConfluenceThresholdsConfig(BaseModel):
-    buy: float = Field(..., ge=0.0, le=100.0)
+    long: float = Field(..., ge=0.0, le=100.0)
     neutral_buffer: float = Field(..., ge=0.0)
-    sell: float = Field(..., ge=0.0, le=100.0)
+    short: float = Field(..., ge=0.0, le=100.0)
 
-    @validator('buy')
-    def buy_must_be_greater_than_sell(cls, v, values):
-        if 'sell' in values and v <= values['sell']:
-            raise ValueError('Buy threshold must be greater than sell threshold')
+    @validator('long')
+    def long_must_be_greater_than_short(cls, v, values):
+        if 'short' in values and v <= values['short']:
+            raise ValueError('Long threshold must be greater than short threshold')
         return v
 
 

@@ -93,8 +93,8 @@ async def test_signal_integration():
     signal_generator.alert_manager = alert_manager
     
     # Set thresholds for testing
-    signal_generator.buy_threshold = 60.0
-    signal_generator.sell_threshold = 40.0
+    signal_generator.long_threshold = 60.0
+    signal_generator.short_threshold = 40.0
     
     # Test 1: Generate a buy signal
     logger.info("Test 1: Generate a buy signal")

@@ -1314,36 +1314,36 @@ class InterpretationGenerator:
         
         return insights
     
-    def generate_actionable_insights(self, results: Dict[str, Any], confluence_score: float, 
-                                    buy_threshold: float = 65, sell_threshold: float = 35) -> List[str]:
+    def generate_actionable_insights(self, results: Dict[str, Any], confluence_score: float,
+                                    long_threshold: float = 65, short_threshold: float = 35) -> List[str]:
         """
         Generate actionable trading insights based on the overall analysis.
-        
+
         Args:
             results: Complete analysis results with all components
             confluence_score: The overall confluence score
-            buy_threshold: Score threshold for buy signals
-            sell_threshold: Score threshold for sell signals
-            
+            long_threshold: Score threshold for long signals
+            short_threshold: Score threshold for short signals
+
         Returns:
             List[str]: List of actionable trading insights
         """
         insights = []
         
         # Determine overall market bias
-        if confluence_score >= buy_threshold:
-            insights.append(f"BULLISH BIAS: Overall confluence score ({confluence_score:.2f}) above buy threshold ({buy_threshold})")
-        elif confluence_score <= sell_threshold:
-            insights.append(f"BEARISH BIAS: Overall confluence score ({confluence_score:.2f}) below sell threshold ({sell_threshold})")
+        if confluence_score >= long_threshold:
+            insights.append(f"BULLISH BIAS: Overall confluence score ({confluence_score:.2f}) above long threshold ({long_threshold})")
+        elif confluence_score <= short_threshold:
+            insights.append(f"BEARISH BIAS: Overall confluence score ({confluence_score:.2f}) below short threshold ({short_threshold})")
         else:
             # Calculate how close we are to thresholds
-            buy_distance = buy_threshold - confluence_score
-            sell_distance = confluence_score - sell_threshold
-            
-            if buy_distance < 10:
-                insights.append(f"NEUTRAL-BULLISH BIAS: Score ({confluence_score:.2f}) approaching buy threshold - monitor for confirmation")
-            elif sell_distance < 10:
-                insights.append(f"NEUTRAL-BEARISH BIAS: Score ({confluence_score:.2f}) approaching sell threshold - monitor for confirmation")
+            long_distance = long_threshold - confluence_score
+            short_distance = confluence_score - short_threshold
+
+            if long_distance < 10:
+                insights.append(f"NEUTRAL-BULLISH BIAS: Score ({confluence_score:.2f}) approaching long threshold - monitor for confirmation")
+            elif short_distance < 10:
+                insights.append(f"NEUTRAL-BEARISH BIAS: Score ({confluence_score:.2f}) approaching short threshold - monitor for confirmation")
             else:
                 insights.append(f"NEUTRAL STANCE: Range-bound conditions likely - consider mean-reversion strategies")
         
@@ -1363,7 +1363,7 @@ class InterpretationGenerator:
             insights.append(f"TIMING: {timing_insight}")
         
         # Strategy recommendation
-        strategy = self._recommend_strategy(results, confluence_score, buy_threshold, sell_threshold)
+        strategy = self._recommend_strategy(results, confluence_score, long_threshold, short_threshold)
         if strategy:
             insights.append(f"STRATEGY: {strategy}")
         
@@ -1521,18 +1521,18 @@ class InterpretationGenerator:
         
         return ""
     
-    def _recommend_strategy(self, results: Dict[str, Any], confluence_score: float, 
-                           buy_threshold: float, sell_threshold: float) -> str:
+    def _recommend_strategy(self, results: Dict[str, Any], confluence_score: float,
+                           long_threshold: float, short_threshold: float) -> str:
         """Recommend specific trading strategies based on the analysis."""
         technical = results.get('technical', {})
         trend = technical.get('signals', {}).get('trend', 'neutral')
-        
+
         # Strong trend strategies
-        if confluence_score >= buy_threshold:
+        if confluence_score >= long_threshold:
             if trend == 'bullish':
                 return "Consider breakout entries above local resistance with trailing stops"
             return "Consider bullish strategies: swing longs or breakouts with defined risk"
-        elif confluence_score <= sell_threshold:
+        elif confluence_score <= short_threshold:
             if trend == 'bearish':
                 return "Consider breakdown entries below local support with trailing stops"
             return "Consider bearish strategies: swing shorts or breakdowns with defined risk"
