@@ -412,10 +412,10 @@ class ReportManager:
             Discord color integer
         """
         signal_type = signal_type.upper()
-        
-        if signal_type == 'BULLISH' or signal_type == 'BUY':
+
+        if signal_type in ['LONG', 'BULLISH', 'BUY']:
             return 0x00FF00  # Green
-        elif signal_type == 'BEARISH' or signal_type == 'SELL':
+        elif signal_type in ['SHORT', 'BEARISH', 'SELL']:
             return 0xFF0000  # Red
         else:
             return 0xFFAA00  # Amber/Yellow for neutral

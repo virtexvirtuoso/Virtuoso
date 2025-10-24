@@ -1269,20 +1269,20 @@ async def get_comprehensive_symbol_analysis(
                 
                 # Determine overall signal
                 if confluence_score >= 70:
-                    overall_signal = "STRONG_BUY"
+                    overall_signal = "STRONG_LONG"
                 elif confluence_score >= 60:
-                    overall_signal = "BUY"
+                    overall_signal = "LONG"
                 elif confluence_score >= 45:
                     overall_signal = "NEUTRAL"
                 elif confluence_score >= 30:
-                    overall_signal = "SELL"
+                    overall_signal = "SHORT"
                 else:
-                    overall_signal = "STRONG_SELL"
+                    overall_signal = "STRONG_SHORT"
                 
                 # Count component signals
-                buy_signals = sum(1 for comp in components.values() if isinstance(comp, dict) and comp.get("score", 50) > 60)
-                sell_signals = sum(1 for comp in components.values() if isinstance(comp, dict) and comp.get("score", 50) < 40)
-                neutral_signals = len(components) - buy_signals - sell_signals
+                long_signals = sum(1 for comp in components.values() if isinstance(comp, dict) and comp.get("score", 50) > 60)
+                short_signals = sum(1 for comp in components.values() if isinstance(comp, dict) and comp.get("score", 50) < 40)
+                neutral_signals = len(components) - long_signals - short_signals
                 
                 analysis["analysis"]["confluence"] = {
                     "confluence_score": confluence_score,
@@ -1300,8 +1300,8 @@ async def get_comprehensive_symbol_analysis(
                         "price_structure": components.get("price_structure", {}).get("score", 50) if "price_structure" in components else 50
                     },
                     "signals": {
-                        "buy_signals": buy_signals,
-                        "sell_signals": sell_signals,
+                        "long_signals": long_signals,
+                        "short_signals": short_signals,
                         "neutral_signals": neutral_signals,
                         "total_components": len(components)
                     },

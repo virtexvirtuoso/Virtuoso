@@ -222,8 +222,8 @@ async def get_tracking_statistics():
         total_history = len(signal_history)
         
         # Analyze active signals
-        active_buy_signals = sum(1 for s in active_signals.values() if s['action'] == 'BUY')
-        active_sell_signals = sum(1 for s in active_signals.values() if s['action'] == 'SELL')
+        active_long_signals = sum(1 for s in active_signals.values() if s['action'] == 'LONG')
+        active_short_signals = sum(1 for s in active_signals.values() if s['action'] == 'SHORT')
         
         # Analyze historical performance
         profitable_signals = sum(1 for s in signal_history if s.get('pnl_percentage', 0) > 0)
@@ -234,8 +234,8 @@ async def get_tracking_statistics():
         stats = {
             "active_signals": {
                 "total": total_active,
-                "buy_signals": active_buy_signals,
-                "sell_signals": active_sell_signals
+                "long_signals": active_long_signals,
+                "short_signals": active_short_signals
             },
             "historical_performance": {
                 "total_signals": total_history,

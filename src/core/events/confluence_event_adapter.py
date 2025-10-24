@@ -510,9 +510,9 @@ class ConfluenceEventAdapter(IAsyncDisposable):
             # Determine signal type from score
             signal_type = SignalType.NEUTRAL
             if confluence_score > 60:
-                signal_type = SignalType.BUY
+                signal_type = SignalType.LONG
             elif confluence_score < 40:
-                signal_type = SignalType.SELL
+                signal_type = SignalType.SHORT
                 
             signal_strength = abs(confluence_score - 50) / 50  # 0-1 scale
             

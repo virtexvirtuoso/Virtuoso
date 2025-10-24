@@ -366,8 +366,8 @@ class EventGenerator:
             price=current_price,
             confidence=random.uniform(0.6, 0.95),
             strength=random.uniform(0.5, 1.0),
-            stop_loss=current_price * random.uniform(0.95, 0.99) if signal_type in [SignalType.BUY, SignalType.STRONG_BUY] else current_price * random.uniform(1.01, 1.05),
-            take_profit=current_price * random.uniform(1.02, 1.08) if signal_type in [SignalType.BUY, SignalType.STRONG_BUY] else current_price * random.uniform(0.92, 0.98),
+            stop_loss=current_price * random.uniform(0.95, 0.99) if signal_type in [SignalType.LONG, SignalType.STRONG_LONG] else current_price * random.uniform(1.01, 1.05),
+            take_profit=current_price * random.uniform(1.02, 1.08) if signal_type in [SignalType.LONG, SignalType.STRONG_LONG] else current_price * random.uniform(0.92, 0.98),
             signal_sources=['confluence_analysis', 'volume_analysis', 'technical_indicators']
         )
     

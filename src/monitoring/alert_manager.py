@@ -77,8 +77,8 @@ except ImportError:
         class ConfluenceAlert:
             pass
         class SignalDirection:
-            BUY = "BUY"
-            SELL = "SELL"
+            LONG = "LONG"
+            SHORT = "SHORT"
 
 try:
     from src.core.reporting.report_manager import ReportManager
@@ -163,8 +163,8 @@ class AlertManager:
         self.webhook = None
         self.discord_webhook_url = None
         self._client_session = None
-        self.buy_threshold = 60.0
-        self.sell_threshold = 40.0
+        self.long_threshold = 60.0
+        self.short_threshold = 40.0
         
         # Alert tracking (no longer used for deduplication)
         self._last_alert_times = {}  # Symbol -> timestamp mapping for all alerts
@@ -420,9 +420,9 @@ class AlertManager:
             # Thresholds
             if 'thresholds' in alert_config:
                 if 'buy' in alert_config['thresholds']:
-                    self.buy_threshold = alert_config['thresholds']['buy']
-                if 'sell' in alert_config['thresholds']:
-                    self.sell_threshold = alert_config['thresholds']['sell']
+                    self.long_threshold = alert_config['thresholds'].get('long', alert_config['thresholds'].get('buy', 60))
+                if 'short' in alert_config['thresholds'] or 'sell' in alert_config['thresholds']:
+                    self.short_threshold = alert_config['thresholds'].get('short', alert_config['thresholds'].get('sell', 40))
             
             # Cooldowns
             if 'cooldowns' in alert_config:
@@ -512,8 +512,8 @@ class AlertManager:
         # self.test_discord_webhook()  # Removed test webhook to prevent startup alerts
 
         # Log critical information for troubleshooting
-        self.logger.info(f"Buy threshold: {self.buy_threshold}")
-        self.logger.info(f"Sell threshold: {self.sell_threshold}")
+        self.logger.info(f"Long threshold: {self.long_threshold}")
+        self.logger.info(f"Short threshold: {self.short_threshold}")
         self.logger.info(f"Discord webhook URL is set: {bool(self.discord_webhook_url)}")
         self.logger.info(f"PDF generation enabled: {self.pdf_enabled}")
         
@@ -1650,7 +1650,7 @@ class AlertManager:
             symbol: The symbol for the alert
             components: The component scores
             results: The detailed results with interpretations
-            signal_type: The type of signal (BUY, SELL, NEUTRAL)
+            signal_type: The type of signal (LONG, SHORT, NEUTRAL)
             
         Returns:
             Optional[str]: Path to the saved JSON file if successful, None otherwise
@@ -1714,8 +1714,8 @@ class AlertManager:
         results: Dict[str, Any],
         weights: Optional[Dict[str, float]] = None,
         reliability: float = 0.0,
-        buy_threshold: Optional[float] = None,
-        sell_threshold: Optional[float] = None,
+        long_threshold: Optional[float] = None,
+        short_threshold: Optional[float] = None,
         price: Optional[float] = None,  # Optional direct price
         transaction_id: Optional[str] = None,  # Transaction ID for tracking
         signal_id: Optional[str] = None,  # Signal ID for tracking within SignalGenerator
@@ -1740,8 +1740,8 @@ class AlertManager:
             results: Dictionary of detailed component results
             weights: Optional dictionary of component weights
             reliability: Confidence level (0-1)
-            buy_threshold: Threshold for buy signals
-            sell_threshold: Threshold for sell signals
+            long_threshold: Threshold for long signals
+            short_threshold: Threshold for short signals
             price: Current price
             transaction_id: Transaction ID for cross-component tracking
             signal_id: Signal ID for tracking within SignalGenerator
@@ -1749,7 +1749,7 @@ class AlertManager:
             market_interpretations: List of market interpretations
             actionable_insights: List of actionable trading insights
             top_weighted_subcomponents: List of sub-components with highest weighted impact
-            signal_type: Explicit signal type (BUY, SELL, NEUTRAL) from caller
+            signal_type: Explicit signal type (LONG, SHORT, NEUTRAL) from caller
         """
         # Use provided transaction_id or generate a new one
         txn_id = transaction_id or str(uuid.uuid4())[:8]
@@ -1784,7 +1784,7 @@ class AlertManager:
             self.logger.debug(f"[TXN:{txn_id}][SIG:{sig_id}][ALERT:{alert_id}] - Component count: {len(components)}")
             self.logger.debug(f"[TXN:{txn_id}][SIG:{sig_id}][ALERT:{alert_id}] - Results count: {len(results)}")
             self.logger.debug(f"[TXN:{txn_id}][SIG:{sig_id}][ALERT:{alert_id}] - Reliability: {reliability}")
-            self.logger.debug(f"[TXN:{txn_id}][SIG:{sig_id}][ALERT:{alert_id}] - Thresholds: buy={buy_threshold}, sell={sell_threshold}")
+            self.logger.debug(f"[TXN:{txn_id}][SIG:{sig_id}][ALERT:{alert_id}] - Thresholds: long={long_threshold}, short={short_threshold}")
             self.logger.debug(f"[TXN:{txn_id}][SIG:{sig_id}][ALERT:{alert_id}] - Price: {price}")
             if signal_type:
                 self.logger.debug(f"[TXN:{txn_id}][SIG:{sig_id}][ALERT:{alert_id}] - Explicit signal type: {signal_type}")
@@ -1796,12 +1796,12 @@ class AlertManager:
             self.logger.debug(f"[TXN:{txn_id}][SIG:{sig_id}][ALERT:{alert_id}] - Actionable Insights: {actionable_insights}")
 
             # Use thresholds from constructor if not provided
-            if buy_threshold is None:
-                self.logger.debug(f"[TXN:{txn_id}][SIG:{sig_id}][ALERT:{alert_id}] Using default buy threshold: {self.buy_threshold}")
-                buy_threshold = self.buy_threshold
-            if sell_threshold is None:
-                self.logger.debug(f"[TXN:{txn_id}][SIG:{sig_id}][ALERT:{alert_id}] Using default sell threshold: {self.sell_threshold}")
-                sell_threshold = self.sell_threshold
+            if long_threshold is None:
+                self.logger.debug(f"[TXN:{txn_id}][SIG:{sig_id}][ALERT:{alert_id}] Using default long threshold: {self.long_threshold}")
+                long_threshold = self.long_threshold
+            if short_threshold is None:
+                self.logger.debug(f"[TXN:{txn_id}][SIG:{sig_id}][ALERT:{alert_id}] Using default short threshold: {self.short_threshold}")
+                short_threshold = self.short_threshold
                 
             # Prevent errors from weights formatting
             if weights is None:
@@ -1828,10 +1828,10 @@ class AlertManager:
                 
             # Use explicit signal_type if provided, otherwise determine based on score and thresholds
             if not signal_type:
-                if confluence_score >= buy_threshold:
-                    signal_type = "BUY"
-                elif confluence_score <= sell_threshold:
-                    signal_type = "SELL"
+                if confluence_score >= long_threshold:
+                    signal_type = "LONG"
+                elif confluence_score <= short_threshold:
+                    signal_type = "SHORT"
                 else:
                     signal_type = "NEUTRAL"
                 
@@ -1840,10 +1840,10 @@ class AlertManager:
                 self.logger.debug(f"[TXN:{txn_id}][SIG:{sig_id}][ALERT:{alert_id}] Using provided signal type: {signal_type}")
             
             # Set emoji and color based on the signal type
-            if signal_type == "BUY":
+            if signal_type == "LONG":
                 emoji = "🟢"
                 color = 0x00ff00  # Green
-            elif signal_type == "SELL":
+            elif signal_type == "SHORT":
                 emoji = "🔴"
                 color = 0xff0000  # Red
             else:
@@ -1938,12 +1938,12 @@ class AlertManager:
                 description += "\n**Overall Confluence:**\n"
                 overall_gauge = self._build_gauge(confluence_score, is_impact=True)
                 # Add threshold markers
-                overall_gauge = self._add_threshold_markers(overall_gauge, buy_threshold, sell_threshold)
+                overall_gauge = self._add_threshold_markers(overall_gauge, long_threshold, short_threshold)
                 
                 # Get overall emoji based on signal
-                if signal_type == "BUY":
+                if signal_type == "LONG":
                     overall_emoji = "🚀"
-                elif signal_type == "SELL":
+                elif signal_type == "SHORT":
                     overall_emoji = "📉"
                 else:
                     overall_emoji = "⚖️"
@@ -1970,8 +1970,8 @@ class AlertManager:
                         'price': price,
                         'reliability': reliability,
                         'transaction_id': txn_id,
-                        'buy_threshold': buy_threshold,
-                        'sell_threshold': sell_threshold,
+                        'long_threshold': long_threshold,
+                        'short_threshold': short_threshold,
                         'weights': weights or {},
                         'timestamp': datetime.now().isoformat(),
                         'market_interpretations': market_interpretations,
@@ -2434,21 +2434,21 @@ class AlertManager:
         # Convert back to string
         return ''.join(gauge_chars)
 
-    def _add_threshold_markers(self, gauge_line: str, buy_threshold: float, sell_threshold: float, width: int = 15) -> str:
+    def _add_threshold_markers(self, gauge_line: str, long_threshold: float, short_threshold: float, width: int = 15) -> str:
         """Add buy and sell threshold markers to a gauge line using Discord-compatible characters.
         
         Args:
             gauge_line: The gauge line to add the markers to
-            buy_threshold: The buy threshold (0-100)
-            sell_threshold: The sell threshold (0-100)
+            long_threshold: The long threshold (0-100)
+            short_threshold: The short threshold (0-100)
             width: The width of the gauge
             
         Returns:
             The gauge line with threshold markers added
         """
         # Calculate positions in gauge
-        buy_pos = min(width - 1, max(0, int(round(buy_threshold / 100 * width))))
-        sell_pos = min(width - 1, max(0, int(round(sell_threshold / 100 * width))))
+        long_pos = min(width - 1, max(0, int(round(long_threshold / 100 * width))))
+        short_pos = min(width - 1, max(0, int(round(short_threshold / 100 * width))))
         
         # Create threshold indicator lines
         threshold_line = ' ' * width
@@ -2662,8 +2662,8 @@ class AlertManager:
         """
         try:
             # Validate thresholds
-            if self.buy_threshold <= self.sell_threshold:
-                self.logger.warning(f"Invalid threshold configuration: buy_threshold ({self.buy_threshold}) must be > sell_threshold ({self.sell_threshold})")
+            if self.long_threshold <= self.short_threshold:
+                self.logger.warning(f"Invalid threshold configuration: long_threshold ({self.long_threshold}) must be > short_threshold ({self.short_threshold})")
                 
             # Validate cooldowns
             if self.alert_throttle < 0:
@@ -3588,8 +3588,8 @@ class AlertManager:
                 - results: Dictionary of detailed component results
                 - weights: Dictionary of component weights
                 - reliability: Confidence level (0-1)
-                - buy_threshold: Threshold for buy signals
-                - sell_threshold: Threshold for sell signals
+                - long_threshold: Threshold for long signals
+                - short_threshold: Threshold for short signals
                 - price: Current price
         """
         # Extract transaction and signal IDs for logging
@@ -3655,19 +3655,19 @@ class AlertManager:
             explicit_signal_type = signal_data.get('signal_type')
             
             # Determine the signal type based on thresholds if not explicitly provided
-            buy_threshold = signal_data.get('buy_threshold', self.buy_threshold)
-            sell_threshold = signal_data.get('sell_threshold', self.sell_threshold)
+            long_threshold = signal_data.get('long_threshold', signal_data.get('buy_threshold', self.long_threshold))
+            short_threshold = signal_data.get('short_threshold', signal_data.get('sell_threshold', self.short_threshold))
             
             if explicit_signal_type:
                 signal_type = explicit_signal_type
             else:
-                signal_type = 'BUY' if score > buy_threshold else 'SELL' if score < sell_threshold else 'NEUTRAL'
+                signal_type = 'LONG' if score > long_threshold else 'SHORT' if score < short_threshold else 'NEUTRAL'
             
             # Skip sending alerts for NEUTRAL signals (regardless of score vs threshold)
             # This prevents alerts for signals labeled as NEUTRAL in the UI
             if signal_type == 'NEUTRAL' or (
                 # Also skip any score in the neutral zone (between sell and buy thresholds)
-                sell_threshold <= score <= buy_threshold
+                short_threshold <= score <= long_threshold
             ):
                 self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}] Skipping alert for NEUTRAL signal on {symbol} (score: {score:.2f})")
                 return
@@ -3777,7 +3777,7 @@ class AlertManager:
                 self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}][PDF] Sending PDF attachment: {pdf_path}")
                 
                 # Create title based on signal type and score
-                signal_emoji = "📈" if signal_type == "BUY" else "📉" if signal_type == "SELL" else "📊"
+                signal_emoji = "📈" if signal_type == "LONG" else "📉" if signal_type == "SHORT" else "📊"
                 title = f"{signal_emoji} {symbol} {signal_type} Signal Report (Score: {score:.1f})"
                 
                 # Create a message for the PDF attachment
@@ -5923,7 +5923,7 @@ def add_trade_parameters_to_signal(self, signal_data):
             if 'error' in stop_info:
                 # Fallback to simple calculation
                 risk_config = self.config.get('risk', {})
-                stop_loss_pct = risk_config.get('long_stop_percentage', 3.5) if signal_type == 'BUY' else risk_config.get('short_stop_percentage', 3.5)
+                stop_loss_pct = risk_config.get('long_stop_percentage', 3.5) if signal_type == 'LONG' else risk_config.get('short_stop_percentage', 3.5)
                 stop_loss_pct = stop_loss_pct / 100  # Convert to decimal
             else:
                 stop_loss_pct = stop_info['stop_loss_percentage']
@@ -5931,7 +5931,7 @@ def add_trade_parameters_to_signal(self, signal_data):
         except ImportError:
             # Fallback if unified calculator not available
             risk_config = self.config.get('risk', {})
-            stop_loss_pct = risk_config.get('long_stop_percentage', 3.5) if signal_type == 'BUY' else risk_config.get('short_stop_percentage', 3.5)
+            stop_loss_pct = risk_config.get('long_stop_percentage', 3.5) if signal_type == 'LONG' else risk_config.get('short_stop_percentage', 3.5)
             stop_loss_pct = stop_loss_pct / 100  # Convert to decimal
 
         # Calculate take profit based on risk/reward ratio
@@ -5939,10 +5939,10 @@ def add_trade_parameters_to_signal(self, signal_data):
         risk_reward_ratio = risk_config.get('risk_reward_ratio', 2.0)
         take_profit_pct = risk_reward_ratio * stop_loss_pct
 
-        if signal_type == 'BUY':
+        if signal_type == 'LONG':
             stop_loss = price * (1 - stop_loss_pct)
             take_profit = price * (1 + take_profit_pct)
-        elif signal_type == 'SELL':
+        elif signal_type == 'SHORT':
             stop_loss = price * (1 + stop_loss_pct)
             take_profit = price * (1 - take_profit_pct)
         else:

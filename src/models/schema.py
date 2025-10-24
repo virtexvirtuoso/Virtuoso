@@ -12,8 +12,8 @@ from datetime import datetime
 
 class SignalType(str, Enum):
     """Signal type enumeration for strict validation."""
-    BUY = "BUY"
-    SELL = "SELL"
+    LONG = "LONG"
+    SHORT = "SHORT"
     NEUTRAL = "NEUTRAL"
     
 class SignalDirection(str, Enum):
@@ -107,8 +107,8 @@ class ConfluenceAlert(BaseModel):
     reliability: float = Field(..., ge=0, le=100)
     signal_type: SignalDirection
     price: Optional[float] = None
-    buy_threshold: Optional[float] = None  
-    sell_threshold: Optional[float] = None
+    long_threshold: Optional[float] = None
+    short_threshold: Optional[float] = None
     emoji: Optional[str] = None
     color: Optional[int] = None
     # New fields for enhanced formatting data
@@ -122,15 +122,16 @@ class ConfluenceAlert(BaseModel):
         """Derive signal type from confluence score if not provided."""
         if v is not None:
             return v
-            
+
         # Auto-determine signal type based on score and thresholds
         score = values.get('confluence_score', 50)
-        buy_threshold = values.get('buy_threshold')
-        sell_threshold = values.get('sell_threshold')
-        
-        if buy_threshold is not None and score >= buy_threshold:
+        # Support both new and old field names for backward compatibility
+        long_threshold = values.get('long_threshold', values.get('buy_threshold'))
+        short_threshold = values.get('short_threshold', values.get('sell_threshold'))
+
+        if long_threshold is not None and score >= long_threshold:
             return SignalDirection.BULLISH
-        elif sell_threshold is not None and score <= sell_threshold:
+        elif short_threshold is not None and score <= short_threshold:
             return SignalDirection.BEARISH
         else:
             return SignalDirection.NEUTRAL 

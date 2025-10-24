@@ -99,8 +99,9 @@ class MinimalSignalAnalyzer(ISignalAnalyzer):
         # Extract only what we need from config
         confluence_config = config.get('confluence', {})
         thresholds = confluence_config.get('thresholds', {})
-        self.buy_threshold = thresholds.get('buy', 60.0)
-        self.sell_threshold = thresholds.get('sell', 40.0)
+        # Use long/short with backward compatibility for buy/sell
+        self.long_threshold = thresholds.get('long', thresholds.get('buy', 60.0))
+        self.short_threshold = thresholds.get('short', thresholds.get('sell', 40.0))
     
     async def analyze(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Analyze data and generate signal - single responsibility"""
@@ -113,17 +114,17 @@ class MinimalSignalAnalyzer(ISignalAnalyzer):
         
         # Basic momentum analysis
         signal_strength = 50.0  # Simplified for example
-        
-        if signal_strength >= self.buy_threshold:
+
+        if signal_strength >= self.long_threshold:
             return {
-                'signal_type': 'BUY',
+                'signal_type': 'LONG',
                 'confidence': signal_strength / 100,
                 'price': price,
                 'symbol': data['symbol']
             }
-        elif signal_strength <= self.sell_threshold:
+        elif signal_strength <= self.short_threshold:
             return {
-                'signal_type': 'SELL', 
+                'signal_type': 'SHORT',
                 'confidence': (100 - signal_strength) / 100,
                 'price': price,
                 'symbol': data['symbol']
@@ -165,10 +166,10 @@ class MinimalTradeParameterCalculator(ITradeParameterCalculator):
             }
         
         # Calculate stop loss and take profit
-        if signal_type == 'BUY':
+        if signal_type == 'LONG':
             stop_loss = price * (1 - self.stop_loss_percent / 100)
             take_profit = price * (1 + self.take_profit_percent / 100)
-        else:  # SELL
+        else:  # SHORT
             stop_loss = price * (1 + self.stop_loss_percent / 100)
             take_profit = price * (1 - self.take_profit_percent / 100)
         

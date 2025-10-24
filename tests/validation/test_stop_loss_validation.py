@@ -46,15 +46,15 @@ def test_stop_loss_calculator():
         calculator = StopLossCalculator(config)
 
         # Verify thresholds were loaded correctly
-        print(f"Calculator buy threshold: {calculator.buy_threshold}")
-        print(f"Calculator sell threshold: {calculator.sell_threshold}")
+        print(f"Calculator buy threshold: {calculator.long_threshold}")
+        print(f"Calculator sell threshold: {calculator.short_threshold}")
 
         # Test calculations
         test_cases = [
-            {"signal_type": "BUY", "confluence_score": 75, "entry_price": 100.0},
-            {"signal_type": "BUY", "confluence_score": 85, "entry_price": 100.0},
-            {"signal_type": "SELL", "confluence_score": 25, "entry_price": 100.0},
-            {"signal_type": "SELL", "confluence_score": 15, "entry_price": 100.0},
+            {"signal_type": "LONG", "confluence_score": 75, "entry_price": 100.0},
+            {"signal_type": "LONG", "confluence_score": 85, "entry_price": 100.0},
+            {"signal_type": "SHORT", "confluence_score": 25, "entry_price": 100.0},
+            {"signal_type": "SHORT", "confluence_score": 15, "entry_price": 100.0},
         ]
 
         for case in test_cases:
@@ -73,7 +73,7 @@ def test_stop_loss_calculator():
 
         # Test with signal data format
         signal_data = {
-            "signal_type": "BUY",
+            "signal_type": "LONG",
             "confluence_score": 80,
             "price": 100.0
         }
@@ -105,7 +105,7 @@ def test_alert_manager_integration():
 
         # Initialize stop loss calculator with config
         stop_calc = get_stop_loss_calculator(config)
-        print(f"✅ Stop loss calculator initialized with thresholds: buy={stop_calc.buy_threshold}, sell={stop_calc.sell_threshold}")
+        print(f"✅ Stop loss calculator initialized with thresholds: buy={stop_calc.long_threshold}, sell={stop_calc.short_threshold}")
 
         return True
 

@@ -792,27 +792,34 @@ class LogFormatter:
         table_width = 80
         
         # Get thresholds from results if available (coming from signal_data)
-        buy_threshold = None
-        sell_threshold = None
-        
+        # Support both new (long/short) and old (buy/sell) field names
+        long_threshold = None
+        short_threshold = None
+
         # Try to get thresholds from signal_data first
         if isinstance(results, dict):
-            if 'buy_threshold' in results:
-                buy_threshold = float(results['buy_threshold'])
-            if 'sell_threshold' in results:
-                sell_threshold = float(results['sell_threshold'])
-        
+            # Check new names first, then fall back to old names
+            if 'long_threshold' in results:
+                long_threshold = float(results['long_threshold'])
+            elif 'buy_threshold' in results:
+                long_threshold = float(results['buy_threshold'])
+
+            if 'short_threshold' in results:
+                short_threshold = float(results['short_threshold'])
+            elif 'sell_threshold' in results:
+                short_threshold = float(results['sell_threshold'])
+
         # If not found in results, use default values
-        if buy_threshold is None:
-            buy_threshold = 60.0  # Default buy threshold
-        if sell_threshold is None:
-            sell_threshold = 40.0  # Default sell threshold
-        
+        if long_threshold is None:
+            long_threshold = 60.0  # Default long threshold
+        if short_threshold is None:
+            short_threshold = 40.0  # Default short threshold
+
         # Determine overall market bias using the thresholds from config
-        if confluence_score is not None and confluence_score >= buy_threshold:
+        if confluence_score is not None and confluence_score >= long_threshold:
             overall_status = "BULLISH"
             overall_color = AnalysisFormatter.GREEN
-        elif confluence_score is not None and confluence_score >= sell_threshold:
+        elif confluence_score is not None and confluence_score >= short_threshold:
             overall_status = "NEUTRAL"
             overall_color = AnalysisFormatter.YELLOW
         else:
@@ -1642,20 +1649,28 @@ class EnhancedFormatter:
         from src.core.analysis.interpretation_generator import InterpretationGenerator
         interpretation_generator = InterpretationGenerator()
         
-        # Get thresholds from the results if available
-        buy_threshold = 65  # Default value
-        sell_threshold = 35  # Default value
-        
+        # Get thresholds from the results if available (support both old and new names)
+        long_threshold = 65  # Default value
+        short_threshold = 35  # Default value
+
         if isinstance(results, dict):
             for component_data in results.values():
-                if isinstance(component_data, dict) and 'buy_threshold' in component_data:
-                    buy_threshold = component_data['buy_threshold']
-                    break
-            
+                if isinstance(component_data, dict):
+                    if 'long_threshold' in component_data:
+                        long_threshold = component_data['long_threshold']
+                        break
+                    elif 'buy_threshold' in component_data:
+                        long_threshold = component_data['buy_threshold']
+                        break
+
             for component_data in results.values():
-                if isinstance(component_data, dict) and 'sell_threshold' in component_data:
-                    sell_threshold = component_data['sell_threshold']
-                    break
+                if isinstance(component_data, dict):
+                    if 'short_threshold' in component_data:
+                        short_threshold = component_data['short_threshold']
+                        break
+                    elif 'sell_threshold' in component_data:
+                        short_threshold = component_data['sell_threshold']
+                        break
         
         # Generate enhanced interpretations for each component while preserving existing interpretations
         enhanced_results = {}
@@ -1703,7 +1718,7 @@ class EnhancedFormatter:
         else:
             # Generate actionable insights only if not already present
             actionable_insights = interpretation_generator.generate_actionable_insights(
-                results, confluence_score, buy_threshold, sell_threshold
+                results, confluence_score, long_threshold, short_threshold
             )
         
         # Add actionable insights section if available
@@ -2769,26 +2784,31 @@ class PrettyTableFormatter:
         """Generate enhanced actionable trading insights using EnhancedFormatter logic."""
         insights = []
         
-        # Determine buy/sell thresholds from results if available
-        buy_threshold = 60.0
-        sell_threshold = 40.0
-        
+        # Determine long/short thresholds from results if available (support both old and new names)
+        long_threshold = 60.0
+        short_threshold = 40.0
+
         if results and isinstance(results, dict):
             for component_data in results.values():
                 if isinstance(component_data, dict):
-                    if 'buy_threshold' in component_data:
-                        buy_threshold = component_data['buy_threshold']
-                    if 'sell_threshold' in component_data:
-                        sell_threshold = component_data['sell_threshold']
+                    if 'long_threshold' in component_data:
+                        long_threshold = component_data['long_threshold']
+                    elif 'buy_threshold' in component_data:
+                        long_threshold = component_data['buy_threshold']
+
+                    if 'short_threshold' in component_data:
+                        short_threshold = component_data['short_threshold']
+                    elif 'sell_threshold' in component_data:
+                        short_threshold = component_data['sell_threshold']
                     break
-        
+
         # Overall stance with enhanced logic
-        if confluence_score is not None and confluence_score >= buy_threshold:
-            insights.append(f"  • BULLISH BIAS: Score ({confluence_score:.2f}) above buy threshold - consider long positions")
-        elif confluence_score is not None and confluence_score >= sell_threshold:
+        if confluence_score is not None and confluence_score >= long_threshold:
+            insights.append(f"  • BULLISH BIAS: Score ({confluence_score:.2f}) above long threshold - consider long positions")
+        elif confluence_score is not None and confluence_score >= short_threshold:
             insights.append(f"  • NEUTRAL STANCE: Range-bound conditions likely - consider mean-reversion strategies")
         elif confluence_score is not None:
-            insights.append(f"  • BEARISH BIAS: Score ({confluence_score:.2f}) below sell threshold - avoid long exposure")
+            insights.append(f"  • BEARISH BIAS: Score ({confluence_score:.2f}) below short threshold - avoid long exposure")
         else:
             insights.append(f"  • NO DATA: Score unavailable - insufficient data for analysis")
         
@@ -2843,9 +2863,9 @@ class PrettyTableFormatter:
                         insights.append("  • KEY LEVELS: Strong bid liquidity cluster")
         
         # Strategy recommendations
-        if confluence_score is not None and confluence_score >= buy_threshold:
+        if confluence_score is not None and confluence_score >= long_threshold:
             insights.append("  • STRATEGY: Monitor for pullbacks to key support levels for entry opportunities")
-        elif confluence_score is not None and confluence_score >= sell_threshold:
+        elif confluence_score is not None and confluence_score >= short_threshold:
             insights.append("  • STRATEGY: Monitor for further confirmation before implementing directional strategies")
         else:
             insights.append("  • STRATEGY: Wait for trend reversal signals before considering long positions")

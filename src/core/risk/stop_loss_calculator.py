@@ -52,8 +52,9 @@ class StopLossCalculator:
         # Trading thresholds from confluence configuration
         confluence_config = config.get('confluence', {})
         thresholds_config = confluence_config.get('thresholds', {})
-        self.buy_threshold = thresholds_config.get('buy', 70)
-        self.sell_threshold = thresholds_config.get('sell', 35)
+        # Use long/short with backward compatibility for buy/sell
+        self.long_threshold = thresholds_config.get('long', thresholds_config.get('buy', 70))
+        self.short_threshold = thresholds_config.get('short', thresholds_config.get('sell', 35))
 
         self.logger.info(f"StopLossCalculator initialized - Base: {self.base_stop_loss*100:.1f}%, "
                         f"Long: {self.long_stop_percentage:.1f}%, Short: {self.short_stop_percentage:.1f}%")
@@ -78,8 +79,8 @@ class StopLossCalculator:
         Raises:
             ValueError: If invalid signal type or confluence score
         """
-        if signal_type not in ['BUY', 'SELL']:
-            raise ValueError(f"Invalid signal_type: {signal_type}. Must be 'BUY' or 'SELL'")
+        if signal_type not in ['LONG', 'SHORT']:
+            raise ValueError(f"Invalid signal_type: {signal_type}. Must be 'LONG' or 'SHORT'")
 
         if not 0 <= confluence_score <= 100:
             raise ValueError(f"Invalid confluence_score: {confluence_score}. Must be 0-100")
@@ -96,9 +97,9 @@ class StopLossCalculator:
 
     def _calculate_fixed_percentage(self, signal_type: str) -> float:
         """Calculate simple fixed percentage stop loss."""
-        if signal_type == 'BUY':
+        if signal_type == 'LONG':
             return self.long_stop_percentage / 100
-        else:  # SELL
+        else:  # SHORT
             return self.short_stop_percentage / 100
 
     def _calculate_confidence_based(self, signal_type: str, confluence_score: float) -> float:
@@ -109,19 +110,19 @@ class StopLossCalculator:
         Lower confidence = wider stops (give uncertain trades room to develop)
         """
         # Get base stop loss percentage for the signal type
-        if signal_type == 'BUY':
+        if signal_type == 'LONG':
             base_stop = self.long_stop_percentage / 100
-            threshold = self.buy_threshold
-        else:  # SELL
+            threshold = self.long_threshold
+        else:  # SHORT
             base_stop = self.short_stop_percentage / 100
-            threshold = self.sell_threshold
+            threshold = self.short_threshold
 
         # Calculate minimum and maximum stops
         min_stop = base_stop * self.min_stop_multiplier
         max_stop = base_stop * self.max_stop_multiplier
 
         # Calculate confidence-based scaling
-        if signal_type == 'BUY':
+        if signal_type == 'LONG':
             # For long trades: Higher score = higher confidence = TIGHTER stop
             if confluence_score <= threshold:
                 return max_stop  # Low confidence = wide stop
@@ -129,7 +130,7 @@ class StopLossCalculator:
             # Normalize score from threshold to 100
             normalized_score = (confluence_score - threshold) / (100 - threshold)
 
-        else:  # SELL
+        else:  # SHORT
             # For short trades: Lower score = higher confidence = TIGHTER stop
             if confluence_score >= threshold:
                 return max_stop  # Low confidence = wide stop
@@ -158,7 +159,7 @@ class StopLossCalculator:
 
         Args:
             entry_price: Entry price for the trade
-            signal_type: 'BUY' or 'SELL'
+            signal_type: 'LONG' or 'SHORT'
             confluence_score: Confluence score (0-100)
             method: Calculation method to use
 
@@ -173,10 +174,10 @@ class StopLossCalculator:
 
         stop_loss_pct = self.calculate_stop_loss_percentage(signal_type, confluence_score, method)
 
-        if signal_type == 'BUY':
+        if signal_type == 'LONG':
             # Long position: stop below entry
             stop_price = entry_price * (1 - stop_loss_pct)
-        else:  # SELL
+        else:  # SHORT
             # Short position: stop above entry
             stop_price = entry_price * (1 + stop_loss_pct)
 

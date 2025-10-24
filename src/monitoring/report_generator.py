@@ -346,9 +346,9 @@ class ReportGenerator:
             )
             
             # Select style based on signal type
-            if signal_type in ['BUY', 'BULLISH']:
+            if signal_type in ['LONG', 'BUY', 'BULLISH']:
                 signal_style = bullish_style
-            elif signal_type in ['SELL', 'BEARISH']:
+            elif signal_type in ['SHORT', 'SELL', 'BEARISH']:
                 signal_style = bearish_style
             else:
                 signal_style = neutral_style

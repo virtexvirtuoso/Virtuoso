@@ -53,8 +53,9 @@ class TradeExecutor:
         self.is_demo = trading_config.get('demo_mode', True)
         self.max_position_size = trading_config.get('max_position_size', 0.1)  # 10% of balance
         self.default_leverage = trading_config.get('default_leverage', 1)
-        self.buy_threshold = trading_config.get('buy_threshold', 70)
-        self.sell_threshold = trading_config.get('sell_threshold', 30)
+        # Use long/short with backward compatibility for buy/sell
+        self.long_threshold = trading_config.get('long_threshold', trading_config.get('buy_threshold', 70))
+        self.short_threshold = trading_config.get('short_threshold', trading_config.get('sell_threshold', 30))
         
         # Risk management
         risk_config = config.get('risk_management', {})
@@ -333,16 +334,16 @@ class TradeExecutor:
         Returns:
             Dictionary with signal information
         """
-        if score >= self.buy_threshold:
+        if score >= self.long_threshold:
             return {
                 'direction': 'long',
-                'strength': (score - self.buy_threshold) / (100 - self.buy_threshold),
+                'strength': (score - self.long_threshold) / (100 - self.long_threshold),
                 'action': 'buy'
             }
-        elif score <= self.sell_threshold:
+        elif score <= self.short_threshold:
             return {
                 'direction': 'short',
-                'strength': (self.sell_threshold - score) / self.sell_threshold,
+                'strength': (self.short_threshold - score) / self.short_threshold,
                 'action': 'sell'
             }
         else:
@@ -367,28 +368,28 @@ class TradeExecutor:
             Position size in base currency
         """
         # First check if the signal meets minimum threshold
-        if side == 'buy' and confluence_score < self.buy_threshold:
-            # Don't take long positions if score is below buy threshold
+        if side == 'buy' and confluence_score < self.long_threshold:
+            # Don't take long positions if score is below long threshold
             return 0.0
-        elif side == 'sell' and confluence_score > self.sell_threshold:
-            # Don't take short positions if score is above sell threshold
+        elif side == 'sell' and confluence_score > self.short_threshold:
+            # Don't take short positions if score is above short threshold
             return 0.0
-        
+
         # Base position is a percentage of available balance
         base_position = available_balance * self.max_position_size
-        
+
         # Scale position based on signal strength
-        # For buy, calculate scaling relative to buy threshold
-        if side == 'buy' and confluence_score > self.buy_threshold:
+        # For buy, calculate scaling relative to long threshold
+        if side == 'buy' and confluence_score > self.long_threshold:
             # Increase position for stronger long signals
-            score_above_threshold = confluence_score - self.buy_threshold
-            scaling_factor = min(score_above_threshold * 0.01, 
+            score_above_threshold = confluence_score - self.long_threshold
+            scaling_factor = min(score_above_threshold * 0.01,
                                self.max_position_size - self.max_position_size)
             position_size = base_position + (available_balance * scaling_factor)
-        # For sell, calculate scaling relative to sell threshold
-        elif side == 'sell' and confluence_score < self.sell_threshold:
+        # For sell, calculate scaling relative to short threshold
+        elif side == 'sell' and confluence_score < self.short_threshold:
             # Increase position for stronger short signals
-            score_below_threshold = self.sell_threshold - confluence_score
+            score_below_threshold = self.short_threshold - confluence_score
             scaling_factor = min(score_below_threshold * 0.01,
                                self.max_position_size - self.max_position_size)
             position_size = base_position + (available_balance * scaling_factor)
@@ -968,20 +969,20 @@ class TradeExecutor:
         
         if side.lower() == 'buy':
             # For long trades: Higher score = higher confidence = wider stop
-            if confluence_score <= self.buy_threshold:
+            if confluence_score <= self.long_threshold:
                 return min_stop
-            
+
             # Calculate normalized score (0 to 1) where 0 is at threshold and 1 is at 100
-            normalized_score = (confluence_score - self.buy_threshold) / (100 - self.buy_threshold)
+            normalized_score = (confluence_score - self.long_threshold) / (100 - self.long_threshold)
             # Scale stop loss based on normalized score
             return min_stop + (normalized_score * (max_stop - min_stop))
         else:  # sell
             # For short trades: Lower score = higher confidence = wider stop
-            if confluence_score >= self.sell_threshold:
+            if confluence_score >= self.short_threshold:
                 return min_stop
-                
+
             # Calculate normalized score (0 to 1) where 0 is at threshold and 1 is at 0
-            normalized_score = (self.sell_threshold - confluence_score) / self.sell_threshold
+            normalized_score = (self.short_threshold - confluence_score) / self.short_threshold
             # Scale stop loss based on normalized score
             return min_stop + (normalized_score * (max_stop - min_stop))
 

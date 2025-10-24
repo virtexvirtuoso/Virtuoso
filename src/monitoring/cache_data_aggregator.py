@@ -186,7 +186,7 @@ class CacheDataAggregator:
         try:
             signal_data = {
                 'symbol': symbol,
-                'signal_type': analysis_result.get('signal_type', 'BUY'),
+                'signal_type': analysis_result.get('signal_type', 'NEUTRAL'),
                 'confluence_score': analysis_result.get('confluence_score', 0),
                 'reliability': analysis_result.get('reliability', 0),
                 'components': analysis_result.get('components', {}),
@@ -593,8 +593,8 @@ class CacheDataAggregator:
                 max_confluence = 0
 
             # Calculate market trend
-            bullish_signals = len([s for s in self.signal_buffer if s['signal_type'] == 'BUY'])
-            bearish_signals = len([s for s in self.signal_buffer if s['signal_type'] == 'SELL'])
+            bullish_signals = len([s for s in self.signal_buffer if s['signal_type'] == 'LONG'])
+            bearish_signals = len([s for s in self.signal_buffer if s['signal_type'] == 'SHORT'])
 
             # Generate market regime assessment
             if avg_confluence > 70:

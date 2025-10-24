@@ -280,8 +280,8 @@ class VirtuosoDashboard {
                              score <= 40 ? 'score-bearish' : 'score-neutral';
             
             const signalType = signal.signal || 'HOLD';
-            const typeClass = signalType.toUpperCase() === 'BUY' ? 'signal-buy' :
-                             signalType.toUpperCase() === 'SELL' ? 'signal-sell' : 'signal-hold';
+            const typeClass = signalType.toUpperCase() === 'LONG' ? 'signal-buy' :
+                             signalType.toUpperCase() === 'SHORT' ? 'signal-sell' : 'signal-hold';
             
             return `
                 <div class="signal-item" data-symbol="${signal.symbol}">

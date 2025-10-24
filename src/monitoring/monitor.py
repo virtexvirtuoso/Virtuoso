@@ -1487,8 +1487,8 @@ class MarketMonitor:
             # Get thresholds from config
             confluence_config = self.config.get('confluence', {})
             threshold_config = confluence_config.get('thresholds', {})
-            buy_threshold = float(threshold_config.get('buy', 71.0))
-            sell_threshold = float(threshold_config.get('sell', 35.0))
+            long_threshold = float(threshold_config.get('long', threshold_config.get('buy', 71.0)))
+            short_threshold = float(threshold_config.get('short', threshold_config.get('sell', 35.0)))
             
             # Log component scores
             self.logger.debug("\n=== Component Scores ===")
@@ -1502,18 +1502,18 @@ class MarketMonitor:
             
             # Generate signal if score meets thresholds
             self.logger.info(f"=== Signal Generation Check for {symbol} ===")
-            self.logger.info(f"Score: {confluence_score:.2f}, Buy threshold: {buy_threshold}, Sell threshold: {sell_threshold}")
-            
+            self.logger.info(f"Score: {confluence_score:.2f}, Long threshold: {long_threshold}, Short threshold: {short_threshold}")
+
             # Store threshold information in result for downstream processing
-            result['buy_threshold'] = buy_threshold
-            result['sell_threshold'] = sell_threshold
-            
+            result['long_threshold'] = long_threshold
+            result['short_threshold'] = short_threshold
+
             # Determine signal type based on thresholds
             signal_type = "NEUTRAL"
-            if confluence_score >= buy_threshold:
-                signal_type = "BUY"
-            elif confluence_score <= sell_threshold:
-                signal_type = "SELL"
+            if confluence_score >= long_threshold:
+                signal_type = "LONG"
+            elif confluence_score <= short_threshold:
+                signal_type = "SHORT"
                 
             result['signal_type'] = signal_type
             

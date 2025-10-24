@@ -298,8 +298,8 @@ class ComprehensiveParameterSpaces:
             'price_structure_weight': {'type': 'float', 'range': (0.05, 0.2), 'default': 0.1},
             
             # Signal Strength Thresholds
-            'confluence_buy_threshold': {'type': 'float', 'range': (65.0, 75.0), 'default': 70.0},
-            'confluence_sell_threshold': {'type': 'float', 'range': (65.0, 75.0), 'default': 70.0},
+            'confluence_long_threshold': {'type': 'float', 'range': (65.0, 75.0), 'default': 70.0},
+            'confluence_short_threshold': {'type': 'float', 'range': (30.0, 40.0), 'default': 35.0},
             'confluence_strong_threshold': {'type': 'float', 'range': (75.0, 85.0), 'default': 80.0},
             'confluence_extreme_threshold': {'type': 'float', 'range': (85.0, 95.0), 'default': 90.0}
             # ... (additional 32 confluence parameters)

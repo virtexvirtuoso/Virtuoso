@@ -75,12 +75,18 @@ class SignalGeneratorAdapter(ISignalGenerator, IEventSubscriber):
     def get_signal_thresholds(self) -> Dict[str, float]:
         """Get current signal generation thresholds."""
         if hasattr(self.signal_generator, 'get_thresholds'):
-            return self.signal_generator.get_thresholds()
-        
+            thresholds = self.signal_generator.get_thresholds()
+            # Ensure backward compatibility
+            return {
+                'long_threshold': thresholds.get('long_threshold', thresholds.get('buy_threshold', 60.0)),
+                'short_threshold': thresholds.get('short_threshold', thresholds.get('sell_threshold', 40.0)),
+                'neutral_buffer': thresholds.get('neutral_buffer', 5.0)
+            }
+
         # Return default thresholds
         return {
-            'buy_threshold': 60.0,
-            'sell_threshold': 40.0,
+            'long_threshold': 60.0,
+            'short_threshold': 40.0,
             'neutral_buffer': 5.0
         }
     
@@ -123,14 +129,14 @@ class SignalGeneratorAdapter(ISignalGenerator, IEventSubscriber):
         
         # Get thresholds
         thresholds = self.get_signal_thresholds()
-        buy_threshold = thresholds.get('buy_threshold', 60)
-        sell_threshold = thresholds.get('sell_threshold', 40)
-        
+        long_threshold = thresholds.get('long_threshold', 60)
+        short_threshold = thresholds.get('short_threshold', 40)
+
         # Determine signal type
-        if confluence_score >= buy_threshold:
-            signal_type = 'BUY'
-        elif confluence_score <= sell_threshold:
-            signal_type = 'SELL'
+        if confluence_score >= long_threshold:
+            signal_type = 'LONG'
+        elif confluence_score <= short_threshold:
+            signal_type = 'SHORT'
         else:
             signal_type = 'NEUTRAL'
         
@@ -147,7 +153,7 @@ class SignalGeneratorAdapter(ISignalGenerator, IEventSubscriber):
         }
         
         # Add trade parameters if it's a trading signal
-        if signal_type in ['BUY', 'SELL']:
+        if signal_type in ['LONG', 'SHORT']:
             signal_data.update(self._calculate_trade_parameters(symbol, market_data, signal_type))
         
         self.logger.info(f"Generated {signal_type} signal for {symbol} (score: {confluence_score:.2f})")
@@ -178,11 +184,11 @@ class SignalGeneratorAdapter(ISignalGenerator, IEventSubscriber):
         # Calculate basic trade parameters
         risk_percent = 0.02  # 2% risk
         reward_risk_ratio = 2.0
-        
-        if signal_type == 'BUY':
+
+        if signal_type == 'LONG':
             stop_loss = current_price * 0.98  # 2% below entry
             take_profit = current_price * (1 + risk_percent * reward_risk_ratio)
-        else:  # SELL
+        else:  # SHORT
             stop_loss = current_price * 1.02  # 2% above entry
             take_profit = current_price * (1 - risk_percent * reward_risk_ratio)
         

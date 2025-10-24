@@ -56,11 +56,11 @@ class AnalysisType(Enum):
 
 class SignalType(Enum):
     """Types of trading signals."""
-    BUY = "buy"
-    SELL = "sell"
+    LONG = "long"
+    SHORT = "short"
     NEUTRAL = "neutral"
-    STRONG_BUY = "strong_buy"
-    STRONG_SELL = "strong_sell"
+    STRONG_LONG = "strong_long"
+    STRONG_SHORT = "strong_short"
 
 
 class AlertSeverity(Enum):

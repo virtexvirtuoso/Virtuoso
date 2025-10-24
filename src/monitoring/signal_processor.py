@@ -112,8 +112,8 @@ class SignalProcessor:
             # Get thresholds from config
             confluence_config = self.config.get('confluence', {})
             threshold_config = confluence_config.get('thresholds', {})
-            buy_threshold = float(threshold_config.get('buy', 60.0))
-            sell_threshold = float(threshold_config.get('sell', 40.0))
+            long_threshold = float(threshold_config.get('long', threshold_config.get('buy', 60.0)))
+            short_threshold = float(threshold_config.get('short', threshold_config.get('sell', 40.0)))
             neutral_buffer = float(threshold_config.get('neutral_buffer', 5))
             
             # Log component scores
@@ -175,8 +175,8 @@ class SignalProcessor:
                         components,
                         formatter_results,
                         reliability,
-                        buy_threshold,
-                        sell_threshold
+                        long_threshold,
+                        short_threshold
                     )
                     # Add enhanced data to the result
                     if enhanced_data:
@@ -222,22 +222,22 @@ class SignalProcessor:
             # Generate signal if score meets thresholds with neutral buffer logic
             self.logger.debug(f"=== Generating Signal with Neutral Buffer Logic ===")
             # Store threshold information in result for downstream processing
-            result['buy_threshold'] = buy_threshold
-            result['sell_threshold'] = sell_threshold
+            result['long_threshold'] = long_threshold
+            result['short_threshold'] = short_threshold
             result['neutral_buffer'] = neutral_buffer
 
             # Determine signal type using neutral buffer for sticky signal behavior
             signal_type = self._determine_signal_with_buffer(
-                confluence_score, buy_threshold, sell_threshold, neutral_buffer, symbol
+                confluence_score, long_threshold, short_threshold, neutral_buffer, symbol
             )
             result['signal_type'] = signal_type
 
-            # Only pass to signal generator if it's a BUY or SELL signal
-            if signal_type in ["BUY", "SELL"]:
+            # Only pass to signal generator if it's a LONG or SHORT signal
+            if signal_type in ["LONG", "SHORT"]:
                 await self.generate_signal(symbol, result)
-                self.logger.info(f"Generated {signal_type} signal for {symbol} with score {confluence_score:.2f} (threshold: {buy_threshold if signal_type == 'BUY' else sell_threshold})")
+                self.logger.info(f"Generated {signal_type} signal for {symbol} with score {confluence_score:.2f} (threshold: {long_threshold if signal_type == 'LONG' else short_threshold})")
             else:
-                self.logger.info(f"Generated NEUTRAL signal for {symbol} with score {confluence_score:.2f} in neutral zone (buy: {buy_threshold}, sell: {sell_threshold}, buffer: {neutral_buffer})")
+                self.logger.info(f"Generated NEUTRAL signal for {symbol} with score {confluence_score:.2f} in neutral zone (long: {long_threshold}, short: {short_threshold}, buffer: {neutral_buffer})")
 
 
             # Cache confluence breakdown for mobile dashboard
@@ -276,8 +276,8 @@ class SignalProcessor:
     def _determine_signal_with_buffer(
         self,
         confluence_score: float,
-        buy_threshold: float,
-        sell_threshold: float,
+        long_threshold: float,
+        short_threshold: float,
         neutral_buffer: float,
         symbol: str
     ) -> str:
@@ -288,71 +288,71 @@ class SignalProcessor:
         preventing rapid signal flipping in choppy/sideways markets.
 
         Logic:
-        - BUY Signal: confluence_score >= buy_threshold
-        - SELL Signal: confluence_score <= sell_threshold
-        - NEUTRAL Zone: confluence_score between (sell_threshold + buffer) and (buy_threshold - buffer)
+        - LONG Signal: confluence_score >= long_threshold
+        - SHORT Signal: confluence_score <= short_threshold
+        - NEUTRAL Zone: confluence_score between (short_threshold + buffer) and (long_threshold - buffer)
 
         Buffer Behavior:
         - If buffer = 0: Classic threshold logic (immediate signal changes)
         - If buffer > 0: Creates neutral zones around thresholds
-          * Upper neutral zone: (buy_threshold - buffer) to buy_threshold
-          * Lower neutral zone: sell_threshold to (sell_threshold + buffer)
+          * Upper neutral zone: (long_threshold - buffer) to long_threshold
+          * Lower neutral zone: short_threshold to (short_threshold + buffer)
 
-        Example with buy=70, sell=35, buffer=5:
-        - BUY: score >= 70
+        Example with long=70, short=35, buffer=5:
+        - LONG: score >= 70
         - Upper Neutral: 65 <= score < 70
         - Middle Neutral: 40 < score < 65
         - Lower Neutral: 35 < score <= 40
-        - SELL: score <= 35
+        - SHORT: score <= 35
 
         Args:
             confluence_score: Current confluence score (0-100)
-            buy_threshold: BUY signal threshold
-            sell_threshold: SELL signal threshold
+            long_threshold: LONG signal threshold
+            short_threshold: SHORT signal threshold
             neutral_buffer: Buffer size to create neutral zones
             symbol: Trading symbol for logging
 
         Returns:
-            str: Signal type ("BUY", "SELL", or "NEUTRAL")
+            str: Signal type ("LONG", "SHORT", or "NEUTRAL")
         """
         try:
             # Validate inputs
-            if not all(isinstance(x, (int, float)) for x in [confluence_score, buy_threshold, sell_threshold, neutral_buffer]):
-                self.logger.error(f"Invalid numeric inputs for {symbol}: score={confluence_score}, buy={buy_threshold}, sell={sell_threshold}, buffer={neutral_buffer}")
+            if not all(isinstance(x, (int, float)) for x in [confluence_score, long_threshold, short_threshold, neutral_buffer]):
+                self.logger.error(f"Invalid numeric inputs for {symbol}: score={confluence_score}, long={long_threshold}, short={short_threshold}, buffer={neutral_buffer}")
                 return "NEUTRAL"
 
             # Ensure proper threshold relationship
-            if buy_threshold <= sell_threshold:
-                self.logger.warning(f"Invalid threshold configuration for {symbol}: buy_threshold ({buy_threshold}) must be > sell_threshold ({sell_threshold})")
+            if long_threshold <= short_threshold:
+                self.logger.warning(f"Invalid threshold configuration for {symbol}: long_threshold ({long_threshold}) must be > short_threshold ({short_threshold})")
                 return "NEUTRAL"
 
             # Calculate buffer zones
-            upper_neutral_zone_start = buy_threshold - neutral_buffer
-            lower_neutral_zone_end = sell_threshold + neutral_buffer
+            upper_neutral_zone_start = long_threshold - neutral_buffer
+            lower_neutral_zone_end = short_threshold + neutral_buffer
 
             # Log buffer zones for debugging
             self.logger.debug(
                 f"[{symbol}] Buffer zones - Score: {confluence_score:.2f} | "
-                f"BUY: >={buy_threshold} | Upper Neutral: {upper_neutral_zone_start:.2f}-{buy_threshold} | "
+                f"LONG: >={long_threshold} | Upper Neutral: {upper_neutral_zone_start:.2f}-{long_threshold} | "
                 f"Middle Neutral: {lower_neutral_zone_end:.2f}-{upper_neutral_zone_start:.2f} | "
-                f"Lower Neutral: {sell_threshold}-{lower_neutral_zone_end:.2f} | SELL: <={sell_threshold}"
+                f"Lower Neutral: {short_threshold}-{lower_neutral_zone_end:.2f} | SHORT: <={short_threshold}"
             )
 
             # Determine signal type with buffer logic
-            if confluence_score >= buy_threshold:
-                signal_type = "BUY"
-                self.logger.debug(f"[{symbol}] BUY signal: {confluence_score:.2f} >= {buy_threshold} (buy threshold)")
-            elif confluence_score <= sell_threshold:
-                signal_type = "SELL"
-                self.logger.debug(f"[{symbol}] SELL signal: {confluence_score:.2f} <= {sell_threshold} (sell threshold)")
+            if confluence_score >= long_threshold:
+                signal_type = "LONG"
+                self.logger.debug(f"[{symbol}] LONG signal: {confluence_score:.2f} >= {long_threshold} (long threshold)")
+            elif confluence_score <= short_threshold:
+                signal_type = "SHORT"
+                self.logger.debug(f"[{symbol}] SHORT signal: {confluence_score:.2f} <= {short_threshold} (short threshold)")
             else:
                 # In neutral zone - determine which zone for logging
                 if neutral_buffer > 0:
-                    if upper_neutral_zone_start <= confluence_score < buy_threshold:
+                    if upper_neutral_zone_start <= confluence_score < long_threshold:
                         zone_type = "upper neutral zone"
                     elif lower_neutral_zone_end < confluence_score < upper_neutral_zone_start:
                         zone_type = "middle neutral zone"
-                    elif sell_threshold < confluence_score <= lower_neutral_zone_end:
+                    elif short_threshold < confluence_score <= lower_neutral_zone_end:
                         zone_type = "lower neutral zone"
                     else:
                         zone_type = "neutral zone"
@@ -408,8 +408,8 @@ class SignalProcessor:
             
             # Get thresholds from config
             config = self.config.get('confluence', {}).get('thresholds', {})
-            buy_threshold = float(config.get('buy', 60.0))
-            sell_threshold = float(config.get('sell', 40.0))
+            long_threshold = float(config.get('long', config.get('buy', 60.0)))
+            short_threshold = float(config.get('short', config.get('sell', 40.0)))
             
             # Create enhanced signal data
             signal_data = {
@@ -422,8 +422,8 @@ class SignalProcessor:
                 'price': price,
                 'transaction_id': transaction_id,
                 'signal_id': signal_id,
-                'buy_threshold': buy_threshold,
-                'sell_threshold': sell_threshold
+                'long_threshold': long_threshold,
+                'short_threshold': short_threshold
             }
             
             # Add enhanced analysis data if available
@@ -461,7 +461,7 @@ class SignalProcessor:
 
             # Determine signal type using neutral buffer logic for consistency
             signal_type = self._determine_signal_with_buffer(
-                confluence_score, buy_threshold, sell_threshold, neutral_buffer, symbol
+                confluence_score, long_threshold, short_threshold, neutral_buffer, symbol
             )
             
             signal_data['signal_type'] = signal_type
@@ -562,7 +562,7 @@ class SignalProcessor:
         Args:
             symbol: Trading symbol
             price: Current price
-            signal_type: Signal type (BUY, SELL, NEUTRAL)
+            signal_type: Signal type (LONG, SHORT, NEUTRAL)
             score: Confluence score (0-100)
             reliability: Signal reliability (0-1)
 
@@ -593,14 +593,14 @@ class SignalProcessor:
             adjusted_risk_percent = default_risk_percent * confidence_multiplier
             
             # Calculate stop loss and take profit based on signal type
-            if signal_type == "BUY":
+            if signal_type == "LONG":
                 stop_loss_percent = trading_config.get('stop_loss_percent', 2.0)
                 take_profit_percent = trading_config.get('take_profit_percent', 6.0)  # 3:1 R/R
                 
                 stop_loss_price = price * (1 - stop_loss_percent / 100)
                 take_profit_price = price * (1 + take_profit_percent / 100)
                 
-            elif signal_type == "SELL":
+            elif signal_type == "SHORT":
                 stop_loss_percent = trading_config.get('stop_loss_percent', 2.0)
                 take_profit_percent = trading_config.get('take_profit_percent', 6.0)
                 
@@ -726,7 +726,7 @@ class SignalProcessor:
         Args:
             symbol: Trading symbol
             price: Current price
-            signal_type: Signal type (BUY, SELL, NEUTRAL)
+            signal_type: Signal type (LONG, SHORT, NEUTRAL)
             confluence_score: Confluence score (0-100)
             reliability: Signal reliability (0-1)
 
@@ -758,7 +758,7 @@ class SignalProcessor:
             account_balance = trading_config.get('account_balance', 10000)
 
             # Determine order type
-            order_type = OrderType.BUY if signal_type == "BUY" else OrderType.SELL
+            order_type = OrderType.LONG if signal_type == "LONG" else OrderType.SHORT
 
             # Calculate stop loss and take profit
             sl_tp = self.risk_manager.calculate_stop_loss_take_profit(

@@ -142,8 +142,8 @@ class SignalAnalyzerBase(ABC):
         })
         
         self.signal_thresholds = config.get('signal_thresholds', {
-            'buy_threshold': 60.0,
-            'sell_threshold': 40.0,
+            'long_threshold': 60.0,
+            'short_threshold': 40.0,
             'neutral_buffer': 5.0
         })
     
