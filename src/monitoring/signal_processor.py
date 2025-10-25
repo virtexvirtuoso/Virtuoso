@@ -757,8 +757,8 @@ class SignalProcessor:
             trading_config = self.config.get('trading', {})
             account_balance = trading_config.get('account_balance', 10000)
 
-            # Determine order type
-            order_type = OrderType.LONG if signal_type == "LONG" else OrderType.SHORT
+            # Determine order type (map signal types to order side)
+            order_type = OrderType.BUY if signal_type == "LONG" else OrderType.SELL
 
             # Calculate stop loss and take profit
             sl_tp = self.risk_manager.calculate_stop_loss_take_profit(
