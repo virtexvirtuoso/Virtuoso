@@ -2454,12 +2454,12 @@ class AlertManager:
         threshold_line = ' ' * width
         threshold_chars = list(threshold_line)
         
-        # Add buy and sell markers
-        if 0 <= buy_pos < width:
-            threshold_chars[buy_pos] = '↑'  # Up arrow for buy threshold
-            
-        if 0 <= sell_pos < width and sell_pos != buy_pos:
-            threshold_chars[sell_pos] = '↓'  # Down arrow for sell threshold
+        # Add long and short markers
+        if 0 <= long_pos < width:
+            threshold_chars[long_pos] = '↑'  # Up arrow for long threshold
+
+        if 0 <= short_pos < width and short_pos != long_pos:
+            threshold_chars[short_pos] = '↓'  # Down arrow for short threshold
             
         # Add thresholds to gauge
         threshold_indicator = ''.join(threshold_chars)
