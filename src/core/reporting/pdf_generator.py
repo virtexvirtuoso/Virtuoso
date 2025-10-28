@@ -2127,13 +2127,44 @@ class ReportGenerator:
                     )
                     stop_loss = trade_params.get("stop_loss", None) or signal_data.get("stop_loss", None)
 
-                    # Provide a sensible default stop if missing
+                    # Calculate stop loss if missing using StopLossCalculator
                     sig_type = (signal_data.get("signal_type", "NEUTRAL") or "NEUTRAL").upper()
                     if stop_loss is None and entry_price:
-                        if sig_type in ["BUY", "LONG", "BULLISH"]:
-                            stop_loss = entry_price * 0.97  # ~3% risk
-                        elif sig_type in ["SELL", "SHORT", "BEARISH"]:
-                            stop_loss = entry_price * 1.03
+                        try:
+                            from src.core.risk.stop_loss_calculator import get_stop_loss_calculator, StopLossMethod
+
+                            # Get configuration for calculator
+                            config = self.config if hasattr(self, 'config') else {}
+
+                            # Initialize stop loss calculator if not already done
+                            try:
+                                stop_calc = get_stop_loss_calculator()
+                            except ValueError:
+                                # First initialization
+                                stop_calc = get_stop_loss_calculator(config)
+
+                            # Calculate stop loss using confidence-based method
+                            confluence_score = signal_data.get("confluence_score", 50)
+
+                            if sig_type in ["LONG", "SHORT"]:
+                                stop_loss = stop_calc.calculate_stop_loss_price(
+                                    entry_price=entry_price,
+                                    signal_type=sig_type,
+                                    confluence_score=confluence_score,
+                                    method=StopLossMethod.CONFIDENCE_BASED
+                                )
+                                self._log(f"Chart: Calculated stop loss using StopLossCalculator: {sig_type} @ {entry_price:.6f} → {stop_loss:.6f}", logging.INFO)
+                            else:
+                                # Fallback for NEUTRAL or invalid signal types
+                                self._log(f"Chart: Signal type {sig_type} not supported for stop loss calculation, using default 3%", logging.WARNING)
+                                stop_loss = entry_price * 0.97  # Default 3% for neutral
+                        except Exception as calc_error:
+                            # Fallback if calculator fails
+                            self._log(f"Chart: StopLossCalculator failed, using simple fallback: {calc_error}", logging.WARNING)
+                            if sig_type in ["BUY", "LONG", "BULLISH"]:
+                                stop_loss = entry_price * 0.97  # ~3% risk
+                            elif sig_type in ["SELL", "SHORT", "BEARISH"]:
+                                stop_loss = entry_price * 1.03
                     targets = trade_params.get("targets", None) or signal_data.get("targets", None)
                     
                     # Ensure targets are always available - generate defaults if none provided
@@ -2540,6 +2571,48 @@ class ReportGenerator:
                 trade_params = signal_data.get("trade_params", {})
                 entry_price = trade_params.get("entry_price", None) or signal_data.get("entry_price", price)
                 stop_loss = trade_params.get("stop_loss", None) or signal_data.get("stop_loss", None)
+
+                # Calculate stop loss if missing using StopLossCalculator
+                if stop_loss is None and entry_price:
+                    try:
+                        from src.core.risk.stop_loss_calculator import get_stop_loss_calculator, StopLossMethod
+
+                        # Get configuration for calculator
+                        config = self.config if hasattr(self, 'config') else {}
+
+                        # Initialize stop loss calculator if not already done
+                        try:
+                            stop_calc = get_stop_loss_calculator()
+                        except ValueError:
+                            # First initialization
+                            stop_calc = get_stop_loss_calculator(config)
+
+                        # Calculate stop loss using confidence-based method
+                        sig_type = (signal_data.get("signal_type", "NEUTRAL") or "NEUTRAL").upper()
+                        confluence_score = signal_data.get("confluence_score", 50)
+
+                        if sig_type in ["LONG", "SHORT"]:
+                            stop_loss = stop_calc.calculate_stop_loss_price(
+                                entry_price=entry_price,
+                                signal_type=sig_type,
+                                confluence_score=confluence_score,
+                                method=StopLossMethod.CONFIDENCE_BASED
+                            )
+                            self._log(f"Calculated stop loss using StopLossCalculator: {sig_type} @ {entry_price:.6f} → {stop_loss:.6f}", logging.INFO)
+                        else:
+                            # Fallback for NEUTRAL or invalid signal types
+                            self._log(f"Signal type {sig_type} not supported for stop loss calculation, using default 3%", logging.WARNING)
+                            stop_loss = entry_price * 0.97  # Default 3% for neutral
+                    except Exception as calc_error:
+                        # Fallback if calculator fails
+                        self._log(f"StopLossCalculator failed, using simple fallback: {calc_error}", logging.WARNING)
+                        sig_type = (signal_data.get("signal_type", "NEUTRAL") or "NEUTRAL").upper()
+                        if sig_type in ["LONG", "BULLISH"]:
+                            stop_loss = entry_price * 0.97  # ~3% risk
+                        elif sig_type in ["SHORT", "BEARISH"]:
+                            stop_loss = entry_price * 1.03
+                        else:
+                            stop_loss = entry_price * 0.97  # Default for neutral
 
                 # Comprehensive boundary checking and validation
                 if stop_loss and entry_price:
