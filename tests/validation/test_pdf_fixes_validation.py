@@ -79,13 +79,13 @@ def test_stop_loss_generation():
 
     test_cases = [
         {
-            "signal_type": "BUY",
+            "signal_type": "LONG",
             "entry_price": 100.0,
             "expected_stop_multiplier": 0.97,  # 3% below entry
             "description": "BUY signal stop loss generation"
         },
         {
-            "signal_type": "SELL",
+            "signal_type": "SHORT",
             "entry_price": 100.0,
             "expected_stop_multiplier": 1.03,  # 3% above entry
             "description": "SELL signal stop loss generation"

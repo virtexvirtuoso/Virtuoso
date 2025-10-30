@@ -105,7 +105,7 @@ def test_signals_schema():
         {
             'symbol': 'BTCUSDT',
             'confluence_score': 78.5,
-            'signal_type': 'BUY',
+            'signal_type': 'LONG',
             'reliability': 82.0,
             'sentiment': 'BULLISH',
             'price': 65432.10,
@@ -115,7 +115,7 @@ def test_signals_schema():
         {
             'symbol': 'ETHUSDT',
             'confluence_score': 71.2,
-            'signal_type': 'BUY',
+            'signal_type': 'LONG',
             'reliability': 75.0,
             'sentiment': 'BULLISH',
             'price': 3456.78,
