@@ -58,20 +58,22 @@ services:
       - virtuoso-network
 
   # Nginx reverse proxy (optional)
-  nginx:
-    image: nginx:alpine
-    container_name: virtuoso-nginx
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./ssl:/etc/nginx/ssl:ro
-    depends_on:
-      - virtuoso
-    restart: unless-stopped
-    networks:
-      - virtuoso-network
+  # NOTE: Commented out - requires nginx.conf to be created first
+  # Uncomment and create nginx.conf when ready to use reverse proxy
+  # nginx:
+  #   image: nginx:alpine
+  #   container_name: virtuoso-nginx
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #   volumes:
+  #     - ./nginx.conf:/etc/nginx/nginx.conf:ro
+  #     - ./ssl:/etc/nginx/ssl:ro
+  #   depends_on:
+  #     - virtuoso
+  #   restart: unless-stopped
+  #   networks:
+  #     - virtuoso-network
 
 volumes:
   redis-data:
