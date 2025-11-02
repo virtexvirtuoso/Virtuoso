@@ -193,7 +193,7 @@ class MarketMonitor:
         self.first_cycle_completed = False
         self.initial_report_pending = True
         self.last_report_time = None
-        self.interval = self.config.get('interval', 10)  # Default 10 seconds
+        self.interval = self.config.get('interval', 15)  # Default 15 seconds (optimized for production)
         self._error_count = 0
         
         # Maintain symbols attribute for backward compatibility
@@ -665,8 +665,8 @@ class MarketMonitor:
             except asyncio.CancelledError:
                 import sys
                 import inspect
-                import traceback
-                
+                # traceback is already imported at module level - no need to re-import
+
                 # Get detailed cancellation information for debugging
                 frame_info = []
                 frame = sys._getframe()
@@ -1292,16 +1292,84 @@ class MarketMonitor:
             }
     
     async def _handle_health_issues(self, health_status: Dict[str, Any]) -> None:
-        """Handle system health issues."""
-        critical_components = [
-            comp for comp, status in health_status['components'].items()
-            if status.get('status') == 'critical'
-        ]
-        
-        if critical_components and self.alert_manager_component:
+        """Handle system health issues and recovery notifications."""
+        if not self.alert_manager_component:
+            return
+
+        # Check for critical components
+        critical_components = []
+        recovered_components = []
+
+        for comp, status in health_status['components'].items():
+            current_status = status.get('status')
+            previous_status = status.get('previous_status')
+
+            # Detect critical issues
+            if current_status == 'critical':
+                critical_components.append({
+                    'name': comp,
+                    'message': status.get('message', 'No details'),
+                    'response_time_ms': status.get('response_time_ms'),
+                    'thresholds': status.get('thresholds')
+                })
+
+            # Detect recoveries (was critical/error, now healthy/warning)
+            if previous_status in ['critical', 'error'] and current_status in ['healthy', 'warning']:
+                recovered_components.append({
+                    'name': comp,
+                    'previous': previous_status,
+                    'current': current_status,
+                    'message': status.get('message', 'No details')
+                })
+
+        # Send critical alerts with enhanced context
+        if critical_components:
+            # Build detailed message with diagnostic info
+            details_lines = []
+            for comp_info in critical_components:
+                comp_name = comp_info['name']
+                msg = comp_info['message']
+                details_lines.append(f"• {comp_name}: {msg}")
+
+                # Add response time if available
+                if comp_info.get('response_time_ms'):
+                    details_lines.append(f"  Response time: {comp_info['response_time_ms']:.1f}ms")
+
+                # Add thresholds if available
+                if comp_info.get('thresholds'):
+                    thresh = comp_info['thresholds']
+                    details_lines.append(f"  Thresholds: warning={thresh.get('warning_ms')}ms, critical={thresh.get('critical_ms')}ms")
+
             await self.alert_manager_component.send_alert(
-                f"Critical system health issues: {', '.join(critical_components)}",
-                level='critical'
+                level='critical',
+                message=f"Critical system health issues: {', '.join([c['name'] for c in critical_components])}",
+                details={
+                    'type': 'health',
+                    'components': [c['name'] for c in critical_components],
+                    'diagnostic_details': '\n'.join(details_lines),
+                    'health_status': health_status
+                }
+            )
+
+        # Send recovery notifications
+        if recovered_components:
+            recovery_lines = []
+            for comp_info in recovered_components:
+                recovery_lines.append(
+                    f"• {comp_info['name']}: {comp_info['previous']} → {comp_info['current']}"
+                )
+                if comp_info.get('message'):
+                    recovery_lines.append(f"  {comp_info['message']}")
+
+            await self.alert_manager_component.send_alert(
+                level='info',
+                message=f"✅ System health recovered: {', '.join([c['name'] for c in recovered_components])}",
+                details={
+                    'type': 'health_recovery',
+                    'components': [c['name'] for c in recovered_components],
+                    'recovery_details': '\n'.join(recovery_lines),
+                    'health_status': health_status
+                }
             )
     
     def _should_generate_report(self) -> bool:
@@ -1330,7 +1398,7 @@ class MarketMonitor:
         try:
             if not self.alert_manager_component:
                 return
-            
+
             # Get system metrics (with null check)
             if self.metrics_tracker is not None:
                 metrics = await self.metrics_tracker.get_system_metrics()
@@ -1342,10 +1410,20 @@ class MarketMonitor:
                     'timestamp': time.time(),
                     'fallback_mode': True
                 }
-            
+
+            # Validate that report has meaningful data before sending
+            status = metrics.get('status', 'Unknown')
+            active_symbols = metrics.get('active_symbols', 0)
+            signals_generated = metrics.get('signals_generated', 0)
+
+            # Skip sending empty/useless reports (typically at startup)
+            if status == 'Unknown' and active_symbols == 0 and signals_generated == 0:
+                self.logger.info("Skipping market report - no meaningful data yet (likely at startup)")
+                return
+
             # Generate report content
             report = self._create_market_report(metrics)
-            
+
             # Send report via alert manager (now implemented)
             try:
                 sent = await self.alert_manager_component.send_report(report)
@@ -1355,9 +1433,9 @@ class MarketMonitor:
                     self.logger.info(f"Market report delivered: {len(report)} chars")
             except Exception as e:
                 self.logger.error(f"send_report raised: {e}")
-            
+
             self.last_report_time = datetime.now(timezone.utc)
-            
+
         except Exception as e:
             self.logger.error(f"Error generating market report: {str(e)}")
     
