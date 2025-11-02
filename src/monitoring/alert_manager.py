@@ -386,28 +386,31 @@ class AlertManager:
                     if self.system_webhook_url:
                         self.system_webhook_url = self.system_webhook_url.strip().replace('\n', '')
                         if self.system_webhook_url:
-                            self.logger.debug(f" System webhook URL from environment variable {env_var_name}: {self.system_webhook_url[:20]}...{self.system_webhook_url[-10:]}")
+                            self.logger.info(f"✅ System webhook URL loaded from ${{{env_var_name}}}: {self.system_webhook_url[:30]}...{self.system_webhook_url[-15:]}")
                         else:
-                            self.logger.debug(f" System webhook URL from environment variable {env_var_name} is empty after cleaning")
+                            self.logger.warning(f"⚠️  System webhook URL from ${{{env_var_name}}} is empty after cleaning")
                     else:
-                        self.logger.debug(f" Environment variable {env_var_name} not set or empty")
+                        self.logger.warning(f"⚠️  Environment variable ${{{env_var_name}}} not set or empty - system alerts will fail")
                         self.system_webhook_url = ''
                 else:
                     # Direct value from config
                     self.system_webhook_url = system_webhook_raw or ''
                     if self.system_webhook_url:
-                        pass  # logger.debug(f" System webhook URL from config: {self.system_webhook_url[:20]}...{self.system_webhook_url[-10:]}")  # Disabled verbose config dump
+                        self.logger.info(f"✅ System webhook URL from config: {self.system_webhook_url[:30]}...{self.system_webhook_url[-15:]}")
                     else:
-                        self.logger.debug(" System webhook URL from config is None or empty")
+                        self.logger.warning("⚠️  System webhook URL from config is None or empty")
             else:
                 # Fallback to environment variable
+                self.logger.warning("⚠️  'system_alerts_webhook_url' not in config, trying fallback environment variable")
                 self.system_webhook_url = os.getenv('SYSTEM_ALERTS_WEBHOOK_URL', '')
                 if self.system_webhook_url:
                     self.system_webhook_url = self.system_webhook_url.strip().replace('\n', '')
                     if self.system_webhook_url:
-                        self.logger.debug(f" System webhook URL from fallback environment: {self.system_webhook_url[:20]}...{self.system_webhook_url[-10:]}")
+                        self.logger.info(f"✅ System webhook URL from fallback environment: {self.system_webhook_url[:30]}...{self.system_webhook_url[-15:]}")
                     else:
-                        self.logger.debug(" System webhook URL from fallback environment is empty after cleaning")
+                        self.logger.warning("⚠️  System webhook URL from fallback environment is empty after cleaning")
+                else:
+                    self.logger.error("❌ SYSTEM_ALERTS_WEBHOOK_URL not found anywhere - system alerts will NOT work")
             
             # Direct discord webhook from config (alternative path) - only override if not already set
             if 'discord_network' in alert_config and alert_config['discord_network'] and not self.discord_webhook_url:
@@ -738,6 +741,36 @@ class AlertManager:
                     self._alert_stats['sent'] = int(self._alert_stats.get('sent', 0)) + 1
                     return  # Skip sending to main webhook
 
+            # Generic system alert routing for all configured types
+            if details and details.get('type'):
+                alert_type = details.get('type')
+
+                # Diagnostic logging for system webhook routing
+                self.logger.info(f"🔍 Alert routing check for type '{alert_type}':")
+                self.logger.info(f"  - use_system_webhook: {use_system_webhook}")
+                self.logger.info(f"  - types_config.get('{alert_type}'): {types_config.get(alert_type, False)}")
+                self.logger.info(f"  - system_webhook_url set: {bool(self.system_webhook_url)}")
+                self.logger.info(f"  - should_mirror: {should_mirror}")
+
+                # Check if this alert type should use system webhook
+                if use_system_webhook and types_config.get(alert_type, False) and self.system_webhook_url:
+                    # Check if mirroring is enabled for this type
+                    should_mirror_type = should_mirror and mirror_config.get('types', {}).get(alert_type, False)
+
+                    if should_mirror_type:
+                        # Mirror to system webhook (will also send to main webhook later)
+                        self.logger.info(f"✅ Mirroring {alert_type} alert to system webhook")
+                        await self._send_system_webhook_alert(message, details)
+                    else:
+                        # Send only to system webhook and skip main webhook
+                        self.logger.info(f"✅ Routing {alert_type} alert to system webhook ONLY (skipping main webhook)")
+                        await self._send_system_webhook_alert(message, details)
+                        self._alert_stats['total'] = int(self._alert_stats.get('total', 0)) + 1
+                        self._alert_stats['sent'] = int(self._alert_stats.get('sent', 0)) + 1
+                        return  # Skip sending to main webhook
+                else:
+                    self.logger.info(f"⚠️  {alert_type} alert will use MAIN webhook (condition failed)")
+
             # Special handling for large order alerts
             if details and details.get('type') == 'large_aggressive_order':
                 symbol = details.get('symbol', 'UNKNOWN')
@@ -895,10 +928,42 @@ class AlertManager:
                 if 'discord' in self.handlers:
                     # Create enhanced alert with market context
                     emoji = "🐋📈" if subtype == "accumulation" else "🐋📉" if subtype == "distribution" else "🐋"
-                    color = 0x00FF00 if subtype == "accumulation" else 0xFF0000 if subtype == "distribution" else 0x888888
-                    
+
                     # Extract activity data for enhanced analysis
                     activity_data = details.get('data', {})
+
+                    # CRITICAL FIX: Determine color based on ACTUAL whale action (not fake orderbook)
+                    # Handles edge cases: equal volumes, zero volumes, insufficient data
+                    whale_buy_volume = activity_data.get('whale_buy_volume', 0)
+                    whale_sell_volume = activity_data.get('whale_sell_volume', 0)
+                    trade_confirmation = activity_data.get('trade_confirmation', False)
+                    whale_trades_count = activity_data.get('whale_trades_count', 0)
+
+                    # Check if this is manipulation (conflicting signals)
+                    is_manipulation = (whale_trades_count > 0 and not trade_confirmation)
+
+                    if is_manipulation:
+                        # Manipulation detected: Use color based on ACTUAL trade flow
+                        # (Orderbook shows one thing, trades show another)
+                        total_trade_volume = whale_buy_volume + whale_sell_volume
+
+                        # Edge case: Insufficient trade volume data
+                        if total_trade_volume < 1.0:
+                            self.logger.warning(f"Manipulation detected but insufficient trade volume for {symbol}: {total_trade_volume:.2f}")
+                            color = 0x888888  # Gray - insufficient data for directional signal
+                        # Clear buying (fake sell wall)
+                        elif whale_buy_volume > whale_sell_volume:
+                            color = 0x00FF00  # Green - Whales actually buying (fake sell wall = bullish)
+                        # Clear selling (fake buy wall)
+                        elif whale_sell_volume > whale_buy_volume:
+                            color = 0xFF0000  # Red - Whales actually selling (fake buy wall = bearish)
+                        # Edge case: Equal volumes (ambiguous direction)
+                        else:
+                            color = 0x888888  # Gray - equal volumes, unclear manipulation direction
+                            self.logger.debug(f"Equal whale volumes detected for {symbol}: buy={whale_buy_volume:.2f}, sell={whale_sell_volume:.2f}")
+                    else:
+                        # Normal signal: Color matches orderbook subtype
+                        color = 0x00FF00 if subtype == "accumulation" else 0xFF0000 if subtype == "distribution" else 0x888888
                     self.logger.debug(f"Raw activity_data received: {activity_data}")
                     
                     # Core whale data
@@ -2791,6 +2856,11 @@ class AlertManager:
                 'CRITICAL': 0x9b59b6   # Purple
             }
             color = color_map.get(level, 0x95a5a6)  # Default to gray
+
+            # Override color for specific alert types
+            alert_type = details.get('type', '')
+            if alert_type == 'health_recovery':
+                color = 0x2ecc71  # Green for recovery/success
             
             # Create an embed for the alert
             embed = DiscordEmbed(
