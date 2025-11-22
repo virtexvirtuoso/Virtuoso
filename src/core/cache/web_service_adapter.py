@@ -378,10 +378,20 @@ class WebServiceCacheAdapter:
                 "market_overview": {
                     "market_regime": regime_data,
                     "trend_strength": overview_data.get('trend_strength', 0),
-                    "volatility": overview_data.get('volatility', 0),
+                    "volatility": overview_data.get('current_volatility', overview_data.get('volatility', 0)),
+                    "current_volatility": overview_data.get('current_volatility', 0),
+                    "avg_volatility": overview_data.get('avg_volatility', 0),
                     "btc_dominance": overview_data.get('btc_dominance', 59.3),
+                    "btc_price": overview_data.get('btc_price', 0),
+                    "btc_volatility": overview_data.get('btc_volatility', 0),
+                    "btc_daily_volatility": overview_data.get('btc_daily_volatility', 0),
+                    "market_dispersion": overview_data.get('market_dispersion', 0),
+                    "avg_market_dispersion": overview_data.get('avg_market_dispersion', 0),
                     "total_volume_24h": overview_data.get('total_volume_24h', 0),
-                    "average_change": overview_data.get('average_change', 0)
+                    "average_change": overview_data.get('average_change', 0),
+                    # CRITICAL FIX: Include gainers/losers for market sentiment
+                    "gainers": overview_data.get('gainers', 0),
+                    "losers": overview_data.get('losers', 0)
                 },
                 "confluence_scores": confluence_scores,
                 "top_movers": {
@@ -435,9 +445,26 @@ class WebServiceCacheAdapter:
     async def _get_live_market_regime(self) -> str:
         """Get live market regime"""
         try:
+            # First try analysis:market_regime (which returns a dict)
             data, _ = await get_market_data('analysis:market_regime')
-            return data if isinstance(data, str) else 'unknown'
-        except:
+
+            if isinstance(data, dict):
+                # Extract regime field from dict
+                regime = data.get('regime', 'unknown')
+                return regime if isinstance(regime, str) else str(regime)
+            elif isinstance(data, str):
+                # Direct string value
+                return data
+
+            # Fallback: Try market:overview which has market_regime as string
+            overview_data, _ = await get_market_data('market:overview')
+            if isinstance(overview_data, dict):
+                regime = overview_data.get('market_regime', 'unknown')
+                return regime if isinstance(regime, str) else str(regime)
+
+            return 'unknown'
+        except Exception as e:
+            logger.debug(f"Error getting market regime: {e}")
             return 'unknown'
 
     def _enhance_market_overview(self, data: Dict[str, Any]) -> Dict[str, Any]:
@@ -514,9 +541,18 @@ class WebServiceCacheAdapter:
                 "market_regime": "unknown",
                 "trend_strength": 50,
                 "volatility": 0,
+                "current_volatility": 0,
+                "avg_volatility": 0,
                 "btc_dominance": 59.3,
+                "btc_price": 0,
+                "btc_volatility": 0,
+                "btc_daily_volatility": 0,
+                "market_dispersion": 0,
+                "avg_market_dispersion": 0,
                 "total_volume_24h": 0,
-                "average_change": 0
+                "average_change": 0,
+                "gainers": 0,
+                "losers": 0
             },
             "confluence_scores": [],
             "top_movers": {"gainers": [], "losers": []},
