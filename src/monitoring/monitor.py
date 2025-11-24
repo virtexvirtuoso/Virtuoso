@@ -29,6 +29,7 @@ components in the monitoring loop while maintaining the same external interface.
 
 import asyncio
 import logging
+import math
 import time
 import traceback
 import uuid
@@ -195,7 +196,10 @@ class MarketMonitor:
         self.last_report_time = None
         self.interval = self.config.get('interval', 15)  # Default 15 seconds (optimized for production)
         self._error_count = 0
-        
+
+        # Whale trade detection cooldown tracking (Bug #2 fix - initialize here to avoid race condition)
+        self._last_whale_trade_alert = {}
+
         # Maintain symbols attribute for backward compatibility
         self.symbols = []
         
@@ -920,6 +924,14 @@ class MarketMonitor:
             except Exception as e:
                 self.logger.error(f"Whale detection error for {symbol_str}: {str(e)}")
 
+            # Step 9: Whale trade execution detection (individual large trades)
+            try:
+                self.logger.debug(f"🐋 About to call whale trade detection for {symbol_str}")
+                await self._detect_whale_trades(symbol_str, market_data)
+                self.logger.debug(f"✅ Whale trade detection completed for {symbol_str}")
+            except Exception as e:
+                self.logger.error(f"Whale trade detection error for {symbol_str}: {str(e)}")
+
             # CRITICAL SUCCESS RETURN - This fixes the "15 tasks completed but did no work" error
             self.logger.debug(f"🎯 TASK SUCCESS: {symbol_str} processing completed successfully")
             return {
@@ -1141,7 +1153,209 @@ class MarketMonitor:
             throttle=True,
         )
         self._last_whale_alert[symbol] = current_time
-    
+
+    async def _detect_whale_trades(self, symbol: str, market_data: Dict[str, Any]) -> None:
+        """Detect individual large trades (executed whales), not just orderbook positioning.
+
+        This complements _analyze_and_alert_whale_activity by detecting immediate
+        large trade executions rather than sustained orderbook positioning.
+
+        A $20M market buy will trigger this, even if no large orders remain in the orderbook.
+        """
+        config = self.config.get('monitoring', {}).get('whale_activity', {})
+        if not config.get('trade_alerts_enabled', True):
+            return
+        if not self.alert_manager:
+            return
+
+        # Get config thresholds
+        try:
+            alert_threshold_usd = float(config.get('alert_threshold_usd', 300000))
+            trade_cooldown = int(config.get('trade_cooldown', 600))  # 10 min
+        except (ValueError, TypeError) as e:
+            self.logger.error(f"Invalid whale trade config values: {e}")
+            return
+
+        # Bug #2 fix: Cooldown tracking now initialized in __init__(), no need to check hasattr
+        current_time = time.time()
+        last_alert = self._last_whale_trade_alert.get(symbol, 0)
+        if current_time - last_alert < trade_cooldown:
+            return
+
+        # Get current price with error handling (Bug #1 fix)
+        ticker = market_data.get('ticker', {})
+        try:
+            current_price = float(ticker.get('last', 0))
+            # Bug #3 fix: Validate for NaN/Infinity
+            if not (current_price > 0 and math.isfinite(current_price)):
+                self.logger.warning(f"Invalid current price for {symbol}: {current_price}")
+                return
+        except (ValueError, TypeError) as e:
+            self.logger.warning(f"Could not parse current price for {symbol}: {e}")
+            return
+
+        # Analyze recent trades (last 5 minutes)
+        trades = market_data.get('trades', [])
+        if not trades or not isinstance(trades, list):
+            return
+
+        recent_cutoff = current_time - 300  # 5 min lookback
+        whale_trades = []
+
+        # Bug #1 fix: Comprehensive error handling in trade parsing loop
+        for trade in trades:
+            try:
+                # Parse timestamp with multiple fallbacks
+                ts_raw = trade.get('timestamp') or trade.get('time') or 0
+
+                # Handle string timestamps
+                if isinstance(ts_raw, str):
+                    try:
+                        ts = float(ts_raw)
+                    except ValueError:
+                        self.logger.debug(f"Skipping trade with invalid timestamp string: {ts_raw}")
+                        continue
+                else:
+                    ts = float(ts_raw)
+
+                # Bug #3 fix: Validate timestamp is finite
+                if not math.isfinite(ts):
+                    self.logger.debug(f"Skipping trade with non-finite timestamp: {ts}")
+                    continue
+
+                # Convert milliseconds to seconds if needed
+                if ts > 1e12:
+                    ts = ts / 1000
+
+                # Skip old trades
+                if ts < recent_cutoff or ts <= 0:
+                    continue
+
+                # Parse size/amount with fallback
+                size_raw = trade.get('amount') or trade.get('size') or 0
+                size = float(size_raw)
+
+                # Bug #3 fix: Validate size
+                if not (size > 0 and math.isfinite(size)):
+                    continue
+
+                # Parse price with fallback to current price
+                price_raw = trade.get('price', current_price)
+                price = float(price_raw) if price_raw else current_price
+
+                # Bug #3 fix: Validate price
+                if not (price > 0 and math.isfinite(price)):
+                    price = current_price
+
+                # Calculate trade value
+                value_usd = size * price
+
+                # Bug #3 fix: Validate calculated value
+                if not math.isfinite(value_usd):
+                    self.logger.debug(f"Skipping trade with non-finite value: size={size}, price={price}")
+                    continue
+
+                # Check if whale trade
+                if value_usd >= alert_threshold_usd:
+                    side = trade.get('side', 'unknown')
+                    if isinstance(side, str):
+                        side = side.lower()
+                    else:
+                        side = 'unknown'
+
+                    whale_trades.append({
+                        'size': size,
+                        'price': price,
+                        'value_usd': value_usd,
+                        'side': side,
+                        'timestamp': ts,
+                        'time_ago': int(current_time - ts)
+                    })
+
+            except (ValueError, TypeError, KeyError) as e:
+                # Log but continue processing other trades
+                self.logger.debug(f"Skipping malformed trade in {symbol}: {e}")
+                continue
+            except Exception as e:
+                # Catch any other unexpected errors
+                self.logger.warning(f"Unexpected error processing trade in {symbol}: {e}")
+                continue
+
+        # Sort by value (largest first)
+        whale_trades.sort(key=lambda x: x['value_usd'], reverse=True)
+
+        if not whale_trades:
+            return
+
+        # Aggregate statistics
+        total_buy_volume = sum(t['size'] for t in whale_trades if t['side'] == 'buy')
+        total_sell_volume = sum(t['size'] for t in whale_trades if t['side'] == 'sell')
+        total_buy_usd = sum(t['value_usd'] for t in whale_trades if t['side'] == 'buy')
+        total_sell_usd = sum(t['value_usd'] for t in whale_trades if t['side'] == 'sell')
+
+        net_volume = total_buy_volume - total_sell_volume
+        net_usd = total_buy_usd - total_sell_usd
+
+        # Determine priority based on largest trade
+        largest_trade = whale_trades[0]
+        if largest_trade['value_usd'] >= 10_000_000:
+            priority = 'MEGA_WHALE'
+            emoji = '🐋🚨'
+            level = 'critical'
+        elif largest_trade['value_usd'] >= 1_000_000:
+            priority = 'LARGE_WHALE'
+            emoji = '🐋⚠️'
+            level = 'warning'
+        else:
+            priority = 'WHALE'
+            emoji = '🐋'
+            level = 'warning'
+
+        # Determine direction
+        direction = 'BUY' if net_usd > 0 else 'SELL' if net_usd < 0 else 'MIXED'
+
+        # Prepare alert details
+        details = {
+            'type': 'whale_trade',
+            'subtype': 'trade_execution',
+            'priority': priority,
+            'symbol': symbol,
+            'market_data': market_data,
+            'data': {
+                'largest_trade_usd': largest_trade['value_usd'],
+                'largest_trade_side': largest_trade['side'],
+                'largest_trade_size': largest_trade['size'],
+                'largest_trade_price': largest_trade['price'],
+                'total_whale_trades': len(whale_trades),
+                'total_buy_usd': total_buy_usd,
+                'total_sell_usd': total_sell_usd,
+                'net_usd': net_usd,
+                'direction': direction,
+                'whale_trades': whale_trades[:10],  # Top 10
+                'current_price': current_price,
+                'lookback_seconds': 300,
+                'alert_threshold_usd': alert_threshold_usd
+            }
+        }
+
+        # Format alert message
+        msg = (
+            f"{emoji} WHALE TRADE EXECUTION on {symbol} | "
+            f"Largest: ${largest_trade['value_usd']:,.0f} {largest_trade['side'].upper()} | "
+            f"Total: {len(whale_trades)} whale trades, Net: ${abs(net_usd):,.0f} {direction}"
+        )
+
+        # Send alert
+        await self.alert_manager.send_alert(
+            level=level,
+            message=msg,
+            details=details,
+            throttle=True
+        )
+
+        self._last_whale_trade_alert[symbol] = current_time
+        self.logger.info(f"🐋 Whale trade alert sent for {symbol}: ${largest_trade['value_usd']:,.0f} {largest_trade['side']}")
+
     async def _check_system_health(self) -> Dict[str, Any]:
         """Check system health using metrics tracker with fallback."""
         try:
