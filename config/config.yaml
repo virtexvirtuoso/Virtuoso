@@ -1058,6 +1058,8 @@ monitoring:
         database: true
         disk: true
         error: true
+        health: true
+        health_recovery: true
         lifecycle: true
         market_report: true
         memory: true
@@ -1069,21 +1071,24 @@ monitoring:
       use_system_webhook: true
     system_alerts_webhook_url: ${SYSTEM_ALERTS_WEBHOOK_URL}
     whale_activity:
-      accumulation_threshold: 500000
-      cooldown: 1800
-      distribution_threshold: 500000
+      # ORDERBOOK-based detection (sustained positioning)
+      accumulation_threshold: 500000  # $500k net orderbook accumulation
+      cooldown: 1800  # 30 min cooldown for orderbook alerts
+      distribution_threshold: 500000  # $500k net orderbook distribution
       enabled: true
       excluded_symbols: []
-      imbalance_threshold: 0.3
+      imbalance_threshold: 0.3  # 30% bid/ask imbalance required
       included_symbols: []
-      market_percentage: 0.025
-      min_order_count: 4
+      market_percentage: 0.025  # Must be 2.5% of total orderbook
+      min_order_count: 4  # Minimum 4 large orders required
       min_trade_imbalance: 0.75
       min_trade_volume_usd: 500000
       min_whale_trades: 5
-      trade_alerts_enabled: true
-      trade_cooldown: 600
-      alert_threshold_usd: 300000
+
+      # TRADE-based detection (NEW - individual large trade executions)
+      trade_alerts_enabled: true  # Enable whale trade execution alerts
+      trade_cooldown: 600  # 10 min cooldown between trade alerts per symbol
+      alert_threshold_usd: 300000  # Alert on trades >= $300k
     smart_money_detection:
       enabled: true
       min_sophistication_score: 6.0
@@ -1298,3 +1303,36 @@ caching:
       track_hit_rate: true
       track_time_saved: true
       track_access_patterns: true
+
+# ML Weight Optimization Configuration
+# Shadow mode deployment - validates ML system with zero risk
+ml:
+  # Master enable/disable switch for adaptive weights
+  enabled: false  # Shadow mode: just log predictions, don't change signals
+  
+  # Model configuration
+  model_path: "ml/models/optimizer_v1.0.joblib"
+  model_version: "1.0"
+  
+  # A/B testing configuration
+  ab_test_ratio: 0.0  # 0% = shadow mode (log only), 0.10 = 10% adaptive
+  
+  # Safety constraints
+  max_weight_change: 0.15  # Maximum ±15% change from baseline
+  min_confidence: 0.55  # Minimum model confidence to use adaptive weights
+  
+  # Fallback settings
+  enable_distribution_shift_detection: true
+  shift_threshold: 0.05  # KS test p-value threshold
+  
+  # Monitoring
+  log_weight_changes: true
+  log_level: "INFO"
+  
+  # Data collection for v2.0 training
+  data_collection:
+    enabled: true  # Collect signal data for future model training
+    database: "data/trading.db"
+    table: "signal_performance"
+    min_samples_for_retrain: 1000
+    retrain_interval_days: 30
