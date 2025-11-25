@@ -1314,13 +1314,12 @@ class MarketMonitor:
         # Determine direction
         direction = 'BUY' if net_usd > 0 else 'SELL' if net_usd < 0 else 'MIXED'
 
-        # Prepare alert details
+        # Prepare alert details (no market_data to avoid DataFrame serialization issues)
         details = {
             'type': 'whale_trade',
             'subtype': 'trade_execution',
             'priority': priority,
             'symbol': symbol,
-            'market_data': market_data,
             'data': {
                 'largest_trade_usd': largest_trade['value_usd'],
                 'largest_trade_side': largest_trade['side'],
