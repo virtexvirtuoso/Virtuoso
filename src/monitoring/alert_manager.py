@@ -336,7 +336,10 @@ class AlertManager:
         
         # System webhook URL (for system alerts)
         self.system_webhook_url = ""
-        
+
+        # Whale alerts webhook URL (dedicated channel for whale trade alerts)
+        self.whale_webhook_url = ""
+
         # Additional configurations from config file
         if 'monitoring' in self.config and 'alerts' in self.config['monitoring']:
             alert_config = self.config['monitoring']['alerts']
@@ -411,7 +414,18 @@ class AlertManager:
                         self.logger.warning("⚠️  System webhook URL from fallback environment is empty after cleaning")
                 else:
                     self.logger.error("❌ SYSTEM_ALERTS_WEBHOOK_URL not found anywhere - system alerts will NOT work")
-            
+
+            # Load whale alerts webhook URL from environment
+            whale_webhook_url = os.getenv('WHALE_ALERTS_WEBHOOK_URL', '')
+            if whale_webhook_url:
+                self.whale_webhook_url = whale_webhook_url.strip().replace('\n', '')
+                if self.whale_webhook_url:
+                    self.logger.info(f"✅ Whale alerts webhook URL loaded: {self.whale_webhook_url[:30]}...{self.whale_webhook_url[-15:]}")
+                else:
+                    self.logger.debug("Whale alerts webhook URL empty after cleaning")
+            else:
+                self.logger.info("ℹ️  No dedicated whale webhook URL - whale alerts will use main webhook")
+
             # Direct discord webhook from config (alternative path) - only override if not already set
             if 'discord_network' in alert_config and alert_config['discord_network'] and not self.discord_webhook_url:
                 self.discord_webhook_url = alert_config['discord_network'].strip()
@@ -2838,7 +2852,12 @@ class AlertManager:
             if details.get('type') == 'whale_activity':
                 await self._send_whale_activity_discord_alert(alert, alert_id)
                 return
-            
+
+            # Check if this is a whale_trade alert and route to dedicated webhook if configured
+            if details.get('type') == 'whale_trade':
+                await self._send_whale_trade_discord_alert(alert, alert_id)
+                return
+
             # Check if this is a smart_money alert and handle specially
             if details.get('type') == 'smart_money':
                 await self._send_smart_money_discord_alert(alert, alert_id)
@@ -3785,14 +3804,16 @@ class AlertManager:
             content_for_dedup_2 = f"{symbol}_{signal_data.get('confluence_score', 0):.2f}"
             self._mark_alert_sent_improved(alert_key_2, 'signal', content_for_dedup_2)
             
-            # Send high-resolution chart image first if available
+            # Send high-resolution chart image first - ALWAYS generate if not present
             # Initialize chart_path from signal_data and normalize any file URI scheme
             chart_path = signal_data.get('chart_path')
             if isinstance(chart_path, str) and chart_path.startswith('file://'):
                 chart_path = chart_path[7:]
-            
-            if not chart_path and pdf_path:
-                # Try to extract chart path from signal data
+
+            # ALWAYS generate chart if not already present (changed from: if not chart_path and pdf_path)
+            if not chart_path:
+                # Generate chart from signal data
+                self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}][CHART] No chart_path provided, generating chart from signal data")
                 chart_path = await self._generate_chart_from_signal_data(signal_data, transaction_id, signal_id)
             
             if chart_path and os.path.exists(chart_path):
@@ -3841,7 +3862,11 @@ class AlertManager:
                 except Exception as chart_err:
                     self.logger.error(f"[TXN:{transaction_id}][SIG:{signal_id}][CHART] Error sending chart: {str(chart_err)}")
                     self.logger.error(traceback.format_exc())
-            
+
+            # Component chart generation removed - already included in PDF report
+            # The PDF contains comprehensive component analysis visualization
+            self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] Component chart included in PDF report, not sending separately")
+
             # Send PDF attachment as a separate message if available
             if pdf_path:
                 self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}][PDF] Sending PDF attachment: {pdf_path}")
@@ -5139,6 +5164,99 @@ class AlertManager:
             self.logger.error(traceback.format_exc())
             self._alert_stats['errors'] = int(self._alert_stats.get('errors', 0)) + 1
 
+    async def _send_whale_trade_discord_alert(self, alert: Dict[str, Any], alert_id: str) -> None:
+        """Send whale trade execution alert to dedicated whale webhook if configured, otherwise main webhook.
+
+        Args:
+            alert: Alert data containing whale trade execution information
+            alert_id: Unique alert identifier for tracking
+        """
+        try:
+            # Determine which webhook to use (prefer dedicated whale webhook)
+            webhook_url = self.whale_webhook_url if self.whale_webhook_url else self.discord_webhook_url
+
+            if not webhook_url:
+                self.logger.warning(f"[ALERT:{alert_id}] Cannot send whale trade alert: no webhook URL configured")
+                return
+
+            webhook_type = "dedicated whale" if self.whale_webhook_url else "main"
+            self.logger.info(f"[ALERT:{alert_id}] Routing whale trade alert to {webhook_type} webhook")
+
+            details = alert.get('details', {})
+            whale_data = details.get('data', {})
+            message = alert.get('message', '')
+            level = alert.get('level', 'warning')
+
+            # Determine color based on priority
+            priority = details.get('priority', 'WHALE')
+            color_map = {
+                'MEGA_WHALE': 0xe74c3c,   # Red - Critical
+                'LARGE_WHALE': 0xf39c12,  # Orange - Warning
+                'WHALE': 0xf39c12         # Orange - Warning
+            }
+            color = color_map.get(priority, 0xf39c12)
+
+            # Create embed
+            embed = DiscordEmbed(
+                title=f"🐋 Whale Trade Execution Alert",
+                description=message,
+                color=color
+            )
+
+            # Add key metrics as fields
+            symbol = details.get('symbol', 'Unknown')
+            embed.add_embed_field(name="Symbol", value=symbol, inline=True)
+            embed.add_embed_field(name="Priority", value=priority, inline=True)
+            embed.add_embed_field(name="Largest Trade", value=f"${whale_data.get('largest_trade_usd', 0):,.0f} {whale_data.get('largest_trade_side', 'UNKNOWN').upper()}", inline=False)
+            embed.add_embed_field(name="Total Whale Trades", value=str(whale_data.get('total_whale_trades', 0)), inline=True)
+            embed.add_embed_field(name="Net Direction", value=whale_data.get('direction', 'UNKNOWN'), inline=True)
+            embed.add_embed_field(name="Net USD Value", value=f"${abs(whale_data.get('net_usd', 0)):,.0f}", inline=True)
+
+            # Add timestamp
+            embed.set_timestamp()
+
+            # Add footer with alert ID
+            embed.set_footer(text=f"Alert ID: {alert_id} | Threshold: ${whale_data.get('alert_threshold_usd', 750000):,.0f}")
+
+            # Send to appropriate webhook
+            webhook = DiscordWebhook(url=webhook_url)
+            webhook.add_embed(embed)
+
+            # Retry logic
+            max_retries = self.webhook_max_retries
+            retry_delay = self.webhook_initial_retry_delay
+
+            self.logger.debug(f"[ALERT:{alert_id}] Attempting to send whale trade alert to {webhook_type} webhook")
+
+            for attempt in range(max_retries):
+                try:
+                    response = webhook.execute()
+
+                    if response and hasattr(response, 'status_code') and 200 <= response.status_code < 300:
+                        self.logger.info(f"[ALERT:{alert_id}] ✅ Whale trade alert sent successfully to {webhook_type} webhook")
+                        self._alert_stats['sent'] = int(self._alert_stats.get('sent', 0)) + 1
+                        return
+                    else:
+                        status_code = response.status_code if response and hasattr(response, 'status_code') else "N/A"
+                        self.logger.warning(f"[ALERT:{alert_id}] Failed whale trade alert to {webhook_type} webhook (attempt {attempt+1}/{max_retries}): Status {status_code}")
+
+                except Exception as e:
+                    self.logger.warning(f"[ALERT:{alert_id}] Whale trade alert send attempt {attempt+1}/{max_retries} failed: {str(e)}")
+
+                # Wait before retry (except on last attempt)
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(retry_delay)
+                    retry_delay *= self.webhook_exponential_backoff_multiplier
+
+            self.logger.error(f"[ALERT:{alert_id}] ❌ Failed to send whale trade alert to {webhook_type} webhook after {max_retries} attempts")
+            self._alert_stats['errors'] = int(self._alert_stats.get('errors', 0)) + 1
+
+        except Exception as e:
+            self.logger.error(f"[ALERT:{alert_id}] Error in _send_whale_trade_discord_alert: {str(e)}")
+            self.logger.error(traceback.format_exc())
+            self._alert_stats['errors'] = int(self._alert_stats.get('errors', 0)) + 1
+
+
     async def _send_system_webhook_alert(self, message: str, details: Optional[Dict[str, Any]] = None) -> None:
         """Send alert to system webhook for monitoring."""
         if not self.system_webhook_url:
@@ -6025,11 +6143,35 @@ def add_trade_parameters_to_signal(self, signal_data):
         stop_distance = abs(price - stop_loss)
         position_size = risk_amount / stop_distance if stop_distance > 0 else 0
 
+        # Calculate multiple target levels for partial exits (TP1, TP2, TP3)
+        targets = []
+        if signal_type == 'LONG':
+            # Target 1: 1.5R (30% position)
+            tp1 = price * (1 + (stop_loss_pct * 1.5))
+            targets.append({'price': round(tp1, 8), 'size': 30, 'name': 'Target 1'})
+            # Target 2: 2.5R (30% position)
+            tp2 = price * (1 + (stop_loss_pct * 2.5))
+            targets.append({'price': round(tp2, 8), 'size': 30, 'name': 'Target 2'})
+            # Target 3: 3.5R (40% position - let winners run)
+            tp3 = price * (1 + (stop_loss_pct * 3.5))
+            targets.append({'price': round(tp3, 8), 'size': 40, 'name': 'Target 3'})
+        else:  # SHORT
+            # Target 1: 1.5R (30% position)
+            tp1 = price * (1 - (stop_loss_pct * 1.5))
+            targets.append({'price': round(tp1, 8), 'size': 30, 'name': 'Target 1'})
+            # Target 2: 2.5R (30% position)
+            tp2 = price * (1 - (stop_loss_pct * 2.5))
+            targets.append({'price': round(tp2, 8), 'size': 30, 'name': 'Target 2'})
+            # Target 3: 3.5R (40% position - let winners run)
+            tp3 = price * (1 - (stop_loss_pct * 3.5))
+            targets.append({'price': round(tp3, 8), 'size': 40, 'name': 'Target 3'})
+
         # Add trade parameters
         signal_data['trade_params'] = {
             'entry_price': price,
             'stop_loss': round(stop_loss, 8),
             'take_profit': round(take_profit, 8),
+            'targets': targets,  # Multiple target levels
             'position_size': round(position_size, 8),
             'risk_reward_ratio': 2.0,
             'risk_percentage': 2.0,
@@ -6039,6 +6181,7 @@ def add_trade_parameters_to_signal(self, signal_data):
         # Also add at root level for backward compatibility
         signal_data['stop_loss'] = round(stop_loss, 8)
         signal_data['take_profit'] = round(take_profit, 8)
+        signal_data['targets'] = targets  # Add targets at root level too
 
         self.logger.debug(f"Added trade parameters to {signal_type} signal for {signal_data.get('symbol')}")
 
@@ -6057,8 +6200,8 @@ async def patched_send_signal_alert(self, signal_data):
     """Patched send_signal_alert that adds trade parameters."""
     # Add trade parameters before sending
     signal_data = self.add_trade_parameters_to_signal(signal_data)
-    # Call original method
-    return await original_send_signal_alert(signal_data)
+    # Call original method with self
+    return await original_send_signal_alert(self, signal_data)
 
 # Apply the patch
 AlertManager.send_signal_alert = patched_send_signal_alert
