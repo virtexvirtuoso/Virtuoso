@@ -403,10 +403,8 @@ analysis:
       cci:
         period: 20
       divergence_impact: 0.2
-      macd:
-        fast_period: 12
-        signal_period: 9
-        slow_period: 26
+      adx:
+        period: 14
       min_points: 100
       momentum:
         volatility_threshold: 0.05
@@ -568,7 +566,7 @@ confluence:
         ao: 0.2
         atr: 0.15
         cci: 0.15
-        macd: 0.15
+        adx: 0.15
         rsi: 0.2
         williams_r: 0.15
       volume:
@@ -1088,7 +1086,7 @@ monitoring:
       # TRADE-based detection (NEW - individual large trade executions)
       trade_alerts_enabled: true  # Enable whale trade execution alerts
       trade_cooldown: 600  # 10 min cooldown between trade alerts per symbol
-      alert_threshold_usd: 300000  # Alert on trades >= $300k
+      alert_threshold_usd: 750000  # Alert on trades >= $750k (raised from $300k to reduce noise)
     smart_money_detection:
       enabled: true
       min_sophistication_score: 6.0
