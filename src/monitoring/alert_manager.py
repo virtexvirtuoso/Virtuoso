@@ -920,17 +920,23 @@ class AlertManager:
                     
                     # Add footer
                     embed.set_footer(text="Virtuoso Large Order Detection")
-                    
+
+                    # Use centralized routing (supports dev mode override)
+                    webhook_url, webhook_type = self._get_webhook_url("large_order")
+                    if not webhook_url:
+                        self.logger.warning("No webhook URL configured for large order alerts")
+                        return
+
                     # Create webhook and send
-                    webhook = DiscordWebhook(url=self.discord_webhook_url)
+                    webhook = DiscordWebhook(url=webhook_url)
                     webhook.add_embed(embed)
-                    
+
                     # Execute webhook
                     response = webhook.execute()
-                    
+
                     # Check response status
                     if response and hasattr(response, 'status_code') and 200 <= response.status_code < 300:
-                        self.logger.info(f"Sent large order alert for {symbol}: {side} ${usd_value:,.2f}")
+                        self.logger.info(f"Sent large order alert to {webhook_type} webhook for {symbol}: {side} ${usd_value:,.2f}")
                         self._alert_stats['sent'] = int(self._alert_stats.get('sent', 0)) + 1
                         return
                     else:
@@ -1146,18 +1152,24 @@ class AlertManager:
                         inline=True
                     )
                     
+                    # Use centralized routing (supports dev mode override)
+                    webhook_url, webhook_type = self._get_webhook_url("whale_activity")
+                    if not webhook_url:
+                        self.logger.warning("No webhook URL configured for enhanced whale activity alerts")
+                        return
+
                     # Create webhook and add embed
-                    webhook = DiscordWebhook(url=self.discord_webhook_url)
+                    webhook = DiscordWebhook(url=webhook_url)
                     webhook.add_embed(embed)
-                    
+
                     # Send webhook directly
                     response = webhook.execute()
-                    
+
                     # Check response status
                     webhook_sent = False
                     webhook_response = None
                     if response and hasattr(response, 'status_code') and 200 <= response.status_code < 300:
-                        self.logger.info(f"Sent enhanced whale activity Discord alert for {symbol} ({subtype}) - {signal_strength}")
+                        self.logger.info(f"Sent enhanced whale activity alert to {webhook_type} webhook for {symbol} ({subtype}) - {signal_strength}")
                         self._alert_stats['sent'] = int(self._alert_stats.get('sent', 0)) + 1
                         webhook_sent = True
                         webhook_response = f"Status: {response.status_code}"
@@ -3244,13 +3256,20 @@ class AlertManager:
         """
         # Create unique ID for tracking this alert
         alert_id = str(uuid.uuid4())[:8]
-        
+
         try:
-            if not self.discord_webhook_url:
-                self.logger.warning(f"[ALERT:{alert_id}] Cannot send Discord alert: webhook URL not set")
+            # Extract alert data first to determine type for routing
+            level = alert.get('level', 'INFO')
+            details = alert.get('details', {})
+            alert_type = details.get('type', 'general')
+
+            # Use centralized routing (supports dev mode override)
+            webhook_url, webhook_type = self._get_webhook_url(alert_type)
+            if not webhook_url:
+                self.logger.warning(f"[ALERT:{alert_id}] Cannot send Discord alert: no webhook URL configured")
                 return
-                
-            # Extract alert data
+
+            # Extract remaining alert data
             level = alert.get('level', 'INFO')
             message = alert.get('message', 'No message provided')
             details = alert.get('details', {})
@@ -3320,36 +3339,28 @@ class AlertManager:
             
             # Create webhook and add embed with enhanced error handling
             try:
-                webhook = DiscordWebhook(url=self.discord_webhook_url)
+                self.logger.debug(f"[ALERT:{alert_id}] Routing to {webhook_type} webhook")
+                webhook = DiscordWebhook(url=webhook_url)
                 webhook.add_embed(embed)
                 self.logger.debug(f"[ALERT:{alert_id}] Created Discord webhook with embed")
             except Exception as webhook_err:
                 self.logger.error(f"[ALERT:{alert_id}] Failed to create Discord webhook: {type(webhook_err).__name__}: {str(webhook_err)}")
                 self._alert_stats['errors'] = int(self._alert_stats.get('errors', 0)) + 1
                 return
-            
+
             # Retry logic with exponential backoff
             max_retries = self.webhook_max_retries
             retry_delay = self.webhook_initial_retry_delay
             response = None
-            
+
             # Enhanced debugging for webhook configuration
-            self.logger.debug(f"[ALERT:{alert_id}] Discord webhook URL configured: {bool(self.discord_webhook_url)}")
-            if self.discord_webhook_url:
-                self.logger.debug(f"[ALERT:{alert_id}] Webhook URL length: {len(self.discord_webhook_url)}")
-                self.logger.debug(f"[ALERT:{alert_id}] Webhook URL starts with: {self.discord_webhook_url[:50]}...")
-            
-            self.logger.debug(f"[ALERT:{alert_id}] Attempting to send Discord alert (max {max_retries} retries)")
-            
-            # Validate webhook before attempting to send
-            if not self.discord_webhook_url or not self.discord_webhook_url.strip():
-                self.logger.error(f"[ALERT:{alert_id}] Discord webhook URL is not configured or empty")
-                self._alert_stats['errors'] = int(self._alert_stats.get('errors', 0)) + 1
-                return
-            
-            # Validate webhook URL format
-            if not self._validate_discord_webhook_url(self.discord_webhook_url):
-                self.logger.error(f"[ALERT:{alert_id}] Discord webhook URL format validation failed")
+            self.logger.debug(f"[ALERT:{alert_id}] Webhook configured: {bool(webhook_url)} (type: {webhook_type})")
+
+            self.logger.debug(f"[ALERT:{alert_id}] Attempting to send Discord alert to {webhook_type} webhook (max {max_retries} retries)")
+
+            # Validate webhook URL format (use the routed URL)
+            if not self._validate_discord_webhook_url(webhook_url):
+                self.logger.error(f"[ALERT:{alert_id}] Discord webhook URL format validation failed for {webhook_type}")
                 self._alert_stats['errors'] = int(self._alert_stats.get('errors', 0)) + 1
                 return
             
@@ -4405,8 +4416,11 @@ class AlertManager:
             transaction_id: Transaction ID for tracking
         """
         try:
-            if not self.discord_webhook_url:
-                self.logger.warning("Discord webhook URL not configured for alpha alerts")
+            # Use centralized routing (supports dev mode override)
+            webhook_url, webhook_type = self._get_webhook_url("alpha")
+
+            if not webhook_url:
+                self.logger.warning("No webhook URL configured for alpha alerts")
                 return
 
             # Generate transaction ID if not provided
@@ -4511,9 +4525,10 @@ class AlertManager:
                     f"• Opportunity: Reduced Bitcoin dependency"
                 ])
 
-            # Send Discord alert using standard webhook mechanism instead of manual aiohttp
-            webhook = DiscordWebhook(url=self.discord_webhook_url)
-            
+            # Send Discord alert using centralized routing
+            self.logger.debug(f"Routing alpha alert to {webhook_type} webhook")
+            webhook = DiscordWebhook(url=webhook_url)
+
             # Create embed and add fields properly (discord_webhook doesn't support method chaining)
             embed = DiscordEmbed(
                 title=alert_title,
@@ -4599,9 +4614,11 @@ class AlertManager:
             current_price: Current price of the asset
         """
         try:
-            # Skip if no webhook URL configured
-            if not self.discord_webhook_url:
-                self.logger.warning("Discord webhook URL not configured for manipulation alerts")
+            # Use centralized routing (supports dev mode override)
+            webhook_url, webhook_type = self._get_webhook_url("manipulation")
+
+            if not webhook_url:
+                self.logger.warning("No webhook URL configured for manipulation alerts")
                 return
 
             # Determine alert color and emoji based on severity
@@ -4686,9 +4703,10 @@ class AlertManager:
             
             # Add footer with tracking info
             embed.set_footer(text=f"Virtuoso Manipulation Detection • {manipulation_type}")
-            
-            # Create webhook and send
-            webhook = DiscordWebhook(url=self.discord_webhook_url)
+
+            # Create webhook using centralized routing
+            self.logger.debug(f"Routing manipulation alert to {webhook_type} webhook")
+            webhook = DiscordWebhook(url=webhook_url)
             webhook.add_embed(embed)
             
             # Execute webhook with retry logic
@@ -5457,16 +5475,23 @@ class AlertManager:
             # Add footer with additional context
             embed.set_footer(text=f"Smart Money Detection • Pattern: {event_type.replace('_', ' ').title()} • Alert ID: {alert_id}")
 
+            # Use centralized routing (supports dev mode override + whale webhook for smart money)
+            webhook_url, webhook_type = self._get_webhook_url("smart_money")
+
+            if not webhook_url:
+                self.logger.warning(f"[{alert_id}] Cannot send smart money alert: no webhook URL configured")
+                return
+
             # Create webhook and send
-            webhook = DiscordWebhook(url=self.discord_webhook_url)
+            webhook = DiscordWebhook(url=webhook_url)
             webhook.add_embed(embed)
-            
+
             # Execute webhook
             response = webhook.execute()
-            
+
             # Check response status
             if response and hasattr(response, 'status_code') and 200 <= response.status_code < 300:
-                self.logger.info(f"[{alert_id}] Smart money Discord alert sent successfully for {symbol}: {event_type}")
+                self.logger.info(f"[{alert_id}] Smart money Discord alert sent to {webhook_type} webhook for {symbol}: {event_type}")
                 self._alert_stats['sent'] = int(self._alert_stats.get('sent', 0)) + 1
             else:
                 self.logger.warning(f"[{alert_id}] Failed to send smart money Discord alert: {response}")
@@ -5532,17 +5557,24 @@ class AlertManager:
                 embed.set_footer(text=embed_data['footer'].get('text', ''))
             else:
                 embed.set_footer(text="")
-            
+
+            # Use centralized routing (supports dev mode override + whale webhook)
+            webhook_url, webhook_type = self._get_webhook_url("whale_activity")
+
+            if not webhook_url:
+                self.logger.warning(f"[ALERT:{alert_id}] Cannot send whale activity alert: no webhook URL configured")
+                return
+
             # Send Discord webhook
-            webhook = DiscordWebhook(url=self.discord_webhook_url)
+            webhook = DiscordWebhook(url=webhook_url)
             webhook.add_embed(embed)
-            
+
             # Retry logic with exponential backoff
             max_retries = self.webhook_max_retries
             retry_delay = self.webhook_initial_retry_delay
             response = None
-            
-            self.logger.debug(f"[ALERT:{alert_id}] Attempting to send whale activity Discord alert")
+
+            self.logger.debug(f"[ALERT:{alert_id}] Routing whale activity alert to {webhook_type} webhook")
             
             for attempt in range(max_retries):
                 try:
@@ -5580,14 +5612,13 @@ class AlertManager:
             alert_id: Unique alert identifier for tracking
         """
         try:
-            # Determine which webhook to use (prefer dedicated whale webhook)
-            webhook_url = self.whale_webhook_url if self.whale_webhook_url else self.discord_webhook_url
+            # Use centralized routing (supports dev mode override)
+            webhook_url, webhook_type = self._get_webhook_url("whale_trade")
 
             if not webhook_url:
                 self.logger.warning(f"[ALERT:{alert_id}] Cannot send whale trade alert: no webhook URL configured")
                 return
 
-            webhook_type = "dedicated whale" if self.whale_webhook_url else "main"
             self.logger.info(f"[ALERT:{alert_id}] Routing whale trade alert to {webhook_type} webhook")
 
             details = alert.get('details', {})
@@ -5722,6 +5753,48 @@ class AlertManager:
             self.logger.error(traceback.format_exc())
             self._alert_stats['errors'] = int(self._alert_stats.get('errors', 0)) + 1
 
+    def _get_webhook_url(self, alert_type: str) -> tuple:
+        """Centralized webhook routing for Discord alerts.
+
+        This method provides a single source of truth for webhook URL selection,
+        ensuring consistent routing behavior across all alert types.
+
+        Routing Priority:
+            1. Dedicated webhook (if configured) → type-specific webhook
+            2. Main webhook (fallback) → DISCORD_WEBHOOK_URL
+
+        Args:
+            alert_type: Type of alert. Supported types:
+                - 'liquidation': Routes to liquidation webhook
+                - 'whale', 'whale_trade', 'whale_activity': Routes to whale webhook
+                - 'smart_money': Routes to whale webhook (related alerts)
+                - 'system': Routes to system webhook
+                - 'alpha': Routes to main webhook (alpha detection alerts)
+                - 'manipulation': Routes to main webhook (market manipulation alerts)
+                - 'large_order': Routes to main webhook (large order alerts)
+                - 'general': Routes to main webhook (generic alerts)
+                - Any other type: Routes to main webhook (fallback)
+
+        Returns:
+            tuple: (webhook_url, webhook_type_description)
+
+        Note:
+            Development webhook (DEVELOPMENT_WEBHOOK_URL) is available for manual testing
+            but does NOT auto-intercept alerts. Use it explicitly when testing new features.
+        """
+        # Dedicated webhooks by alert type
+        if alert_type == "liquidation" and self.liquidation_webhook_url:
+            return self.liquidation_webhook_url, "dedicated liquidation"
+        elif alert_type in ("whale", "whale_trade", "whale_activity") and self.whale_webhook_url:
+            return self.whale_webhook_url, "dedicated whale"
+        elif alert_type == "smart_money" and self.whale_webhook_url:
+            return self.whale_webhook_url, "dedicated whale (smart money)"
+        elif alert_type == "system" and self.system_webhook_url:
+            return self.system_webhook_url, "dedicated system"
+
+        # Priority 3: Main webhook fallback
+        return self.discord_webhook_url, "main"
+
     async def _send_discord_embed(self, embed: DiscordEmbed, alert_type: str = "liquidation") -> None:
         """Send a Discord embed to the appropriate webhook based on alert type.
 
@@ -5730,21 +5803,8 @@ class AlertManager:
             alert_type: Type of alert ('liquidation', 'whale', 'main') determines which webhook to use
         """
         try:
-            # Check if development mode is enabled (override all routing)
-            if self.use_development_mode and self.development_webhook_url:
-                webhook_url = self.development_webhook_url
-                webhook_type = "development (TEST MODE)"
-                self.logger.info(f"🧪 Development mode: routing {alert_type} alert to development webhook")
-            # Determine webhook URL based on alert type
-            elif alert_type == "liquidation" and self.liquidation_webhook_url:
-                webhook_url = self.liquidation_webhook_url
-                webhook_type = "dedicated liquidation"
-            elif alert_type == "whale" and self.whale_webhook_url:
-                webhook_url = self.whale_webhook_url
-                webhook_type = "dedicated whale"
-            else:
-                webhook_url = self.discord_webhook_url
-                webhook_type = "main"
+            # Use centralized routing
+            webhook_url, webhook_type = self._get_webhook_url(alert_type)
 
             if not webhook_url:
                 self.logger.warning(f"Cannot send {alert_type} embed: no webhook URL configured")
@@ -5772,24 +5832,27 @@ class AlertManager:
 
     async def _send_system_webhook_alert(self, message: str, details: Optional[Dict[str, Any]] = None) -> None:
         """Send alert to system webhook for monitoring."""
-        if not self.system_webhook_url:
-            self.logger.debug("System webhook URL not configured, skipping system alert")
+        # Use centralized routing (supports dev mode override)
+        webhook_url, webhook_type = self._get_webhook_url("system")
+
+        if not webhook_url:
+            self.logger.debug("No webhook URL configured for system alert, skipping")
             return
-            
+
         # Check if we're in an event loop
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
             self.logger.error("❌ ERROR: _send_system_webhook_alert called outside of async context")
             return
-            
+
         try:
             # Discord webhook expects "content" field, not "text"
             payload = {
                 "content": message[:2000],  # Discord has a 2000 character limit
                 "username": "Virtuoso System Alerts"
             }
-            
+
             # If we have details, add them as an embed
             if details:
                 embed = {
@@ -5798,7 +5861,7 @@ class AlertManager:
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                     "color": 16776960  # Yellow color for system alerts
                 }
-                
+
                 # Add details as fields (limit to first 25 due to Discord limits)
                 for key, value in list(details.items())[:25]:
                     if key not in ['timestamp', 'source']:  # Skip redundant fields
@@ -5807,14 +5870,14 @@ class AlertManager:
                             "value": str(value)[:1024],
                             "inline": True
                         })
-                
+
                 payload["embeds"] = [embed]
-            
-            self.logger.debug(f"Sending system webhook alert to Discord...")
-            
+
+            self.logger.debug(f"Routing system alert to {webhook_type} webhook...")
+
             async with aiohttp.ClientSession() as session:
                 async with session.post(
-                    self.system_webhook_url,
+                    webhook_url,
                     json=payload,
                     timeout=aiohttp.ClientTimeout(total=10)
                 ) as response:
