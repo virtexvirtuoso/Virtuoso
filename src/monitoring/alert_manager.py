@@ -354,6 +354,10 @@ class AlertManager:
         # Liquidation alerts webhook URL (dedicated channel for liquidation alerts)
         self.liquidation_webhook_url = ""
 
+        # Development webhook URL (for testing alerts before production)
+        self.development_webhook_url = ""
+        self.use_development_mode = False  # Toggle to route all alerts to development webhook
+
         # Additional configurations from config file
         if 'monitoring' in self.config and 'alerts' in self.config['monitoring']:
             alert_config = self.config['monitoring']['alerts']
@@ -450,6 +454,24 @@ class AlertManager:
                     self.logger.debug("Liquidation alerts webhook URL empty after cleaning")
             else:
                 self.logger.info("ℹ️  No dedicated liquidation webhook URL - liquidation alerts will use main webhook")
+
+            # Load development webhook URL from environment
+            development_webhook_url = os.getenv('DEVELOPMENT_WEBHOOK_URL', '')
+            if development_webhook_url:
+                self.development_webhook_url = development_webhook_url.strip().replace('\n', '')
+                if self.development_webhook_url:
+                    self.logger.info(f"✅ Development webhook URL loaded: {self.development_webhook_url[:30]}...{self.development_webhook_url[-15:]}")
+                    # Check if DEVELOPMENT_MODE environment variable is set
+                    dev_mode = os.getenv('DEVELOPMENT_MODE', 'false').lower()
+                    if dev_mode in ['true', '1', 'yes']:
+                        self.use_development_mode = True
+                        self.logger.warning("⚠️  DEVELOPMENT MODE ENABLED - All alerts will route to development webhook!")
+                    else:
+                        self.logger.info("ℹ️  Development webhook configured but not active (set DEVELOPMENT_MODE=true to enable)")
+                else:
+                    self.logger.debug("Development webhook URL empty after cleaning")
+            else:
+                self.logger.debug("ℹ️  No development webhook URL configured")
 
             # Direct discord webhook from config (alternative path) - only override if not already set
             if 'discord_network' in alert_config and alert_config['discord_network'] and not self.discord_webhook_url:
@@ -5708,8 +5730,13 @@ class AlertManager:
             alert_type: Type of alert ('liquidation', 'whale', 'main') determines which webhook to use
         """
         try:
+            # Check if development mode is enabled (override all routing)
+            if self.use_development_mode and self.development_webhook_url:
+                webhook_url = self.development_webhook_url
+                webhook_type = "development (TEST MODE)"
+                self.logger.info(f"🧪 Development mode: routing {alert_type} alert to development webhook")
             # Determine webhook URL based on alert type
-            if alert_type == "liquidation" and self.liquidation_webhook_url:
+            elif alert_type == "liquidation" and self.liquidation_webhook_url:
                 webhook_url = self.liquidation_webhook_url
                 webhook_type = "dedicated liquidation"
             elif alert_type == "whale" and self.whale_webhook_url:
