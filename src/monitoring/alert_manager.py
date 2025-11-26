@@ -235,7 +235,7 @@ class AlertManager:
         self._liquidation_buffer_global = []  # Global list of (timestamp, symbol, usd_value, side, price, size) for cross-symbol aggregation
         self._last_aggregate_alert = {}  # Symbol -> timestamp of last aggregate alert
         self._last_global_aggregate_alert = 0  # Timestamp of last global aggregate alert
-        self.aggregate_liquidation_threshold = 100000  # $100k aggregate threshold (lower than single liquidation)
+        self.aggregate_liquidation_threshold = 200000  # $200k aggregate threshold (lower than single liquidation)
         self.aggregate_liquidation_window = 300  # 5 minute window for aggregation
         self.aggregate_liquidation_cooldown = 600  # 10 minute cooldown between aggregate alerts
         self.global_aggregate_threshold = 500000  # $500k for cross-symbol aggregate alerts
