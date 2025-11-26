@@ -229,6 +229,17 @@ class AlertManager:
         self.liquidation_threshold = 250000  # Default $250k threshold for liquidation alerts (matches config.yaml)
         self.liquidation_cooldown = 300  # Default 5 minutes cooldown between liquidation alerts for the same symbol
         self.large_order_cooldown = 300  # Default 5 minutes cooldown between large order alerts for the same symbol
+
+        # Aggregate liquidation tracking - alerts when cumulative liquidations exceed threshold within time window
+        self._liquidation_buffer = {}  # Symbol -> list of (timestamp, usd_value, side, price, size) tuples
+        self._liquidation_buffer_global = []  # Global list of (timestamp, symbol, usd_value, side, price, size) for cross-symbol aggregation
+        self._last_aggregate_alert = {}  # Symbol -> timestamp of last aggregate alert
+        self._last_global_aggregate_alert = 0  # Timestamp of last global aggregate alert
+        self.aggregate_liquidation_threshold = 100000  # $100k aggregate threshold (lower than single liquidation)
+        self.aggregate_liquidation_window = 300  # 5 minute window for aggregation
+        self.aggregate_liquidation_cooldown = 600  # 10 minute cooldown between aggregate alerts
+        self.global_aggregate_threshold = 500000  # $500k for cross-symbol aggregate alerts
+        self.global_aggregate_cooldown = 900  # 15 minute cooldown for global alerts
         self.whale_activity_cooldown = 900  # Default 15 minutes cooldown between whale activity alerts for the same symbol
 
         # QUICK WIN ENHANCEMENT: OI, Liquidation, and LSR tracking for manipulation alerts
@@ -340,6 +351,9 @@ class AlertManager:
         # Whale alerts webhook URL (dedicated channel for whale trade alerts)
         self.whale_webhook_url = ""
 
+        # Liquidation alerts webhook URL (dedicated channel for liquidation alerts)
+        self.liquidation_webhook_url = ""
+
         # Additional configurations from config file
         if 'monitoring' in self.config and 'alerts' in self.config['monitoring']:
             alert_config = self.config['monitoring']['alerts']
@@ -425,6 +439,17 @@ class AlertManager:
                     self.logger.debug("Whale alerts webhook URL empty after cleaning")
             else:
                 self.logger.info("ℹ️  No dedicated whale webhook URL - whale alerts will use main webhook")
+
+            # Load liquidation alerts webhook URL from environment
+            liquidation_webhook_url = os.getenv('LIQUIDATION_ALERTS_WEBHOOK_URL', '')
+            if liquidation_webhook_url:
+                self.liquidation_webhook_url = liquidation_webhook_url.strip().replace('\n', '')
+                if self.liquidation_webhook_url:
+                    self.logger.info(f"✅ Liquidation alerts webhook URL loaded: {self.liquidation_webhook_url[:30]}...{self.liquidation_webhook_url[-15:]}")
+                else:
+                    self.logger.debug("Liquidation alerts webhook URL empty after cleaning")
+            else:
+                self.logger.info("ℹ️  No dedicated liquidation webhook URL - liquidation alerts will use main webhook")
 
             # Direct discord webhook from config (alternative path) - only override if not already set
             if 'discord_network' in alert_config and alert_config['discord_network'] and not self.discord_webhook_url:
@@ -1566,20 +1591,24 @@ class AlertManager:
                 
                 # Send as Discord embed instead of text alert
                 if 'discord' in self.handlers:
-                    webhook = DiscordWebhook(url=self.discord_webhook_url)
+                    # Use dedicated liquidation webhook if configured, otherwise fall back to main webhook
+                    webhook_url = self.liquidation_webhook_url if self.liquidation_webhook_url else self.discord_webhook_url
+                    webhook_type = "dedicated liquidation" if self.liquidation_webhook_url else "main"
+
+                    webhook = DiscordWebhook(url=webhook_url)
                     webhook.add_embed(embed)
-                    
+
                     # Execute webhook
                     response = webhook.execute()
-                    
+
                     if response and hasattr(response, 'status_code') and 200 <= response.status_code < 300:
-                        self.logger.info(f"Sent liquidation Discord embed for {symbol}: ${usd_value:,.2f}")
+                        self.logger.info(f"✅ Sent liquidation alert to {webhook_type} webhook for {symbol}: ${usd_value:,.2f}")
                         self._alert_stats['sent'] = int(self._alert_stats.get('sent', 0)) + 1
                         # Update last alert time for cooldown
                         self._last_liquidation_alert[symbol] = current_time
                         return
                     else:
-                        self.logger.warning(f"Failed to send liquidation Discord embed: {response}")
+                        self.logger.warning(f"Failed to send liquidation Discord embed to {webhook_type} webhook: {response}")
                 
                 # Fallback to standard alert if Discord embed fails
                 message = (
@@ -1618,8 +1647,365 @@ class AlertManager:
                 
                 # Update last alert time for cooldown
                 self._last_liquidation_alert[symbol] = current_time
+
+            # Always track liquidation for aggregate alerts (even if below single threshold)
+            await self._track_liquidation_for_aggregate(
+                symbol=symbol,
+                usd_value=usd_value,
+                side=liquidation_data['side'],
+                price=liquidation_data['price'],
+                size=liquidation_data['size'],
+                timestamp=current_time
+            )
+
         except Exception as e:
             self.logger.error(f"Error checking liquidation threshold: {str(e)}")
+            self.logger.debug(traceback.format_exc())
+
+    async def _track_liquidation_for_aggregate(
+        self,
+        symbol: str,
+        usd_value: float,
+        side: str,
+        price: float,
+        size: float,
+        timestamp: float
+    ) -> None:
+        """Track liquidation for aggregate alerts and check if threshold is exceeded.
+
+        This method tracks all liquidations (regardless of size) and triggers alerts when
+        the cumulative value within a time window exceeds the aggregate threshold.
+
+        Args:
+            symbol: Trading pair symbol
+            usd_value: USD value of the liquidation
+            side: 'Buy' (long liquidated) or 'Sell' (short liquidated)
+            price: Liquidation price
+            size: Position size
+            timestamp: Unix timestamp of the event
+        """
+        try:
+            current_time = time.time()
+
+            # Clean up old entries from symbol buffer
+            if symbol not in self._liquidation_buffer:
+                self._liquidation_buffer[symbol] = []
+
+            # Remove entries older than the aggregation window
+            cutoff_time = current_time - self.aggregate_liquidation_window
+
+            # Buffer entry format: (timestamp, usd_value, side, price, size)
+            self._liquidation_buffer[symbol] = [
+                entry for entry in self._liquidation_buffer[symbol]
+                if entry[0] > cutoff_time
+            ]
+
+            # Add new liquidation to symbol buffer with full details
+            self._liquidation_buffer[symbol].append((current_time, usd_value, side.upper(), price, size))
+
+            # Also track in global buffer for cross-symbol aggregation
+            # Global format: (timestamp, symbol, usd_value, side, price, size)
+            self._liquidation_buffer_global = [
+                entry for entry in self._liquidation_buffer_global
+                if entry[0] > cutoff_time
+            ]
+            self._liquidation_buffer_global.append((current_time, symbol, usd_value, side.upper(), price, size))
+
+            # Debug logging for buffer operations (helps verify aggregate tracking without waiting for threshold)
+            symbol_buffer_total = sum(entry[1] for entry in self._liquidation_buffer[symbol])
+            global_buffer_total = sum(entry[2] for entry in self._liquidation_buffer_global)
+            self.logger.debug(
+                f"Aggregate buffer update: {symbol} +${usd_value:,.0f} {side.upper()} @ {price:.4f} | "
+                f"Symbol buffer: {len(self._liquidation_buffer[symbol])} entries (${symbol_buffer_total:,.0f}) | "
+                f"Global buffer: {len(self._liquidation_buffer_global)} entries (${global_buffer_total:,.0f})"
+            )
+
+            # Check symbol-specific aggregate
+            await self._check_symbol_aggregate_alert(symbol, current_time)
+
+            # Check global aggregate (cross-symbol)
+            await self._check_global_aggregate_alert(current_time)
+
+        except Exception as e:
+            self.logger.error(f"Error tracking liquidation for aggregate: {str(e)}")
+
+    async def _check_symbol_aggregate_alert(self, symbol: str, current_time: float) -> None:
+        """Check if symbol-specific aggregate liquidation threshold is exceeded."""
+        try:
+            # Check cooldown
+            last_alert = self._last_aggregate_alert.get(symbol, 0)
+            if current_time - last_alert < self.aggregate_liquidation_cooldown:
+                return
+
+            # Calculate aggregate value for this symbol
+            # Buffer format: (timestamp, usd_value, side, price, size)
+            buffer = self._liquidation_buffer.get(symbol, [])
+            if len(buffer) < 3:  # Need at least 3 liquidations to be notable
+                return
+
+            total_value = sum(entry[1] for entry in buffer)
+            long_value = sum(entry[1] for entry in buffer if entry[2] == 'BUY')
+            short_value = sum(entry[1] for entry in buffer if entry[2] == 'SELL')
+
+            # Check threshold
+            if total_value >= self.aggregate_liquidation_threshold:
+                # Extract additional metrics for improved alert
+                # Find largest liquidation
+                largest = max(buffer, key=lambda x: x[1])
+                largest_value = largest[1]
+                largest_side = "LONG" if largest[2] == 'BUY' else "SHORT"
+                largest_price = largest[3]
+
+                # Calculate average liquidation price (weighted by value)
+                total_weighted_price = sum(entry[1] * entry[3] for entry in buffer)
+                avg_liq_price = total_weighted_price / total_value if total_value > 0 else 0
+
+                # Calculate time span and rate
+                first_timestamp = min(entry[0] for entry in buffer)
+                time_span_seconds = current_time - first_timestamp
+                rate_per_minute = (len(buffer) / time_span_seconds * 60) if time_span_seconds > 0 else 0
+
+                # Get current price from cache if available
+                current_price = self._price_cache.get(symbol, avg_liq_price)
+
+                await self._send_aggregate_liquidation_alert(
+                    symbol=symbol,
+                    total_value=total_value,
+                    long_value=long_value,
+                    short_value=short_value,
+                    count=len(buffer),
+                    window_minutes=self.aggregate_liquidation_window // 60,
+                    is_global=False,
+                    largest_value=largest_value,
+                    largest_side=largest_side,
+                    largest_price=largest_price,
+                    avg_liq_price=avg_liq_price,
+                    current_price=current_price,
+                    rate_per_minute=rate_per_minute
+                )
+                self._last_aggregate_alert[symbol] = current_time
+                # Clear buffer after alert
+                self._liquidation_buffer[symbol] = []
+
+        except Exception as e:
+            self.logger.error(f"Error checking symbol aggregate alert: {str(e)}")
+
+    async def _check_global_aggregate_alert(self, current_time: float) -> None:
+        """Check if global (cross-symbol) aggregate liquidation threshold is exceeded."""
+        try:
+            # Check cooldown
+            if current_time - self._last_global_aggregate_alert < self.global_aggregate_cooldown:
+                return
+
+            # Calculate global aggregate
+            # Global format: (timestamp, symbol, usd_value, side, price, size)
+            buffer = self._liquidation_buffer_global
+            if len(buffer) < 5:  # Need at least 5 liquidations across symbols
+                return
+
+            total_value = sum(entry[2] for entry in buffer)
+            long_value = sum(entry[2] for entry in buffer if entry[3] == 'BUY')
+            short_value = sum(entry[2] for entry in buffer if entry[3] == 'SELL')
+
+            # Get affected symbols
+            affected_symbols = list(set(entry[1] for entry in buffer))
+
+            # Check threshold
+            if total_value >= self.global_aggregate_threshold:
+                # Find largest liquidation across all symbols
+                largest = max(buffer, key=lambda x: x[2])
+                largest_value = largest[2]
+                largest_symbol = largest[1]
+                largest_side = "LONG" if largest[3] == 'BUY' else "SHORT"
+                largest_price = largest[4]
+
+                # Calculate time span and rate
+                first_timestamp = min(entry[0] for entry in buffer)
+                time_span_seconds = current_time - first_timestamp
+                rate_per_minute = (len(buffer) / time_span_seconds * 60) if time_span_seconds > 0 else 0
+
+                # Get symbol-wise breakdown for top symbols
+                symbol_values = {}
+                for entry in buffer:
+                    sym = entry[1]
+                    symbol_values[sym] = symbol_values.get(sym, 0) + entry[2]
+
+                await self._send_aggregate_liquidation_alert(
+                    symbol=", ".join(affected_symbols[:3]) + ("..." if len(affected_symbols) > 3 else ""),
+                    total_value=total_value,
+                    long_value=long_value,
+                    short_value=short_value,
+                    count=len(buffer),
+                    window_minutes=self.aggregate_liquidation_window // 60,
+                    is_global=True,
+                    affected_symbols=affected_symbols,
+                    largest_value=largest_value,
+                    largest_side=largest_side,
+                    largest_price=largest_price,
+                    largest_symbol=largest_symbol,
+                    rate_per_minute=rate_per_minute,
+                    symbol_breakdown=symbol_values
+                )
+                self._last_global_aggregate_alert = current_time
+                # Clear global buffer after alert
+                self._liquidation_buffer_global = []
+
+        except Exception as e:
+            self.logger.error(f"Error checking global aggregate alert: {str(e)}")
+
+    async def _send_aggregate_liquidation_alert(
+        self,
+        symbol: str,
+        total_value: float,
+        long_value: float,
+        short_value: float,
+        count: int,
+        window_minutes: int,
+        is_global: bool = False,
+        affected_symbols: list = None,
+        largest_value: float = 0,
+        largest_side: str = "",
+        largest_price: float = 0,
+        largest_symbol: str = None,
+        avg_liq_price: float = 0,
+        current_price: float = 0,
+        rate_per_minute: float = 0,
+        symbol_breakdown: dict = None
+    ) -> None:
+        """Send improved Discord alert for aggregate liquidations with actionable context."""
+        try:
+            # Determine dominant direction
+            if long_value > short_value * 1.5:
+                dominant = "LONG"
+                direction_emoji = "🔴"
+            elif short_value > long_value * 1.5:
+                dominant = "SHORT"
+                direction_emoji = "🟢"
+            else:
+                dominant = "MIXED"
+                direction_emoji = "⚡"
+
+            # Determine severity based on value
+            if total_value >= 1_000_000:
+                severity = "🚨 CRITICAL"
+                severity_color = 0xFF0000  # Red
+            elif total_value >= 500_000:
+                severity = "⚠️ HIGH"
+                severity_color = 0xFF6600  # Orange
+            elif total_value >= 250_000:
+                severity = "📊 MODERATE"
+                severity_color = 0xFFCC00  # Yellow
+            else:
+                severity = "ℹ️ NOTABLE"
+                severity_color = 0x3399FF  # Blue
+
+            # Build title
+            if is_global:
+                title = f"{direction_emoji} MARKET-WIDE LIQUIDATION CASCADE {severity}"
+            else:
+                title = f"{direction_emoji} {symbol} LIQUIDATION CASCADE {severity}"
+
+            # Calculate percentages
+            long_pct = (long_value / total_value * 100) if total_value > 0 else 0
+            short_pct = 100 - long_pct
+
+            # Build ASCII distribution bar (cleaner than emojis)
+            bar_length = 20
+            long_bars = int(bar_length * long_pct / 100)
+            short_bars = bar_length - long_bars
+            distribution_bar = f"`{'█' * long_bars}{'░' * short_bars}`"
+
+            # Calculate rate indicator (compare to "normal" ~0.5/min baseline)
+            rate_multiplier = rate_per_minute / 0.5 if rate_per_minute > 0 else 1
+            rate_indicator = f"{rate_per_minute:.1f}/min"
+            if rate_multiplier >= 3:
+                rate_indicator += " 🔥🔥🔥"
+            elif rate_multiplier >= 2:
+                rate_indicator += " 🔥🔥"
+            elif rate_multiplier >= 1.5:
+                rate_indicator += " 🔥"
+
+            # Build description with improved format
+            description_lines = [
+                f"**━━━ {window_minutes}-MINUTE SUMMARY ━━━**",
+                f"📊 **Total:** ${total_value:,.0f} ({count} events)",
+                f"⚡ **Rate:** {rate_indicator}",
+                "",
+                "**━━━ BREAKDOWN ━━━**",
+                f"🔴 Longs:  ${long_value:,.0f} ({long_pct:.0f}%) {distribution_bar}",
+                f"🟢 Shorts: ${short_value:,.0f} ({short_pct:.0f}%)",
+            ]
+
+            # Add price context for single-symbol alerts
+            if not is_global and current_price > 0 and avg_liq_price > 0:
+                price_diff_pct = ((current_price - avg_liq_price) / avg_liq_price) * 100
+                price_direction = "above" if price_diff_pct > 0 else "below"
+                description_lines.append("")
+                description_lines.append("**━━━ KEY LEVELS ━━━**")
+                description_lines.append(f"📈 Current: ${current_price:,.2f}")
+                description_lines.append(f"📉 Avg Liq: ${avg_liq_price:,.2f} ({abs(price_diff_pct):.1f}% {price_direction})")
+
+            # Add largest liquidation info
+            if largest_value > 0:
+                if is_global and largest_symbol:
+                    description_lines.append(f"🐋 Largest: ${largest_value:,.0f} {largest_side} {largest_symbol} @ ${largest_price:,.2f}")
+                elif largest_price > 0:
+                    description_lines.append(f"🐋 Largest: ${largest_value:,.0f} {largest_side} @ ${largest_price:,.2f}")
+
+            # Add symbol breakdown for global alerts
+            if is_global and symbol_breakdown:
+                description_lines.append("")
+                description_lines.append(f"**━━━ TOP SYMBOLS ({len(affected_symbols or [])}) ━━━**")
+                top_symbols = sorted(symbol_breakdown.items(), key=lambda x: x[1], reverse=True)[:5]
+                for sym, val in top_symbols:
+                    pct_of_total = (val / total_value * 100) if total_value > 0 else 0
+                    description_lines.append(f"• {sym}: ${val:,.0f} ({pct_of_total:.0f}%)")
+
+            # Add actionable trading context
+            description_lines.append("")
+            description_lines.append("**━━━ TRADING CONTEXT ━━━**")
+
+            if dominant == "LONG":
+                description_lines.append("• Heavy long liquidations = selling exhaustion")
+                description_lines.append("• Watch for: Volume drop → bounce setup")
+                if current_price > 0:
+                    support = current_price * 0.995  # 0.5% below
+                    description_lines.append(f"• Key support: ${support:,.0f}")
+            elif dominant == "SHORT":
+                description_lines.append("• Heavy short liquidations = buying exhaustion")
+                description_lines.append("• Watch for: Volume drop → pullback setup")
+                if current_price > 0:
+                    resistance = current_price * 1.005  # 0.5% above
+                    description_lines.append(f"• Key resistance: ${resistance:,.0f}")
+            else:
+                description_lines.append("• Mixed liquidations = high volatility")
+                description_lines.append("• Consider: Reduce position size, widen stops")
+                description_lines.append("• Wait for: Clear direction before entry")
+
+            # Create Discord embed
+            embed = DiscordEmbed(
+                title=title,
+                description="\n".join(description_lines),
+                color=severity_color
+            )
+            embed.set_timestamp()
+
+            # Add footer with threshold info
+            threshold_display = self.global_aggregate_threshold if is_global else self.aggregate_liquidation_threshold
+            embed.set_footer(text=f"Aggregate Alert • Window: {window_minutes}min • Threshold: ${threshold_display:,.0f}")
+
+            # Send to Discord (use liquidation alert type for routing)
+            await self._send_discord_embed(embed, alert_type="liquidation")
+
+            # Log the alert
+            self.logger.warning(
+                f"Aggregate liquidation alert: {'GLOBAL' if is_global else symbol} - "
+                f"${total_value:,.0f} total ({count} events @ {rate_per_minute:.1f}/min) - "
+                f"Longs: ${long_value:,.0f} / Shorts: ${short_value:,.0f}"
+            )
+
+        except Exception as e:
+            self.logger.error(f"Error sending aggregate liquidation alert: {str(e)}")
             self.logger.debug(traceback.format_exc())
 
     def setup_logging(self) -> None:
@@ -5184,39 +5570,97 @@ class AlertManager:
 
             details = alert.get('details', {})
             whale_data = details.get('data', {})
-            message = alert.get('message', '')
             level = alert.get('level', 'warning')
+            symbol = details.get('symbol', 'Unknown')
+            threshold = whale_data.get('alert_threshold_usd', 750000)
 
-            # Determine color based on priority
+            # Extract key data
+            direction = whale_data.get('direction', 'UNKNOWN').upper()
+            largest_trade_usd = whale_data.get('largest_trade_usd', 0)
+            largest_trade_side = whale_data.get('largest_trade_side', 'UNKNOWN').upper()
+            net_usd = abs(whale_data.get('net_usd', 0))
+            total_trades = whale_data.get('total_whale_trades', 0)
             priority = details.get('priority', 'WHALE')
-            color_map = {
-                'MEGA_WHALE': 0xe74c3c,   # Red - Critical
-                'LARGE_WHALE': 0xf39c12,  # Orange - Warning
-                'WHALE': 0xf39c12         # Orange - Warning
-            }
-            color = color_map.get(priority, 0xf39c12)
+
+            # Format value helper
+            def format_value(value: float) -> str:
+                if value >= 1_000_000:
+                    return f"${value/1_000_000:.2f}M"
+                elif value >= 1_000:
+                    return f"${value/1_000:.0f}K"
+                return f"${value:,.0f}"
+
+            # Color based on direction
+            if direction == 'BUY':
+                color = 0x00d26a  # Vibrant green
+                direction_emoji = "📈"
+                action_word = "ACCUMULATION"
+            elif direction == 'SELL':
+                color = 0xff4757  # Vibrant red
+                direction_emoji = "📉"
+                action_word = "DISTRIBUTION"
+            else:
+                color = 0xffa502  # Orange for mixed
+                direction_emoji = "📊"
+                action_word = "MIXED FLOW"
+
+            # Calculate magnitude tier and visual bar
+            mega_threshold = 1_500_000  # $1.5M for mega whale
+            large_threshold = 1_000_000  # $1M for large whale
+
+            if largest_trade_usd >= mega_threshold:
+                magnitude_tier = "🔱 MEGA WHALE"
+                tier_color = "legendary"
+            elif largest_trade_usd >= large_threshold:
+                magnitude_tier = "🐳 LARGE WHALE"
+                tier_color = "epic"
+            else:
+                magnitude_tier = "🐋 WHALE"
+                tier_color = "rare"
+
+            # Visual magnitude bar (relative to mega threshold)
+            bar_percentage = min(largest_trade_usd / mega_threshold, 1.0)
+            filled_blocks = int(bar_percentage * 10)
+            empty_blocks = 10 - filled_blocks
+            magnitude_bar = "█" * filled_blocks + "░" * empty_blocks
+
+            # Build premium title
+            base_symbol = symbol.replace('USDT', '').replace('USD', '')
+            title = f"{direction_emoji}  {base_symbol} {action_word}"
+
+            # Build structured description
+            description_lines = [
+                f"```",
+                f"{'─' * 32}",
+                f"  TRADE SIZE     {format_value(largest_trade_usd):>14}",
+                f"  {magnitude_bar}  {int(bar_percentage * 100)}%",
+                f"{'─' * 32}",
+                f"```",
+            ]
+            description = "\n".join(description_lines)
 
             # Create embed
             embed = DiscordEmbed(
-                title=f"🐋 Whale Trade Execution Alert",
-                description=message,
+                title=title,
+                description=description,
                 color=color
             )
 
-            # Add key metrics as fields
-            symbol = details.get('symbol', 'Unknown')
-            embed.add_embed_field(name="Symbol", value=symbol, inline=True)
-            embed.add_embed_field(name="Priority", value=priority, inline=True)
-            embed.add_embed_field(name="Largest Trade", value=f"${whale_data.get('largest_trade_usd', 0):,.0f} {whale_data.get('largest_trade_side', 'UNKNOWN').upper()}", inline=False)
-            embed.add_embed_field(name="Total Whale Trades", value=str(whale_data.get('total_whale_trades', 0)), inline=True)
-            embed.add_embed_field(name="Net Direction", value=whale_data.get('direction', 'UNKNOWN'), inline=True)
-            embed.add_embed_field(name="Net USD Value", value=f"${abs(whale_data.get('net_usd', 0)):,.0f}", inline=True)
+            # Add fields in a clean 2-column layout
+            embed.add_embed_field(name="Direction", value=f"`{largest_trade_side}`", inline=True)
+            embed.add_embed_field(name="Classification", value=magnitude_tier, inline=True)
+
+            # Net flow field (especially useful for multiple trades)
+            if total_trades > 1:
+                embed.add_embed_field(name="Net Flow", value=f"`{format_value(net_usd)}` ({total_trades} trades)", inline=True)
+            else:
+                embed.add_embed_field(name="Pair", value=f"`{symbol}`", inline=True)
 
             # Add timestamp
             embed.set_timestamp()
 
-            # Add footer with alert ID
-            embed.set_footer(text=f"Alert ID: {alert_id} | Threshold: ${whale_data.get('alert_threshold_usd', 750000):,.0f}")
+            # Footer with context
+            embed.set_footer(text=f"Threshold: {format_value(threshold)} │ ID: {alert_id[:8]}")
 
             # Send to appropriate webhook
             webhook = DiscordWebhook(url=webhook_url)
@@ -5256,6 +5700,48 @@ class AlertManager:
             self.logger.error(traceback.format_exc())
             self._alert_stats['errors'] = int(self._alert_stats.get('errors', 0)) + 1
 
+    async def _send_discord_embed(self, embed: DiscordEmbed, alert_type: str = "liquidation") -> None:
+        """Send a Discord embed to the appropriate webhook based on alert type.
+
+        Args:
+            embed: Discord embed object to send
+            alert_type: Type of alert ('liquidation', 'whale', 'main') determines which webhook to use
+        """
+        try:
+            # Determine webhook URL based on alert type
+            if alert_type == "liquidation" and self.liquidation_webhook_url:
+                webhook_url = self.liquidation_webhook_url
+                webhook_type = "dedicated liquidation"
+            elif alert_type == "whale" and self.whale_webhook_url:
+                webhook_url = self.whale_webhook_url
+                webhook_type = "dedicated whale"
+            else:
+                webhook_url = self.discord_webhook_url
+                webhook_type = "main"
+
+            if not webhook_url:
+                self.logger.warning(f"Cannot send {alert_type} embed: no webhook URL configured")
+                return
+
+            self.logger.debug(f"Sending {alert_type} embed to {webhook_type} webhook")
+
+            # Create and execute webhook
+            webhook = DiscordWebhook(url=webhook_url)
+            webhook.add_embed(embed)
+            response = webhook.execute()
+
+            if response and hasattr(response, 'status_code') and 200 <= response.status_code < 300:
+                self.logger.info(f"✅ {alert_type.capitalize()} embed sent to {webhook_type} webhook")
+                self._alert_stats['sent'] = int(self._alert_stats.get('sent', 0)) + 1
+            else:
+                status_code = response.status_code if response and hasattr(response, 'status_code') else "N/A"
+                self.logger.warning(f"Failed to send {alert_type} embed to {webhook_type} webhook: Status {status_code}")
+                self._alert_stats['errors'] = int(self._alert_stats.get('errors', 0)) + 1
+
+        except Exception as e:
+            self.logger.error(f"Error sending {alert_type} Discord embed: {str(e)}")
+            self.logger.debug(traceback.format_exc())
+            self._alert_stats['errors'] = int(self._alert_stats.get('errors', 0)) + 1
 
     async def _send_system_webhook_alert(self, message: str, details: Optional[Dict[str, Any]] = None) -> None:
         """Send alert to system webhook for monitoring."""
