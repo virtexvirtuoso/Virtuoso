@@ -1,0 +1,22 @@
+<svg width="160" height="40" viewBox="0 0 160 40" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
+    <!-- Background rounded rectangle with proper padding -->
+    <rect x="2" y="2" width="156" height="36" rx="6" ry="6"
+          fill="#0a0a0a" stroke="#fbbf24" stroke-width="2"/>
+
+    <!-- Logo group - exact paths from brand_style_guide.html with proper spacing -->
+    <g transform="translate(10, 8)">
+        <!-- Icon - exact path: M2 22L8 16L12 20L20 10 -->
+        <path d="M2 22L8 16L12 20L20 10"
+              stroke="#fbbf24" stroke-width="2.5" fill="none"
+              stroke-linecap="round" stroke-linejoin="round"/>
+        <!-- Arrow - exact path: M15 10H20V15 -->
+        <path d="M15 10H20V15"
+              stroke="#fbbf24" stroke-width="2.5" fill="none"
+              stroke-linecap="round" stroke-linejoin="round"/>
+        <!-- Wordmark with proper vertical alignment -->
+        <text x="30" y="20"
+              font-family="'IBM Plex Mono', monospace"
+              font-weight="700" font-size="18"
+              fill="#fbbf24">VIRTUOSO</text>
+    </g>
+</svg>
