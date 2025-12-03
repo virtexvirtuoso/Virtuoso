@@ -1,0 +1,3363 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Virtuoso Crypto - Brand Style Guide</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=Inter:wght@300;400;500;600;700&display=swap');
+
+        :root {
+            /* Brand Colors */
+            --neon-amber: #fbbf24;
+            --neon-cyan: #06B6D4;
+            --neon-red: #ff0066;
+
+            /* Dark Mode Colors */
+            --dark-bg-primary: #0a0a0a;
+            --dark-bg-secondary: #111111;
+            --dark-border: #222222;
+            --dark-text-primary: #e0e0e0;
+            --dark-text-secondary: #9ca3af;
+            --dark-text-tertiary: #6b7280;
+
+            /* Light Mode Colors */
+            --light-bg-primary: #ffffff;
+            --light-bg-secondary: #f9fafb;
+            --light-border: #e5e7eb;
+            --light-text-primary: #111827;
+            --light-text-secondary: #6b7280;
+
+            /* Semantic Colors */
+            --success: #10b981;
+            --error: #ef4444;
+            --warning: #f59e0b;
+            --info: #3b82f6;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--dark-bg-primary);
+            color: var(--dark-text-primary);
+            line-height: 1.6;
+        }
+
+        .font-mono {
+            font-family: 'IBM Plex Mono', monospace;
+        }
+
+        /* Brand Elements */
+        .neon-text {
+            color: var(--neon-amber);
+            text-shadow: 0 0 10px var(--neon-amber);
+        }
+
+        .neon-border {
+            border: 1px solid var(--neon-amber);
+            box-shadow: 0 0 10px rgba(251, 191, 36, 0.3);
+        }
+
+        .glow-on-hover {
+            transition: all 0.3s ease;
+        }
+
+        .glow-on-hover:hover {
+            box-shadow: 0 0 30px var(--neon-amber), inset 0 0 10px rgba(251, 191, 36, 0.2);
+        }
+
+        /* Style Guide Sections */
+        .section-card {
+            background: var(--dark-bg-secondary);
+            border: 1px solid var(--dark-border);
+            border-radius: 0.5rem;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            transition: all 0.3s ease;
+        }
+
+        .section-card:hover {
+            border-color: var(--neon-amber);
+            box-shadow: 0 0 20px rgba(251, 191, 36, 0.1);
+        }
+
+        .color-swatch {
+            width: 120px;
+            height: 120px;
+            border-radius: 0.5rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+            border: 2px solid transparent;
+        }
+
+        .color-swatch:hover {
+            transform: scale(1.05);
+            border-color: var(--neon-amber);
+            box-shadow: 0 0 20px rgba(251, 191, 36, 0.3);
+        }
+
+        .color-swatch::after {
+            content: 'Click to copy';
+            position: absolute;
+            bottom: -25px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 0.7rem;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            white-space: nowrap;
+            color: var(--dark-text-secondary);
+        }
+
+        .color-swatch:hover::after {
+            opacity: 1;
+        }
+
+        .copied-notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: var(--dark-bg-secondary);
+            border: 1px solid var(--neon-amber);
+            padding: 1rem 1.5rem;
+            border-radius: 0.5rem;
+            box-shadow: 0 0 20px rgba(251, 191, 36, 0.3);
+            z-index: 1000;
+            animation: slideIn 0.3s ease;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        .component-example {
+            background: var(--dark-bg-primary);
+            border: 1px solid var(--dark-border);
+            border-radius: 0.5rem;
+            padding: 2rem;
+            margin-top: 1rem;
+        }
+
+        .download-container {
+            background: var(--dark-bg-primary);
+            border: 1px solid var(--dark-border);
+            border-radius: 0.75rem;
+            padding: 2rem;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+        }
+
+        .download-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1rem;
+            justify-content: center;
+            align-items: center;
+            padding: 1rem;
+        }
+
+        .code-block {
+            background: #000;
+            border: 1px solid var(--dark-border);
+            border-radius: 0.5rem;
+            padding: 1rem;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.875rem;
+            overflow-x: auto;
+            margin-top: 1rem;
+        }
+
+        .gradient-demo {
+            height: 100px;
+            border-radius: 0.5rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .gradient-demo:hover {
+            transform: scale(1.02);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        }
+
+        .shadow-demo {
+            background: var(--dark-bg-secondary);
+            padding: 2rem;
+            border-radius: 0.5rem;
+            text-align: center;
+        }
+
+        .sticky-nav {
+            position: sticky;
+            top: 0;
+            background: var(--dark-bg-primary);
+            border-bottom: 1px solid var(--dark-border);
+            z-index: 100;
+            backdrop-filter: blur(10px);
+        }
+
+        .nav-link {
+            color: var(--dark-text-secondary);
+            text-decoration: none;
+            padding: 0.5rem 1rem;
+            border-radius: 0.25rem;
+            transition: all 0.3s ease;
+            font-size: 0.875rem;
+            font-weight: 600;
+        }
+
+        .nav-link:hover {
+            color: var(--neon-amber);
+            background: rgba(251, 191, 36, 0.1);
+        }
+
+        .pulse-dot {
+            animation: pulse-dot 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse-dot {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(0.95); }
+        }
+
+        .grid-overlay {
+            background-image:
+                linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+            background-size: 50px 50px;
+        }
+
+        /* Section Navigation */
+        .section-nav {
+            position: fixed;
+            right: 2rem;
+            top: 50%;
+            transform: translateY(-50%);
+            z-index: 40;
+            background: rgba(17, 17, 17, 0.95);
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--dark-border);
+            border-radius: 12px;
+            padding: 1rem 0.75rem;
+            max-height: 80vh;
+            overflow-y: auto;
+            transition: all 0.3s ease;
+        }
+
+        .section-nav:hover {
+            border-color: var(--neon-amber);
+            box-shadow: 0 0 20px rgba(251, 191, 36, 0.15);
+        }
+
+        @media (max-width: 1280px) {
+            .section-nav { display: none; }
+        }
+
+        .section-nav-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 0.75rem;
+            margin: 0.25rem 0;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.7rem;
+            color: #6b7280;
+            text-decoration: none;
+            border-radius: 6px;
+            transition: all 0.2s ease;
+            position: relative;
+        }
+
+        .section-nav-item:hover {
+            color: var(--neon-amber);
+            background: rgba(251, 191, 36, 0.05);
+            padding-left: 1rem;
+        }
+
+        .section-nav-item.active {
+            color: var(--neon-amber);
+            background: rgba(251, 191, 36, 0.1);
+            font-weight: 600;
+        }
+
+        .section-nav-item.active::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 3px;
+            height: 60%;
+            background: var(--neon-amber);
+            border-radius: 2px;
+        }
+
+        .section-nav-indicator {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            border: 2px solid currentColor;
+            flex-shrink: 0;
+        }
+
+        .section-nav-item.active .section-nav-indicator {
+            background: var(--neon-amber);
+            box-shadow: 0 0 8px var(--neon-amber);
+        }
+
+        .section-nav-label {
+            white-space: nowrap;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        /* Progress Bar */
+        .progress-bar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 3px;
+            background: rgba(255, 255, 255, 0.05);
+            z-index: 100;
+        }
+
+        .progress-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--neon-amber), #fcd34d);
+            box-shadow: 0 0 10px var(--neon-amber);
+            width: 0%;
+            transition: width 0.1s ease;
+        }
+
+        /* Back to Top Button */
+        .back-to-top {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            width: 48px;
+            height: 48px;
+            background: rgba(17, 17, 17, 0.95);
+            border: 1px solid var(--dark-border);
+            border-radius: 12px;
+            color: var(--neon-amber);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+            z-index: 40;
+        }
+
+        .back-to-top.visible {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .back-to-top:hover {
+            border-color: var(--neon-amber);
+            box-shadow: 0 0 20px rgba(251, 191, 36, 0.3);
+            transform: translateY(-2px);
+        }
+
+        /* Mobile TOC Button */
+        .mobile-toc-button {
+            position: fixed;
+            bottom: 5rem;
+            right: 1rem;
+            padding: 0.75rem 1rem;
+            background: rgba(17, 17, 17, 0.95);
+            border: 1px solid var(--dark-border);
+            border-radius: 8px;
+            color: var(--neon-amber);
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.7rem;
+            display: none;
+            align-items: center;
+            gap: 0.5rem;
+            cursor: pointer;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+            z-index: 40;
+        }
+
+        .mobile-toc-button.visible {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        @media (max-width: 1280px) {
+            .mobile-toc-button { display: flex; }
+        }
+
+        /* Mobile TOC Modal */
+        .mobile-toc-modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.9);
+            z-index: 100;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .mobile-toc-modal.active {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .mobile-toc-content {
+            background: #111;
+            border: 1px solid var(--dark-border);
+            border-radius: 16px;
+            padding: 2rem;
+            max-width: 320px;
+            width: 90%;
+        }
+
+        .mobile-toc-item {
+            display: block;
+            padding: 0.75rem 1rem;
+            color: #9ca3af;
+            text-decoration: none;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.85rem;
+            border-radius: 8px;
+            transition: all 0.2s ease;
+        }
+
+        .mobile-toc-item:hover {
+            color: var(--neon-amber);
+            background: rgba(251, 191, 36, 0.1);
+        }
+    </style>
+</head>
+<body>
+    <!-- Progress Bar -->
+    <div class="progress-bar">
+        <div class="progress-bar-fill" id="progressBarFill"></div>
+    </div>
+
+    <!-- Desktop Section Navigation -->
+    <nav class="section-nav" aria-label="Page sections">
+        <a href="#brand" class="section-nav-item" data-section="brand">
+            <span class="section-nav-indicator"></span>
+            <span class="section-nav-label">Brand</span>
+        </a>
+        <a href="#design-system" class="section-nav-item" data-section="design-system">
+            <span class="section-nav-indicator"></span>
+            <span class="section-nav-label">Design</span>
+        </a>
+        <a href="#data-visualization" class="section-nav-item" data-section="data-visualization">
+            <span class="section-nav-indicator"></span>
+            <span class="section-nav-label">Charts</span>
+        </a>
+        <a href="#assets" class="section-nav-item" data-section="assets">
+            <span class="section-nav-indicator"></span>
+            <span class="section-nav-label">Assets</span>
+        </a>
+    </nav>
+
+    <!-- Mobile TOC Button -->
+    <button class="mobile-toc-button" id="mobileTocButton" aria-label="Open table of contents">
+        <i class="fas fa-list"></i>
+        <span>SECTIONS</span>
+    </button>
+
+    <!-- Mobile TOC Modal -->
+    <div class="mobile-toc-modal" id="mobileTocModal">
+        <div class="mobile-toc-content">
+            <div class="flex justify-between items-center mb-4">
+                <span class="font-mono text-amber-400 text-sm">SECTIONS</span>
+                <button id="mobileTocClose" class="text-gray-500 hover:text-white">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <a href="#brand" class="mobile-toc-item">Brand Identity</a>
+            <a href="#design-system" class="mobile-toc-item">Design System</a>
+            <a href="#data-visualization" class="mobile-toc-item">Data Visualization</a>
+            <a href="#assets" class="mobile-toc-item">Assets & Downloads</a>
+        </div>
+    </div>
+
+    <!-- Back to Top Button -->
+    <button class="back-to-top" id="backToTop" aria-label="Back to top">
+        <i class="fas fa-arrow-up"></i>
+    </button>
+
+    <!-- Sticky Navigation -->
+    <nav class="sticky-nav">
+        <div class="max-w-7xl mx-auto px-6 py-4">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-2">
+                    <i data-lucide="trending-up" class="text-amber-400" style="width: 24px; height: 24px;"></i>
+                    <span class="font-mono text-xl font-bold neon-text">VIRTUOSO</span>
+                    <span class="text-xs font-mono text-gray-500">// BRAND STYLE GUIDE</span>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <a href="#brand" class="nav-link">Brand</a>
+                    <a href="#design-system" class="nav-link">Design System</a>
+                    <a href="#assets" class="nav-link">Assets</a>
+                    <a href="#developer" class="nav-link">Developer</a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="max-w-7xl mx-auto px-6 py-12">
+        <!-- Header -->
+        <header class="mb-16 text-center">
+            <h1 class="text-6xl font-bold font-mono mb-4">
+                VIRTUOSO CRYPTO
+            </h1>
+            <p class="text-xl text-gray-400 font-mono mb-2">BRAND STYLE GUIDE</p>
+            <p class="text-sm text-gray-500">
+                A comprehensive guide to the visual identity of Virtuoso Crypto Trading Platform
+            </p>
+            <div class="flex items-center justify-center space-x-4 mt-6 font-mono text-xs text-gray-500">
+                <span class="flex items-center space-x-2">
+                    <div class="w-2 h-2 rounded-full bg-amber-400 pulse-dot"></div>
+                    <span>VERSION 1.0</span>
+                </span>
+                <span>|</span>
+                <span>UPDATED: NOVEMBER 2025</span>
+            </div>
+        </header>
+
+        <!-- Quick Navigation Guide -->
+        <section class="mb-16">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <!-- Brand Foundation Card -->
+                <a href="#brand" class="block bg-[#111111] border border-[#222222] rounded-lg p-6 hover:border-amber-400 hover:shadow-[0_0_20px_rgba(251,191,36,0.2)] transition-all group">
+                    <div class="flex items-center space-x-3 mb-3">
+                        <i class="fas fa-palette text-amber-400 text-xl"></i>
+                        <h3 class="font-mono font-bold text-lg">BRAND</h3>
+                    </div>
+                    <p class="text-sm text-gray-400 mb-3">Logo, colors, typography, and brand voice guidelines</p>
+                    <div class="flex items-center text-xs font-mono text-amber-400 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <span>EXPLORE</span>
+                        <i class="fas fa-arrow-right ml-2"></i>
+                    </div>
+                </a>
+
+                <!-- Design System Card -->
+                <a href="#design-system" class="block bg-[#111111] border border-[#222222] rounded-lg p-6 hover:border-amber-400 hover:shadow-[0_0_20px_rgba(251,191,36,0.2)] transition-all group">
+                    <div class="flex items-center space-x-3 mb-3">
+                        <i class="fas fa-th-large text-amber-400 text-xl"></i>
+                        <h3 class="font-mono font-bold text-lg">DESIGN SYSTEM</h3>
+                    </div>
+                    <p class="text-sm text-gray-400 mb-3">Components, effects, spacing, and design patterns</p>
+                    <div class="flex items-center text-xs font-mono text-amber-400 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <span>EXPLORE</span>
+                        <i class="fas fa-arrow-right ml-2"></i>
+                    </div>
+                </a>
+
+                <!-- Assets & Downloads Card -->
+                <a href="#assets" class="block bg-[#111111] border border-[#222222] rounded-lg p-6 hover:border-amber-400 hover:shadow-[0_0_20px_rgba(251,191,36,0.2)] transition-all group">
+                    <div class="flex items-center space-x-3 mb-3">
+                        <i class="fas fa-download text-amber-400 text-xl"></i>
+                        <h3 class="font-mono font-bold text-lg">ASSETS</h3>
+                    </div>
+                    <p class="text-sm text-gray-400 mb-3">Favicons, social media images, and email signatures</p>
+                    <div class="flex items-center text-xs font-mono text-amber-400 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <span>EXPLORE</span>
+                        <i class="fas fa-arrow-right ml-2"></i>
+                    </div>
+                </a>
+
+                <!-- Developer Resources Card -->
+                <a href="#developer" class="block bg-[#111111] border border-[#222222] rounded-lg p-6 hover:border-amber-400 hover:shadow-[0_0_20px_rgba(251,191,36,0.2)] transition-all group">
+                    <div class="flex items-center space-x-3 mb-3">
+                        <i class="fas fa-code text-amber-400 text-xl"></i>
+                        <h3 class="font-mono font-bold text-lg">DEVELOPER</h3>
+                    </div>
+                    <p class="text-sm text-gray-400 mb-3">CSS variables, Tailwind config, and code snippets</p>
+                    <div class="flex items-center text-xs font-mono text-amber-400 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <span>EXPLORE</span>
+                        <i class="fas fa-arrow-right ml-2"></i>
+                    </div>
+                </a>
+            </div>
+        </section>
+
+        <!-- ============================================ -->
+        <!-- SECTION 1: BRAND FOUNDATION -->
+        <!-- ============================================ -->
+        <div id="brand" class="mb-12">
+            <div class="flex items-center space-x-4 mb-8 pb-4 border-b-2 border-amber-400">
+                <div class="w-2 h-2 rounded-full bg-amber-400 pulse-dot"></div>
+                <h2 class="text-4xl font-bold font-mono neon-text">BRAND FOUNDATION</h2>
+            </div>
+            <p class="text-gray-400 mb-12 text-lg">Core brand identity including logo, colors, and typography that define the Virtuoso visual language.</p>
+        </div>
+
+        <!-- Brand Overview -->
+        <section class="section-card">
+            <h2 class="text-3xl font-bold font-mono mb-4 neon-text">BRAND OVERVIEW</h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 text-sm">
+                <div>
+                    <h3 class="font-mono font-bold mb-2 text-amber-400">AESTHETIC</h3>
+                    <p class="text-gray-400">Dark cyberpunk terminal interface with neon accents and technical typography</p>
+                </div>
+                <div>
+                    <h3 class="font-mono font-bold mb-2 text-amber-400">PERSONALITY</h3>
+                    <p class="text-gray-400">Professional, data-driven, cutting-edge, trustworthy, high-performance</p>
+                </div>
+                <div>
+                    <h3 class="font-mono font-bold mb-2 text-amber-400">TARGET AUDIENCE</h3>
+                    <p class="text-gray-400">Serious crypto traders, algorithmic traders, fintech professionals</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Logo & Branding -->
+        <section class="section-card">
+            <h2 class="text-3xl font-bold font-mono mb-6 neon-text">LOGO & BRANDING</h2>
+
+            <!-- High Quality Logo Display with Download -->
+            <div class="component-example mb-8">
+                <h3 class="font-mono text-lg font-bold mb-6 text-amber-400">PRIMARY LOGO</h3>
+
+                <!-- Logo Display Area -->
+                <div class="flex flex-col items-center justify-center p-12 bg-[#0a0a0a] border border-[#222222] rounded-lg mb-6">
+                    <!-- SVG Logo (centered) -->
+                    <svg id="virtuoso-logo-svg" width="400" height="60" viewBox="0 0 400 60" xmlns="http://www.w3.org/2000/svg">
+                        <defs>
+                            <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+                                <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+                                <feMerge>
+                                    <feMergeNode in="coloredBlur"/>
+                                    <feMergeNode in="SourceGraphic"/>
+                                </feMerge>
+                            </filter>
+                        </defs>
+
+                        <!-- Centered logo group -->
+                        <g transform="translate(18, 8)">
+                            <!-- Icon -->
+                            <g filter="url(#glow)">
+                                <path d="M2 38L14 26L22 34L38 14" stroke="#fbbf24" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+                                <path d="M28 14H38V24" stroke="#fbbf24" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+                            </g>
+                            <!-- Wordmark -->
+                            <text x="48" y="38" font-family="IBM Plex Mono, monospace" font-weight="700" font-size="42" fill="#fbbf24" filter="url(#glow)">VIRTUOSO</text>
+                        </g>
+                    </svg>
+
+                    <!-- Logo with Tagline (centered) -->
+                    <div class="mt-8 text-center">
+                        <svg width="400" height="85" viewBox="0 0 400 85" xmlns="http://www.w3.org/2000/svg">
+                            <defs>
+                                <filter id="glow2" x="-50%" y="-50%" width="200%" height="200%">
+                                    <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+                                    <feMerge>
+                                        <feMergeNode in="coloredBlur"/>
+                                        <feMergeNode in="SourceGraphic"/>
+                                    </feMerge>
+                                </filter>
+                            </defs>
+
+                            <!-- Centered logo group -->
+                            <g transform="translate(18, 5)">
+                                <!-- Icon -->
+                                <g filter="url(#glow2)">
+                                    <path d="M2 38L14 26L22 34L38 14" stroke="#fbbf24" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+                                    <path d="M28 14H38V24" stroke="#fbbf24" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+                                </g>
+                                <!-- Wordmark -->
+                                <text x="48" y="38" font-family="IBM Plex Mono, monospace" font-weight="700" font-size="42" fill="#fbbf24" filter="url(#glow2)">VIRTUOSO</text>
+                                <!-- Tagline -->
+                                <text x="48" y="65" font-family="IBM Plex Mono, monospace" font-weight="400" font-size="14" fill="#6b7280">// AI-POWERED CRYPTO TRADING</text>
+                            </g>
+                        </svg>
+                    </div>
+                </div>
+
+                <!-- Download Buttons -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- Full Logo Downloads -->
+                    <div class="download-container">
+                        <h4 class="font-mono text-sm text-gray-500 mb-4">FULL LOGO</h4>
+                        <div class="download-grid">
+                            <button onclick="downloadLogo('svg')" class="px-5 py-3 bg-amber-400 text-black font-mono font-semibold text-sm rounded hover:bg-amber-500 transition flex items-center gap-2">
+                                <i class="fas fa-download"></i>
+                                SVG
+                            </button>
+                            <button onclick="downloadLogo('png')" class="px-5 py-3 neon-border font-mono font-semibold text-sm rounded hover:bg-amber-400/10 transition flex items-center gap-2 glow-on-hover">
+                                <i class="fas fa-download"></i>
+                                PNG (TRANSPARENT)
+                            </button>
+                            <button onclick="downloadLogo('png-dark')" class="px-5 py-3 bg-[#0a0a0a] border border-gray-600 font-mono font-semibold text-sm rounded hover:border-gray-400 transition flex items-center gap-2">
+                                <i class="fas fa-download"></i>
+                                PNG (DARK BG)
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Icon Only Downloads -->
+                    <div class="download-container">
+                        <h4 class="font-mono text-sm text-gray-500 mb-4">ICON ONLY</h4>
+                        <div class="download-grid">
+                            <button onclick="downloadIcon('svg')" class="px-5 py-3 bg-amber-400 text-black font-mono font-semibold text-sm rounded hover:bg-amber-500 transition flex items-center gap-2">
+                                <i class="fas fa-download"></i>
+                                SVG
+                            </button>
+                            <button onclick="downloadIcon('png')" class="px-5 py-3 neon-border font-mono font-semibold text-sm rounded hover:bg-amber-400/10 transition flex items-center gap-2 glow-on-hover">
+                                <i class="fas fa-download"></i>
+                                PNG (TRANSPARENT)
+                            </button>
+                            <button onclick="downloadIcon('png-dark')" class="px-5 py-3 bg-[#0a0a0a] border border-gray-600 font-mono font-semibold text-sm rounded hover:border-gray-400 transition flex items-center gap-2">
+                                <i class="fas fa-download"></i>
+                                PNG (DARK BG)
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Logo Variations -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                <!-- Light Background -->
+                <div class="component-example text-center">
+                    <h4 class="font-mono text-sm font-bold mb-4 text-amber-400">ON LIGHT BACKGROUND</h4>
+                    <div class="p-6 bg-white rounded-lg flex items-center justify-center" style="min-height: 72px;">
+                        <svg width="160" height="32" viewBox="0 0 160 32" xmlns="http://www.w3.org/2000/svg">
+                            <!-- Centered group -->
+                            <g transform="translate(0, 4)">
+                                <!-- Icon -->
+                                <g>
+                                    <path d="M2 22L8 16L12 20L20 10" stroke="#0a0a0a" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+                                    <path d="M15 10H20V15" stroke="#0a0a0a" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+                                </g>
+                                <!-- Wordmark -->
+                                <text x="28" y="20" font-family="IBM Plex Mono, monospace" font-weight="700" font-size="18" fill="#0a0a0a">VIRTUOSO</text>
+                            </g>
+                        </svg>
+                    </div>
+                    <div class="text-xs font-mono text-gray-500 mt-2">Use black logo on light backgrounds</div>
+                </div>
+
+                <!-- Dark Background -->
+                <div class="component-example text-center">
+                    <h4 class="font-mono text-sm font-bold mb-4 text-amber-400">ON DARK BACKGROUND</h4>
+                    <div class="p-6 bg-[#0a0a0a] rounded-lg border border-[#222222] flex items-center justify-center" style="min-height: 72px;">
+                        <svg width="160" height="32" viewBox="0 0 160 32" xmlns="http://www.w3.org/2000/svg">
+                            <defs>
+                                <filter id="glow3" x="-50%" y="-50%" width="200%" height="200%">
+                                    <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+                                    <feMerge>
+                                        <feMergeNode in="coloredBlur"/>
+                                        <feMergeNode in="SourceGraphic"/>
+                                    </feMerge>
+                                </filter>
+                            </defs>
+                            <!-- Centered group -->
+                            <g transform="translate(0, 4)">
+                                <!-- Icon -->
+                                <g filter="url(#glow3)">
+                                    <path d="M2 22L8 16L12 20L20 10" stroke="#fbbf24" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+                                    <path d="M15 10H20V15" stroke="#fbbf24" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+                                </g>
+                                <!-- Wordmark -->
+                                <text x="28" y="20" font-family="IBM Plex Mono, monospace" font-weight="700" font-size="18" fill="#fbbf24" filter="url(#glow3)">VIRTUOSO</text>
+                            </g>
+                        </svg>
+                    </div>
+                    <div class="text-xs font-mono text-gray-500 mt-2">Primary neon amber on dark (preferred)</div>
+                </div>
+
+                <!-- Icon Only -->
+                <div class="component-example text-center">
+                    <h4 class="font-mono text-sm font-bold mb-4 text-amber-400">ICON ONLY</h4>
+                    <div class="p-6 bg-[#0a0a0a] rounded-lg border border-[#222222] flex items-center justify-center" style="min-height: 72px;">
+                        <svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
+                            <defs>
+                                <filter id="glow4" x="-50%" y="-50%" width="200%" height="200%">
+                                    <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+                                    <feMerge>
+                                        <feMergeNode in="coloredBlur"/>
+                                        <feMergeNode in="SourceGraphic"/>
+                                    </feMerge>
+                                </filter>
+                            </defs>
+                            <!-- Centered icon -->
+                            <g transform="translate(0, 0)" filter="url(#glow4)">
+                                <path d="M2 38L14 26L22 34L38 14" stroke="#fbbf24" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+                                <path d="M28 14H38V24" stroke="#fbbf24" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+                            </g>
+                        </svg>
+                    </div>
+                    <div class="text-xs font-mono text-gray-500 mt-2">Use for favicons and small spaces</div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <!-- Logo Usage -->
+                <div class="component-example">
+                    <h3 class="font-mono text-lg font-bold mb-4 text-amber-400">LOGO COMPOSITION</h3>
+                    <div class="flex items-center space-x-2 mb-6">
+                        <i data-lucide="trending-up" class="text-amber-400" style="width: 32px; height: 32px;"></i>
+                        <span class="font-mono text-2xl font-bold neon-text">VIRTUOSO</span>
+                    </div>
+                    <div class="code-block">
+                        <div class="text-green-400">&lt;i data-lucide="trending-up" class="text-amber-400"&gt;&lt;/i&gt;</div>
+                        <div class="text-green-400">font-mono font-bold neon-text</div>
+                    </div>
+                    <div class="mt-4 text-sm text-gray-400">
+                        <p>Logo combines Lucide trending-up icon with monospace wordmark</p>
+                        <p class="mt-2">Minimum size: 120px width</p>
+                        <p>Clear space: 16px all sides</p>
+                    </div>
+                </div>
+
+                <!-- Tagline Usage -->
+                <div class="component-example">
+                    <h3 class="font-mono text-lg font-bold mb-4 text-amber-400">TAGLINE</h3>
+                    <div class="mb-4">
+                        <div class="flex items-center space-x-4 mb-2">
+                            <i data-lucide="trending-up" class="text-amber-400" style="width: 24px; height: 24px;"></i>
+                            <span class="font-mono text-xl font-bold neon-text">VIRTUOSO</span>
+                        </div>
+                        <div class="text-xs font-mono text-gray-500 ml-10">// AI TRADING</div>
+                    </div>
+                    <div class="code-block">
+                        <div class="text-green-400">text-xs font-mono text-gray-500</div>
+                    </div>
+                    <div class="mt-4 text-sm text-gray-400">
+                        <p>Official tagline: "AI-powered crypto trading signals"</p>
+                        <p class="mt-2">Short form: "// AI TRADING"</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Brand Voice -->
+            <div class="component-example mt-8">
+                <h3 class="font-mono text-lg font-bold mb-4 text-amber-400">BRAND VOICE GUIDELINES</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm">
+                    <div>
+                        <h4 class="font-mono font-bold text-green-400 mb-2">DO USE:</h4>
+                        <ul class="space-y-2 text-gray-400">
+                            <li>• All-caps for emphasis (VIRTUOSO, SIGNALS)</li>
+                            <li>• Technical terminology (API, WebSocket, CVD)</li>
+                            <li>• Data-driven language (72% win rate, 6ms latency)</li>
+                            <li>• Monospace formatting for code/data</li>
+                            <li>• Arrow symbols for CTAs (START →)</li>
+                        </ul>
+                    </div>
+                    <div>
+                        <h4 class="font-mono font-bold text-red-400 mb-2">DON'T USE:</h4>
+                        <ul class="space-y-2 text-gray-400">
+                            <li>• Casual language or slang</li>
+                            <li>• Emojis (except in social media)</li>
+                            <li>• Rounded, soft typography</li>
+                            <li>• Bright, saturated backgrounds</li>
+                            <li>• Generic stock imagery</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Color Palette -->
+        <section class="section-card">
+            <h2 class="text-3xl font-bold font-mono mb-6 neon-text">COLOR PALETTE</h2>
+
+            <!-- Primary Colors -->
+            <div class="mb-10">
+                <h3 class="font-mono text-xl font-bold mb-4 text-amber-400">PRIMARY COLORS</h3>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-6">
+                    <div>
+                        <div class="color-swatch" style="background: #fbbf24;" onclick="copyColor('#fbbf24', 'Neon Amber')"></div>
+                        <div class="mt-3 font-mono text-sm">
+                            <div class="font-bold">Neon Amber</div>
+                            <div class="text-gray-500">#fbbf24</div>
+                            <div class="text-gray-600 text-xs">Primary accent, CTAs</div>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="color-swatch" style="background: #06B6D4;" onclick="copyColor('#06B6D4', 'Quantum Cyan')"></div>
+                        <div class="mt-3 font-mono text-sm">
+                            <div class="font-bold">Quantum Cyan</div>
+                            <div class="text-gray-500">#06B6D4</div>
+                            <div class="text-gray-600 text-xs">Secondary accent</div>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="color-swatch" style="background: #ff0066;" onclick="copyColor('#ff0066', 'Neon Red')"></div>
+                        <div class="mt-3 font-mono text-sm">
+                            <div class="font-bold">Neon Red</div>
+                            <div class="text-gray-500">#ff0066</div>
+                            <div class="text-gray-600 text-xs">Alerts, errors</div>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="color-swatch" style="background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);" onclick="copyColor('linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%)', 'Amber Gradient')"></div>
+                        <div class="mt-3 font-mono text-sm">
+                            <div class="font-bold">Amber Gradient</div>
+                            <div class="text-gray-500">135deg</div>
+                            <div class="text-gray-600 text-xs">Badges, highlights</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Dark Mode Colors -->
+            <div class="mb-10">
+                <h3 class="font-mono text-xl font-bold mb-4 text-amber-400">DARK MODE (DEFAULT)</h3>
+                <div class="grid grid-cols-2 md:grid-cols-5 gap-6">
+                    <div>
+                        <div class="color-swatch" style="background: #0a0a0a; border: 1px solid #333;" onclick="copyColor('#0a0a0a', 'Dark BG Primary')"></div>
+                        <div class="mt-3 font-mono text-sm">
+                            <div class="font-bold">BG Primary</div>
+                            <div class="text-gray-500">#0a0a0a</div>
+                            <div class="text-gray-600 text-xs">Main background</div>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="color-swatch" style="background: #111111; border: 1px solid #333;" onclick="copyColor('#111111', 'Dark BG Secondary')"></div>
+                        <div class="mt-3 font-mono text-sm">
+                            <div class="font-bold">BG Secondary</div>
+                            <div class="text-gray-500">#111111</div>
+                            <div class="text-gray-600 text-xs">Cards, sections</div>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="color-swatch" style="background: #222222; border: 1px solid #444;" onclick="copyColor('#222222', 'Dark Border')"></div>
+                        <div class="mt-3 font-mono text-sm">
+                            <div class="font-bold">Border</div>
+                            <div class="text-gray-500">#222222</div>
+                            <div class="text-gray-600 text-xs">Dividers, borders</div>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="color-swatch" style="background: #e0e0e0;" onclick="copyColor('#e0e0e0', 'Dark Text Primary')"></div>
+                        <div class="mt-3 font-mono text-sm">
+                            <div class="font-bold">Text Primary</div>
+                            <div class="text-gray-500">#e0e0e0</div>
+                            <div class="text-gray-600 text-xs">Headings, body</div>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="color-swatch" style="background: #9ca3af;" onclick="copyColor('#9ca3af', 'Dark Text Secondary')"></div>
+                        <div class="mt-3 font-mono text-sm">
+                            <div class="font-bold">Text Secondary</div>
+                            <div class="text-gray-500">#9ca3af</div>
+                            <div class="text-gray-600 text-xs">Subtle text</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Light Mode Colors -->
+            <div class="mb-10">
+                <h3 class="font-mono text-xl font-bold mb-4 text-amber-400">LIGHT MODE</h3>
+                <div class="grid grid-cols-2 md:grid-cols-5 gap-6">
+                    <div>
+                        <div class="color-swatch" style="background: #ffffff; border: 1px solid #333;" onclick="copyColor('#ffffff', 'Light BG Primary')"></div>
+                        <div class="mt-3 font-mono text-sm">
+                            <div class="font-bold">BG Primary</div>
+                            <div class="text-gray-500">#ffffff</div>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="color-swatch" style="background: #f9fafb; border: 1px solid #333;" onclick="copyColor('#f9fafb', 'Light BG Secondary')"></div>
+                        <div class="mt-3 font-mono text-sm">
+                            <div class="font-bold">BG Secondary</div>
+                            <div class="text-gray-500">#f9fafb</div>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="color-swatch" style="background: #e5e7eb; border: 1px solid #333;" onclick="copyColor('#e5e7eb', 'Light Border')"></div>
+                        <div class="mt-3 font-mono text-sm">
+                            <div class="font-bold">Border</div>
+                            <div class="text-gray-500">#e5e7eb</div>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="color-swatch" style="background: #111827;" onclick="copyColor('#111827', 'Light Text Primary')"></div>
+                        <div class="mt-3 font-mono text-sm">
+                            <div class="font-bold">Text Primary</div>
+                            <div class="text-gray-500">#111827</div>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="color-swatch" style="background: #6b7280;" onclick="copyColor('#6b7280', 'Light Text Secondary')"></div>
+                        <div class="mt-3 font-mono text-sm">
+                            <div class="font-bold">Text Secondary</div>
+                            <div class="text-gray-500">#6b7280</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Semantic Colors -->
+            <div>
+                <h3 class="font-mono text-xl font-bold mb-4 text-amber-400">SEMANTIC COLORS</h3>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-6">
+                    <div>
+                        <div class="color-swatch" style="background: #10b981;" onclick="copyColor('#10b981', 'Success Green')"></div>
+                        <div class="mt-3 font-mono text-sm">
+                            <div class="font-bold">Success</div>
+                            <div class="text-gray-500">#10b981</div>
+                            <div class="text-gray-600 text-xs">Positive trades</div>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="color-swatch" style="background: #ef4444;" onclick="copyColor('#ef4444', 'Error Red')"></div>
+                        <div class="mt-3 font-mono text-sm">
+                            <div class="font-bold">Error</div>
+                            <div class="text-gray-500">#ef4444</div>
+                            <div class="text-gray-600 text-xs">Negative trades</div>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="color-swatch" style="background: #f59e0b;" onclick="copyColor('#f59e0b', 'Warning Orange')"></div>
+                        <div class="mt-3 font-mono text-sm">
+                            <div class="font-bold">Warning</div>
+                            <div class="text-gray-500">#f59e0b</div>
+                            <div class="text-gray-600 text-xs">Cautions, alerts</div>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="color-swatch" style="background: #3b82f6;" onclick="copyColor('#3b82f6', 'Info Blue')"></div>
+                        <div class="mt-3 font-mono text-sm">
+                            <div class="font-bold">Info</div>
+                            <div class="text-gray-500">#3b82f6</div>
+                            <div class="text-gray-600 text-xs">Information</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Typography -->
+        <section class="section-card">
+            <h2 class="text-3xl font-bold font-mono mb-6 neon-text">TYPOGRAPHY</h2>
+
+            <!-- Font Families -->
+            <div class="mb-10">
+                <h3 class="font-mono text-xl font-bold mb-4 text-amber-400">FONT FAMILIES</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="component-example">
+                        <div style="font-family: 'Inter', sans-serif;">
+                            <div class="text-4xl font-bold mb-2">Inter</div>
+                            <div class="text-gray-400 mb-4">Primary sans-serif font for UI and body text</div>
+                            <div class="text-sm mb-1">The quick brown fox jumps over the lazy dog</div>
+                            <div class="text-sm text-gray-500">ABCDEFGHIJKLMNOPQRSTUVWXYZ 0123456789</div>
+                        </div>
+                        <div class="code-block mt-4">
+                            <div class="text-green-400">font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;</div>
+                        </div>
+                    </div>
+                    <div class="component-example">
+                        <div class="font-mono">
+                            <div class="text-4xl font-bold mb-2">IBM Plex Mono</div>
+                            <div class="text-gray-400 mb-4">Monospace font for data, code, and technical elements</div>
+                            <div class="text-sm mb-1">The quick brown fox jumps over the lazy dog</div>
+                            <div class="text-sm text-gray-500">ABCDEFGHIJKLMNOPQRSTUVWXYZ 0123456789</div>
+                        </div>
+                        <div class="code-block mt-4">
+                            <div class="text-green-400">font-family: 'IBM Plex Mono', monospace;</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Typography Scale -->
+            <div class="mb-10">
+                <h3 class="font-mono text-xl font-bold mb-4 text-amber-400">TYPOGRAPHY SCALE</h3>
+                <div class="component-example">
+                    <div class="space-y-4">
+                        <div>
+                            <div class="text-6xl font-bold mb-2">Display XL - 72px / 4.5rem</div>
+                            <code class="text-sm text-gray-500">text-6xl font-bold</code>
+                        </div>
+                        <div>
+                            <div class="text-5xl font-bold mb-2">Display L - 60px / 3.75rem</div>
+                            <code class="text-sm text-gray-500">text-5xl font-bold</code>
+                        </div>
+                        <div>
+                            <div class="text-4xl font-bold mb-2">Heading 1 - 48px / 3rem</div>
+                            <code class="text-sm text-gray-500">text-4xl font-bold</code>
+                        </div>
+                        <div>
+                            <div class="text-3xl font-bold mb-2">Heading 2 - 36px / 2.25rem</div>
+                            <code class="text-sm text-gray-500">text-3xl font-bold</code>
+                        </div>
+                        <div>
+                            <div class="text-2xl font-bold mb-2">Heading 3 - 24px / 1.5rem</div>
+                            <code class="text-sm text-gray-500">text-2xl font-bold</code>
+                        </div>
+                        <div>
+                            <div class="text-xl font-semibold mb-2">Heading 4 - 20px / 1.25rem</div>
+                            <code class="text-sm text-gray-500">text-xl font-semibold</code>
+                        </div>
+                        <div>
+                            <div class="text-lg mb-2">Body Large - 18px / 1.125rem</div>
+                            <code class="text-sm text-gray-500">text-lg</code>
+                        </div>
+                        <div>
+                            <div class="text-base mb-2">Body - 16px / 1rem</div>
+                            <code class="text-sm text-gray-500">text-base</code>
+                        </div>
+                        <div>
+                            <div class="text-sm mb-2">Body Small - 14px / 0.875rem</div>
+                            <code class="text-sm text-gray-500">text-sm</code>
+                        </div>
+                        <div>
+                            <div class="text-xs mb-2">Caption - 12px / 0.75rem</div>
+                            <code class="text-sm text-gray-500">text-xs</code>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Font Weights -->
+            <div>
+                <h3 class="font-mono text-xl font-bold mb-4 text-amber-400">FONT WEIGHTS</h3>
+                <div class="component-example">
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                            <div class="text-2xl font-light mb-2" style="font-weight: 300;">Light - 300</div>
+                            <code class="text-sm text-gray-500">font-light (300)</code>
+                        </div>
+                        <div>
+                            <div class="text-2xl font-normal mb-2" style="font-weight: 400;">Regular - 400</div>
+                            <code class="text-sm text-gray-500">font-normal (400)</code>
+                        </div>
+                        <div>
+                            <div class="text-2xl font-medium mb-2" style="font-weight: 500;">Medium - 500</div>
+                            <code class="text-sm text-gray-500">font-medium (500)</code>
+                        </div>
+                        <div>
+                            <div class="text-2xl font-semibold mb-2" style="font-weight: 600;">Semibold - 600</div>
+                            <code class="text-sm text-gray-500">font-semibold (600)</code>
+                        </div>
+                        <div>
+                            <div class="text-2xl font-bold mb-2" style="font-weight: 700;">Bold - 700</div>
+                            <code class="text-sm text-gray-500">font-bold (700)</code>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============================================ -->
+        <!-- SECTION 2: DESIGN SYSTEM -->
+        <!-- ============================================ -->
+        <div id="design-system" class="mb-12 mt-20">
+            <div class="flex items-center space-x-4 mb-8 pb-4 border-b-2 border-amber-400">
+                <div class="w-2 h-2 rounded-full bg-amber-400 pulse-dot"></div>
+                <h2 class="text-4xl font-bold font-mono neon-text">DESIGN SYSTEM</h2>
+            </div>
+            <p class="text-gray-400 mb-12 text-lg">Reusable components, visual effects, and design patterns for building consistent interfaces.</p>
+        </div>
+
+        <!-- Components -->
+        <section class="section-card">
+            <h2 class="text-3xl font-bold font-mono mb-6 neon-text">COMPONENTS</h2>
+
+            <!-- Buttons -->
+            <div class="mb-10">
+                <h3 class="font-mono text-xl font-bold mb-4 text-amber-400">BUTTONS</h3>
+                <div class="component-example">
+                    <div class="space-y-4">
+                        <!-- Primary Button -->
+                        <div>
+                            <button class="px-8 py-4 bg-amber-400 text-black font-mono font-semibold rounded hover:bg-amber-500 transition">
+                                PRIMARY BUTTON
+                            </button>
+                            <div class="code-block">
+                                <div class="text-green-400">bg-amber-400 text-black font-mono font-semibold hover:bg-amber-500</div>
+                            </div>
+                        </div>
+
+                        <!-- Neon Border Button -->
+                        <div>
+                            <button class="neon-border px-8 py-4 rounded font-mono hover:bg-[#fbbf24]/10 transition glow-on-hover">
+                                NEON BORDER BUTTON →
+                            </button>
+                            <div class="code-block">
+                                <div class="text-green-400">neon-border font-mono hover:bg-[#fbbf24]/10 glow-on-hover</div>
+                            </div>
+                        </div>
+
+                        <!-- Ghost Button -->
+                        <div>
+                            <button class="px-8 py-4 border border-gray-700 rounded font-mono hover:border-gray-500 transition">
+                                GHOST BUTTON
+                            </button>
+                            <div class="code-block">
+                                <div class="text-green-400">border border-gray-700 font-mono hover:border-gray-500</div>
+                            </div>
+                        </div>
+
+                        <!-- Small Button -->
+                        <div>
+                            <button class="px-4 py-2 bg-amber-400 text-black font-mono font-semibold text-sm rounded hover:bg-amber-500 transition">
+                                SMALL BUTTON
+                            </button>
+                            <div class="code-block">
+                                <div class="text-green-400">px-4 py-2 text-sm bg-amber-400</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Cards -->
+            <div class="mb-10">
+                <h3 class="font-mono text-xl font-bold mb-4 text-amber-400">CARDS</h3>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <!-- Data Card -->
+                    <div class="bg-[#111111] border border-[#222222] rounded-lg p-6 hover:border-amber-400 hover:shadow-[0_0_20px_rgba(251,191,36,0.2)] transition-all">
+                        <div class="font-mono text-sm text-gray-500 mb-4">DATA CARD</div>
+                        <div class="text-3xl font-mono font-bold text-amber-400 mb-2">72%</div>
+                        <div class="text-xs font-mono text-gray-500">WIN RATE</div>
+                        <div class="code-block mt-4 text-xs">
+                            <div class="text-green-400">border border-[#222222]</div>
+                            <div class="text-green-400">hover:border-amber-400</div>
+                        </div>
+                    </div>
+
+                    <!-- Pricing Card -->
+                    <div class="bg-[#111111] border-2 border-amber-400 rounded-lg p-6 shadow-[0_0_20px_rgba(251,191,36,0.2)]">
+                        <div class="font-mono text-xl font-bold mb-2">PREMIUM</div>
+                        <div class="text-5xl font-mono font-bold text-amber-400 mb-2">$39</div>
+                        <div class="text-sm font-mono text-gray-500">PER MONTH</div>
+                        <div class="code-block mt-4 text-xs">
+                            <div class="text-green-400">border-2 border-amber-400</div>
+                            <div class="text-green-400">shadow-[0_0_20px_rgba(251,191,36,0.2)]</div>
+                        </div>
+                    </div>
+
+                    <!-- Feature Card -->
+                    <div class="bg-[#111111] border border-[#222222] rounded-lg p-8 hover:border-amber-400 hover:shadow-[0_0_20px_rgba(251,191,36,0.2)] transition-all">
+                        <div class="text-4xl mb-4 text-amber-400">01</div>
+                        <h3 class="font-mono text-xl font-bold mb-3">FEATURE CARD</h3>
+                        <p class="text-gray-400 text-sm">Description of the feature goes here.</p>
+                        <div class="code-block mt-4 text-xs">
+                            <div class="text-green-400">bg-[#111111] p-8</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Form Elements -->
+            <div class="mb-10">
+                <h3 class="font-mono text-xl font-bold mb-4 text-amber-400">FORM ELEMENTS</h3>
+                <div class="component-example">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <!-- Text Input -->
+                        <div>
+                            <label class="block font-mono text-sm font-bold mb-2">TEXT INPUT</label>
+                            <input type="text" placeholder="Enter text..." class="w-full px-4 py-3 bg-[#111111] border border-[#222222] rounded font-mono text-sm focus:border-amber-400 focus:outline-none focus:shadow-[0_0_20px_rgba(251,191,36,0.2)] transition">
+                            <div class="code-block mt-2 text-xs">
+                                <div class="text-green-400">focus:border-amber-400</div>
+                                <div class="text-green-400">focus:shadow-[0_0_20px_rgba(251,191,36,0.2)]</div>
+                            </div>
+                        </div>
+
+                        <!-- Select -->
+                        <div>
+                            <label class="block font-mono text-sm font-bold mb-2">SELECT</label>
+                            <select class="w-full px-4 py-3 bg-[#111111] border border-[#222222] rounded font-mono text-sm focus:border-amber-400 focus:outline-none transition">
+                                <option>Option 1</option>
+                                <option>Option 2</option>
+                                <option>Option 3</option>
+                            </select>
+                        </div>
+
+                        <!-- Textarea -->
+                        <div class="md:col-span-2">
+                            <label class="block font-mono text-sm font-bold mb-2">TEXTAREA</label>
+                            <textarea rows="4" placeholder="Enter message..." class="w-full px-4 py-3 bg-[#111111] border border-[#222222] rounded font-mono text-sm focus:border-amber-400 focus:outline-none focus:shadow-[0_0_20px_rgba(251,191,36,0.2)] transition"></textarea>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Badges -->
+            <div class="mb-10">
+                <h3 class="font-mono text-xl font-bold mb-4 text-amber-400">BADGES & PILLS</h3>
+                <div class="component-example">
+                    <div class="flex flex-wrap gap-3">
+                        <span class="px-3 py-1 bg-gradient-to-r from-amber-400 to-amber-600 text-black text-xs font-bold font-mono rounded-full">
+                            MOST POPULAR
+                        </span>
+                        <span class="px-3 py-1 bg-amber-400/10 border border-amber-400/30 text-amber-400 text-xs font-bold font-mono rounded">
+                            LIVE
+                        </span>
+                        <span class="px-3 py-1 bg-green-400/10 border border-green-400/30 text-green-400 text-xs font-bold font-mono rounded">
+                            ACTIVE
+                        </span>
+                        <span class="px-3 py-1 bg-[#111111] border border-[#222222] text-gray-400 text-xs font-bold font-mono rounded">
+                            CATEGORY
+                        </span>
+                    </div>
+                    <div class="code-block mt-4">
+                        <div class="text-green-400">bg-gradient-to-r from-amber-400 to-amber-600</div>
+                        <div class="text-green-400">bg-amber-400/10 border border-amber-400/30</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Trust Badges -->
+            <div>
+                <h3 class="font-mono text-xl font-bold mb-4 text-amber-400">TRUST BADGES</h3>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div class="flex items-center gap-3 p-4 bg-[#111111]/50 border border-[#222222] rounded-lg hover:border-amber-400 hover:bg-amber-400/5 transition">
+                        <i class="fas fa-lock text-amber-400 text-xl"></i>
+                        <div>
+                            <div class="font-mono text-xs font-bold">256-BIT</div>
+                            <div class="font-mono text-xs text-gray-500">ENCRYPTION</div>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-3 p-4 bg-[#111111]/50 border border-[#222222] rounded-lg hover:border-amber-400 hover:bg-amber-400/5 transition">
+                        <i class="fas fa-shield-alt text-amber-400 text-xl"></i>
+                        <div>
+                            <div class="font-mono text-xs font-bold">99.98%</div>
+                            <div class="font-mono text-xs text-gray-500">UPTIME</div>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-3 p-4 bg-[#111111]/50 border border-[#222222] rounded-lg hover:border-amber-400 hover:bg-amber-400/5 transition">
+                        <i class="fas fa-tachometer-alt text-amber-400 text-xl"></i>
+                        <div>
+                            <div class="font-mono text-xs font-bold">&lt;6MS</div>
+                            <div class="font-mono text-xs text-gray-500">LATENCY</div>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-3 p-4 bg-[#111111]/50 border border-[#222222] rounded-lg hover:border-amber-400 hover:bg-amber-400/5 transition">
+                        <i class="fas fa-users text-amber-400 text-xl"></i>
+                        <div>
+                            <div class="font-mono text-xs font-bold">500+</div>
+                            <div class="font-mono text-xs text-gray-500">USERS</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Visual Effects -->
+        <section class="section-card">
+            <h2 class="text-3xl font-bold font-mono mb-6 neon-text">VISUAL EFFECTS</h2>
+
+            <!-- Neon Glow -->
+            <div class="mb-10">
+                <h3 class="font-mono text-xl font-bold mb-4 text-amber-400">NEON GLOW EFFECTS</h3>
+                <div class="component-example">
+                    <div class="space-y-6">
+                        <div>
+                            <h4 class="text-2xl neon-text mb-2">NEON TEXT GLOW</h4>
+                            <div class="code-block">
+                                <div class="text-green-400">color: #fbbf24;</div>
+                                <div class="text-green-400">text-shadow: 0 0 10px #fbbf24;</div>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="neon-border p-4 rounded inline-block">
+                                NEON BORDER GLOW
+                            </div>
+                            <div class="code-block">
+                                <div class="text-green-400">border: 1px solid #fbbf24;</div>
+                                <div class="text-green-400">box-shadow: 0 0 10px rgba(251, 191, 36, 0.3);</div>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="neon-border p-4 rounded inline-block glow-on-hover cursor-pointer">
+                                HOVER FOR ENHANCED GLOW
+                            </div>
+                            <div class="code-block">
+                                <div class="text-green-400">hover: box-shadow: 0 0 30px #fbbf24, inset 0 0 10px rgba(251, 191, 36, 0.2);</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Gradients -->
+            <div class="mb-10">
+                <h3 class="font-mono text-xl font-bold mb-4 text-amber-400">GRADIENTS</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <div class="gradient-demo" style="background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);" onclick="copyColor('linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%)', 'Amber Gradient')"></div>
+                        <div class="mt-2 font-mono text-sm">
+                            <div class="font-bold">Amber Gradient</div>
+                            <code class="text-xs text-gray-500">linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%)</code>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="gradient-demo" style="background: linear-gradient(to-r, from-amber-900/20 to-amber-800/10);" onclick="copyColor('linear-gradient(to-r, from-amber-900/20 to-amber-800/10)', 'Subtle Amber Wash')"></div>
+                        <div class="mt-2 font-mono text-sm">
+                            <div class="font-bold">Subtle Amber Wash</div>
+                            <code class="text-xs text-gray-500">bg-gradient-to-r from-amber-900/20 to-amber-800/10</code>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Shadows -->
+            <div class="mb-10">
+                <h3 class="font-mono text-xl font-bold mb-4 text-amber-400">SHADOW SYSTEM</h3>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div class="shadow-demo" style="box-shadow: 0 0 10px rgba(251, 191, 36, 0.1);">
+                        <div class="font-mono text-sm font-bold mb-2">SMALL GLOW</div>
+                        <code class="text-xs text-gray-500">0 0 10px rgba(251, 191, 36, 0.1)</code>
+                    </div>
+                    <div class="shadow-demo" style="box-shadow: 0 0 20px rgba(251, 191, 36, 0.2);">
+                        <div class="font-mono text-sm font-bold mb-2">MEDIUM GLOW</div>
+                        <code class="text-xs text-gray-500">0 0 20px rgba(251, 191, 36, 0.2)</code>
+                    </div>
+                    <div class="shadow-demo" style="box-shadow: 0 0 30px rgba(251, 191, 36, 0.3);">
+                        <div class="font-mono text-sm font-bold mb-2">LARGE GLOW</div>
+                        <code class="text-xs text-gray-500">0 0 30px rgba(251, 191, 36, 0.3)</code>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Animations -->
+            <div>
+                <h3 class="font-mono text-xl font-bold mb-4 text-amber-400">ANIMATIONS</h3>
+                <div class="component-example">
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div class="text-center">
+                            <div class="w-4 h-4 bg-amber-400 rounded-full pulse-dot mx-auto mb-4"></div>
+                            <div class="font-mono text-sm font-bold mb-2">PULSE DOT</div>
+                            <code class="text-xs text-gray-500">animation: pulse-dot 2s ease-in-out infinite</code>
+                        </div>
+                        <div class="text-center">
+                            <div class="w-4 h-4 bg-green-500 rounded-full animate-pulse mx-auto mb-4"></div>
+                            <div class="font-mono text-sm font-bold mb-2">LIVE INDICATOR</div>
+                            <code class="text-xs text-gray-500">animate-pulse</code>
+                        </div>
+                        <div class="text-center">
+                            <div class="inline-block border-4 border-amber-400 border-t-transparent rounded-full w-8 h-8 animate-spin mb-4"></div>
+                            <div class="font-mono text-sm font-bold mb-2">SPINNER</div>
+                            <code class="text-xs text-gray-500">animate-spin</code>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Spacing System -->
+        <section class="section-card">
+            <h2 class="text-3xl font-bold font-mono mb-6 neon-text">SPACING SYSTEM</h2>
+            <div class="component-example">
+                <div class="space-y-4 font-mono text-sm">
+                    <div class="flex items-center gap-4">
+                        <div style="width: 4px; height: 40px; background: #fbbf24;"></div>
+                        <code>1 (4px / 0.25rem)</code>
+                    </div>
+                    <div class="flex items-center gap-4">
+                        <div style="width: 8px; height: 40px; background: #fbbf24;"></div>
+                        <code>2 (8px / 0.5rem)</code>
+                    </div>
+                    <div class="flex items-center gap-4">
+                        <div style="width: 16px; height: 40px; background: #fbbf24;"></div>
+                        <code>4 (16px / 1rem)</code>
+                    </div>
+                    <div class="flex items-center gap-4">
+                        <div style="width: 24px; height: 40px; background: #fbbf24;"></div>
+                        <code>6 (24px / 1.5rem)</code>
+                    </div>
+                    <div class="flex items-center gap-4">
+                        <div style="width: 32px; height: 40px; background: #fbbf24;"></div>
+                        <code>8 (32px / 2rem)</code>
+                    </div>
+                    <div class="flex items-center gap-4">
+                        <div style="width: 48px; height: 40px; background: #fbbf24;"></div>
+                        <code>12 (48px / 3rem)</code>
+                    </div>
+                    <div class="flex items-center gap-4">
+                        <div style="width: 64px; height: 40px; background: #fbbf24;"></div>
+                        <code>16 (64px / 4rem)</code>
+                    </div>
+                    <div class="flex items-center gap-4">
+                        <div style="width: 80px; height: 40px; background: #fbbf24;"></div>
+                        <code>20 (80px / 5rem)</code>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Grid Overlay Pattern -->
+        <section class="section-card">
+            <h2 class="text-3xl font-bold font-mono mb-6 neon-text">BACKGROUND PATTERNS</h2>
+            <div class="component-example">
+                <h3 class="font-mono text-lg font-bold mb-4 text-amber-400">GRID OVERLAY</h3>
+                <div class="grid-overlay p-12 rounded-lg border border-gray-700 text-center">
+                    <div class="font-mono text-sm text-gray-400">Grid overlay pattern for hero sections</div>
+                </div>
+                <div class="code-block">
+                    <div class="text-green-400">background-image:</div>
+                    <div class="text-green-400 ml-4">linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),</div>
+                    <div class="text-green-400 ml-4">linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);</div>
+                    <div class="text-green-400">background-size: 50px 50px;</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============================================ -->
+        <!-- DATA VISUALIZATION -->
+        <!-- ============================================ -->
+        <section class="section-card" id="data-visualization">
+            <h2 class="text-3xl font-bold font-mono mb-6 neon-text">DATA VISUALIZATION</h2>
+            <p class="text-gray-400 mb-8">
+                Financial chart components designed for crypto trading platforms. All charts follow the Virtuoso brand style
+                with dark cyberpunk aesthetics, neon amber accents, and IBM Plex Mono typography for data precision.
+            </p>
+
+            <!-- Chart Architecture Overview -->
+            <div class="component-example mb-8">
+                <h3 class="font-mono text-lg font-bold mb-4 text-amber-400">CHART ARCHITECTURE</h3>
+                <div class="grid md:grid-cols-2 gap-6 mb-6">
+                    <div>
+                        <h4 class="text-sm font-semibold mb-3 text-cyan-400">Design Principles</h4>
+                        <ul class="space-y-2 text-gray-400 text-sm">
+                            <li class="flex items-start">
+                                <span class="text-amber-400 mr-2">▸</span>
+                                <span><strong class="text-gray-300">Scannable at a glance:</strong> Critical data visible without interaction</span>
+                            </li>
+                            <li class="flex items-start">
+                                <span class="text-amber-400 mr-2">▸</span>
+                                <span><strong class="text-gray-300">Precision:</strong> IBM Plex Mono for all numeric values</span>
+                            </li>
+                            <li class="flex items-start">
+                                <span class="text-amber-400 mr-2">▸</span>
+                                <span><strong class="text-gray-300">Subtle animations:</strong> Smooth transitions, no jarring effects</span>
+                            </li>
+                            <li class="flex items-start">
+                                <span class="text-amber-400 mr-2">▸</span>
+                                <span><strong class="text-gray-300">Accessibility:</strong> High contrast, clear labels, hover tooltips</span>
+                            </li>
+                        </ul>
+                    </div>
+                    <div>
+                        <h4 class="text-sm font-semibold mb-3 text-cyan-400">Recommended Libraries</h4>
+                        <ul class="space-y-2 text-gray-400 text-sm">
+                            <li class="flex items-start">
+                                <span class="text-amber-400 mr-2">1.</span>
+                                <span><strong class="text-gray-300">Lightweight Charts (TradingView):</strong> Best for candlesticks</span>
+                            </li>
+                            <li class="flex items-start">
+                                <span class="text-amber-400 mr-2">2.</span>
+                                <span><strong class="text-gray-300">ApexCharts:</strong> Versatile, good TypeScript support</span>
+                            </li>
+                            <li class="flex items-start">
+                                <span class="text-amber-400 mr-2">3.</span>
+                                <span><strong class="text-gray-300">Pure CSS/SVG:</strong> Simple charts, no dependencies</span>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Color Reference for Charts -->
+                <div class="code-block">
+                    <div class="text-blue-400">// Chart Color Palette</div>
+                    <div class="text-green-400">--chart-primary: #fbbf24; <span class="inline-block w-3 h-3 bg-amber-400 rounded ml-2"></span></div>
+                    <div class="text-green-400">--chart-secondary: #06B6D4; <span class="inline-block w-3 h-3 bg-cyan-500 rounded ml-2"></span></div>
+                    <div class="text-green-400">--chart-success: #10b981; <span class="inline-block w-3 h-3 bg-green-500 rounded ml-2"></span></div>
+                    <div class="text-green-400">--chart-error: #ef4444; <span class="inline-block w-3 h-3 bg-red-500 rounded ml-2"></span></div>
+                    <div class="text-green-400">--chart-grid: rgba(255,255,255,0.03);</div>
+                </div>
+            </div>
+
+            <!-- Example 1: Price Line Chart -->
+            <div class="component-example mb-8">
+                <h3 class="font-mono text-lg font-bold mb-4 text-amber-400">1. PRICE LINE CHART (Pure SVG)</h3>
+                <p class="text-gray-400 text-sm mb-4">Lightweight price tracker with neon glow effect. Perfect for sparklines or trend visualization.</p>
+
+                <!-- Chart Container -->
+                <div class="bg-black/40 border border-gray-800 rounded-lg p-6 mb-4">
+                    <div class="flex justify-between items-start mb-4">
+                        <div>
+                            <div class="text-gray-500 text-xs font-mono">BTC/USDT</div>
+                            <div class="text-2xl font-bold font-mono text-amber-400">$43,287.50</div>
+                            <div class="text-green-500 text-xs font-mono">+2.34% (24h)</div>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-gray-500 text-xs font-mono">HIGH</div>
+                            <div class="text-gray-300 text-sm font-mono">$43,892.10</div>
+                            <div class="text-gray-500 text-xs font-mono mt-1">LOW</div>
+                            <div class="text-gray-300 text-sm font-mono">$42,450.30</div>
+                        </div>
+                    </div>
+
+                    <!-- SVG Line Chart -->
+                    <svg viewBox="0 0 600 160" class="w-full h-40" xmlns="http://www.w3.org/2000/svg">
+                        <defs>
+                            <linearGradient id="priceGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                                <stop offset="0%" style="stop-color:#fbbf24;stop-opacity:0.3" />
+                                <stop offset="100%" style="stop-color:#fbbf24;stop-opacity:0" />
+                            </linearGradient>
+                            <filter id="glowPrice">
+                                <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+                                <feMerge>
+                                    <feMergeNode in="coloredBlur"/>
+                                    <feMergeNode in="SourceGraphic"/>
+                                </feMerge>
+                            </filter>
+                        </defs>
+
+                        <!-- Grid Lines -->
+                        <line x1="0" y1="40" x2="600" y2="40" stroke="rgba(255,255,255,0.03)" stroke-width="1"/>
+                        <line x1="0" y1="80" x2="600" y2="80" stroke="rgba(255,255,255,0.05)" stroke-width="1"/>
+                        <line x1="0" y1="120" x2="600" y2="120" stroke="rgba(255,255,255,0.03)" stroke-width="1"/>
+
+                        <!-- Price Area Fill -->
+                        <path d="M 0,100 L 50,90 L 100,75 L 150,85 L 200,65 L 250,70 L 300,55 L 350,60 L 400,45 L 450,50 L 500,35 L 550,40 L 600,30 L 600,160 L 0,160 Z"
+                              fill="url(#priceGradient)" opacity="0.4"/>
+
+                        <!-- Price Line -->
+                        <path d="M 0,100 L 50,90 L 100,75 L 150,85 L 200,65 L 250,70 L 300,55 L 350,60 L 400,45 L 450,50 L 500,35 L 550,40 L 600,30"
+                              stroke="#fbbf24" stroke-width="2.5" fill="none" filter="url(#glowPrice)">
+                            <animate attributeName="stroke-dasharray" from="0,1000" to="1000,0" dur="2s" fill="freeze"/>
+                        </path>
+
+                        <!-- Data Point -->
+                        <circle cx="600" cy="30" r="4" fill="#fbbf24" filter="url(#glowPrice)">
+                            <animate attributeName="r" values="4;6;4" dur="2s" repeatCount="indefinite"/>
+                        </circle>
+                    </svg>
+
+                    <!-- Time Labels -->
+                    <div class="flex justify-between text-xs text-gray-600 font-mono mt-2">
+                        <span>00:00</span>
+                        <span>08:00</span>
+                        <span>16:00</span>
+                        <span class="text-amber-400">NOW</span>
+                    </div>
+                </div>
+
+                <!-- Code Example -->
+                <div class="code-block text-xs">
+                    <div class="text-green-400">&lt;svg viewBox="0 0 600 160"&gt;</div>
+                    <div class="text-green-400 ml-4">&lt;defs&gt;&lt;filter id="glowPrice"&gt;&lt;feGaussianBlur stdDeviation="3"/&gt;&lt;/filter&gt;&lt;/defs&gt;</div>
+                    <div class="text-green-400 ml-4">&lt;path d="M 0,100 L 50,90..." stroke="#fbbf24" filter="url(#glowPrice)"/&gt;</div>
+                    <div class="text-green-400">&lt;/svg&gt;</div>
+                </div>
+            </div>
+
+            <!-- Example 2: Candlestick Chart -->
+            <div class="component-example mb-8">
+                <h3 class="font-mono text-lg font-bold mb-4 text-amber-400">2. CANDLESTICK CHART (TradingView Style)</h3>
+                <p class="text-gray-400 text-sm mb-4">Industry-standard candlestick visualization for detailed OHLC data.</p>
+
+                <!-- Chart Container -->
+                <div class="bg-black/40 border border-gray-800 rounded-lg p-6 mb-4">
+                    <div class="flex justify-between items-center mb-4">
+                        <div class="flex items-center space-x-4">
+                            <div class="text-lg font-mono font-bold text-amber-400">ETH/USDT</div>
+                            <div class="flex space-x-2 text-xs font-mono">
+                                <button class="px-2 py-1 bg-amber-400/20 text-amber-400 rounded">1H</button>
+                                <button class="px-2 py-1 hover:bg-gray-800 text-gray-500 rounded">4H</button>
+                                <button class="px-2 py-1 hover:bg-gray-800 text-gray-500 rounded">1D</button>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-4 gap-4 text-xs font-mono">
+                            <div><span class="text-gray-500">O</span> <span class="text-gray-300">2,287</span></div>
+                            <div><span class="text-gray-500">H</span> <span class="text-green-400">2,310</span></div>
+                            <div><span class="text-gray-500">L</span> <span class="text-red-400">2,265</span></div>
+                            <div><span class="text-gray-500">C</span> <span class="text-green-400">2,305</span></div>
+                        </div>
+                    </div>
+
+                    <!-- Candlestick SVG -->
+                    <svg viewBox="0 0 500 180" class="w-full h-44" xmlns="http://www.w3.org/2000/svg">
+                        <defs>
+                            <filter id="candleGlow">
+                                <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+                                <feMerge>
+                                    <feMergeNode in="coloredBlur"/>
+                                    <feMergeNode in="SourceGraphic"/>
+                                </feMerge>
+                            </filter>
+                        </defs>
+
+                        <!-- Grid -->
+                        <line x1="0" y1="45" x2="500" y2="45" stroke="rgba(255,255,255,0.03)" stroke-width="1"/>
+                        <line x1="0" y1="90" x2="500" y2="90" stroke="rgba(255,255,255,0.05)" stroke-width="1"/>
+                        <line x1="0" y1="135" x2="500" y2="135" stroke="rgba(255,255,255,0.03)" stroke-width="1"/>
+
+                        <!-- Candlesticks -->
+                        <!-- Candle 1 - Bullish -->
+                        <line x1="35" y1="110" x2="35" y2="70" stroke="#10b981" stroke-width="1.5"/>
+                        <rect x="28" y="90" width="14" height="18" fill="#10b981" filter="url(#candleGlow)"/>
+
+                        <!-- Candle 2 - Bearish -->
+                        <line x1="70" y1="70" x2="70" y2="120" stroke="#ef4444" stroke-width="1.5"/>
+                        <rect x="63" y="80" width="14" height="25" fill="#ef4444" filter="url(#candleGlow)"/>
+
+                        <!-- Candle 3 - Bullish -->
+                        <line x1="105" y1="120" x2="105" y2="60" stroke="#10b981" stroke-width="1.5"/>
+                        <rect x="98" y="100" width="14" height="18" fill="#10b981" filter="url(#candleGlow)"/>
+
+                        <!-- Candle 4 - Bullish -->
+                        <line x1="140" y1="100" x2="140" y2="50" stroke="#10b981" stroke-width="1.5"/>
+                        <rect x="133" y="80" width="14" height="18" fill="#10b981" filter="url(#candleGlow)"/>
+
+                        <!-- Candle 5 - Bearish -->
+                        <line x1="175" y1="50" x2="175" y2="95" stroke="#ef4444" stroke-width="1.5"/>
+                        <rect x="168" y="55" width="14" height="22" fill="#ef4444" filter="url(#candleGlow)"/>
+
+                        <!-- Candle 6 - Bullish -->
+                        <line x1="210" y1="95" x2="210" y2="40" stroke="#10b981" stroke-width="1.5"/>
+                        <rect x="203" y="70" width="14" height="22" fill="#10b981" filter="url(#candleGlow)"/>
+
+                        <!-- Candle 7 - Bullish -->
+                        <line x1="245" y1="70" x2="245" y2="30" stroke="#10b981" stroke-width="1.5"/>
+                        <rect x="238" y="50" width="14" height="18" fill="#10b981" filter="url(#candleGlow)"/>
+
+                        <!-- Candle 8 - Bearish -->
+                        <line x1="280" y1="30" x2="280" y2="65" stroke="#ef4444" stroke-width="1.5"/>
+                        <rect x="273" y="35" width="14" height="18" fill="#ef4444" filter="url(#candleGlow)"/>
+
+                        <!-- Candle 9 - Bullish -->
+                        <line x1="315" y1="65" x2="315" y2="25" stroke="#10b981" stroke-width="1.5"/>
+                        <rect x="308" y="45" width="14" height="18" fill="#10b981" filter="url(#candleGlow)"/>
+
+                        <!-- Candle 10 - Latest (Amber highlight) -->
+                        <line x1="350" y1="45" x2="350" y2="15" stroke="#fbbf24" stroke-width="2"/>
+                        <rect x="343" y="25" width="14" height="18" fill="#fbbf24" filter="url(#candleGlow)">
+                            <animate attributeName="opacity" values="1;0.7;1" dur="2s" repeatCount="indefinite"/>
+                        </rect>
+                    </svg>
+                </div>
+
+                <!-- Code Example -->
+                <div class="code-block text-xs">
+                    <div class="text-blue-400">// Using TradingView Lightweight Charts</div>
+                    <div class="text-green-400">const chart = createChart(container, {</div>
+                    <div class="text-green-400 ml-4">layout: { background: { color: '#0a0a0a' }, textColor: '#e0e0e0' },</div>
+                    <div class="text-green-400 ml-4">grid: { vertLines: { color: 'rgba(255,255,255,0.03)' } },</div>
+                    <div class="text-green-400">});</div>
+                    <div class="text-green-400">const series = chart.addCandlestickSeries({</div>
+                    <div class="text-green-400 ml-4">upColor: '#10b981', downColor: '#ef4444',</div>
+                    <div class="text-green-400">});</div>
+                </div>
+            </div>
+
+            <!-- Example 3: Volume Bar Chart -->
+            <div class="component-example mb-8">
+                <h3 class="font-mono text-lg font-bold mb-4 text-amber-400">3. VOLUME BAR CHART (Pure CSS)</h3>
+                <p class="text-gray-400 text-sm mb-4">Trading volume visualization with color-coded buy/sell pressure.</p>
+
+                <div class="bg-black/40 border border-gray-800 rounded-lg p-6 mb-4">
+                    <div class="flex justify-between items-center mb-4">
+                        <div class="text-lg font-mono font-bold text-cyan-400">24H VOLUME</div>
+                        <div class="text-2xl font-mono font-bold text-amber-400">$1.2B</div>
+                    </div>
+
+                    <!-- Volume Bars -->
+                    <div class="flex items-end justify-between h-32 gap-1">
+                        <div class="flex-1 bg-green-500/30 border-t-2 border-green-500 hover:bg-green-500/50 transition-all" style="height: 45%;"></div>
+                        <div class="flex-1 bg-red-500/30 border-t-2 border-red-500 hover:bg-red-500/50 transition-all" style="height: 35%;"></div>
+                        <div class="flex-1 bg-green-500/30 border-t-2 border-green-500 hover:bg-green-500/50 transition-all" style="height: 60%;"></div>
+                        <div class="flex-1 bg-green-500/30 border-t-2 border-green-500 hover:bg-green-500/50 transition-all" style="height: 75%;"></div>
+                        <div class="flex-1 bg-red-500/30 border-t-2 border-red-500 hover:bg-red-500/50 transition-all" style="height: 40%;"></div>
+                        <div class="flex-1 bg-green-500/30 border-t-2 border-green-500 hover:bg-green-500/50 transition-all" style="height: 85%;"></div>
+                        <div class="flex-1 bg-green-500/30 border-t-2 border-green-500 hover:bg-green-500/50 transition-all" style="height: 95%;"></div>
+                        <div class="flex-1 bg-red-500/30 border-t-2 border-red-500 hover:bg-red-500/50 transition-all" style="height: 50%;"></div>
+                        <div class="flex-1 bg-green-500/30 border-t-2 border-green-500 hover:bg-green-500/50 transition-all" style="height: 70%;"></div>
+                        <div class="flex-1 bg-green-500/30 border-t-2 border-green-500 hover:bg-green-500/50 transition-all" style="height: 100%;"></div>
+                        <div class="flex-1 bg-red-500/30 border-t-2 border-red-500 hover:bg-red-500/50 transition-all" style="height: 55%;"></div>
+                        <div class="flex-1 bg-amber-400/30 border-t-2 border-amber-400 hover:bg-amber-400/50 transition-all" style="height: 80%;">
+                            <div class="w-full h-full relative">
+                                <div class="absolute -top-6 left-1/2 -translate-x-1/2 text-xs text-amber-400 font-mono animate-pulse">●</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Legend -->
+                    <div class="flex justify-center space-x-6 mt-4 text-xs font-mono">
+                        <div class="flex items-center">
+                            <div class="w-3 h-3 bg-green-500 rounded mr-2"></div>
+                            <span class="text-gray-400">Buy Pressure</span>
+                        </div>
+                        <div class="flex items-center">
+                            <div class="w-3 h-3 bg-red-500 rounded mr-2"></div>
+                            <span class="text-gray-400">Sell Pressure</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Example 4: Portfolio Donut Chart -->
+            <div class="component-example mb-8">
+                <h3 class="font-mono text-lg font-bold mb-4 text-amber-400">4. PORTFOLIO ALLOCATION (SVG Donut)</h3>
+                <p class="text-gray-400 text-sm mb-4">Asset allocation with hover effects and percentage breakdown.</p>
+
+                <div class="bg-black/40 border border-gray-800 rounded-lg p-6 mb-4">
+                    <div class="grid md:grid-cols-2 gap-8">
+                        <!-- Donut Chart -->
+                        <div class="flex items-center justify-center">
+                            <svg viewBox="0 0 200 200" class="w-48 h-48" xmlns="http://www.w3.org/2000/svg">
+                                <defs>
+                                    <filter id="donutGlow">
+                                        <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+                                        <feMerge>
+                                            <feMergeNode in="coloredBlur"/>
+                                            <feMergeNode in="SourceGraphic"/>
+                                        </feMerge>
+                                    </filter>
+                                </defs>
+
+                                <!-- BTC - 40% -->
+                                <circle cx="100" cy="100" r="70" fill="none" stroke="#fbbf24" stroke-width="24"
+                                        stroke-dasharray="176 440" stroke-dashoffset="0" filter="url(#donutGlow)" opacity="0.9"/>
+
+                                <!-- ETH - 30% -->
+                                <circle cx="100" cy="100" r="70" fill="none" stroke="#06B6D4" stroke-width="24"
+                                        stroke-dasharray="132 440" stroke-dashoffset="-176" filter="url(#donutGlow)" opacity="0.9"/>
+
+                                <!-- USDT - 20% -->
+                                <circle cx="100" cy="100" r="70" fill="none" stroke="#10b981" stroke-width="24"
+                                        stroke-dasharray="88 440" stroke-dashoffset="-308" filter="url(#donutGlow)" opacity="0.9"/>
+
+                                <!-- Others - 10% -->
+                                <circle cx="100" cy="100" r="70" fill="none" stroke="#6b7280" stroke-width="24"
+                                        stroke-dasharray="44 440" stroke-dashoffset="-396" filter="url(#donutGlow)" opacity="0.9"/>
+
+                                <!-- Center Text -->
+                                <text x="100" y="95" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="12" fill="#9ca3af">TOTAL</text>
+                                <text x="100" y="112" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="16" font-weight="bold" fill="#fbbf24">$125K</text>
+                            </svg>
+                        </div>
+
+                        <!-- Legend -->
+                        <div class="flex flex-col justify-center space-y-3">
+                            <div class="flex items-center justify-between p-2 bg-black/30 rounded hover:bg-black/50 transition-all">
+                                <div class="flex items-center">
+                                    <div class="w-3 h-3 bg-amber-400 rounded-full mr-3"></div>
+                                    <span class="text-sm font-mono text-gray-400">BTC</span>
+                                </div>
+                                <span class="text-sm font-mono font-bold text-amber-400">40%</span>
+                            </div>
+                            <div class="flex items-center justify-between p-2 bg-black/30 rounded hover:bg-black/50 transition-all">
+                                <div class="flex items-center">
+                                    <div class="w-3 h-3 bg-cyan-500 rounded-full mr-3"></div>
+                                    <span class="text-sm font-mono text-gray-400">ETH</span>
+                                </div>
+                                <span class="text-sm font-mono font-bold text-cyan-400">30%</span>
+                            </div>
+                            <div class="flex items-center justify-between p-2 bg-black/30 rounded hover:bg-black/50 transition-all">
+                                <div class="flex items-center">
+                                    <div class="w-3 h-3 bg-green-500 rounded-full mr-3"></div>
+                                    <span class="text-sm font-mono text-gray-400">USDT</span>
+                                </div>
+                                <span class="text-sm font-mono font-bold text-green-400">20%</span>
+                            </div>
+                            <div class="flex items-center justify-between p-2 bg-black/30 rounded hover:bg-black/50 transition-all">
+                                <div class="flex items-center">
+                                    <div class="w-3 h-3 bg-gray-500 rounded-full mr-3"></div>
+                                    <span class="text-sm font-mono text-gray-400">Other</span>
+                                </div>
+                                <span class="text-sm font-mono font-bold text-gray-400">10%</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Example 5: P&L Area Chart -->
+            <div class="component-example mb-8">
+                <h3 class="font-mono text-lg font-bold mb-4 text-amber-400">5. PROFIT & LOSS AREA CHART</h3>
+                <p class="text-gray-400 text-sm mb-4">Dual-colored area chart showing profit (green) and loss (red) zones.</p>
+
+                <div class="bg-black/40 border border-gray-800 rounded-lg p-6 mb-4">
+                    <div class="flex justify-between items-start mb-4">
+                        <div>
+                            <div class="text-xs text-gray-500 font-mono">30 DAY P&L</div>
+                            <div class="text-2xl font-bold font-mono text-green-400">+$12,487.50</div>
+                            <div class="text-xs text-gray-500 font-mono">+18.7% ROI</div>
+                        </div>
+                        <div class="text-right space-y-1">
+                            <div class="text-xs text-gray-600">PEAK: <span class="text-green-400">+$15,230</span></div>
+                            <div class="text-xs text-gray-600">DRAWDOWN: <span class="text-red-400">-$2,890</span></div>
+                        </div>
+                    </div>
+
+                    <!-- SVG Area Chart -->
+                    <svg viewBox="0 0 600 160" class="w-full h-40" xmlns="http://www.w3.org/2000/svg">
+                        <defs>
+                            <linearGradient id="profitGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                                <stop offset="0%" style="stop-color:#10b981;stop-opacity:0.4" />
+                                <stop offset="100%" style="stop-color:#10b981;stop-opacity:0" />
+                            </linearGradient>
+                            <linearGradient id="lossGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                                <stop offset="0%" style="stop-color:#ef4444;stop-opacity:0" />
+                                <stop offset="100%" style="stop-color:#ef4444;stop-opacity:0.4" />
+                            </linearGradient>
+                            <filter id="glowPL">
+                                <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+                                <feMerge>
+                                    <feMergeNode in="coloredBlur"/>
+                                    <feMergeNode in="SourceGraphic"/>
+                                </feMerge>
+                            </filter>
+                        </defs>
+
+                        <!-- Zero Line -->
+                        <line x1="0" y1="80" x2="600" y2="80" stroke="#fbbf24" stroke-width="1" opacity="0.3" stroke-dasharray="5,5"/>
+                        <text x="5" y="75" font-family="IBM Plex Mono, monospace" font-size="10" fill="#fbbf24" opacity="0.6">$0</text>
+
+                        <!-- Loss Area (below zero) -->
+                        <path d="M 0,80 L 50,95 L 100,100 L 150,90 L 200,80 L 200,160 L 0,160 Z"
+                              fill="url(#lossGradient)"/>
+
+                        <!-- Profit Area (above zero) -->
+                        <path d="M 200,80 L 250,65 L 300,55 L 350,70 L 400,50 L 450,40 L 500,35 L 550,30 L 600,25 L 600,160 L 200,160 Z"
+                              fill="url(#profitGradient)"/>
+
+                        <!-- P&L Line -->
+                        <path d="M 0,80 L 50,95 L 100,100 L 150,90 L 200,80 L 250,65 L 300,55 L 350,70 L 400,50 L 450,40 L 500,35 L 550,30 L 600,25"
+                              stroke="#fbbf24" stroke-width="2" fill="none" filter="url(#glowPL)"/>
+
+                        <!-- Highlight Points -->
+                        <circle cx="100" cy="100" r="3" fill="#ef4444" opacity="0.8"/>
+                        <circle cx="600" cy="25" r="4" fill="#fbbf24" filter="url(#glowPL)">
+                            <animate attributeName="r" values="4;6;4" dur="2s" repeatCount="indefinite"/>
+                        </circle>
+                    </svg>
+
+                    <div class="flex justify-between text-xs text-gray-600 font-mono mt-2">
+                        <span>Day 0</span>
+                        <span>Day 10</span>
+                        <span>Day 20</span>
+                        <span class="text-amber-400">Day 30</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Example 6: Performance Metrics Grid -->
+            <div class="component-example mb-8">
+                <h3 class="font-mono text-lg font-bold mb-4 text-amber-400">6. PERFORMANCE METRICS GRID</h3>
+                <p class="text-gray-400 text-sm mb-4">KPI dashboard with sparklines, percentage changes, and comparative metrics.</p>
+
+                <div class="grid md:grid-cols-3 gap-4">
+                    <!-- Metric Card 1 -->
+                    <div class="bg-black/40 border border-gray-800 rounded-lg p-4 hover:border-amber-400/50 transition-all">
+                        <div class="flex justify-between items-start mb-3">
+                            <div>
+                                <div class="text-xs text-gray-500 font-mono uppercase">Win Rate</div>
+                                <div class="text-xl font-bold font-mono text-green-400">68.5%</div>
+                            </div>
+                            <div class="text-green-400 text-xs font-mono">+3.2%</div>
+                        </div>
+                        <svg viewBox="0 0 100 20" class="w-full h-5" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M 0,15 L 20,12 L 40,10 L 60,13 L 80,8 L 100,5" stroke="#10b981" stroke-width="2" fill="none" opacity="0.6"/>
+                        </svg>
+                        <div class="text-xs text-gray-600 mt-2 font-mono">Last 30 days</div>
+                    </div>
+
+                    <!-- Metric Card 2 -->
+                    <div class="bg-black/40 border border-gray-800 rounded-lg p-4 hover:border-amber-400/50 transition-all">
+                        <div class="flex justify-between items-start mb-3">
+                            <div>
+                                <div class="text-xs text-gray-500 font-mono uppercase">Sharpe Ratio</div>
+                                <div class="text-xl font-bold font-mono text-amber-400">2.34</div>
+                            </div>
+                            <div class="text-green-400 text-xs font-mono">+0.18</div>
+                        </div>
+                        <svg viewBox="0 0 100 20" class="w-full h-5" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M 0,18 L 20,16 L 40,14 L 60,12 L 80,9 L 100,6" stroke="#fbbf24" stroke-width="2" fill="none" opacity="0.6"/>
+                        </svg>
+                        <div class="text-xs text-gray-600 mt-2 font-mono">Risk-adjusted</div>
+                    </div>
+
+                    <!-- Metric Card 3 -->
+                    <div class="bg-black/40 border border-gray-800 rounded-lg p-4 hover:border-amber-400/50 transition-all">
+                        <div class="flex justify-between items-start mb-3">
+                            <div>
+                                <div class="text-xs text-gray-500 font-mono uppercase">Max Drawdown</div>
+                                <div class="text-xl font-bold font-mono text-red-400">-12.8%</div>
+                            </div>
+                            <div class="text-green-400 text-xs font-mono">-2.1%</div>
+                        </div>
+                        <svg viewBox="0 0 100 20" class="w-full h-5" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M 0,8 L 20,10 L 40,15 L 60,12 L 80,10 L 100,7" stroke="#ef4444" stroke-width="2" fill="none" opacity="0.6"/>
+                        </svg>
+                        <div class="text-xs text-gray-600 mt-2 font-mono">Peak-to-trough</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Example 7: Risk Gauge -->
+            <div class="component-example mb-8">
+                <h3 class="font-mono text-lg font-bold mb-4 text-amber-400">7. RISK GAUGE METER</h3>
+                <p class="text-gray-400 text-sm mb-4">Semi-circular gauge for risk assessment or sentiment indicators.</p>
+
+                <div class="bg-black/40 border border-gray-800 rounded-lg p-6 mb-4">
+                    <div class="flex items-center justify-center">
+                        <div class="relative w-64">
+                            <svg viewBox="0 0 200 120" class="w-full" xmlns="http://www.w3.org/2000/svg">
+                                <defs>
+                                    <linearGradient id="gaugeGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                                        <stop offset="0%" style="stop-color:#10b981"/>
+                                        <stop offset="50%" style="stop-color:#fbbf24"/>
+                                        <stop offset="100%" style="stop-color:#ef4444"/>
+                                    </linearGradient>
+                                    <filter id="gaugeGlow">
+                                        <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+                                        <feMerge>
+                                            <feMergeNode in="coloredBlur"/>
+                                            <feMergeNode in="SourceGraphic"/>
+                                        </feMerge>
+                                    </filter>
+                                </defs>
+
+                                <!-- Background Arc -->
+                                <path d="M 20,100 A 80,80 0 0,1 180,100" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="16" stroke-linecap="round"/>
+
+                                <!-- Active Arc (35% = Moderate) -->
+                                <path d="M 20,100 A 80,80 0 0,1 100,30" fill="none" stroke="url(#gaugeGradient)" stroke-width="16" stroke-linecap="round" filter="url(#gaugeGlow)"/>
+
+                                <!-- Needle -->
+                                <line x1="100" y1="100" x2="100" y2="35" stroke="#fbbf24" stroke-width="3" stroke-linecap="round"/>
+                                <circle cx="100" cy="100" r="5" fill="#fbbf24" filter="url(#gaugeGlow)"/>
+
+                                <!-- Labels -->
+                                <text x="20" y="115" font-family="IBM Plex Mono, monospace" font-size="8" fill="#10b981">LOW</text>
+                                <text x="88" y="18" font-family="IBM Plex Mono, monospace" font-size="8" fill="#fbbf24">MED</text>
+                                <text x="165" y="115" font-family="IBM Plex Mono, monospace" font-size="8" fill="#ef4444">HIGH</text>
+                            </svg>
+
+                            <div class="absolute bottom-6 left-1/2 -translate-x-1/2 text-center">
+                                <div class="text-3xl font-bold font-mono text-amber-400">35%</div>
+                                <div class="text-xs text-gray-500 font-mono">MODERATE RISK</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Risk Breakdown -->
+                    <div class="grid grid-cols-3 gap-4 mt-6">
+                        <div class="text-center p-3 bg-green-500/10 rounded border border-green-500/30">
+                            <div class="text-xs text-gray-500 font-mono mb-1">LOW RISK</div>
+                            <div class="text-lg font-bold font-mono text-green-400">45%</div>
+                        </div>
+                        <div class="text-center p-3 bg-amber-400/10 rounded border border-amber-400/30">
+                            <div class="text-xs text-gray-500 font-mono mb-1">MED RISK</div>
+                            <div class="text-lg font-bold font-mono text-amber-400">35%</div>
+                        </div>
+                        <div class="text-center p-3 bg-red-500/10 rounded border border-red-500/30">
+                            <div class="text-xs text-gray-500 font-mono mb-1">HIGH RISK</div>
+                            <div class="text-lg font-bold font-mono text-red-400">20%</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Example 8: Order Book Depth -->
+            <div class="component-example">
+                <h3 class="font-mono text-lg font-bold mb-4 text-amber-400">8. ORDER BOOK DEPTH CHART</h3>
+                <p class="text-gray-400 text-sm mb-4">Bid/ask depth visualization with volume bars.</p>
+
+                <div class="bg-black/40 border border-gray-800 rounded-lg p-6 mb-4">
+                    <div class="text-center mb-4">
+                        <div class="text-xs text-gray-500 font-mono">MARKET DEPTH</div>
+                        <div class="text-xl font-bold font-mono text-amber-400">BTC/USDT</div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <!-- Bids -->
+                        <div>
+                            <div class="text-xs text-green-400 font-mono mb-2 text-center">BIDS</div>
+                            <div class="space-y-1">
+                                <div class="relative h-5 bg-green-500/10 rounded overflow-hidden">
+                                    <div class="absolute inset-0 bg-green-500/30" style="width: 85%"></div>
+                                    <div class="relative flex justify-between items-center px-2 h-full text-xs font-mono">
+                                        <span class="text-gray-300">$43,250</span>
+                                        <span class="text-gray-500">12.5 BTC</span>
+                                    </div>
+                                </div>
+                                <div class="relative h-5 bg-green-500/10 rounded overflow-hidden">
+                                    <div class="absolute inset-0 bg-green-500/30" style="width: 70%"></div>
+                                    <div class="relative flex justify-between items-center px-2 h-full text-xs font-mono">
+                                        <span class="text-gray-300">$43,245</span>
+                                        <span class="text-gray-500">10.2 BTC</span>
+                                    </div>
+                                </div>
+                                <div class="relative h-5 bg-green-500/10 rounded overflow-hidden">
+                                    <div class="absolute inset-0 bg-green-500/30" style="width: 60%"></div>
+                                    <div class="relative flex justify-between items-center px-2 h-full text-xs font-mono">
+                                        <span class="text-gray-300">$43,240</span>
+                                        <span class="text-gray-500">8.7 BTC</span>
+                                    </div>
+                                </div>
+                                <div class="relative h-5 bg-green-500/10 rounded overflow-hidden">
+                                    <div class="absolute inset-0 bg-green-500/30" style="width: 45%"></div>
+                                    <div class="relative flex justify-between items-center px-2 h-full text-xs font-mono">
+                                        <span class="text-gray-300">$43,235</span>
+                                        <span class="text-gray-500">6.5 BTC</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Asks -->
+                        <div>
+                            <div class="text-xs text-red-400 font-mono mb-2 text-center">ASKS</div>
+                            <div class="space-y-1">
+                                <div class="relative h-5 bg-red-500/10 rounded overflow-hidden">
+                                    <div class="absolute inset-0 bg-red-500/30 ml-auto" style="width: 55%"></div>
+                                    <div class="relative flex justify-between items-center px-2 h-full text-xs font-mono">
+                                        <span class="text-gray-500">7.8 BTC</span>
+                                        <span class="text-gray-300">$43,255</span>
+                                    </div>
+                                </div>
+                                <div class="relative h-5 bg-red-500/10 rounded overflow-hidden">
+                                    <div class="absolute inset-0 bg-red-500/30 ml-auto" style="width: 65%"></div>
+                                    <div class="relative flex justify-between items-center px-2 h-full text-xs font-mono">
+                                        <span class="text-gray-500">9.4 BTC</span>
+                                        <span class="text-gray-300">$43,260</span>
+                                    </div>
+                                </div>
+                                <div class="relative h-5 bg-red-500/10 rounded overflow-hidden">
+                                    <div class="absolute inset-0 bg-red-500/30 ml-auto" style="width: 80%"></div>
+                                    <div class="relative flex justify-between items-center px-2 h-full text-xs font-mono">
+                                        <span class="text-gray-500">11.6 BTC</span>
+                                        <span class="text-gray-300">$43,265</span>
+                                    </div>
+                                </div>
+                                <div class="relative h-5 bg-red-500/10 rounded overflow-hidden">
+                                    <div class="absolute inset-0 bg-red-500/30 ml-auto" style="width: 90%"></div>
+                                    <div class="relative flex justify-between items-center px-2 h-full text-xs font-mono">
+                                        <span class="text-gray-500">13.1 BTC</span>
+                                        <span class="text-gray-300">$43,270</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Spread -->
+                    <div class="mt-4 text-center">
+                        <div class="text-xs text-gray-600 font-mono">SPREAD</div>
+                        <div class="text-lg font-mono font-bold text-amber-400">$5.00 (0.012%)</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============================================ -->
+        <!-- SECTION 3: ASSETS & DOWNLOADS -->
+        <!-- ============================================ -->
+        <div id="assets" class="mb-12 mt-20">
+            <div class="flex items-center space-x-4 mb-8 pb-4 border-b-2 border-amber-400">
+                <div class="w-2 h-2 rounded-full bg-amber-400 pulse-dot"></div>
+                <h2 class="text-4xl font-bold font-mono neon-text">ASSETS & DOWNLOADS</h2>
+            </div>
+            <p class="text-gray-400 mb-12 text-lg">Production-ready assets for web deployment, social media, and marketing materials.</p>
+        </div>
+
+        <!-- Favicon Kit -->
+        <section class="section-card">
+            <h2 class="text-3xl font-bold font-mono mb-6 neon-text">FAVICON KIT</h2>
+            <p class="text-gray-400 mb-6">All favicon sizes needed for web deployment. Click to download individual sizes or download all at once.</p>
+
+            <!-- Favicon Grid -->
+            <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6 mb-8">
+                <!-- 16x16 -->
+                <div class="download-container p-6">
+                    <div class="bg-[#0a0a0a] rounded-lg p-4 mb-3 flex items-center justify-center" style="min-height: 80px;">
+                        <svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+                            <g><path d="M1 15L5 11L7 13L15 3" stroke="#fbbf24" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M11 3H15V7" stroke="#fbbf24" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></g>
+                        </svg>
+                    </div>
+                    <div class="font-mono text-xs font-bold mb-1">16x16</div>
+                    <div class="text-xs text-gray-500 mb-2">Browser Tab</div>
+                    <button onclick="downloadFavicon(16)" class="px-3 py-1 bg-amber-400 text-black font-mono text-xs font-bold rounded hover:bg-amber-500 transition">
+                        <i class="fas fa-download mr-1"></i> PNG
+                    </button>
+                </div>
+
+                <!-- 32x32 -->
+                <div class="download-container p-6">
+                    <div class="bg-[#0a0a0a] rounded-lg p-4 mb-3 flex items-center justify-center" style="min-height: 80px;">
+                        <svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+                            <g><path d="M2 30L10 22L14 26L30 6" stroke="#fbbf24" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M22 6H30V14" stroke="#fbbf24" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></g>
+                        </svg>
+                    </div>
+                    <div class="font-mono text-xs font-bold mb-1">32x32</div>
+                    <div class="text-xs text-gray-500 mb-2">Retina Tab</div>
+                    <button onclick="downloadFavicon(32)" class="px-3 py-1 bg-amber-400 text-black font-mono text-xs font-bold rounded hover:bg-amber-500 transition">
+                        <i class="fas fa-download mr-1"></i> PNG
+                    </button>
+                </div>
+
+                <!-- 48x48 -->
+                <div class="download-container p-6">
+                    <div class="bg-[#0a0a0a] rounded-lg p-4 mb-3 flex items-center justify-center" style="min-height: 80px;">
+                        <svg width="48" height="48" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+                            <g><path d="M3 45L15 33L21 39L45 9" stroke="#fbbf24" stroke-width="3.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M33 9H45V21" stroke="#fbbf24" stroke-width="3.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></g>
+                        </svg>
+                    </div>
+                    <div class="font-mono text-xs font-bold mb-1">48x48</div>
+                    <div class="text-xs text-gray-500 mb-2">Windows</div>
+                    <button onclick="downloadFavicon(48)" class="px-3 py-1 bg-amber-400 text-black font-mono text-xs font-bold rounded hover:bg-amber-500 transition">
+                        <i class="fas fa-download mr-1"></i> PNG
+                    </button>
+                </div>
+
+                <!-- 64x64 -->
+                <div class="download-container p-6">
+                    <div class="bg-[#0a0a0a] rounded-lg p-4 mb-3 flex items-center justify-center" style="min-height: 80px;">
+                        <svg width="64" height="64" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+                            <g><path d="M4 60L20 44L28 52L60 12" stroke="#fbbf24" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M44 12H60V28" stroke="#fbbf24" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></g>
+                        </svg>
+                    </div>
+                    <div class="font-mono text-xs font-bold mb-1">64x64</div>
+                    <div class="text-xs text-gray-500 mb-2">Windows XL</div>
+                    <button onclick="downloadFavicon(64)" class="px-3 py-1 bg-amber-400 text-black font-mono text-xs font-bold rounded hover:bg-amber-500 transition">
+                        <i class="fas fa-download mr-1"></i> PNG
+                    </button>
+                </div>
+
+                <!-- 128x128 -->
+                <div class="download-container p-6">
+                    <div class="bg-[#0a0a0a] rounded-lg p-4 mb-3 flex items-center justify-center" style="min-height: 80px;">
+                        <svg width="64" height="64" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
+                            <g><path d="M8 120L40 88L56 104L120 24" stroke="#fbbf24" stroke-width="8" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M88 24H120V56" stroke="#fbbf24" stroke-width="8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></g>
+                        </svg>
+                    </div>
+                    <div class="font-mono text-xs font-bold mb-1">128x128</div>
+                    <div class="text-xs text-gray-500 mb-2">Chrome Store</div>
+                    <button onclick="downloadFavicon(128)" class="px-3 py-1 bg-amber-400 text-black font-mono text-xs font-bold rounded hover:bg-amber-500 transition">
+                        <i class="fas fa-download mr-1"></i> PNG
+                    </button>
+                </div>
+
+                <!-- 180x180 -->
+                <div class="download-container p-6">
+                    <div class="bg-[#0a0a0a] rounded-lg p-4 mb-3 flex items-center justify-center" style="min-height: 80px;">
+                        <svg width="64" height="64" viewBox="0 0 180 180" xmlns="http://www.w3.org/2000/svg">
+                            <g><path d="M12 168L56 124L78 146L168 34" stroke="#fbbf24" stroke-width="12" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M124 34H168V78" stroke="#fbbf24" stroke-width="12" fill="none" stroke-linecap="round" stroke-linejoin="round"/></g>
+                        </svg>
+                    </div>
+                    <div class="font-mono text-xs font-bold mb-1">180x180</div>
+                    <div class="text-xs text-gray-500 mb-2">Apple Touch</div>
+                    <button onclick="downloadFavicon(180)" class="px-3 py-1 bg-amber-400 text-black font-mono text-xs font-bold rounded hover:bg-amber-500 transition">
+                        <i class="fas fa-download mr-1"></i> PNG
+                    </button>
+                </div>
+
+                <!-- 192x192 -->
+                <div class="download-container p-6">
+                    <div class="bg-[#0a0a0a] rounded-lg p-4 mb-3 flex items-center justify-center" style="min-height: 80px;">
+                        <svg width="64" height="64" viewBox="0 0 192 192" xmlns="http://www.w3.org/2000/svg">
+                            <g><path d="M12 180L60 132L84 156L180 36" stroke="#fbbf24" stroke-width="12" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M132 36H180V84" stroke="#fbbf24" stroke-width="12" fill="none" stroke-linecap="round" stroke-linejoin="round"/></g>
+                        </svg>
+                    </div>
+                    <div class="font-mono text-xs font-bold mb-1">192x192</div>
+                    <div class="text-xs text-gray-500 mb-2">Android Chrome</div>
+                    <button onclick="downloadFavicon(192)" class="px-3 py-1 bg-amber-400 text-black font-mono text-xs font-bold rounded hover:bg-amber-500 transition">
+                        <i class="fas fa-download mr-1"></i> PNG
+                    </button>
+                </div>
+
+                <!-- 512x512 -->
+                <div class="download-container p-6">
+                    <div class="bg-[#0a0a0a] rounded-lg p-4 mb-3 flex items-center justify-center" style="min-height: 80px;">
+                        <svg width="64" height="64" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+                            <g><path d="M32 480L160 352L224 416L480 96" stroke="#fbbf24" stroke-width="32" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M352 96H480V224" stroke="#fbbf24" stroke-width="32" fill="none" stroke-linecap="round" stroke-linejoin="round"/></g>
+                        </svg>
+                    </div>
+                    <div class="font-mono text-xs font-bold mb-1">512x512</div>
+                    <div class="text-xs text-gray-500 mb-2">PWA Splash</div>
+                    <button onclick="downloadFavicon(512)" class="px-3 py-1 bg-amber-400 text-black font-mono text-xs font-bold rounded hover:bg-amber-500 transition">
+                        <i class="fas fa-download mr-1"></i> PNG
+                    </button>
+                </div>
+
+                <!-- Download All -->
+                <div class="download-container p-6 border-2 border-dashed border-amber-400/30">
+                    <div class="flex items-center justify-center" style="min-height: 80px;">
+                        <i class="fas fa-file-archive text-4xl text-amber-400"></i>
+                    </div>
+                    <div class="font-mono text-xs font-bold mb-1 mt-3">ALL SIZES</div>
+                    <div class="text-xs text-gray-500 mb-2">ZIP Archive</div>
+                    <button onclick="downloadAllFavicons()" class="px-3 py-1 neon-border font-mono text-xs font-bold rounded hover:bg-amber-400/10 transition glow-on-hover">
+                        <i class="fas fa-download mr-1"></i> ZIP
+                    </button>
+                </div>
+            </div>
+
+            <!-- HTML Head Code -->
+            <div class="component-example">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="font-mono text-lg font-bold text-amber-400">HTML HEAD CODE</h3>
+                    <button onclick="copyFaviconCode()" class="px-4 py-2 bg-amber-400 text-black font-mono text-xs font-bold rounded hover:bg-amber-500 transition">
+                        <i class="fas fa-copy mr-1"></i> COPY
+                    </button>
+                </div>
+                <div class="code-block" id="favicon-code">
+                    <div class="text-blue-400">&lt;!-- Favicons --&gt;</div>
+                    <div class="text-green-400">&lt;link rel="icon" type="image/x-icon" href="/favicon.ico"&gt;</div>
+                    <div class="text-green-400">&lt;link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png"&gt;</div>
+                    <div class="text-green-400">&lt;link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png"&gt;</div>
+                    <div class="text-green-400">&lt;link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png"&gt;</div>
+                    <div class="text-green-400">&lt;link rel="manifest" href="/site.webmanifest"&gt;</div>
+                    <div class="text-green-400">&lt;meta name="theme-color" content="#0a0a0a"&gt;</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============================================ -->
+        <!-- SECTION 4: DEVELOPER RESOURCES -->
+        <!-- ============================================ -->
+        <div id="developer" class="mb-12 mt-20">
+            <div class="flex items-center space-x-4 mb-8 pb-4 border-b-2 border-amber-400">
+                <div class="w-2 h-2 rounded-full bg-amber-400 pulse-dot"></div>
+                <h2 class="text-4xl font-bold font-mono neon-text">DEVELOPER RESOURCES</h2>
+            </div>
+            <p class="text-gray-400 mb-12 text-lg">Code snippets, configurations, and variables for developers to implement the Virtuoso design system.</p>
+        </div>
+
+        <!-- CSS Variables Export -->
+        <section class="section-card">
+            <h2 class="text-3xl font-bold font-mono mb-6 neon-text">CSS VARIABLES</h2>
+            <p class="text-gray-400 mb-6">Copy-paste ready CSS custom properties for your projects.</p>
+
+            <div class="component-example">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="font-mono text-lg font-bold text-amber-400">ROOT VARIABLES</h3>
+                    <button onclick="copyCSSVariables()" class="px-4 py-2 bg-amber-400 text-black font-mono text-xs font-bold rounded hover:bg-amber-500 transition">
+                        <i class="fas fa-copy mr-1"></i> COPY ALL
+                    </button>
+                </div>
+                <div class="code-block text-sm" id="css-variables-code" style="max-height: 500px; overflow-y: auto;">
+                    <div class="text-purple-400">:root {</div>
+                    <div class="text-blue-400 ml-4">/* Brand Colors */</div>
+                    <div class="text-green-400 ml-4">--color-primary: #fbbf24;</div>
+                    <div class="text-green-400 ml-4">--color-secondary: #06B6D4;</div>
+                    <div class="text-green-400 ml-4">--color-accent: #ff0066;</div>
+                    <div class="text-green-400 ml-4"></div>
+                    <div class="text-blue-400 ml-4">/* Dark Mode */</div>
+                    <div class="text-green-400 ml-4">--dark-bg-primary: #0a0a0a;</div>
+                    <div class="text-green-400 ml-4">--dark-bg-secondary: #111111;</div>
+                    <div class="text-green-400 ml-4">--dark-border: #222222;</div>
+                    <div class="text-green-400 ml-4">--dark-text-primary: #e0e0e0;</div>
+                    <div class="text-green-400 ml-4">--dark-text-secondary: #9ca3af;</div>
+                    <div class="text-green-400 ml-4">--dark-text-tertiary: #6b7280;</div>
+                    <div class="text-green-400 ml-4"></div>
+                    <div class="text-blue-400 ml-4">/* Light Mode */</div>
+                    <div class="text-green-400 ml-4">--light-bg-primary: #ffffff;</div>
+                    <div class="text-green-400 ml-4">--light-bg-secondary: #f9fafb;</div>
+                    <div class="text-green-400 ml-4">--light-border: #e5e7eb;</div>
+                    <div class="text-green-400 ml-4">--light-text-primary: #111827;</div>
+                    <div class="text-green-400 ml-4">--light-text-secondary: #6b7280;</div>
+                    <div class="text-green-400 ml-4"></div>
+                    <div class="text-blue-400 ml-4">/* Semantic Colors */</div>
+                    <div class="text-green-400 ml-4">--color-success: #10b981;</div>
+                    <div class="text-green-400 ml-4">--color-error: #ef4444;</div>
+                    <div class="text-green-400 ml-4">--color-warning: #f59e0b;</div>
+                    <div class="text-green-400 ml-4">--color-info: #3b82f6;</div>
+                    <div class="text-green-400 ml-4"></div>
+                    <div class="text-blue-400 ml-4">/* Typography */</div>
+                    <div class="text-green-400 ml-4">--font-primary: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;</div>
+                    <div class="text-green-400 ml-4">--font-mono: 'IBM Plex Mono', monospace;</div>
+                    <div class="text-green-400 ml-4"></div>
+                    <div class="text-blue-400 ml-4">/* Shadows / Glow */</div>
+                    <div class="text-green-400 ml-4">--glow-sm: 0 0 10px rgba(251, 191, 36, 0.1);</div>
+                    <div class="text-green-400 ml-4">--glow-md: 0 0 20px rgba(251, 191, 36, 0.2);</div>
+                    <div class="text-green-400 ml-4">--glow-lg: 0 0 30px rgba(251, 191, 36, 0.3);</div>
+                    <div class="text-green-400 ml-4">--glow-hover: 0 0 30px #fbbf24, inset 0 0 10px rgba(251, 191, 36, 0.2);</div>
+                    <div class="text-green-400 ml-4"></div>
+                    <div class="text-blue-400 ml-4">/* Spacing Scale */</div>
+                    <div class="text-green-400 ml-4">--space-1: 4px;</div>
+                    <div class="text-green-400 ml-4">--space-2: 8px;</div>
+                    <div class="text-green-400 ml-4">--space-3: 12px;</div>
+                    <div class="text-green-400 ml-4">--space-4: 16px;</div>
+                    <div class="text-green-400 ml-4">--space-6: 24px;</div>
+                    <div class="text-green-400 ml-4">--space-8: 32px;</div>
+                    <div class="text-green-400 ml-4">--space-12: 48px;</div>
+                    <div class="text-green-400 ml-4">--space-16: 64px;</div>
+                    <div class="text-green-400 ml-4">--space-20: 80px;</div>
+                    <div class="text-purple-400">}</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tailwind Config Export -->
+        <section class="section-card">
+            <h2 class="text-3xl font-bold font-mono mb-6 neon-text">TAILWIND CONFIG</h2>
+            <p class="text-gray-400 mb-6">Ready-to-use Tailwind CSS configuration for project consistency.</p>
+
+            <div class="component-example">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="font-mono text-lg font-bold text-amber-400">tailwind.config.js</h3>
+                    <div class="flex gap-2">
+                        <button onclick="copyTailwindConfig()" class="px-4 py-2 bg-amber-400 text-black font-mono text-xs font-bold rounded hover:bg-amber-500 transition">
+                            <i class="fas fa-copy mr-1"></i> COPY
+                        </button>
+                        <button onclick="downloadTailwindConfig()" class="px-4 py-2 neon-border font-mono text-xs font-bold rounded hover:bg-amber-400/10 transition">
+                            <i class="fas fa-download mr-1"></i> DOWNLOAD
+                        </button>
+                    </div>
+                </div>
+                <div class="code-block text-sm" id="tailwind-config-code" style="max-height: 500px; overflow-y: auto;">
+                    <div class="text-blue-400">// tailwind.config.js</div>
+                    <div class="text-purple-400">module.exports = {</div>
+                    <div class="text-green-400 ml-4">theme: {</div>
+                    <div class="text-green-400 ml-8">extend: {</div>
+                    <div class="text-green-400 ml-12">colors: {</div>
+                    <div class="text-green-400 ml-16">'neon-amber': '#fbbf24',</div>
+                    <div class="text-green-400 ml-16">'quantum-cyan': '#06B6D4',</div>
+                    <div class="text-green-400 ml-16">'neon-red': '#ff0066',</div>
+                    <div class="text-green-400 ml-16">'dark': {</div>
+                    <div class="text-green-400 ml-20">'bg-primary': '#0a0a0a',</div>
+                    <div class="text-green-400 ml-20">'bg-secondary': '#111111',</div>
+                    <div class="text-green-400 ml-20">'border': '#222222',</div>
+                    <div class="text-green-400 ml-20">'text-primary': '#e0e0e0',</div>
+                    <div class="text-green-400 ml-20">'text-secondary': '#9ca3af',</div>
+                    <div class="text-green-400 ml-16">},</div>
+                    <div class="text-green-400 ml-12">},</div>
+                    <div class="text-green-400 ml-12">fontFamily: {</div>
+                    <div class="text-green-400 ml-16">'sans': ['Inter', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],</div>
+                    <div class="text-green-400 ml-16">'mono': ['IBM Plex Mono', 'monospace'],</div>
+                    <div class="text-green-400 ml-12">},</div>
+                    <div class="text-green-400 ml-12">boxShadow: {</div>
+                    <div class="text-green-400 ml-16">'glow-sm': '0 0 10px rgba(251, 191, 36, 0.1)',</div>
+                    <div class="text-green-400 ml-16">'glow-md': '0 0 20px rgba(251, 191, 36, 0.2)',</div>
+                    <div class="text-green-400 ml-16">'glow-lg': '0 0 30px rgba(251, 191, 36, 0.3)',</div>
+                    <div class="text-green-400 ml-16">'glow-hover': '0 0 30px #fbbf24, inset 0 0 10px rgba(251, 191, 36, 0.2)',</div>
+                    <div class="text-green-400 ml-12">},</div>
+                    <div class="text-green-400 ml-12">animation: {</div>
+                    <div class="text-green-400 ml-16">'pulse-dot': 'pulse-dot 2s ease-in-out infinite',</div>
+                    <div class="text-green-400 ml-12">},</div>
+                    <div class="text-green-400 ml-12">keyframes: {</div>
+                    <div class="text-green-400 ml-16">'pulse-dot': {</div>
+                    <div class="text-green-400 ml-20">'0%, 100%': { opacity: '1', transform: 'scale(1)' },</div>
+                    <div class="text-green-400 ml-20">'50%': { opacity: '0.5', transform: 'scale(0.95)' },</div>
+                    <div class="text-green-400 ml-16">},</div>
+                    <div class="text-green-400 ml-12">},</div>
+                    <div class="text-green-400 ml-8">},</div>
+                    <div class="text-green-400 ml-4">},</div>
+                    <div class="text-purple-400">}</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Social Media Kit -->
+        <section class="section-card">
+            <h2 class="text-3xl font-bold font-mono mb-6 neon-text">SOCIAL MEDIA KIT</h2>
+            <p class="text-gray-400 mb-6">Optimized images for all major social media platforms.</p>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <!-- OG Image -->
+                <div class="download-container p-6">
+                    <h3 class="font-mono text-sm font-bold mb-4 text-amber-400">OG IMAGE</h3>
+                    <div class="bg-[#0a0a0a] rounded-lg p-4 mb-3 aspect-[1200/630] flex items-center justify-center border border-[#222222]">
+                        <div class="text-center">
+                            <svg width="120" height="30" viewBox="0 0 400 60" xmlns="http://www.w3.org/2000/svg" class="mx-auto mb-2">
+                                <g transform="translate(18, 8)">
+                                    <g><path d="M2 38L14 26L22 34L38 14" stroke="#fbbf24" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M28 14H38V24" stroke="#fbbf24" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></g>
+                                    <text x="48" y="38" font-family="IBM Plex Mono, monospace" font-weight="700" font-size="42" fill="#fbbf24">VIRTUOSO</text>
+                                </g>
+                            </svg>
+                            <div class="text-xs font-mono text-gray-500">// AI-POWERED CRYPTO TRADING</div>
+                        </div>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-mono text-gray-500">1200 x 630</span>
+                        <button onclick="downloadSocialImage('og')" class="px-3 py-1 bg-amber-400 text-black font-mono text-xs font-bold rounded hover:bg-amber-500 transition">
+                            <i class="fas fa-download mr-1"></i> PNG
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Twitter Card -->
+                <div class="download-container p-6">
+                    <h3 class="font-mono text-sm font-bold mb-4 text-amber-400">TWITTER CARD</h3>
+                    <div class="bg-[#0a0a0a] rounded-lg p-4 mb-3 aspect-[1200/600] flex items-center justify-center border border-[#222222]">
+                        <div class="text-center">
+                            <svg width="120" height="30" viewBox="0 0 400 60" xmlns="http://www.w3.org/2000/svg" class="mx-auto mb-2">
+                                <g transform="translate(18, 8)">
+                                    <g><path d="M2 38L14 26L22 34L38 14" stroke="#fbbf24" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M28 14H38V24" stroke="#fbbf24" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></g>
+                                    <text x="48" y="38" font-family="IBM Plex Mono, monospace" font-weight="700" font-size="42" fill="#fbbf24">VIRTUOSO</text>
+                                </g>
+                            </svg>
+                            <div class="text-xs font-mono text-gray-500">// AI-POWERED CRYPTO TRADING</div>
+                        </div>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-mono text-gray-500">1200 x 600</span>
+                        <button onclick="downloadSocialImage('twitter')" class="px-3 py-1 bg-amber-400 text-black font-mono text-xs font-bold rounded hover:bg-amber-500 transition">
+                            <i class="fas fa-download mr-1"></i> PNG
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Profile Picture -->
+                <div class="download-container p-6">
+                    <h3 class="font-mono text-sm font-bold mb-4 text-amber-400">PROFILE PICTURE</h3>
+                    <div class="bg-[#0a0a0a] rounded-lg p-4 mb-3 aspect-square flex items-center justify-center border border-[#222222] max-w-[200px] mx-auto">
+                        <svg width="80" height="80" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+                            <g transform="translate(56, 56)">
+                                <path d="M16 384L144 256L240 352L384 160" stroke="#fbbf24" stroke-width="32" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+                                <path d="M288 160H384V256" stroke="#fbbf24" stroke-width="32" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+                            </g>
+                        </svg>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-mono text-gray-500">400 x 400</span>
+                        <button onclick="downloadSocialImage('profile')" class="px-3 py-1 bg-amber-400 text-black font-mono text-xs font-bold rounded hover:bg-amber-500 transition">
+                            <i class="fas fa-download mr-1"></i> PNG
+                        </button>
+                    </div>
+                </div>
+
+                <!-- LinkedIn Banner -->
+                <div class="download-container p-6">
+                    <h3 class="font-mono text-sm font-bold mb-4 text-amber-400">LINKEDIN BANNER</h3>
+                    <div class="bg-[#0a0a0a] rounded-lg p-4 mb-3 aspect-[1584/396] flex items-center justify-center border border-[#222222]">
+                        <div class="text-center">
+                            <svg width="100" height="25" viewBox="0 0 400 60" xmlns="http://www.w3.org/2000/svg" class="mx-auto">
+                                <g transform="translate(18, 8)">
+                                    <g><path d="M2 38L14 26L22 34L38 14" stroke="#fbbf24" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M28 14H38V24" stroke="#fbbf24" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></g>
+                                    <text x="48" y="38" font-family="IBM Plex Mono, monospace" font-weight="700" font-size="42" fill="#fbbf24">VIRTUOSO</text>
+                                </g>
+                            </svg>
+                        </div>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-mono text-gray-500">1584 x 396</span>
+                        <button onclick="downloadSocialImage('linkedin')" class="px-3 py-1 bg-amber-400 text-black font-mono text-xs font-bold rounded hover:bg-amber-500 transition">
+                            <i class="fas fa-download mr-1"></i> PNG
+                        </button>
+                    </div>
+                </div>
+
+                <!-- YouTube Banner -->
+                <div class="download-container p-6">
+                    <h3 class="font-mono text-sm font-bold mb-4 text-amber-400">YOUTUBE BANNER</h3>
+                    <div class="bg-[#0a0a0a] rounded-lg p-4 mb-3 aspect-[2560/1440] flex items-center justify-center border border-[#222222]">
+                        <div class="text-center">
+                            <svg width="80" height="20" viewBox="0 0 400 60" xmlns="http://www.w3.org/2000/svg" class="mx-auto mb-1">
+                                <g transform="translate(18, 8)">
+                                    <g><path d="M2 38L14 26L22 34L38 14" stroke="#fbbf24" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M28 14H38V24" stroke="#fbbf24" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></g>
+                                    <text x="48" y="38" font-family="IBM Plex Mono, monospace" font-weight="700" font-size="42" fill="#fbbf24">VIRTUOSO</text>
+                                </g>
+                            </svg>
+                            <div class="text-[8px] font-mono text-gray-500">// AI-POWERED CRYPTO TRADING</div>
+                        </div>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-mono text-gray-500">2560 x 1440</span>
+                        <button onclick="downloadSocialImage('youtube')" class="px-3 py-1 bg-amber-400 text-black font-mono text-xs font-bold rounded hover:bg-amber-500 transition">
+                            <i class="fas fa-download mr-1"></i> PNG
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Download All Social -->
+                <div class="download-container p-6 border-2 border-dashed border-amber-400/30">
+                    <i class="fas fa-file-archive text-4xl text-amber-400 mb-4"></i>
+                    <h3 class="font-mono text-sm font-bold mb-2">ALL SOCIAL IMAGES</h3>
+                    <p class="text-xs text-gray-500 mb-4 text-center">Download complete social media kit</p>
+                    <button onclick="downloadAllSocialImages()" class="px-4 py-2 neon-border font-mono text-xs font-bold rounded hover:bg-amber-400/10 transition glow-on-hover">
+                        <i class="fas fa-download mr-1"></i> DOWNLOAD ZIP
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Email Signature Generator -->
+        <section class="section-card">
+            <h2 class="text-3xl font-bold font-mono mb-6 neon-text">EMAIL SIGNATURE</h2>
+            <p class="text-gray-400 mb-6">Generate professional email signatures with brand consistency.</p>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <!-- Input Form -->
+                <div class="download-container p-6">
+                    <h3 class="font-mono text-lg font-bold mb-4 text-amber-400 w-full text-left">CUSTOMIZE</h3>
+                    <div class="space-y-4 w-full text-left">
+                        <div>
+                            <label class="block font-mono text-sm font-bold mb-2">Full Name</label>
+                            <input type="text" id="sig-name" value="John Smith" placeholder="Your name" class="w-full px-4 py-3 bg-[#0a0a0a] border border-[#222222] rounded font-mono text-sm focus:border-amber-400 focus:outline-none transition" oninput="updateSignaturePreview()">
+                        </div>
+                        <div>
+                            <label class="block font-mono text-sm font-bold mb-2">Title</label>
+                            <input type="text" id="sig-title" value="Senior Trader" placeholder="Your title" class="w-full px-4 py-3 bg-[#0a0a0a] border border-[#222222] rounded font-mono text-sm focus:border-amber-400 focus:outline-none transition" oninput="updateSignaturePreview()">
+                        </div>
+                        <div>
+                            <label class="block font-mono text-sm font-bold mb-2">Email</label>
+                            <input type="email" id="sig-email" value="john@virtuosocrypto.com" placeholder="your@email.com" class="w-full px-4 py-3 bg-[#0a0a0a] border border-[#222222] rounded font-mono text-sm focus:border-amber-400 focus:outline-none transition" oninput="updateSignaturePreview()">
+                        </div>
+                        <div>
+                            <label class="block font-mono text-sm font-bold mb-2">Phone (optional)</label>
+                            <input type="tel" id="sig-phone" value="" placeholder="+1 (555) 123-4567" class="w-full px-4 py-3 bg-[#0a0a0a] border border-[#222222] rounded font-mono text-sm focus:border-amber-400 focus:outline-none transition" oninput="updateSignaturePreview()">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Preview -->
+                <div class="download-container p-6">
+                    <h3 class="font-mono text-lg font-bold mb-4 text-amber-400 w-full text-left">PREVIEW</h3>
+                    <div id="signature-preview" class="rounded-lg p-6 w-full" style="background: #1a1a1a; border: 1px solid #333;">
+                        <!-- Signature will be rendered here -->
+                    </div>
+                    <div class="flex gap-3 mt-4 w-full">
+                        <button onclick="copySignatureHTML()" class="flex-1 px-4 py-3 bg-amber-400 text-black font-mono text-sm font-bold rounded hover:bg-amber-500 transition">
+                            <i class="fas fa-copy mr-1"></i> COPY HTML
+                        </button>
+                        <button onclick="copySignaturePlain()" class="flex-1 px-4 py-3 border border-gray-600 font-mono text-sm font-bold rounded hover:border-gray-400 transition">
+                            <i class="fas fa-file-alt mr-1"></i> COPY PLAIN
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Footer -->
+        <footer class="mt-16 pt-8 border-t border-gray-800 text-center">
+            <div class="flex items-center justify-center space-x-2 mb-4">
+                <i data-lucide="trending-up" class="text-amber-400" style="width: 20px; height: 20px;"></i>
+                <span class="font-mono font-bold neon-text">VIRTUOSO CRYPTO</span>
+            </div>
+            <p class="text-sm text-gray-500 font-mono mb-2">Brand Style Guide • Version 1.0</p>
+            <p class="text-xs text-gray-600">For internal use only. Do not distribute without permission.</p>
+            <div class="mt-6 text-xs text-gray-700">
+                <p>&copy; 2025 VIRTUOSO TRADING. ALL RIGHTS RESERVED.</p>
+            </div>
+        </footer>
+    </div>
+
+    <!-- JavaScript -->
+    <script>
+        // Initialize Lucide Icons
+        lucide.createIcons();
+
+        // Download Logo Function
+        function downloadLogo(format) {
+            // Create high-res SVG for download (properly centered)
+            const svgContent = `<?xml version="1.0" encoding="UTF-8"?>
+<svg width="800" height="120" viewBox="0 0 800 120" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+        <filter id="glowEffect" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="4" result="coloredBlur"/>
+            <feMerge>
+                <feMergeNode in="coloredBlur"/>
+                <feMergeNode in="SourceGraphic"/>
+            </feMerge>
+        </filter>
+        <style>
+            @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@700');
+            .logo-text { font-family: 'IBM Plex Mono', monospace; font-weight: 700; }
+        </style>
+    </defs>
+
+    <!-- Centered logo group -->
+    <g transform="translate(36, 15)">
+        <!-- Icon -->
+        <g filter="url(#glowEffect)">
+            <path d="M4 76L28 52L44 68L76 28" stroke="#fbbf24" stroke-width="8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M56 28H76V48" stroke="#fbbf24" stroke-width="8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+        </g>
+        <!-- Wordmark -->
+        <text x="96" y="70" class="logo-text" font-size="84" fill="#fbbf24" filter="url(#glowEffect)">VIRTUOSO</text>
+    </g>
+</svg>`;
+
+            if (format === 'svg') {
+                // Download as SVG
+                const blob = new Blob([svgContent], { type: 'image/svg+xml' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'virtuoso-logo.svg';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                showNotification('Downloaded: virtuoso-logo.svg');
+            } else if (format === 'png' || format === 'png-dark') {
+                // Download as high-res PNG (centered)
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                const scale = 4; // 4x resolution for high quality
+                const svgWidth = 800;
+                const svgHeight = 120;
+                const canvasWidth = 900; // Canvas with padding
+                const canvasHeight = 200; // Canvas with padding
+
+                canvas.width = canvasWidth * scale;
+                canvas.height = canvasHeight * scale;
+
+                if (format === 'png-dark') {
+                    // Add dark background
+                    ctx.fillStyle = '#0a0a0a';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                }
+
+                // Create image from SVG
+                const img = new Image();
+                const svgBlob = new Blob([svgContent], { type: 'image/svg+xml' });
+                const svgUrl = URL.createObjectURL(svgBlob);
+
+                img.onload = function() {
+                    ctx.scale(scale, scale);
+                    // Center the logo in the canvas
+                    const x = (canvasWidth - svgWidth) / 2;
+                    const y = (canvasHeight - svgHeight) / 2;
+                    ctx.drawImage(img, x, y);
+
+                    canvas.toBlob(function(blob) {
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = format === 'png-dark' ? 'virtuoso-logo-dark.png' : 'virtuoso-logo.png';
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(url);
+                        URL.revokeObjectURL(svgUrl);
+                        showNotification('Downloaded: ' + (format === 'png-dark' ? 'virtuoso-logo-dark.png' : 'virtuoso-logo.png'));
+                    }, 'image/png');
+                };
+
+                img.src = svgUrl;
+            }
+        }
+
+        // Download Icon Only Function
+        function downloadIcon(format) {
+            const iconSvg = `<?xml version="1.0" encoding="UTF-8"?>
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+        <filter id="iconGlow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="8" result="coloredBlur"/>
+            <feMerge>
+                <feMergeNode in="coloredBlur"/>
+                <feMergeNode in="SourceGraphic"/>
+            </feMerge>
+        </filter>
+    </defs>
+    <!-- Centered icon -->
+    <g filter="url(#iconGlow)" transform="translate(56, 56)">
+        <path d="M16 384L144 256L240 352L384 160" stroke="#fbbf24" stroke-width="32" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M288 160H384V256" stroke="#fbbf24" stroke-width="32" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+</svg>`;
+
+            if (format === 'svg') {
+                const blob = new Blob([iconSvg], { type: 'image/svg+xml' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'virtuoso-icon.svg';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                showNotification('Downloaded: virtuoso-icon.svg');
+            } else if (format === 'png' || format === 'png-dark') {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                const scale = 2;
+                const svgSize = 512;
+                const canvasSize = 600; // Add padding for centering
+
+                canvas.width = canvasSize * scale;
+                canvas.height = canvasSize * scale;
+
+                // Add dark background if requested
+                if (format === 'png-dark') {
+                    ctx.fillStyle = '#0a0a0a';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                }
+
+                const img = new Image();
+                const svgBlob = new Blob([iconSvg], { type: 'image/svg+xml' });
+                const svgUrl = URL.createObjectURL(svgBlob);
+
+                img.onload = function() {
+                    ctx.scale(scale, scale);
+                    // Center the icon
+                    const offset = (canvasSize - svgSize) / 2;
+                    ctx.drawImage(img, offset, offset);
+
+                    canvas.toBlob(function(blob) {
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = format === 'png-dark' ? 'virtuoso-icon-dark.png' : 'virtuoso-icon.png';
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(url);
+                        URL.revokeObjectURL(svgUrl);
+                        showNotification('Downloaded: ' + (format === 'png-dark' ? 'virtuoso-icon-dark.png' : 'virtuoso-icon.png'));
+                    }, 'image/png');
+                };
+
+                img.src = svgUrl;
+            }
+        }
+
+        // Copy color to clipboard
+        function copyColor(color, name) {
+            navigator.clipboard.writeText(color).then(() => {
+                showNotification(`Copied: ${name} (${color})`);
+            }).catch(err => {
+                console.error('Failed to copy:', err);
+            });
+        }
+
+        // Show notification
+        function showNotification(message) {
+            const notification = document.createElement('div');
+            notification.className = 'copied-notification font-mono text-sm';
+            notification.innerHTML = `
+                <div class="flex items-center space-x-3">
+                    <i class="fas fa-check-circle text-amber-400"></i>
+                    <span>${message}</span>
+                </div>
+            `;
+            document.body.appendChild(notification);
+
+            setTimeout(() => {
+                notification.style.opacity = '0';
+                notification.style.transform = 'translateX(400px)';
+                setTimeout(() => notification.remove(), 300);
+            }, 2000);
+        }
+
+        // ============================================
+        // FAVICON FUNCTIONS
+        // ============================================
+
+        function downloadFavicon(size) {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            canvas.width = size;
+            canvas.height = size;
+
+            // Dark background
+            ctx.fillStyle = '#0a0a0a';
+            ctx.fillRect(0, 0, size, size);
+
+            // Create icon SVG
+            const iconSvg = `<?xml version="1.0" encoding="UTF-8"?>
+<svg width="${size}" height="${size}" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+    <rect width="512" height="512" fill="#0a0a0a"/>
+    <g transform="translate(56, 56)">
+        <path d="M16 384L144 256L240 352L384 160" stroke="#fbbf24" stroke-width="32" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M288 160H384V256" stroke="#fbbf24" stroke-width="32" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+</svg>`;
+
+            const img = new Image();
+            const svgBlob = new Blob([iconSvg], { type: 'image/svg+xml' });
+            const svgUrl = URL.createObjectURL(svgBlob);
+
+            img.onload = function() {
+                ctx.drawImage(img, 0, 0, size, size);
+                canvas.toBlob(function(blob) {
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `favicon-${size}x${size}.png`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                    URL.revokeObjectURL(svgUrl);
+                    showNotification(`Downloaded: favicon-${size}x${size}.png`);
+                }, 'image/png');
+            };
+
+            img.src = svgUrl;
+        }
+
+        async function downloadAllFavicons() {
+            showNotification('Generating favicons... Please wait');
+
+            const sizes = [16, 32, 48, 64, 128, 180, 192, 512];
+            const files = [];
+
+            for (const size of sizes) {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                canvas.width = size;
+                canvas.height = size;
+
+                ctx.fillStyle = '#0a0a0a';
+                ctx.fillRect(0, 0, size, size);
+
+                const iconSvg = `<?xml version="1.0" encoding="UTF-8"?>
+<svg width="${size}" height="${size}" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+    <rect width="512" height="512" fill="#0a0a0a"/>
+    <g transform="translate(56, 56)">
+        <path d="M16 384L144 256L240 352L384 160" stroke="#fbbf24" stroke-width="32" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M288 160H384V256" stroke="#fbbf24" stroke-width="32" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+</svg>`;
+
+                await new Promise((resolve) => {
+                    const img = new Image();
+                    const svgBlob = new Blob([iconSvg], { type: 'image/svg+xml' });
+                    const svgUrl = URL.createObjectURL(svgBlob);
+
+                    img.onload = function() {
+                        ctx.drawImage(img, 0, 0, size, size);
+                        canvas.toBlob(function(blob) {
+                            const name = size === 180 ? 'apple-touch-icon.png' :
+                                        size === 192 ? 'android-chrome-192x192.png' :
+                                        size === 512 ? 'android-chrome-512x512.png' :
+                                        `favicon-${size}x${size}.png`;
+                            files.push({ name, blob });
+                            URL.revokeObjectURL(svgUrl);
+                            resolve();
+                        }, 'image/png');
+                    };
+                    img.src = svgUrl;
+                });
+            }
+
+            // Add site.webmanifest
+            const manifest = {
+                name: "Virtuoso Crypto",
+                short_name: "Virtuoso",
+                icons: [
+                    { src: "/android-chrome-192x192.png", sizes: "192x192", type: "image/png" },
+                    { src: "/android-chrome-512x512.png", sizes: "512x512", type: "image/png" }
+                ],
+                theme_color: "#0a0a0a",
+                background_color: "#0a0a0a",
+                display: "standalone"
+            };
+            const manifestBlob = new Blob([JSON.stringify(manifest, null, 2)], { type: 'application/json' });
+            files.push({ name: 'site.webmanifest', blob: manifestBlob });
+
+            // Download each file individually (since we can't create ZIP without a library)
+            for (const file of files) {
+                const url = URL.createObjectURL(file.blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = file.name;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                await new Promise(r => setTimeout(r, 200)); // Small delay between downloads
+            }
+
+            showNotification(`Downloaded ${files.length} favicon files`);
+        }
+
+        function copyFaviconCode() {
+            const code = `<link rel="icon" type="image/x-icon" href="/favicon.ico">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+<link rel="manifest" href="/site.webmanifest">
+<meta name="theme-color" content="#0a0a0a">`;
+
+            navigator.clipboard.writeText(code).then(() => {
+                showNotification('Copied favicon HTML code to clipboard');
+            });
+        }
+
+        // ============================================
+        // CSS VARIABLES FUNCTIONS
+        // ============================================
+
+        function copyCSSVariables() {
+            const cssCode = document.getElementById('css-variables-code').textContent;
+            navigator.clipboard.writeText(cssCode).then(() => {
+                showNotification('Copied CSS variables to clipboard');
+            });
+        }
+
+        // ============================================
+        // TAILWIND CONFIG FUNCTIONS
+        // ============================================
+
+        function copyTailwindConfig() {
+            const tailwindCode = document.getElementById('tailwind-config-code').textContent;
+            navigator.clipboard.writeText(tailwindCode).then(() => {
+                showNotification('Copied Tailwind config to clipboard');
+            });
+        }
+
+        function downloadTailwindConfig() {
+            const tailwindCode = document.getElementById('tailwind-config-code').textContent;
+            const blob = new Blob([tailwindCode], { type: 'text/javascript' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'tailwind.config.js';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            showNotification('Downloaded: tailwind.config.js');
+        }
+
+        // ============================================
+        // SOCIAL MEDIA IMAGE FUNCTIONS
+        // ============================================
+
+        function downloadSocialImage(type) {
+            const dimensions = {
+                'og': { width: 1200, height: 630, name: 'og-image.png' },
+                'twitter': { width: 1200, height: 600, name: 'twitter-card.png' },
+                'profile': { width: 400, height: 400, name: 'profile-image.png' },
+                'linkedin': { width: 1584, height: 396, name: 'linkedin-banner.png' },
+                'youtube': { width: 2560, height: 1440, name: 'youtube-banner.png' }
+            };
+
+            const config = dimensions[type];
+            if (!config) return;
+
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            canvas.width = config.width;
+            canvas.height = config.height;
+
+            // Dark background
+            ctx.fillStyle = '#0a0a0a';
+            ctx.fillRect(0, 0, config.width, config.height);
+
+            // Add subtle grid pattern
+            ctx.strokeStyle = 'rgba(251, 191, 36, 0.05)';
+            ctx.lineWidth = 1;
+            const gridSize = 40;
+            for (let x = 0; x < config.width; x += gridSize) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, config.height);
+                ctx.stroke();
+            }
+            for (let y = 0; y < config.height; y += gridSize) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(config.width, y);
+                ctx.stroke();
+            }
+
+            // Draw the icon
+            const iconSize = type === 'profile' ? 200 : type === 'youtube' ? 400 : 150;
+            const iconSvg = `<?xml version="1.0" encoding="UTF-8"?>
+<svg width="${iconSize}" height="${iconSize}" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+    <g transform="translate(56, 56)">
+        <path d="M16 384L144 256L240 352L384 160" stroke="#fbbf24" stroke-width="32" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M288 160H384V256" stroke="#fbbf24" stroke-width="32" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+</svg>`;
+
+            const img = new Image();
+            const svgBlob = new Blob([iconSvg], { type: 'image/svg+xml' });
+            const svgUrl = URL.createObjectURL(svgBlob);
+
+            img.onload = function() {
+                // Center position calculations
+                const centerX = config.width / 2;
+                const centerY = config.height / 2;
+
+                // Draw icon
+                const iconX = centerX - iconSize / 2;
+                const iconY = type === 'profile' ? centerY - iconSize / 2 : centerY - iconSize / 2 - 40;
+                ctx.drawImage(img, iconX, iconY, iconSize, iconSize);
+
+                // Add glow effect behind text
+                ctx.shadowColor = '#fbbf24';
+                ctx.shadowBlur = 20;
+
+                // Add brand name
+                ctx.font = `bold ${type === 'youtube' ? 120 : type === 'profile' ? 0 : 72}px 'IBM Plex Mono', monospace`;
+                ctx.fillStyle = '#fbbf24';
+                ctx.textAlign = 'center';
+
+                if (type !== 'profile') {
+                    const textY = centerY + iconSize / 2 + (type === 'youtube' ? 80 : 40);
+                    ctx.fillText('VIRTUOSO', centerX, textY);
+
+                    // Add tagline (except for profile)
+                    ctx.shadowBlur = 0;
+                    ctx.font = `${type === 'youtube' ? 36 : 24}px 'IBM Plex Mono', monospace`;
+                    ctx.fillStyle = '#9ca3af';
+                    ctx.fillText('// AI-POWERED CRYPTO TRADING', centerX, textY + (type === 'youtube' ? 60 : 40));
+                }
+
+                // Download
+                canvas.toBlob(function(blob) {
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = config.name;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                    URL.revokeObjectURL(svgUrl);
+                    showNotification(`Downloaded: ${config.name}`);
+                }, 'image/png');
+            };
+
+            img.src = svgUrl;
+        }
+
+        async function downloadAllSocialImages() {
+            showNotification('Generating social images... Please wait');
+            const types = ['og', 'twitter', 'profile', 'linkedin', 'youtube'];
+
+            for (const type of types) {
+                downloadSocialImage(type);
+                await new Promise(r => setTimeout(r, 500)); // Delay between downloads
+            }
+        }
+
+        // ============================================
+        // EMAIL SIGNATURE FUNCTIONS
+        // ============================================
+
+        function updateSignaturePreview() {
+            const name = document.getElementById('sig-name').value || 'Your Name';
+            const title = document.getElementById('sig-title').value || 'Your Title';
+            const email = document.getElementById('sig-email').value || 'email@virtuosocrypto.com';
+
+            const preview = document.getElementById('signature-preview');
+            preview.innerHTML = `
+                <div style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; color: #e0e0e0;">
+                    <div style="display: flex; align-items: center; margin-bottom: 12px;">
+                        <svg width="28" height="28" viewBox="0 0 512 512" style="margin-right: 8px;">
+                            <g transform="translate(56, 56)">
+                                <path d="M16 384L144 256L240 352L384 160" stroke="#fbbf24" stroke-width="32" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+                                <path d="M288 160H384V256" stroke="#fbbf24" stroke-width="32" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+                            </g>
+                        </svg>
+                        <span style="font-weight: bold; color: #fbbf24; font-size: 16px;">VIRTUOSO</span>
+                    </div>
+                    <div style="border-left: 2px solid #fbbf24; padding-left: 12px;">
+                        <div style="font-weight: bold; margin-bottom: 4px;">${name}</div>
+                        <div style="color: #9ca3af; margin-bottom: 8px;">${title}</div>
+                        <div style="font-size: 12px;">
+                            <a href="mailto:${email}" style="color: #fbbf24; text-decoration: none;">${email}</a>
+                        </div>
+                        <div style="font-size: 12px; margin-top: 4px;">
+                            <a href="https://virtuosocrypto.com" style="color: #9ca3af; text-decoration: none;">virtuosocrypto.com</a>
+                        </div>
+                    </div>
+                    <div style="margin-top: 12px; font-size: 11px; color: #6b7280;">
+                        // AI-POWERED CRYPTO TRADING
+                    </div>
+                </div>
+            `;
+        }
+
+        function copySignatureHTML() {
+            const name = document.getElementById('sig-name').value || 'Your Name';
+            const title = document.getElementById('sig-title').value || 'Your Title';
+            const email = document.getElementById('sig-email').value || 'email@virtuosocrypto.com';
+
+            const html = `<table cellpadding="0" cellspacing="0" style="font-family: 'IBM Plex Mono', Consolas, monospace; font-size: 14px; color: #e0e0e0;">
+    <tr>
+        <td style="padding-bottom: 12px;">
+            <table cellpadding="0" cellspacing="0">
+                <tr>
+                    <td style="vertical-align: middle; padding-right: 8px;">
+                        <img src="https://virtuosocrypto.com/icon.png" width="28" height="28" alt="Virtuoso" style="display: block;">
+                    </td>
+                    <td style="vertical-align: middle; font-weight: bold; color: #fbbf24; font-size: 16px;">VIRTUOSO</td>
+                </tr>
+            </table>
+        </td>
+    </tr>
+    <tr>
+        <td style="border-left: 2px solid #fbbf24; padding-left: 12px;">
+            <div style="font-weight: bold; margin-bottom: 4px;">${name}</div>
+            <div style="color: #9ca3af; margin-bottom: 8px;">${title}</div>
+            <div style="font-size: 12px;">
+                <a href="mailto:${email}" style="color: #fbbf24; text-decoration: none;">${email}</a>
+            </div>
+            <div style="font-size: 12px; margin-top: 4px;">
+                <a href="https://virtuosocrypto.com" style="color: #9ca3af; text-decoration: none;">virtuosocrypto.com</a>
+            </div>
+        </td>
+    </tr>
+    <tr>
+        <td style="padding-top: 12px; font-size: 11px; color: #6b7280;">
+            // AI-POWERED CRYPTO TRADING
+        </td>
+    </tr>
+</table>`;
+
+            navigator.clipboard.writeText(html).then(() => {
+                showNotification('Copied HTML signature to clipboard');
+            });
+        }
+
+        function copySignaturePlain() {
+            const name = document.getElementById('sig-name').value || 'Your Name';
+            const title = document.getElementById('sig-title').value || 'Your Title';
+            const email = document.getElementById('sig-email').value || 'email@virtuosocrypto.com';
+
+            const plain = `━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+↗ VIRTUOSO
+
+${name}
+${title}
+
+${email}
+virtuosocrypto.com
+
+// AI-POWERED CRYPTO TRADING
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
+
+            navigator.clipboard.writeText(plain).then(() => {
+                showNotification('Copied plain text signature to clipboard');
+            });
+        }
+
+        // Initialize signature preview on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            if (document.getElementById('sig-name')) {
+                updateSignaturePreview();
+            }
+        });
+
+        // Smooth scroll for navigation
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                }
+            });
+        });
+
+        // Highlight active nav link on scroll
+        window.addEventListener('scroll', () => {
+            const sections = document.querySelectorAll('section[id]');
+            const navLinks = document.querySelectorAll('.nav-link');
+
+            let currentSection = '';
+            sections.forEach(section => {
+                const sectionTop = section.offsetTop;
+                const sectionHeight = section.clientHeight;
+                if (window.scrollY >= (sectionTop - 100)) {
+                    currentSection = section.getAttribute('id');
+                }
+            });
+
+            navLinks.forEach(link => {
+                link.classList.remove('text-amber-400', 'bg-amber-400/10');
+                if (link.getAttribute('href') === `#${currentSection}`) {
+                    link.classList.add('text-amber-400', 'bg-amber-400/10');
+                }
+            });
+        });
+    </script>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const backToTopBtn = document.getElementById('backToTop');
+        const progressBarFill = document.getElementById('progressBarFill');
+        const mobileTocButton = document.getElementById('mobileTocButton');
+        const mobileTocModal = document.getElementById('mobileTocModal');
+        const mobileTocClose = document.getElementById('mobileTocClose');
+        const sectionNavItems = document.querySelectorAll('.section-nav-item');
+        const mobileTocItems = document.querySelectorAll('.mobile-toc-item');
+
+        const sectionIds = ['brand', 'design-system', 'data-visualization', 'assets'];
+        const sections = sectionIds.map(id => document.getElementById(id)).filter(el => el);
+
+        // Progress bar
+        function updateProgressBar() {
+            const scrollTop = window.pageYOffset;
+            const docHeight = document.documentElement.scrollHeight - window.innerHeight;
+            const scrollPercent = (scrollTop / docHeight) * 100;
+            progressBarFill.style.width = scrollPercent + '%';
+        }
+
+        // Active section
+        function updateActiveSection() {
+            const scrollPos = window.pageYOffset + 150;
+            let current = null;
+
+            sections.forEach(section => {
+                if (section && scrollPos >= section.offsetTop) {
+                    current = section.id;
+                }
+            });
+
+            sectionNavItems.forEach(item => {
+                item.classList.toggle('active', item.dataset.section === current);
+            });
+        }
+
+        // Back to top & mobile TOC visibility
+        function toggleButtons() {
+            const show = window.pageYOffset > 300;
+            backToTopBtn.classList.toggle('visible', show);
+            mobileTocButton.classList.toggle('visible', show);
+        }
+
+        backToTopBtn.addEventListener('click', () => {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        });
+
+        // Mobile TOC
+        mobileTocButton.addEventListener('click', () => {
+            mobileTocModal.classList.add('active');
+            document.body.style.overflow = 'hidden';
+        });
+
+        function closeMobileToc() {
+            mobileTocModal.classList.remove('active');
+            document.body.style.overflow = '';
+        }
+
+        mobileTocClose.addEventListener('click', closeMobileToc);
+        mobileTocModal.addEventListener('click', (e) => {
+            if (e.target === mobileTocModal) closeMobileToc();
+        });
+
+        mobileTocItems.forEach(item => {
+            item.addEventListener('click', closeMobileToc);
+        });
+
+        // Scroll listener
+        window.addEventListener('scroll', () => {
+            updateProgressBar();
+            updateActiveSection();
+            toggleButtons();
+        }, { passive: true });
+
+        // Initial state
+        updateProgressBar();
+        updateActiveSection();
+        toggleButtons();
+    });
+    </script>
+</body>
+</html>

@@ -88,6 +88,14 @@ import base64
 import random
 from matplotlib.ticker import MaxNLocator, AutoLocator
 from matplotlib.lines import Line2D  # For custom legend
+
+# Watermark utility for browser-quality branding
+try:
+    from src.utils.watermark import add_watermark, add_watermark_to_figure
+    WATERMARK_AVAILABLE = True
+except ImportError:
+    WATERMARK_AVAILABLE = False
+    add_watermark_to_figure = None
 from matplotlib.dates import MinuteLocator, DateFormatter
 from matplotlib.dates import AutoDateLocator
 
@@ -203,6 +211,108 @@ VIRTUOSO_ENHANCED_STYLE = {
         "savefig.facecolor": "#0c1a2b",
     },
 }
+
+# Create proper mplfinance style object from the dictionary
+# mplfinance requires style objects created via make_mpf_style(), not raw dicts
+def _create_virtuoso_style():
+    """Create a proper mplfinance style object from VIRTUOSO_ENHANCED_STYLE config."""
+    # Create market colors using make_marketcolors
+    mc = mpf.make_marketcolors(
+        up='#f59e0b',      # Amber for bullish
+        down='#f97316',    # Orange for bearish
+        edge={'up': '#f59e0b', 'down': '#f97316'},
+        wick={'up': '#f59e0b', 'down': '#f97316'},
+        volume={'up': '#f59e0b', 'down': '#f97316'},
+        ohlc={'up': '#f59e0b', 'down': '#f97316'},
+        inherit=True,
+    )
+
+    # Create the full style object
+    style = mpf.make_mpf_style(
+        base_mpf_style='nightclouds',  # Dark base style
+        marketcolors=mc,
+        mavcolors=['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899'],
+        gridcolor='#1a2a40',
+        gridstyle=':',
+        y_on_right=False,
+        facecolor='#0c1a2b',
+        figcolor='#0c1a2b',
+        edgecolor='#1a2a40',
+        rc={
+            'axes.labelsize': 10,
+            'axes.titlesize': 12,
+            'xtick.labelsize': 8,
+            'ytick.labelsize': 8,
+            'figure.facecolor': '#0c1a2b',
+            'savefig.facecolor': '#0c1a2b',
+            'axes.labelcolor': '#e5e7eb',
+            'xtick.color': '#e5e7eb',
+            'ytick.color': '#e5e7eb',
+        }
+    )
+    return style
+
+# Create the style object once at module load time
+VIRTUOSO_MPF_STYLE = _create_virtuoso_style()
+
+
+def _create_virtuoso_light_style():
+    """Create a light mode mplfinance style object with warm amber background.
+
+    Uses Virtuoso brand colors from style.html:
+    - Light BG Secondary: #f9fafb (clean, professional)
+    - Light Border: #e5e7eb (subtle grid)
+    - Light Text Primary: #111827
+    - Light Text Secondary: #6b7280
+    - Success (bullish): #10b981
+    - Error (bearish): #ef4444
+    - Neon Amber: #fbbf24 (accent)
+    """
+    # Warm light background - softer than pure white, matches Virtuoso brand
+    warm_bg = '#fef7e0'  # Soft warm cream (between #fff8e0 and #f9fafb)
+
+    # Create market colors using Virtuoso brand palette
+    mc = mpf.make_marketcolors(
+        up='#10b981',      # Success green (from style.html)
+        down='#ef4444',    # Error red (from style.html)
+        edge={'up': '#059669', 'down': '#dc2626'},  # Slightly darker edges
+        wick={'up': '#10b981', 'down': '#ef4444'},
+        volume={'up': '#10b981', 'down': '#ef4444'},
+        ohlc={'up': '#10b981', 'down': '#ef4444'},
+        inherit=True,
+    )
+
+    # Create the full style object with Virtuoso brand colors
+    style = mpf.make_mpf_style(
+        base_mpf_style='default',  # Light base style
+        marketcolors=mc,
+        mavcolors=['#3b82f6', '#8b5cf6', '#fbbf24', '#06B6D4', '#ec4899'],  # Blue, purple, amber, cyan, pink
+        gridcolor='#e5e7eb',  # Light border color - subtle grid (from style.html)
+        gridstyle='-',        # Solid but subtle
+        y_on_right=False,
+        facecolor=warm_bg,
+        figcolor=warm_bg,
+        edgecolor='#d1d5db',  # Slightly darker edge
+        rc={
+            'axes.labelsize': 11,
+            'axes.titlesize': 14,
+            'xtick.labelsize': 9,
+            'ytick.labelsize': 9,
+            'figure.facecolor': warm_bg,
+            'savefig.facecolor': warm_bg,
+            'axes.labelcolor': '#111827',   # Light text primary (from style.html)
+            'xtick.color': '#6b7280',       # Light text secondary
+            'ytick.color': '#6b7280',       # Light text secondary
+            'axes.edgecolor': '#d1d5db',    # Subtle border
+            'grid.alpha': 0.5,              # Softer grid
+            'font.family': 'sans-serif',
+            'font.size': 10,
+        }
+    )
+    return style
+
+# Create the light style object once at module load time
+VIRTUOSO_LIGHT_MPF_STYLE = _create_virtuoso_light_style()
 
 
 class ReportGenerator:
@@ -752,7 +862,7 @@ class ReportGenerator:
 
                 # Get expected stop loss percentage using the same logic as AlertManager
                 signal_type = signal_data.get("signal_type", "LONG").upper()
-                confluence_score = signal_data.get("confluence_score", 50)
+                confluence_score = signal_data.get("confluence_score", signal_data.get("score", 50))
 
                 expected_stop_pct = stop_calc.calculate_stop_loss_percentage(
                     signal_type, confluence_score, StopLossMethod.CONFIDENCE_BASED
@@ -1163,21 +1273,35 @@ class ReportGenerator:
             # Ensure output directory exists
             os.makedirs(output_dir, exist_ok=True)
 
-            # Add Virtuoso branding to bottom right corner
-            fig.text(0.85, 0.02, 'VIRTUOSO',
-                    fontsize=12, weight='bold', color='#ff9900',
-                    ha='right', va='bottom',
-                    transform=fig.transFigure,
-                    bbox=dict(boxstyle='round,pad=0.3',
-                             facecolor='#1E1E1E',
-                             edgecolor='#ff9900',
-                             alpha=0.9))
-            
+            # Add Virtuoso branding watermark (browser-quality PNG)
+            if WATERMARK_AVAILABLE and add_watermark_to_figure is not None:
+                try:
+                    add_watermark_to_figure(fig, position='bottom-right', zoom=0.4, padding=0.02)
+                except Exception as wm_err:
+                    self._log(f"Watermark failed, using fallback: {wm_err}", logging.WARNING)
+                    fig.text(0.85, 0.02, 'VIRTUOSO',
+                            fontsize=12, weight='bold', color='#ff9900',
+                            ha='right', va='bottom',
+                            transform=fig.transFigure,
+                            bbox=dict(boxstyle='round,pad=0.3',
+                                     facecolor='#1E1E1E',
+                                     edgecolor='#ff9900',
+                                     alpha=0.9))
+            else:
+                fig.text(0.85, 0.02, 'VIRTUOSO',
+                        fontsize=12, weight='bold', color='#ff9900',
+                        ha='right', va='bottom',
+                        transform=fig.transFigure,
+                        bbox=dict(boxstyle='round,pad=0.3',
+                                 facecolor='#1E1E1E',
+                                 edgecolor='#ff9900',
+                                 alpha=0.9))
+
             # Save figure with high quality and padding for branding
             chart_path = os.path.abspath(
                 os.path.join(output_dir, "component_chart.png")
             )
-            plt.savefig(chart_path, dpi=120, bbox_inches="tight", pad_inches=0.2)
+            plt.savefig(chart_path, dpi=120, pad_inches=0.2, facecolor=fig.get_facecolor())
             plt.close(fig)
 
             self._log(f"Component chart saved to {chart_path}")
@@ -1196,6 +1320,7 @@ class ReportGenerator:
         stop_loss: Optional[float] = None,
         targets: Optional[List[Dict]] = None,
         output_dir: str = None,
+        chart_mode: str = "light",
     ) -> Optional[str]:
         """
         Generate a candlestick chart with buy/sell zones using mplfinance.
@@ -1207,6 +1332,7 @@ class ReportGenerator:
             stop_loss: Stop loss price
             targets: List of target prices with format [{'price': float, 'name': str}]
             output_dir: Directory to save the chart
+            chart_mode: Chart color mode - "dark" (default) or "light" (warm amber background)
 
         Returns:
             Path to the saved chart file or None if chart creation failed
@@ -1238,6 +1364,7 @@ class ReportGenerator:
                     stop_loss=stop_loss,
                     targets=targets,
                     output_dir=output_dir,
+                    chart_mode=chart_mode,
                 )
                 
             # Always downsample data to prevent chart rendering issues - use more conservative max samples
@@ -1462,11 +1589,28 @@ class ReportGenerator:
             if 'volume' in df.columns:
                 self._log(f"Volume data check: has_volume={has_volume}, vol_sum={df['volume'].sum()}, vol_mean={df['volume'].mean():.2f}", level=logging.DEBUG)
             
+            # Select chart style based on chart_mode parameter
+            chart_style = VIRTUOSO_LIGHT_MPF_STYLE if chart_mode == "light" else VIRTUOSO_MPF_STYLE
+            is_light_mode = chart_mode == "light"
+            self._log(f"Using chart mode: {chart_mode}", logging.DEBUG)
+
+            # Define label colors based on chart mode (Virtuoso brand colors from style.html)
+            if is_light_mode:
+                label_bg_color = '#ffffff'      # White background for labels
+                label_border_alpha = 0.95
+                title_color = '#111827'         # Light text primary
+                watermark_color = '#fbbf24'     # Neon amber
+            else:
+                label_bg_color = '#0c1a2b'      # Dark background for labels
+                label_border_alpha = 0.9
+                title_color = '#e5e7eb'         # Dark text primary
+                watermark_color = '#ff9900'     # Orange/amber
+
             # Build kwargs dynamically to avoid validation issues
             kwargs = {
                 "type": "candle",
-                "style": VIRTUOSO_ENHANCED_STYLE,  # Use enhanced style
-                "figsize": (10, 6),
+                "style": chart_style,  # Use proper mplfinance style object based on mode
+                "figsize": (12, 7),    # Slightly wider for better label spacing
                 "title": f"{symbol} Price Chart",
                 "show_nontrading": False,
                 "returnfig": True,
@@ -1474,12 +1618,12 @@ class ReportGenerator:
                 "xrotation": 0,
                 "tight_layout": False,
                 "ylabel": "Price",
-                "figratio": (10, 7),
+                "figratio": (12, 7),
                 "scale_padding": {
                     "left": 0.05,
-                    "right": 0.3,
-                    "top": 0.2,
-                    "bottom": 0.2,
+                    "right": 0.22,     # Reduced from 0.3 for better spacing
+                    "top": 0.15,       # Reduced for tighter layout
+                    "bottom": 0.15,
                 },
                 "warn_too_much_data": 1000,  # Suppress warning up to 1000 candles
             }
@@ -1622,7 +1766,7 @@ class ReportGenerator:
                     Line2D([0], [0], color='#3b82f6', lw=1.2, label='Daily VWAP (LTF)'),
                     Line2D([0], [0], color='#8b5cf6', lw=1.2, label='Weekly VWAP (HTF)')
                 ]
-                ax1.legend(handles=legend_elements, loc='upper left', fontsize=9, framealpha=0.7, facecolor='#0c1a2b')
+                ax1.legend(handles=legend_elements, loc='upper left', fontsize=9, framealpha=0.7, facecolor=label_bg_color)
 
             # Always add trade overlays/labels regardless of VWAP availability
             # Add labels with improved styling
@@ -1661,10 +1805,10 @@ class ReportGenerator:
                         color="#10b981",
                         fontweight="bold",
                         bbox=dict(
-                            facecolor="#0c1a2b",
+                            facecolor=label_bg_color,
                             edgecolor="#3b82f6",
                             boxstyle="round,pad=0.3",
-                            alpha=0.9,
+                            alpha=label_border_alpha,
                         ),
                     )
 
@@ -1681,10 +1825,10 @@ class ReportGenerator:
                         color="#ef4444",
                         fontweight="bold",
                         bbox=dict(
-                            facecolor="#0c1a2b",
+                            facecolor=label_bg_color,
                             edgecolor="#ef4444",
                             boxstyle="round,pad=0.3",
-                            alpha=0.9,
+                            alpha=label_border_alpha,
                         ),
                     )
 
@@ -1736,10 +1880,10 @@ class ReportGenerator:
                                 color=color,
                                 fontweight="bold",
                                 bbox=dict(
-                                    facecolor="#0c1a2b",
+                                    facecolor=label_bg_color,
                                     edgecolor=color,
                                     boxstyle="round,pad=0.3",
-                                    alpha=0.9,
+                                    alpha=label_border_alpha,
                                 ),
                             )
 
@@ -1780,23 +1924,39 @@ class ReportGenerator:
             filename = f"{symbol_clean}_{signal_type}_chart_{timestamp_str}.png"
             output_file = os.path.join(output_dir, filename)
 
-            # Add Virtuoso branding to bottom right corner
-            fig.text(0.85, 0.02, 'VIRTUOSO',
-                    fontsize=14, weight='bold', color='#ff9900',
-                    ha='right', va='bottom',
-                    transform=fig.transFigure,
-                    bbox=dict(boxstyle='round,pad=0.4',
-                             facecolor='#1E1E1E',
-                             edgecolor='#ff9900',
-                             alpha=0.9))
+            # Add Virtuoso branding watermark (browser-quality PNG)
+            if WATERMARK_AVAILABLE and add_watermark_to_figure is not None:
+                try:
+                    add_watermark_to_figure(fig, position='bottom-right', zoom=0.5, padding=0.02)
+                except Exception as wm_err:
+                    self._log(f"Watermark failed, using fallback: {wm_err}", logging.WARNING)
+                    # Fallback to text watermark
+                    fig.text(0.85, 0.02, 'VIRTUOSO',
+                            fontsize=14, weight='bold', color='#ff9900',
+                            ha='right', va='bottom',
+                            transform=fig.transFigure,
+                            bbox=dict(boxstyle='round,pad=0.4',
+                                     facecolor='#1E1E1E',
+                                     edgecolor='#ff9900',
+                                     alpha=0.9))
+            else:
+                # Fallback to text watermark if watermark utility unavailable
+                fig.text(0.85, 0.02, 'VIRTUOSO',
+                        fontsize=14, weight='bold', color='#ff9900',
+                        ha='right', va='bottom',
+                        transform=fig.transFigure,
+                        bbox=dict(boxstyle='round,pad=0.4',
+                                 facecolor='#1E1E1E',
+                                 edgecolor='#ff9900',
+                                 alpha=0.9))
 
-            # Save the figure with padding for branding
-            plt.savefig(output_file, dpi=150, bbox_inches="tight", pad_inches=0.2)
+            # Save the figure - use pad_inches instead of bbox_inches='tight' to preserve watermark
+            plt.savefig(output_file, dpi=150, pad_inches=0.2, facecolor=fig.get_facecolor())
 
             # Also save to reports/charts directory if not already there
             if output_dir != chart_dir:
                 chart_file = os.path.join(chart_dir, filename)
-                plt.savefig(chart_file, dpi=150, bbox_inches="tight", pad_inches=0.2)
+                plt.savefig(chart_file, dpi=150, pad_inches=0.2, facecolor=fig.get_facecolor())
                 self._log(f"Chart also saved to: {chart_file}")
 
             plt.close(fig)
@@ -2013,19 +2173,27 @@ class ReportGenerator:
         signal_data: Dict[str, Any],
         ohlcv_data: Optional[pd.DataFrame] = None,
         output_dir: Optional[str] = None,
+        template_style: str = "horizontal",
+        chart_mode: str = "light",
     ) -> Tuple[Optional[str], Optional[str]]:
         """
         Generate a PDF trading report from the provided signal data.
-        
+
         Args:
             signal_data: Dictionary containing trading signal information
             ohlcv_data: Optional DataFrame with OHLCV data for candlestick chart
             output_dir: Directory to save the report (defaults to a temporary directory)
-            
+            template_style: "vertical" (A4 portrait) or "horizontal" (A4 landscape)
+            chart_mode: "dark" or "light" (warm amber background for charts)
+
         Returns:
             Tuple of (pdf_path, json_path) or (None, None) if generation failed
         """
         try:
+            # For horizontal template, always use light chart mode for better readability
+            if template_style == "horizontal":
+                chart_mode = "light"
+
             # Create separate directories for different file types
             reports_base_dir = os.path.join(os.getcwd(), 'reports')
             html_dir = os.path.join(reports_base_dir, 'html')
@@ -2144,7 +2312,7 @@ class ReportGenerator:
                                 stop_calc = get_stop_loss_calculator(config)
 
                             # Calculate stop loss using confidence-based method
-                            confluence_score = signal_data.get("confluence_score", 50)
+                            confluence_score = signal_data.get("confluence_score", signal_data.get("score", 50))
 
                             if sig_type in ["LONG", "SHORT"]:
                                 stop_loss = stop_calc.calculate_stop_loss_price(
@@ -2185,6 +2353,7 @@ class ReportGenerator:
                         stop_loss=stop_loss,
                         targets=targets,
                         output_dir=os.path.dirname(pdf_path),
+                        chart_mode=chart_mode,
                     )
                     
                     # If real data chart failed but we have trade params, fall back to simulated
@@ -2196,6 +2365,7 @@ class ReportGenerator:
                             stop_loss=stop_loss,
                             targets=targets,
                             output_dir=os.path.dirname(pdf_path),
+                            chart_mode=chart_mode,
                         )
                 elif signal_data.get("trade_params", None):
                     self._log("Creating simulated chart from trade parameters")
@@ -2213,6 +2383,7 @@ class ReportGenerator:
                         stop_loss=stop_loss,
                         targets=targets,
                         output_dir=os.path.dirname(pdf_path),
+                        chart_mode=chart_mode,
                     )
             except Exception as e:
                 self._log(
@@ -2407,6 +2578,49 @@ class ReportGenerator:
             except Exception as e:
                 self._log(f"Error processing components: {str(e)}", logging.ERROR)
 
+            # Fallback: use pre-formatted component_data from signal_data if available
+            if not component_data and signal_data.get("component_data"):
+                component_data = signal_data.get("component_data", [])
+                self._log(f"Using pre-formatted component_data with {len(component_data)} items")
+
+            # Calculate Top Performers - highest scoring sub-components across all categories
+            top_performers = []
+            try:
+                results = signal_data.get("results", {})
+                # Category display names and their weights
+                category_info = {
+                    "technical": {"name": "Technical", "weight": 0.15},
+                    "volume": {"name": "Volume", "weight": 0.18},
+                    "orderbook": {"name": "Orderbook", "weight": 0.20},
+                    "orderflow": {"name": "Orderflow", "weight": 0.30},
+                    "sentiment": {"name": "Sentiment", "weight": 0.07},
+                    "price_structure": {"name": "Structure", "weight": 0.10},
+                }
+
+                all_subcomponents = []
+                for category, info in category_info.items():
+                    cat_data = results.get(category, {})
+                    components = cat_data.get("components", {})
+                    if isinstance(components, dict):
+                        for sub_name, score in components.items():
+                            if isinstance(score, (int, float)) and not sub_name.startswith("_"):
+                                # Calculate weighted impact
+                                weighted_score = score * info["weight"]
+                                all_subcomponents.append({
+                                    "name": sub_name.replace("_", " ").upper(),
+                                    "score": round(score, 1),
+                                    "category": info["name"],
+                                    "weighted": round(weighted_score, 1),
+                                    "color_class": "high-score" if score >= 65 else "low-score" if score <= 35 else "medium-score"
+                                })
+
+                # Sort by raw score (highest first) and take top 6
+                all_subcomponents.sort(key=lambda x: x["score"], reverse=True)
+                top_performers = all_subcomponents[:6]
+                self._log(f"Calculated {len(top_performers)} top performers from {len(all_subcomponents)} sub-components")
+            except Exception as e:
+                self._log(f"Error calculating top performers: {str(e)}", logging.WARNING)
+
             # Format timestamp
             formatted_timestamp = ""
             try:
@@ -2475,8 +2689,22 @@ class ReportGenerator:
                                 self._log(f"Derived {len(derived_list)} interpretations from results for PDF", level=logging.DEBUG)
                     except Exception as e:
                         self._log(f"Error deriving interpretations from results: {e}", level=logging.WARNING)
-                actionable_insights = signal_data.get("actionable_insights", [])
-                
+                raw_actionable = signal_data.get("actionable_insights", [])
+                # Strip emojis from actionable insights (using Lucide icons in template instead)
+                import re
+                emoji_pattern = re.compile(
+                    '['
+                    '\U0001F600-\U0001F64F'  # emoticons
+                    '\U0001F300-\U0001F5FF'  # symbols & pictographs
+                    '\U0001F680-\U0001F6FF'  # transport & map
+                    '\U0001F1E0-\U0001F1FF'  # flags
+                    '\U00002702-\U000027B0'  # dingbats
+                    '\U0001F900-\U0001F9FF'  # supplemental symbols
+                    '\U00002600-\U000026FF'  # misc symbols
+                    ']+', re.UNICODE
+                )
+                actionable_insights = [emoji_pattern.sub('', str(item)).strip() for item in raw_actionable]
+
                 # Use InterpretationManager to process and standardize interpretations
                 insights = []
                 try:
@@ -2500,8 +2728,8 @@ class ReportGenerator:
                         insights = []
                         for interpretation in interpretation_set.interpretations:
                             component_name = interpretation.component_name.replace('_', ' ').title()
-                            severity_prefix = "⚠️ " if interpretation.severity.value in ["warning", "critical"] else ""
-                            insights.append(f"{severity_prefix}{component_name}: {interpretation.interpretation_text}")
+                            # No emoji prefix - using Lucide icons in template instead
+                            insights.append(f"{component_name}: {interpretation.interpretation_text}")
                         
                         self._log(f"Processed {len(insights)} interpretations for PDF", level=logging.DEBUG)
                     else:
@@ -2562,6 +2790,31 @@ class ReportGenerator:
                 self._log(f"Error extracting insights: {str(e)}", logging.ERROR)
                 self._log(traceback.format_exc(), logging.DEBUG)
 
+            # Merge interpretations into component_data for template rendering
+            # This ensures component_data has interpretation text for the header-style display
+            try:
+                if insights and component_data:
+                    # Build a mapping of component names to their insights
+                    insight_map = {}
+                    for insight in insights:
+                        if isinstance(insight, str) and ':' in insight:
+                            # Parse "Component Name: interpretation text" format
+                            parts = insight.split(':', 1)
+                            if len(parts) == 2:
+                                comp_name = parts[0].strip().lower().replace(' ', '_')
+                                insight_text = parts[1].strip()
+                                insight_map[comp_name] = insight_text
+
+                    # Update component_data with interpretations
+                    for comp in component_data:
+                        comp_name = comp.get('name', '').lower().replace(' ', '_')
+                        if comp_name in insight_map and not comp.get('interpretation'):
+                            comp['interpretation'] = insight_map[comp_name]
+
+                    self._log(f"Merged {len(insight_map)} interpretations into component_data", level=logging.DEBUG)
+            except Exception as e:
+                self._log(f"Error merging interpretations into component_data: {e}", logging.WARNING)
+
             # Extract risk management details with comprehensive validation
             entry_price = price
             stop_loss = None
@@ -2589,7 +2842,7 @@ class ReportGenerator:
 
                         # Calculate stop loss using confidence-based method
                         sig_type = (signal_data.get("signal_type", "NEUTRAL") or "NEUTRAL").upper()
-                        confluence_score = signal_data.get("confluence_score", 50)
+                        confluence_score = signal_data.get("confluence_score", signal_data.get("score", 50))
 
                         if sig_type in ["LONG", "SHORT"]:
                             stop_loss = stop_calc.calculate_stop_loss_price(
@@ -2780,11 +3033,18 @@ class ReportGenerator:
                 else None,
                 "confluence_analysis": confluence_analysis_image,
                 "confluence_visualization": confluence_visualization,
+                # Top performers - highest scoring sub-components
+                "top_performers": top_performers,
             }
 
             # Render the HTML template
             try:
-                template = self.env.get_template("trading_report_dark.html")
+                # Select template based on template_style parameter
+                if template_style == "horizontal":
+                    template_name = "trading_report_horizontal.html"
+                else:
+                    template_name = "trading_report_dark.html"
+                template = self.env.get_template(template_name)
 
                 # Preserve raw chart path for return values before converting to file:// for HTML
                 raw_candlestick_chart_path = candlestick_chart
@@ -2798,10 +3058,8 @@ class ReportGenerator:
                     confluence_analysis_image = (
                         f"file://{os.path.abspath(confluence_analysis_image)}"
                     )
-                if confluence_visualization:
-                    confluence_visualization = (
-                        f"file://{os.path.abspath(confluence_visualization)}"
-                    )
+                # NOTE: confluence_visualization is already base64 data from visualizer.generate_base64_image()
+                # The template uses data:image/png;base64,{{ confluence_visualization }} so we don't convert it
 
                 # Update context with fixed image paths
                 context.update(
@@ -2851,13 +3109,18 @@ class ReportGenerator:
                 
                 html_path = os.path.join(html_dir, html_filename)
                 pdf_path = os.path.join(pdf_dir, pdf_filename)
-                
-                # Create PDF from HTML
-                HTML(string=html_content).write_pdf(pdf_path)
-                
-                # Also save the HTML file
+
+                # Save the HTML file first (needed for Chrome renderer)
                 with open(html_path, "w") as f:
                     f.write(html_content)
+
+                # Try Chrome Headless first (full CSS support: gradients, shadows, etc.)
+                # Falls back to WeasyPrint if Chrome is unavailable
+                chrome_success = self._render_pdf_with_chrome(html_content, pdf_path, html_path)
+
+                if not chrome_success:
+                    self._log("Falling back to WeasyPrint for PDF generation", logging.INFO)
+                    HTML(string=html_content).write_pdf(pdf_path)
 
                 # Export JSON data
                 json_path = self._export_json_data(signal_data, json_filename, json_dir)
@@ -4575,6 +4838,131 @@ class ReportGenerator:
         
         return simplified_html
 
+    def _render_pdf_with_chrome(self, html_content: str, pdf_path: str, html_path: Optional[str] = None) -> bool:
+        """
+        Render PDF using Chrome Headless for full CSS support (gradients, shadows, etc.).
+
+        Chrome Headless provides complete CSS rendering including:
+        - Linear/radial gradients
+        - Box shadows and text shadows
+        - CSS transforms and animations (rendered statically)
+        - Modern flexbox and grid layouts
+
+        Args:
+            html_content: HTML string to render
+            pdf_path: Output path for PDF file
+            html_path: Optional existing HTML file path (avoids temp file creation)
+
+        Returns:
+            True if successful, False otherwise
+        """
+        import subprocess
+        import platform
+
+        # Find Chrome executable based on platform
+        chrome_paths = []
+        if platform.system() == "Darwin":  # macOS
+            chrome_paths = [
+                "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+                "/Applications/Chromium.app/Contents/MacOS/Chromium",
+                "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
+            ]
+        elif platform.system() == "Linux":
+            chrome_paths = [
+                "/usr/bin/google-chrome",
+                "/usr/bin/google-chrome-stable",
+                "/usr/bin/chromium",
+                "/usr/bin/chromium-browser",
+                "/snap/bin/chromium",
+            ]
+        else:  # Windows
+            chrome_paths = [
+                "C:/Program Files/Google/Chrome/Application/chrome.exe",
+                "C:/Program Files (x86)/Google/Chrome/Application/chrome.exe",
+            ]
+
+        chrome_exe = None
+        for path in chrome_paths:
+            if os.path.exists(path):
+                chrome_exe = path
+                break
+
+        if not chrome_exe:
+            self._log("Chrome not found, falling back to WeasyPrint", logging.WARNING)
+            return False
+
+        temp_html = None
+        try:
+            # If we don't have an HTML file, create a temp one
+            if html_path and os.path.exists(html_path):
+                source_html = html_path
+            else:
+                # Write content to temp file
+                temp_html = tempfile.NamedTemporaryFile(
+                    mode='w',
+                    suffix='.html',
+                    delete=False,
+                    encoding='utf-8'
+                )
+                temp_html.write(html_content)
+                temp_html.close()
+                source_html = temp_html.name
+
+            # Build Chrome headless command for PDF generation
+            # Using file:// protocol for local file access
+            file_url = f"file://{os.path.abspath(source_html)}"
+
+            cmd = [
+                chrome_exe,
+                "--headless",
+                "--disable-gpu",
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
+                f"--print-to-pdf={pdf_path}",
+                "--no-pdf-header-footer",
+                "--print-to-pdf-no-header",
+                # A4 Landscape dimensions
+                "--print-to-pdf-width=297mm",
+                "--print-to-pdf-height=210mm",
+                "--virtual-time-budget=3000",  # Wait for rendering
+                file_url
+            ]
+
+            self._log(f"Running Chrome headless for PDF generation: {pdf_path}", logging.DEBUG)
+
+            # Execute Chrome
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=30  # 30 second timeout
+            )
+
+            if result.returncode != 0:
+                self._log(f"Chrome PDF generation returned non-zero: {result.stderr}", logging.WARNING)
+                # Don't return False yet - check if PDF was created anyway
+
+            if os.path.exists(pdf_path) and os.path.getsize(pdf_path) > 0:
+                self._log(f"PDF generated successfully using Chrome Headless: {pdf_path}")
+                return True
+            else:
+                self._log("Chrome did not produce PDF output", logging.WARNING)
+                return False
+
+        except subprocess.TimeoutExpired:
+            self._log("Chrome PDF generation timed out", logging.WARNING)
+            return False
+        except Exception as e:
+            self._log(f"Chrome PDF generation failed: {str(e)}", logging.WARNING)
+            return False
+        finally:
+            # Clean up temp file
+            if temp_html and os.path.exists(temp_html.name):
+                try:
+                    os.remove(temp_html.name)
+                except:
+                    pass
+
     def _format_with_commas(self, value: Union[int, float]) -> str:
         """
         Format a number with commas for thousands.
@@ -4865,17 +5253,19 @@ class ReportGenerator:
         stop_loss: Optional[float] = None,
         targets: Optional[List[Dict]] = None,
         output_dir: str = None,
+        chart_mode: str = "light",
     ) -> Optional[str]:
         """
         Generate a simulated candlestick chart with buy/sell zones when no real OHLCV data is available.
-        
+
         Args:
             symbol: Trading symbol
             entry_price: Entry price for the trade
             stop_loss: Stop loss price
             targets: List of target prices with format [{'price': float, 'name': str}]
             output_dir: Directory to save the chart
-            
+            chart_mode: "dark" or "light" (warm amber background)
+
         Returns:
             Path to the saved chart file or None if chart creation failed
         """
@@ -4977,13 +5367,16 @@ class ReportGenerator:
                         if target_price < y_min:
                             y_min = target_price * 0.95
 
+            # Select chart style based on chart_mode
+            chart_style = VIRTUOSO_LIGHT_MPF_STYLE if chart_mode == "light" else VIRTUOSO_MPF_STYLE
+
             # Prepare plot configuration with enhanced style
             kwargs = {
                 "type": "candle",
-                "style": VIRTUOSO_ENHANCED_STYLE,  # Use enhanced style
-                "figsize": (10, 6),
+                "style": chart_style,  # Use light or dark style based on chart_mode
+                "figsize": (12, 9),  # Standard chart size for landscape PDF
                 "title": f"{symbol} Price Chart ⚠️ SIMULATED DATA ⚠️",
-                "panel_ratios": (3, 1),  # Changed from (4, 1) to (3, 1) for smaller volume panel
+                "panel_ratios": (4, 1),  # More space for price, less for volume
                 "volume": True,
                 "volume_panel": 1,
                 "show_nontrading": False,
@@ -4993,7 +5386,7 @@ class ReportGenerator:
                 "tight_layout": False,
                 "ylabel": "Price",
                 "ylabel_lower": "Volume",
-                "figratio": (10, 7),
+                "figratio": (12, 9),  # Match figsize ratio
                 "scale_padding": {
                     "left": 0.05,
                     "right": 0.3,
@@ -5003,12 +5396,20 @@ class ReportGenerator:
                 "warn_too_much_data": 1000,  # Suppress warning up to 1000 candles
             }
 
+            # Define label colors based on chart_mode
+            if chart_mode == "light":
+                label_bg_color = '#fef3c7'      # Light amber background for labels
+                label_border_alpha = 0.95
+            else:
+                label_bg_color = '#0c1a2b'      # Dark background for labels
+                label_border_alpha = 0.9
+
             # Initialize VWAP availability flag
             has_vwap = False
 
             # Prepare additional plots for entry, stop loss, and targets
             plots = []
-            
+
             # Ensure targets are always available - generate defaults if none provided
             if not targets or len(targets) == 0:
                 signal_type = "BULLISH"  # Default assumption for simulated chart
@@ -5146,7 +5547,7 @@ class ReportGenerator:
                         Line2D([0], [0], color='#3b82f6', lw=1.2, label='Daily VWAP (Simulated)'),
                         Line2D([0], [0], color='#8b5cf6', lw=1.2, label='Weekly VWAP (Simulated)')
                     ]
-                    ax1.legend(handles=legend_elements, loc='upper left', fontsize=9, framealpha=0.7, facecolor='#0c1a2b')
+                    ax1.legend(handles=legend_elements, loc='upper left', fontsize=9, framealpha=0.7, facecolor=label_bg_color)
 
                 # Add labels with improved styling
                 entry_pos = None  # Initialize to prevent undefined variable error
@@ -5186,10 +5587,10 @@ class ReportGenerator:
                         color="#3b82f6",
                         fontweight="bold",
                         bbox=dict(
-                            facecolor="#0c1a2b",
+                            facecolor=label_bg_color,
                             edgecolor="#3b82f6",
                             boxstyle="round,pad=0.3",
-                            alpha=0.9,
+                            alpha=label_border_alpha,
                         ),
                     )
 
@@ -5206,10 +5607,10 @@ class ReportGenerator:
                         color="#ef4444",
                         fontweight="bold",
                         bbox=dict(
-                            facecolor="#0c1a2b",
+                            facecolor=label_bg_color,
                             edgecolor="#ef4444",
                             boxstyle="round,pad=0.3",
-                            alpha=0.9,
+                            alpha=label_border_alpha,
                         ),
                     )
 
@@ -5261,10 +5662,10 @@ class ReportGenerator:
                                 color=color,
                                 fontweight="bold",
                                 bbox=dict(
-                                    facecolor="#0c1a2b",
+                                    facecolor=label_bg_color,
                                     edgecolor=color,
                                     boxstyle="round,pad=0.3",
-                                    alpha=0.9,
+                                    alpha=label_border_alpha,
                                 ),
                             )
 
@@ -5307,23 +5708,39 @@ class ReportGenerator:
                 filename = f"{symbol_clean}_{signal_type}_simulated_{timestamp_str}.png"
                 output_file = os.path.join(output_dir, filename)
 
-                # Add Virtuoso branding to bottom right corner
-                fig.text(0.85, 0.02, 'VIRTUOSO',
-                        fontsize=14, weight='bold', color='#ff9900',
-                        ha='right', va='bottom',
-                        transform=fig.transFigure,
-                        bbox=dict(boxstyle='round,pad=0.4',
-                                 facecolor='#1E1E1E',
-                                 edgecolor='#ff9900',
-                                 alpha=0.9))
+                # Add Virtuoso branding watermark (browser-quality PNG)
+                if WATERMARK_AVAILABLE and add_watermark_to_figure is not None:
+                    try:
+                        add_watermark_to_figure(fig, position='bottom-right', zoom=0.5, padding=0.02)
+                    except Exception as wm_err:
+                        self._log(f"Watermark failed, using fallback: {wm_err}", logging.WARNING)
+                        # Fallback to text watermark
+                        fig.text(0.85, 0.02, 'VIRTUOSO',
+                                fontsize=14, weight='bold', color='#ff9900',
+                                ha='right', va='bottom',
+                                transform=fig.transFigure,
+                                bbox=dict(boxstyle='round,pad=0.4',
+                                         facecolor='#1E1E1E',
+                                         edgecolor='#ff9900',
+                                         alpha=0.9))
+                else:
+                    # Fallback to text watermark if watermark utility unavailable
+                    fig.text(0.85, 0.02, 'VIRTUOSO',
+                            fontsize=14, weight='bold', color='#ff9900',
+                            ha='right', va='bottom',
+                            transform=fig.transFigure,
+                            bbox=dict(boxstyle='round,pad=0.4',
+                                     facecolor='#1E1E1E',
+                                     edgecolor='#ff9900',
+                                     alpha=0.9))
 
-                # Save the figure with padding for branding
-                plt.savefig(output_file, dpi=150, bbox_inches="tight", pad_inches=0.2)
+                # Save the figure - use pad_inches instead of bbox_inches='tight' to preserve watermark
+                plt.savefig(output_file, dpi=150, pad_inches=0.2, facecolor=fig.get_facecolor())
 
                 # Also save to reports/charts directory if not already there
                 if output_dir != chart_dir:
                     chart_file = os.path.join(chart_dir, filename)
-                    plt.savefig(chart_file, dpi=150, bbox_inches="tight", pad_inches=0.2)
+                    plt.savefig(chart_file, dpi=150, pad_inches=0.2, facecolor=fig.get_facecolor())
                     self._log(f"Simulated chart also saved to: {chart_file}")
 
                 plt.close(fig)
