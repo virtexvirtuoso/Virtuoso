@@ -1,6 +1,6 @@
 from typing import Dict, Optional
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -179,7 +179,7 @@ class PositionCalculator:
                 'risk_amount': risk_amount,
                 'reward_amount': reward_amount,
                 'risk_reward_ratio': risk_reward_ratio,
-                'timestamp': datetime.utcnow()
+                'timestamp': datetime.now(timezone.utc)
             }
             
         except Exception as e:

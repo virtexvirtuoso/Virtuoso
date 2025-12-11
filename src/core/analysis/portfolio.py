@@ -1,7 +1,7 @@
 from typing import Dict, List, Optional, Any
 import numpy as np
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 
 from src.config.manager import ConfigManager
@@ -269,12 +269,12 @@ class PortfolioAnalyzer:
                         'target_allocation': target,
                         'difference': difference,
                         'action': 'buy' if difference > 0 else 'sell',
-                        'timestamp': datetime.utcnow()
+                        'timestamp': datetime.now(timezone.utc)
                     })
                     
             return {
                 'trades': rebalancing_trades,
-                'timestamp': datetime.utcnow(),
+                'timestamp': datetime.now(timezone.utc),
                 'config_used': {
                     'target_allocation': target_allocation,
                     'tolerance': tolerance

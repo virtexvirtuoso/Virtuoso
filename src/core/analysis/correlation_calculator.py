@@ -7,7 +7,7 @@ import asyncio
 import logging
 import numpy as np
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass
 import hashlib
@@ -101,7 +101,7 @@ class CorrelationCalculator:
             
         try:
             # Calculate timestamp for historical data
-            end_time = datetime.utcnow()
+            end_time = datetime.now(timezone.utc)
             start_time = end_time - timedelta(days=days + 5)  # Extra buffer for weekends
             
             # Convert to milliseconds
@@ -165,7 +165,7 @@ class CorrelationCalculator:
         cache_key = self._get_correlation_cache_key(symbol1, symbol2, days, method)
         if cache_key in self._correlation_cache:
             cache_entry = self._correlation_cache[cache_key]
-            if datetime.utcnow().timestamp() - cache_entry['timestamp'] < self.cache_ttl:
+            if datetime.now(timezone.utc).timestamp() - cache_entry['timestamp'] < self.cache_ttl:
                 return cache_entry['result']
         
         try:
@@ -216,7 +216,7 @@ class CorrelationCalculator:
             # Cache result
             self._correlation_cache[cache_key] = {
                 'result': result,
-                'timestamp': datetime.utcnow().timestamp()
+                'timestamp': datetime.now(timezone.utc).timestamp()
             }
             
             return result
@@ -253,7 +253,7 @@ class CorrelationCalculator:
         cache_key = self._get_beta_cache_key(symbol, benchmark, days)
         if cache_key in self._beta_cache:
             cache_entry = self._beta_cache[cache_key]
-            if datetime.utcnow().timestamp() - cache_entry['timestamp'] < self.cache_ttl:
+            if datetime.now(timezone.utc).timestamp() - cache_entry['timestamp'] < self.cache_ttl:
                 return cache_entry['result']
         
         try:
@@ -316,7 +316,7 @@ class CorrelationCalculator:
             # Cache result
             self._beta_cache[cache_key] = {
                 'result': result,
-                'timestamp': datetime.utcnow().timestamp()
+                'timestamp': datetime.now(timezone.utc).timestamp()
             }
             
             return result
@@ -386,7 +386,7 @@ class CorrelationCalculator:
             "symbols": symbols,
             "correlation_matrix": correlation_matrix,
             "timeframe": f"{days}d",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "status": "success",
             "data_source": "real_market_data"
         }
@@ -415,7 +415,7 @@ class CorrelationCalculator:
             
             # Calculate beta for each time window
             for i in range(num_windows):
-                end_date = datetime.utcnow() - timedelta(days=i * 1)  # Daily windows
+                end_date = datetime.now(timezone.utc) - timedelta(days=i * 1)  # Daily windows
                 
                 # Calculate beta for this window
                 beta_result = await self.calculate_beta(
@@ -440,7 +440,7 @@ class CorrelationCalculator:
             "series_data": series_data,
             "window_size": days_per_window,
             "benchmark": self.benchmark_symbol,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "status": "success"
         }
     

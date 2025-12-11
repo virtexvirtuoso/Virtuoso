@@ -577,6 +577,28 @@ confluence:
         volume_delta: 0.2
         volume_profile: 0.1
         vwap: 0.1
+
+# Bitcoin Lead/Lag Prediction Configuration
+# Enhances altcoin signals using Bitcoin's predictive relationship
+bitcoin_prediction:
+  enabled: true  # Enable Bitcoin lead/lag prediction for altcoins
+  min_confidence: 0.6  # Minimum confidence threshold (0.0-1.0)
+  boost_multiplier: 10.0  # Maximum points to boost confluence score
+  min_stability_score: 50  # Minimum beta stability score (0-100)
+  min_data_points: 60  # Minimum BTC price history (minutes)
+
+  # Lead/lag detection parameters
+  lead_lag:
+    max_lag_minutes: 60  # Maximum lag to analyze
+    btc_move_threshold: 0.005  # Minimum BTC move to trigger (0.5%)
+    significance_threshold: 2.0  # Statistical significance (z-score)
+
+  # Beta calculation parameters
+  beta:
+    alpha: 0.94  # EWMA decay factor (0.94 = 16-period half-life)
+    min_r_squared: 0.3  # Minimum R² for reliable predictions
+    recalibration_hours: 24  # Recalibrate beta every N hours
+
 data_processing:
   batch_size: 100
   enabled: true
@@ -884,7 +906,7 @@ market:
     excluded_symbols: []
     market_types:
     - linear
-    max_symbols: 15
+    max_symbols: 20
     min_turnover: 1000000
     min_volume: 50000
     static_symbols:
@@ -1029,7 +1051,12 @@ monitoring:
       threshold_usd: 2000000
     liquidation:
       cooldown: 300
-      threshold: 250000
+      threshold: 500000
+    regime:
+      # Confidence thresholds for regime change alerts
+      discord_confidence_threshold: 0.80  # 80% - Minimum to send to Discord
+      dashboard_confidence_threshold: 0.80  # 80% - Minimum to show on dashboard
+      cooldown: 1800  # 30 minutes between alerts for same symbol
     system_alerts:
       cooldown:
         api: 300
@@ -1104,6 +1131,42 @@ monitoring:
         pattern_complexity: 0.15
         coordination: 0.1
         stealth: 0.1
+    # Predictive Liquidation Monitor Configuration
+    # Monitors symbols for signs of imminent liquidation cascades
+    predictive_alerts:
+      enabled: true
+      symbols_limit: 20  # Monitor top 20 symbols by liquidation risk
+      ranking_method: liquidation_risk  # Use composite scoring (OI, funding, volatility, turnover)
+      check_interval_seconds: 60  # Check every 60 seconds
+
+      # Funding Rate Alert Configuration
+      funding_rate:
+        enabled: true
+        thresholds:
+          warning: 0.0005   # 0.05% - elevated funding rate warning
+          high: 0.001       # 0.1% - extreme funding rate alert
+          critical: 0.0015  # 0.15% - critical funding rate alert
+        cooldown_minutes: 60  # 1 hour between funding alerts per symbol
+
+      # Leverage Build-Up Alert Configuration
+      leverage_buildup:
+        enabled: true
+        timeframe_hours: 4  # Analyze OI changes over 4-hour windows
+        thresholds:
+          oi_change_warning: 0.08   # 8% OI increase
+          oi_change_high: 0.12      # 12% OI increase
+          oi_change_critical: 0.18  # 18% OI increase
+          price_change_min: 0.02    # Require 2% price change
+        cooldown_minutes: 120  # 2 hours between leverage alerts per symbol
+
+      # Cluster Risk Alert Configuration
+      cluster_risk:
+        enabled: true
+        min_symbols_warning: 2   # 2+ symbols in risky state
+        min_symbols_high: 3      # 3+ symbols in risky state
+        min_symbols_critical: 4  # 4+ symbols in risky state
+        risk_threshold: 0.7      # Risk score threshold
+        cooldown_minutes: 30     # 30 min between cluster risk alerts
   components:
     analysis:
       enabled: true
@@ -1153,7 +1216,7 @@ monitoring:
       type: gauge
   performance:
     enabled: true
-    max_concurrent_symbols: 15  # Process all top symbols concurrently (instead of default 10)
+    max_concurrent_symbols: 20  # Process all top symbols concurrently
     metrics:
     - calculation_time
     - data_quality
@@ -1217,6 +1280,15 @@ risk_management:
   default_stop_loss: 0.04      # 4% base stop loss (increased from 2%)
   confidence_scaling: true     # Enable confidence-based stop loss scaling
   notes: "Enhanced configuration provides more breathing room for crypto volatility"
+
+  # Validation Period for Orderflow Fix (30-day validation)
+  # Reduces SHORT signal position sizes to 50% during validation
+  validation_period:
+    active: true  # Set to false to disable validation period restrictions
+    end_date: "2026-01-10"  # Auto-disable after this date (30 days from 2025-12-11)
+    short_position_multiplier: 0.5  # Reduce SHORT positions to 50% of normal size
+    short_stop_loss_pct: 1.5  # Tighter stop loss for SHORT during validation (1.5% vs 3.5%)
+    reason: "Orderflow indicator fix deployed 2025-12-11 - validating SHORT signal accuracy"
 rollout:
   enabled: true
   mode: complete
