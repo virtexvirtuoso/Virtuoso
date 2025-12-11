@@ -2,7 +2,7 @@ import asyncio
 import time
 import uuid
 from typing import Dict, List, Optional, Tuple, Callable
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import numpy as np
 import pandas as pd
 from dataclasses import dataclass
@@ -779,7 +779,7 @@ class LiquidationDetectionEngine:
         try:
             # Update statistics
             self.collection_stats['total_real_liquidations'] += 1
-            self.collection_stats['last_real_liquidation'] = datetime.utcnow()
+            self.collection_stats['last_real_liquidation'] = datetime.now(timezone.utc)
             
             # Store to database if available
             if self.storage:
@@ -808,7 +808,7 @@ class LiquidationDetectionEngine:
             
             # Get additional events from database if available
             if self.storage:
-                start_time = datetime.utcnow() - timedelta(minutes=lookback_minutes)
+                start_time = datetime.now(timezone.utc) - timedelta(minutes=lookback_minutes)
                 for symbol in symbols:
                     for exchange in exchanges:
                         db_events = await self.storage.get_liquidation_events(

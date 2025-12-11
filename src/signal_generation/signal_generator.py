@@ -55,14 +55,47 @@ import numpy as np
 import pandas as pd
 from typing import Dict, Any, List, Optional
 from src.utils.helpers import normalize_weights
-from src.indicators.technical_indicators import TechnicalIndicators
-from src.indicators.volume_indicators import VolumeIndicators
-from src.indicators.orderflow_indicators import OrderflowIndicators
-from src.indicators.orderbook_indicators import OrderbookIndicators
-from src.indicators.price_structure_indicators import PriceStructureIndicators
-from src.indicators.sentiment_indicators import SentimentIndicators
 import traceback
-from datetime import datetime
+
+# Import indicators with safe fallbacks (some modules are gitignored/proprietary)
+logger = logging.getLogger(__name__)
+
+try:
+    from src.indicators.technical_indicators import TechnicalIndicators
+except ImportError as e:
+    logger.warning(f"TechnicalIndicators not available: {e}")
+    TechnicalIndicators = None
+
+try:
+    from src.indicators.volume_indicators import VolumeIndicators
+except ImportError as e:
+    logger.warning(f"VolumeIndicators not available: {e}")
+    VolumeIndicators = None
+
+try:
+    from src.indicators.orderflow_indicators import OrderflowIndicators
+except ImportError as e:
+    logger.warning(f"OrderflowIndicators not available: {e}")
+    OrderflowIndicators = None
+
+try:
+    from src.indicators.orderbook_indicators import OrderbookIndicators
+except ImportError as e:
+    logger.warning(f"OrderbookIndicators not available: {e}")
+    OrderbookIndicators = None
+
+try:
+    from src.indicators.price_structure_indicators import PriceStructureIndicators
+except ImportError as e:
+    logger.warning(f"PriceStructureIndicators not available: {e}")
+    PriceStructureIndicators = None
+
+try:
+    from src.indicators.sentiment_indicators import SentimentIndicators
+except ImportError as e:
+    logger.warning(f"SentimentIndicators not available: {e}")
+    SentimentIndicators = None
+from datetime import datetime, timezone
 import asyncio
 import time
 # Import AlertManager type for annotation only, not the actual class
@@ -74,7 +107,7 @@ import os
 from dotenv import load_dotenv
 import json
 from src.utils.serializers import serialize_for_json, prepare_data_for_transmission
-from src.utils.data_utils import resolve_price, format_price_string
+from src.utils.data_utils import resolve_price, format_price_string, round_price
 from src.models.schema import SignalData, SignalType
 import uuid
 from uuid import uuid4
@@ -82,6 +115,15 @@ from pydantic import ValidationError
 from src.core.analysis.interpretation_generator import InterpretationGenerator
 from src.core.interpretation.interpretation_manager import InterpretationManager
 from src.monitoring.quality_metrics_tracker import QualityMetricsTracker
+from src.core.risk.execution_quality import check_execution_quality
+
+# Bitcoin prediction imports
+try:
+    from src.core.analysis.bitcoin_altcoin_predictor import BitcoinAltcoinPredictor
+    from collections import deque
+except ImportError as e:
+    logger.warning(f"Bitcoin predictor not available: {e}")
+    BitcoinAltcoinPredictor = None
 
 logger = logging.getLogger(__name__)
 
@@ -200,6 +242,24 @@ class SignalGenerator:
         self.quality_tracker = QualityMetricsTracker()
         self.logger.info("QualityMetricsTracker initialized for signal quality monitoring")
 
+        # Initialize Bitcoin Lead/Lag Predictor
+        self.btc_predictor = None
+        self.btc_price_history = deque(maxlen=240)  # 4 hours @ 1min bars
+        self.btc_symbol_predictors = {}  # Per-symbol predictor instances
+
+        if BitcoinAltcoinPredictor is not None:
+            try:
+                self.btc_predictor = BitcoinAltcoinPredictor()
+                btc_config = config.get('bitcoin_prediction', {})
+                self.btc_min_confidence = btc_config.get('min_confidence', 0.6)
+                self.btc_boost_multiplier = btc_config.get('boost_multiplier', 10.0)
+                self.logger.info("✅ Bitcoin Lead/Lag Predictor initialized for enhanced signals")
+            except Exception as e:
+                self.logger.warning(f"Failed to initialize Bitcoin predictor: {e}")
+                self.btc_predictor = None
+        else:
+            self.logger.info("ℹ️  Bitcoin predictor not available (module not found)")
+
         # Verify AlertManager initialization
         if self.alert_manager and hasattr(self.alert_manager, 'discord_webhook_url') and self.alert_manager.discord_webhook_url:
             self.logger.info(f"✅ AlertManager initialized with Discord webhook URL")
@@ -267,6 +327,135 @@ class SignalGenerator:
         self._on_signal_callback = callback
         self.logger.info(f"Signal callback registered: {callback.__name__ if hasattr(callback, '__name__') else str(callback)}")
 
+    def update_btc_price(self, price: float, timestamp: int = None):
+        """
+        Update Bitcoin price history for predictive analysis.
+
+        Args:
+            price: Current BTC price
+            timestamp: Optional timestamp (uses current time if not provided)
+        """
+        if timestamp is None:
+            timestamp = int(time.time())
+
+        self.btc_price_history.append({
+            'price': price,
+            'timestamp': timestamp
+        })
+
+    def _get_btc_prediction_signal(self, symbol: str) -> Optional[Dict[str, Any]]:
+        """
+        Get Bitcoin lead/lag prediction signal for an altcoin.
+
+        Args:
+            symbol: Altcoin symbol (e.g., 'ETHUSDT')
+
+        Returns:
+            Dict with prediction signal or None if unavailable
+        """
+        # Check if predictor is available
+        if self.btc_predictor is None or len(self.btc_price_history) < 60:
+            return None
+
+        try:
+            # Convert BTC price history to pandas Series
+            btc_prices = pd.Series([p['price'] for p in self.btc_price_history])
+
+            # Get altcoin prices from market data manager if available
+            if self.market_data_manager is None:
+                return None
+
+            # Try to get recent altcoin price data
+            # This will need to be adapted based on your market_data_manager API
+            try:
+                alt_prices = self._get_altcoin_prices(symbol)
+                if alt_prices is None or len(alt_prices) < 60:
+                    return None
+            except Exception as e:
+                self.logger.debug(f"Could not fetch alt prices for {symbol}: {e}")
+                return None
+
+            # Calculate recent BTC move (last 5 minutes)
+            btc_returns = np.log(btc_prices / btc_prices.shift(1)).fillna(0)
+            recent_btc_move_pct = btc_returns.iloc[-5:].sum() * 100
+
+            # Run prediction analysis
+            analysis = self.btc_predictor.analyze_altcoin(
+                symbol=symbol,
+                btc_prices=btc_prices,
+                alt_prices=alt_prices,
+                btc_recent_move_pct=recent_btc_move_pct
+            )
+
+            # Check if we have a valid prediction
+            if 'error' in analysis:
+                return None
+
+            # Extract lead/lag signal
+            lead_lag = analysis.get('lead_lag', {})
+            stability = analysis.get('stability', {})
+
+            # Only use signal if significant and stable
+            if not lead_lag.get('signal_active', False):
+                return None
+
+            stability_score = stability.get('stability_score', 0)
+            if stability_score < 50:  # Minimum stability threshold
+                return None
+
+            # Calculate confidence and boost
+            correlation = lead_lag.get('correlation', 0)
+            confidence = min(abs(correlation), stability_score / 100.0)
+
+            if confidence < self.btc_min_confidence:
+                return None
+
+            # Calculate boost points (scaled by confidence and direction alignment)
+            direction = lead_lag.get('direction', 'neutral')
+            expected_move_pct = lead_lag.get('expected_alt_move_pct', 0)
+
+            # Boost is proportional to confidence and expected move magnitude
+            boost_points = confidence * self.btc_boost_multiplier
+            if direction == 'short':
+                boost_points = -boost_points  # Negative boost for short signals
+
+            return {
+                'confidence': confidence,
+                'boost_points': boost_points,
+                'direction': direction,
+                'expected_move_pct': expected_move_pct,
+                'lag_minutes': lead_lag.get('optimal_lag_minutes', 0),
+                'stability_score': stability_score,
+                'beta': analysis.get('beta', 1.0)
+            }
+
+        except Exception as e:
+            self.logger.debug(f"Error getting BTC prediction for {symbol}: {e}")
+            return None
+
+    def _get_altcoin_prices(self, symbol: str) -> Optional[pd.Series]:
+        """
+        Fetch recent altcoin price data.
+
+        Args:
+            symbol: Altcoin symbol
+
+        Returns:
+            pandas Series of prices or None if unavailable
+        """
+        # This is a placeholder - needs to be implemented based on your
+        # market_data_manager API. For now, return None to avoid errors.
+        # You'll need to adapt this to your actual data source.
+        try:
+            if hasattr(self.market_data_manager, 'get_recent_prices'):
+                prices = self.market_data_manager.get_recent_prices(symbol, limit=240)
+                if prices is not None and len(prices) >= 60:
+                    return pd.Series(prices)
+            return None
+        except Exception as e:
+            self.logger.debug(f"Could not fetch prices for {symbol}: {e}")
+            return None
+
     async def generate_confluence_score(self, indicators: Dict[str, float]) -> float:
         """Generate and store confluence score from individual indicators.
         
@@ -312,7 +501,7 @@ class SignalGenerator:
             confluence_score = float(np.clip(confluence_score, 0, 100))
             
             # Get timestamp from indicators or use current time
-            timestamp = indicators.get('timestamp', datetime.utcnow())
+            timestamp = indicators.get('timestamp', datetime.now(timezone.utc))
             
             # Get market conditions
             market_conditions = {
@@ -541,7 +730,7 @@ class SignalGenerator:
             self.logger.debug(traceback.format_exc())
             return None
 
-    async def generate_signal(self, indicators: Dict[str, Any]) -> Dict[str, Any]:
+    async def generate_signal(self, indicators: Dict[str, Any], exchange=None) -> Dict[str, Any]:
         """
         Generate trading signals based on indicator values and confluence scores.
         
@@ -562,7 +751,10 @@ class SignalGenerator:
                 - 'futures_premium_score': float - Futures basis score
                 - 'timeframe': str - Analysis timeframe
                 - 'timestamp': int - Analysis timestamp
-                
+            exchange: Optional exchange instance for execution quality checks
+                - If provided, performs mark price divergence check
+                - If None, skips quality check (backward compatibility)
+
         Returns:
             Dict[str, Any]: Signal data containing:
                 - 'id': str - Unique signal identifier (UUID)
@@ -650,10 +842,50 @@ class SignalGenerator:
                 
                 logger.info(f"Calculated confluence score for {symbol}: {confluence_score:.2f} from components: {component_scores}")
                 logger.debug(f"Used weights: {weights}")
-            
+
             logger.debug(f"Received data for {symbol}:")
             logger.debug(f"Raw indicators: {indicators}")
             logger.debug(f"Extracted score: {confluence_score}")
+
+            # ═══════════════════════════════════════════════════════════════════
+            # BITCOIN LEAD/LAG PREDICTION BOOST
+            # ═══════════════════════════════════════════════════════════════════
+            # Enhance confluence score using Bitcoin predictive signals
+            original_confluence = confluence_score
+            btc_boost_applied = False
+            btc_prediction_metadata = {}
+
+            if symbol != 'BTCUSDT' and self.btc_predictor is not None:
+                btc_signal = self._get_btc_prediction_signal(symbol)
+
+                if btc_signal is not None:
+                    boost_points = btc_signal['boost_points']
+                    confluence_score = np.clip(confluence_score + boost_points, 0, 100)
+                    btc_boost_applied = True
+
+                    # Store metadata for signal enrichment
+                    btc_prediction_metadata = {
+                        'btc_prediction_active': True,
+                        'btc_confidence': btc_signal['confidence'],
+                        'btc_direction': btc_signal['direction'],
+                        'btc_expected_move_pct': btc_signal['expected_move_pct'],
+                        'btc_lag_minutes': btc_signal['lag_minutes'],
+                        'btc_stability_score': btc_signal['stability_score'],
+                        'btc_beta': btc_signal['beta'],
+                        'btc_boost_points': boost_points,
+                        'score_before_btc': original_confluence,
+                        'score_after_btc': confluence_score
+                    }
+
+                    logger.info(f"[BTC PREDICTOR] {symbol} enhanced by Bitcoin lead/lag signal:")
+                    logger.info(f"  Original Score: {original_confluence:.2f}")
+                    logger.info(f"  BTC Boost: {boost_points:+.2f} points")
+                    logger.info(f"  Final Score: {confluence_score:.2f}")
+                    logger.info(f"  BTC Direction: {btc_signal['direction'].upper()}")
+                    logger.info(f"  Confidence: {btc_signal['confidence']:.2%}")
+                    logger.info(f"  Expected Alt Move: {btc_signal['expected_move_pct']:+.2f}%")
+                    logger.info(f"  Lag: {btc_signal['lag_minutes']} minutes")
+                    logger.info(f"  Beta: {btc_signal['beta']:.2f}")
 
             # Use thresholds from the self.thresholds dictionary loaded during initialization
             long_threshold = self.thresholds['long']
@@ -845,6 +1077,83 @@ class SignalGenerator:
                 return None
 
             if signal:
+                # ═══════════════════════════════════════════════════════════════════
+                # EXECUTION QUALITY CHECK (Phase 2 Enhancement #2: Mark Price Kline)
+                # ═══════════════════════════════════════════════════════════════════
+                # Pre-flight check for market manipulation and execution risks
+                # If exchange is available, check mark price divergence
+                if exchange:
+                    try:
+                        quality_check = await check_execution_quality(
+                            exchange=exchange,
+                            symbol=symbol,
+                            signal_strength=confluence_score
+                        )
+
+                        if quality_check.action == 'REJECT_SIGNAL':
+                            # Critical divergence detected - skip this signal entirely
+                            logger.warning(
+                                f"❌ SIGNAL REJECTED for {symbol}: {quality_check.reason}"
+                            )
+                            logger.warning(
+                                f"   Mark Price: {quality_check.mark_price:.2f} | "
+                                f"Last Price: {quality_check.last_price:.2f} | "
+                                f"Divergence: {quality_check.divergence_pct:.2f}%"
+                            )
+                            return None  # Abort signal generation
+
+                        elif quality_check.action == 'WIDEN_STOPS':
+                            # Moderate divergence - log warning and proceed with wider stops
+                            logger.info(
+                                f"⚠️  EXECUTION WARNING for {symbol}: {quality_check.reason}"
+                            )
+                            logger.info(
+                                f"   Mark Price: {quality_check.mark_price:.2f} | "
+                                f"Last Price: {quality_check.last_price:.2f} | "
+                                f"Divergence: {quality_check.divergence_pct:.2f}%"
+                            )
+                            # Note: In future, could modify risk_percent here to widen stops
+
+                        else:
+                            # Normal conditions - log success
+                            logger.debug(
+                                f"✅ Execution quality check PASSED for {symbol}: "
+                                f"divergence {quality_check.divergence_pct:.2f}%"
+                            )
+
+                    except Exception as e:
+                        # On error, log but proceed with signal (fail-safe)
+                        logger.error(f"Error during execution quality check for {symbol}: {e}")
+                        logger.debug(traceback.format_exc())
+                else:
+                    # Exchange not provided - skip check (backward compatibility)
+                    logger.debug(f"Execution quality check skipped for {symbol} (no exchange provided)")
+                # ═══════════════════════════════════════════════════════════════════
+
+                # Calculate trade parameters for PDF generation
+                entry_price = current_price
+
+                # Calculate stop loss based on signal direction (3% risk)
+                risk_percent = 0.03
+                if signal == 'LONG':
+                    stop_loss = entry_price * (1 - risk_percent)
+                    # Calculate targets based on risk:reward ratios
+                    risk_distance = entry_price - stop_loss
+                    targets = [
+                        {"name": "Target 1", "price": entry_price + (risk_distance * 1.5), "size": 50},  # 1.5:1 R:R
+                        {"name": "Target 2", "price": entry_price + (risk_distance * 2.5), "size": 30},  # 2.5:1 R:R
+                        {"name": "Target 3", "price": entry_price + (risk_distance * 4.0), "size": 20},  # 4:1 R:R
+                    ]
+                else:  # SHORT
+                    stop_loss = entry_price * (1 + risk_percent)
+                    # Calculate targets based on risk:reward ratios
+                    risk_distance = stop_loss - entry_price
+                    targets = [
+                        {"name": "Target 1", "price": entry_price - (risk_distance * 1.5), "size": 50},  # 1.5:1 R:R
+                        {"name": "Target 2", "price": entry_price - (risk_distance * 2.5), "size": 30},  # 2.5:1 R:R
+                        {"name": "Target 3", "price": entry_price - (risk_distance * 4.0), "size": 20},  # 4:1 R:R
+                    ]
+
                 # Prepare the signal result to return
                 signal_result = {
                     'signal': signal,
@@ -855,8 +1164,22 @@ class SignalGenerator:
                     'results': results,
                     'already_processed': False,  # Not processed yet
                     'alert_sent': False,         # Alert not sent yet
-                    'timestamp': indicators.get('timestamp', int(time.time() * 1000))
+                    'timestamp': indicators.get('timestamp', int(time.time() * 1000)),
+                    # Add trade parameters for PDF chart annotations
+                    'trade_params': {
+                        'entry_price': entry_price,
+                        'stop_loss': stop_loss,
+                        'targets': targets,
+                        'risk_percent': risk_percent
+                    },
+                    'entry_price': entry_price,
+                    'stop_loss': stop_loss,
+                    'targets': targets
                 }
+
+                # Add Bitcoin prediction metadata if available
+                if btc_boost_applied and btc_prediction_metadata:
+                    signal_result['btc_prediction'] = btc_prediction_metadata
                 
                 # Log detailed interpretations for debugging and analysis
                 self.logger.info(f"\n=== DETAILED MARKET INTERPRETATIONS FOR {symbol} ===")
@@ -1942,6 +2265,145 @@ class SignalGenerator:
             strength = "Strong" if abs(score - 50) > 20 else "Moderate" if abs(score - 50) > 10 else "Weak"
             return f"{strength} {bias} bias - Score: {score:.1f}"
 
+    def _generate_trade_targets(
+        self,
+        entry_price: float,
+        signal_type: str,
+        confluence_score: float,
+        stop_loss: Optional[float] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Generate trade targets based on entry price, signal direction, and confluence score.
+
+        Args:
+            entry_price: The entry price for the trade
+            signal_type: 'LONG', 'SHORT', or 'NEUTRAL'
+            confluence_score: The confluence score (0-100) for adjusting R:R ratios
+            stop_loss: Optional stop loss price for calculating risk distance
+
+        Returns:
+            List of target dictionaries with name, price, percent, and size
+        """
+        if not entry_price or entry_price <= 0:
+            self.logger.warning("Cannot generate targets: invalid entry price")
+            return []
+
+        targets = []
+
+        # Calculate risk distance
+        if stop_loss and stop_loss > 0:
+            risk_distance = abs(entry_price - stop_loss)
+        else:
+            # Use default 3% risk if no stop loss provided
+            risk_distance = entry_price * 0.03
+
+        # Adjust R:R ratios based on confluence score strength
+        # Higher confluence = more aggressive targets
+        if confluence_score >= 75:
+            # Strong signal - more aggressive targets
+            rr_ratios = [1.5, 3.0, 5.0]
+            self.logger.debug(f"Strong confluence ({confluence_score}) - using aggressive R:R ratios")
+        elif confluence_score >= 60:
+            # Moderate signal - standard targets
+            rr_ratios = [1.5, 2.5, 4.0]
+        else:
+            # Weaker signal - conservative targets
+            rr_ratios = [1.0, 1.5, 2.5]
+            self.logger.debug(f"Lower confluence ({confluence_score}) - using conservative R:R ratios")
+
+        # Position sizing: scale out at each target
+        sizes = [50, 30, 20]  # 50% at T1, 30% at T2, 20% at T3
+
+        signal_upper = signal_type.upper() if signal_type else "NEUTRAL"
+
+        if signal_upper in ['LONG', 'BULLISH', 'BUY']:
+            # Long position targets (price goes UP)
+            for i, (rr, size) in enumerate(zip(rr_ratios, sizes), 1):
+                target_price = entry_price + (risk_distance * rr)
+                target_percent = ((target_price / entry_price) - 1) * 100
+                targets.append({
+                    "name": f"Target {i}",
+                    "price": round_price(target_price, entry_price),
+                    "percent": round(target_percent, 2),
+                    "size": size,
+                    "rr_ratio": rr
+                })
+
+        elif signal_upper in ['SHORT', 'BEARISH', 'SELL']:
+            # Short position targets (price goes DOWN)
+            for i, (rr, size) in enumerate(zip(rr_ratios, sizes), 1):
+                target_price = entry_price - (risk_distance * rr)
+                # Ensure target price doesn't go negative
+                if target_price <= 0:
+                    target_price = entry_price * 0.5  # Floor at 50% of entry
+                target_percent = ((entry_price - target_price) / entry_price) * 100
+                targets.append({
+                    "name": f"Target {i}",
+                    "price": round_price(target_price, entry_price),
+                    "percent": round(target_percent, 2),
+                    "size": size,
+                    "rr_ratio": rr
+                })
+        else:
+            # Neutral - generate symmetric targets for range trading
+            for i, (rr, size) in enumerate(zip(rr_ratios[:2], sizes[:2]), 1):
+                target_price = entry_price + (risk_distance * rr)
+                target_percent = ((target_price / entry_price) - 1) * 100
+                targets.append({
+                    "name": f"Target {i}",
+                    "price": round_price(target_price, entry_price),
+                    "percent": round(target_percent, 2),
+                    "size": size,
+                    "rr_ratio": rr
+                })
+
+        self.logger.debug(f"Generated {len(targets)} targets for {signal_type} signal at {entry_price}")
+        return targets
+
+    def _calculate_stop_loss(
+        self,
+        entry_price: float,
+        signal_type: str,
+        confluence_score: float
+    ) -> float:
+        """
+        Calculate stop loss price based on entry, signal type, and confluence score.
+
+        Higher confluence scores = tighter stops (more confident in direction)
+        Lower confluence scores = wider stops (less confident)
+
+        Args:
+            entry_price: The entry price
+            signal_type: 'LONG', 'SHORT', or 'NEUTRAL'
+            confluence_score: The confluence score (0-100)
+
+        Returns:
+            Stop loss price
+        """
+        if not entry_price or entry_price <= 0:
+            return 0
+
+        # Base risk percentage (adjusted by confluence)
+        # Higher confluence = tighter stop (2-3%), lower = wider (3-5%)
+        if confluence_score >= 75:
+            risk_pct = 0.02  # 2% risk for strong signals
+        elif confluence_score >= 60:
+            risk_pct = 0.03  # 3% risk for moderate signals
+        else:
+            risk_pct = 0.04  # 4% risk for weaker signals
+
+        signal_upper = signal_type.upper() if signal_type else "NEUTRAL"
+
+        if signal_upper in ['LONG', 'BULLISH', 'BUY']:
+            stop_loss = entry_price * (1 - risk_pct)
+        elif signal_upper in ['SHORT', 'BEARISH', 'SELL']:
+            stop_loss = entry_price * (1 + risk_pct)
+        else:
+            # Neutral - default to long-style stop
+            stop_loss = entry_price * (1 - risk_pct)
+
+        return round_price(stop_loss, entry_price)
+
     def _extract_futures_premium_components(self, indicators: Dict[str, Any]) -> Dict[str, float]:
         """Extract futures premium components from indicators data."""
         try:
@@ -2215,10 +2677,42 @@ class SignalGenerator:
             self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}] Processing {direction} signal for {symbol} with score {score}")
             standardized_data['signal'] = direction  # Update signal with final direction
 
-            # Get components 
+            # Get components
             self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] Components: {list(components.keys())}")
             self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] Results: {list(results.keys() if isinstance(results, dict) else [])}")
-            
+
+            # Generate enhanced formatted data BEFORE PDF generation
+            # This includes actionable_insights, market_interpretations, etc.
+            self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] Generating enhanced formatted data for PDF")
+            serialized_components_for_enhanced = serialize_for_json(components)
+            serialized_results_for_enhanced = serialize_for_json(results)
+            enhanced_data = self._generate_enhanced_formatted_data(
+                symbol,
+                score,
+                serialized_components_for_enhanced,
+                serialized_results_for_enhanced,
+                reliability,
+                self.thresholds['long'],
+                self.thresholds['short']
+            )
+            self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] Enhanced data generated: "
+                            f"{len(enhanced_data.get('actionable_insights', []))} insights, "
+                            f"{len(enhanced_data.get('market_interpretations', []))} interpretations")
+
+            # Generate trade parameters (stop loss and targets) BEFORE PDF generation
+            self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] Generating trade parameters")
+            entry_price = price  # Use current price as entry
+            calculated_stop_loss = self._calculate_stop_loss(entry_price, direction, score)
+            trade_targets = self._generate_trade_targets(
+                entry_price=entry_price,
+                signal_type=direction,
+                confluence_score=score,
+                stop_loss=calculated_stop_loss
+            )
+            self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] Trade params: "
+                            f"entry={entry_price}, stop_loss={calculated_stop_loss}, "
+                            f"targets={len(trade_targets)}")
+
             # Generate PDF report if possible
             self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}] Generating PDF report for {symbol}")
             pdf_path = None
@@ -2241,11 +2735,18 @@ class SignalGenerator:
                                 'components': components,
                                 'results': results,
                                 'reliability': reliability,
-                                # Pass through enriched narrative data when available
-                                'market_interpretations': signal_data.get('market_interpretations'),
-                                'actionable_insights': signal_data.get('actionable_insights'),
-                                'influential_components': signal_data.get('influential_components'),
-                                'top_weighted_subcomponents': signal_data.get('top_weighted_subcomponents')
+                                # Pass through enriched narrative data from enhanced_data (generated above)
+                                'market_interpretations': enhanced_data.get('market_interpretations', []),
+                                'actionable_insights': enhanced_data.get('actionable_insights', []),
+                                'influential_components': enhanced_data.get('influential_components', []),
+                                'top_weighted_subcomponents': enhanced_data.get('top_weighted_subcomponents', []),
+                                # Explicit trade parameters (targets with sizes, stop loss)
+                                'targets': trade_targets,
+                                'trade_params': {
+                                    'entry_price': entry_price,
+                                    'stop_loss': calculated_stop_loss,
+                                    'targets': trade_targets
+                                }
                             },
                             ohlcv_data=ohlcv_data
                         )
@@ -2295,23 +2796,30 @@ class SignalGenerator:
                                 'components': components,
                                 'results': results,
                                 'reliability': reliability,
-                                # Pass through enriched narrative data when available
-                                'market_interpretations': signal_data.get('market_interpretations'),
-                                'actionable_insights': signal_data.get('actionable_insights'),
-                                'influential_components': signal_data.get('influential_components'),
-                                'top_weighted_subcomponents': signal_data.get('top_weighted_subcomponents')
+                                # Pass through enriched narrative data from enhanced_data (generated above)
+                                'market_interpretations': enhanced_data.get('market_interpretations', []),
+                                'actionable_insights': enhanced_data.get('actionable_insights', []),
+                                'influential_components': enhanced_data.get('influential_components', []),
+                                'top_weighted_subcomponents': enhanced_data.get('top_weighted_subcomponents', []),
+                                # Explicit trade parameters (targets with sizes, stop loss)
+                                'targets': trade_targets,
+                                'trade_params': {
+                                    'entry_price': entry_price,
+                                    'stop_loss': calculated_stop_loss,
+                                    'targets': trade_targets
+                                }
                             }
                         )
-                        
+
                         # Check if we need to await again (double-awaiting pattern)
                         if asyncio.iscoroutine(result):
                             result = await result
-                        
+
                         # Initialize default values
                         success = False
                         pdf_path = None
                         json_path = None
-                        
+
                         # Safely extract tuple values if available
                         if isinstance(result, tuple):
                             if len(result) >= 1:
@@ -2342,23 +2850,12 @@ class SignalGenerator:
             
             # Serialize data for alert sending to avoid JSON serialization issues
             try:
-                # Prepare data for transmission
-                self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] Serializing data for alert")
-                serialized_components = serialize_for_json(components)
-                serialized_results = serialize_for_json(results)
-                
-                # Generate enhanced formatted data for the signal
-                self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] Generating enhanced formatted data")
-                enhanced_data = self._generate_enhanced_formatted_data(
-                    symbol, 
-                    score,
-                    serialized_components,
-                    serialized_results,
-                    reliability,
-                    self.thresholds['long'],
-                    self.thresholds['short']
-                )
-                
+                # Prepare data for transmission (reuse serialized data from earlier)
+                self.logger.debug(f"[TXN:{transaction_id}][SIG:{signal_id}] Preparing data for alert")
+                serialized_components = serialized_components_for_enhanced
+                serialized_results = serialized_results_for_enhanced
+
+                # enhanced_data was already generated before PDF generation (above)
                 # Store the enhanced data in standardized_data
                 if enhanced_data:
                     standardized_data.update(enhanced_data)
@@ -2659,14 +3156,14 @@ class SignalGenerator:
             return 1.0  # Default to full reliability on error (0-1 range)
 
 
-    async def _fetch_ohlcv_data(self, symbol: str, timeframe: str = '1h', limit: int = 50) -> Optional[pd.DataFrame]:
+    async def _fetch_ohlcv_data(self, symbol: str, timeframe: str = '1h', limit: int = 200) -> Optional[pd.DataFrame]:
         """Fetch OHLCV data for a symbol to use in PDF reports.
-        
+
         Args:
             symbol: Trading pair symbol
             timeframe: Chart timeframe (default: 1h)
-            limit: Number of candles to fetch
-            
+            limit: Number of candles to fetch (default: 200 for ~8 days of 1h data)
+
         Returns:
             DataFrame with OHLCV data or None if error
         """

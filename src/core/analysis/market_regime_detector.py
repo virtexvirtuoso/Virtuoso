@@ -33,26 +33,101 @@ Created: 2025-10-22
 Deus Vult - God Wills It
 """
 
-from typing import Dict, List, Tuple, Optional, Any
+from typing import Dict, List, Tuple, Optional, Any, TYPE_CHECKING
 from enum import Enum
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 import logging
 from datetime import datetime, timedelta
+from collections import defaultdict
+
+# Type hint for external data provider (avoid circular import)
+if TYPE_CHECKING:
+    from .external_regime_data import ExternalRegimeSignals, SentimentBias
 
 logger = logging.getLogger(__name__)
 
 
+# Multi-Timeframe Configuration
+# Weights determine influence on final regime classification
+TIMEFRAME_CONFIG = {
+    'micro': {'tf': '1m', 'weight': 0.15, 'lookback': 60, 'role': 'noise_filter'},
+    'base': {'tf': '5m', 'weight': 0.25, 'lookback': 100, 'role': 'primary_signal'},
+    'mid': {'tf': '15m', 'weight': 0.30, 'lookback': 50, 'role': 'trend_confirmation'},
+    'macro': {'tf': '1h', 'weight': 0.30, 'lookback': 24, 'role': 'structure_context'},
+}
+
+
 class MarketRegime(Enum):
-    """Enum representing different market regimes."""
-    STRONG_UPTREND = "strong_uptrend"
-    MODERATE_UPTREND = "moderate_uptrend"
-    RANGING = "ranging"
-    MODERATE_DOWNTREND = "moderate_downtrend"
-    STRONG_DOWNTREND = "strong_downtrend"
+    """
+    Enum representing unified market regimes.
+
+    Unified labels (v1.1) replace old directional names:
+    - STRONG_BULLISH (was STRONG_UPTREND)
+    - BULLISH (was MODERATE_UPTREND)
+    - SIDEWAYS (was RANGING)
+    - BEARISH (was MODERATE_DOWNTREND)
+    - STRONG_BEARISH (was STRONG_DOWNTREND)
+    - HIGH_VOLATILITY (unchanged)
+    - LOW_LIQUIDITY (unchanged)
+    """
+    # Directional regimes
+    STRONG_BULLISH = "strong_bullish"
+    BULLISH = "bullish"
+    SIDEWAYS = "sideways"
+    BEARISH = "bearish"
+    STRONG_BEARISH = "strong_bearish"
+
+    # Safety override regimes
     HIGH_VOLATILITY = "high_volatility"
     LOW_LIQUIDITY = "low_liquidity"
+
+    # Legacy aliases for backward compatibility
+    STRONG_UPTREND = "strong_bullish"      # Alias
+    MODERATE_UPTREND = "bullish"           # Alias
+    RANGING = "sideways"                   # Alias
+    MODERATE_DOWNTREND = "bearish"         # Alias
+    STRONG_DOWNTREND = "strong_bearish"    # Alias
+
+    def is_bullish(self) -> bool:
+        """Check if regime indicates bullish bias."""
+        return self in (MarketRegime.STRONG_BULLISH, MarketRegime.BULLISH)
+
+    def is_bearish(self) -> bool:
+        """Check if regime indicates bearish bias."""
+        return self in (MarketRegime.STRONG_BEARISH, MarketRegime.BEARISH)
+
+    def is_neutral(self) -> bool:
+        """Check if regime indicates neutral/sideways market."""
+        return self == MarketRegime.SIDEWAYS
+
+    def is_risk_regime(self) -> bool:
+        """Check if regime is a safety override (high vol or low liq)."""
+        return self in (MarketRegime.HIGH_VOLATILITY, MarketRegime.LOW_LIQUIDITY)
+
+    def direction_bias(self) -> int:
+        """Return numeric direction: +1 bullish, 0 neutral, -1 bearish."""
+        if self.is_bullish():
+            return 1
+        elif self.is_bearish():
+            return -1
+        else:
+            return 0
+
+    @property
+    def display_name(self) -> str:
+        """Human-readable display name."""
+        names = {
+            "strong_bullish": "Strong Bullish",
+            "bullish": "Bullish",
+            "sideways": "Sideways",
+            "bearish": "Bearish",
+            "strong_bearish": "Strong Bearish",
+            "high_volatility": "High Volatility",
+            "low_liquidity": "Low Liquidity",
+        }
+        return names.get(self.value, self.value.replace("_", " ").title())
 
 
 @dataclass
@@ -118,29 +193,54 @@ class MarketRegimeDetector:
         self._cache_timestamp = None
         self._cache_ttl = 5  # 5 second cache
 
-    def detect_regime(self, market_data: Dict[str, Any]) -> RegimeDetection:
+    def detect_regime(
+        self,
+        market_data: Dict[str, Any],
+        confluence_score: Optional[float] = None
+    ) -> RegimeDetection:
         """
         Detect the current market regime based on market data.
 
         This is the main entry point for regime detection. It analyzes multiple
         market characteristics and returns a classified regime with confidence.
 
+        UNIFIED REGIME SYSTEM (v1.1):
+        - When confluence_score is provided, it becomes the PRIMARY directional signal
+        - ADX validates the confluence signal (confirms trend strength)
+        - Liquidity/volatility are safety overrides (highest priority)
+
         Args:
             market_data: Dictionary containing:
                 - ohlcv: OHLCV data (required)
                 - orderbook: Orderbook snapshot (optional, improves accuracy)
                 - trades: Recent trades (optional, improves accuracy)
+            confluence_score: Optional confluence score (0-100) from indicator aggregation
+                - 0-40: Bearish indicator consensus
+                - 40-60: Neutral/mixed signals
+                - 60-100: Bullish indicator consensus
 
         Returns:
             RegimeDetection object with regime classification and metrics
 
         Example:
             >>> detector = MarketRegimeDetector()
+            >>> # Without confluence (legacy mode)
             >>> regime = detector.detect_regime(market_data)
-            >>> print(f"Regime: {regime.regime}, Confidence: {regime.confidence:.2f}")
-            Regime: STRONG_UPTREND, Confidence: 0.85
+            >>> # With confluence (unified mode)
+            >>> regime = detector.detect_regime(market_data, confluence_score=72.5)
+            >>> print(f"Regime: {regime.regime.display_name}, Confidence: {regime.confidence:.2f}")
+            Regime: Strong Bullish, Confidence: 0.85
         """
         try:
+            # === Input Validation ===
+            if confluence_score is not None:
+                if not isinstance(confluence_score, (int, float)):
+                    self.logger.warning(f"Invalid confluence_score type: {type(confluence_score)}, ignoring")
+                    confluence_score = None
+                elif not (0 <= confluence_score <= 100):
+                    self.logger.warning(f"confluence_score {confluence_score} out of range [0,100], clamping")
+                    confluence_score = max(0, min(100, confluence_score))
+
             # Extract required data
             ohlcv = market_data.get('ohlcv', {})
             base_df = ohlcv.get('base', pd.DataFrame())
@@ -158,11 +258,12 @@ class MarketRegimeDetector:
             # === Step 3: Liquidity Assessment ===
             liquidity_metrics = self._assess_liquidity(market_data)
 
-            # === Step 4: Regime Classification ===
+            # === Step 4: Regime Classification (Unified) ===
             regime, confidence = self._classify_regime(
                 trend_metrics,
                 volatility_metrics,
-                liquidity_metrics
+                liquidity_metrics,
+                confluence_score=confluence_score  # Pass confluence for unified classification
             )
 
             # === Step 5: Apply Smoothing (prevent flicker) ===
@@ -182,13 +283,17 @@ class MarketRegimeDetector:
                     'atr_percentile': volatility_metrics['percentile'],
                     'spread_bps': liquidity_metrics['spread_bps'],
                     'depth_usd': liquidity_metrics['depth_usd'],
+                    'confluence_score': confluence_score,  # Unified regime input
+                    'unified_mode': confluence_score is not None,  # Flag for tracking
                 }
             )
 
+            # Log with confluence info if available
+            conf_str = f", confluence: {confluence_score:.1f}" if confluence_score is not None else ""
             self.logger.info(
                 f"Regime detected: {regime.value}, "
                 f"confidence: {confidence:.2f}, "
-                f"trend: {trend_metrics['direction']:.2f}"
+                f"trend: {trend_metrics['direction']:.2f}{conf_str}"
             )
 
             return detection
@@ -196,6 +301,294 @@ class MarketRegimeDetector:
         except Exception as e:
             self.logger.error(f"Error detecting regime: {str(e)}", exc_info=True)
             return self._get_default_regime()
+
+    def detect_regime_mtf(
+        self,
+        ohlcv_by_timeframe: Dict[str, pd.DataFrame],
+        orderbook: Optional[Dict[str, Any]] = None,
+        tf_config: Optional[Dict[str, Dict]] = None,
+        confluence_score: Optional[float] = None
+    ) -> RegimeDetection:
+        """
+        Detect market regime using multiple timeframes for improved accuracy.
+
+        Multi-timeframe analysis reduces false signals by requiring confirmation
+        across different time horizons. Higher timeframes provide trend context,
+        while lower timeframes provide entry timing signals.
+
+        UNIFIED REGIME SYSTEM (v1.1):
+        - When confluence_score is provided, it becomes the PRIMARY directional signal
+        - MTF analysis validates the confluence signal across timeframes
+        - Confidence is boosted when MTF aligns with confluence direction
+
+        Timeframe Hierarchy:
+        - macro (1h): Structure context - defines dominant trend direction
+        - mid (15m): Trend confirmation - validates macro trend
+        - base (5m): Primary signal - main trading timeframe
+        - micro (1m): Noise filter - reduces false entries
+
+        Args:
+            ohlcv_by_timeframe: Dict mapping timeframe strings to DataFrames
+                                e.g., {'1m': df_1m, '5m': df_5m, '15m': df_15m, '1h': df_1h}
+            orderbook: Optional orderbook data for liquidity assessment
+            tf_config: Optional custom timeframe configuration (uses TIMEFRAME_CONFIG if None)
+            confluence_score: Optional confluence score (0-100) from indicator aggregation
+
+        Returns:
+            RegimeDetection with MTF-enhanced confidence and metadata
+
+        Example:
+            >>> detector = MarketRegimeDetector()
+            >>> ohlcv = {
+            ...     '1m': df_1m,   # 60+ candles
+            ...     '5m': df_5m,   # 100+ candles
+            ...     '15m': df_15m, # 50+ candles
+            ...     '1h': df_1h    # 24+ candles
+            ... }
+            >>> regime = detector.detect_regime_mtf(ohlcv, confluence_score=72.5)
+            >>> print(f"Regime: {regime.regime.display_name}, MTF Confidence: {regime.confidence:.2f}")
+            Regime: Strong Bullish, MTF Confidence: 0.82
+        """
+        config = tf_config or TIMEFRAME_CONFIG
+        tf_detections = {}
+
+        # Detect regime on each available timeframe
+        for tf_name, tf_settings in config.items():
+            tf_key = tf_settings['tf']
+
+            if tf_key not in ohlcv_by_timeframe:
+                self.logger.debug(f"Timeframe {tf_key} not available, skipping")
+                continue
+
+            df = ohlcv_by_timeframe[tf_key]
+            min_candles = max(50, tf_settings.get('lookback', 50) // 2)
+
+            if df is None or len(df) < min_candles:
+                self.logger.debug(f"Insufficient data for {tf_key}: {len(df) if df is not None else 0} candles")
+                continue
+
+            # Build single-timeframe market data structure
+            market_data = {
+                'ohlcv': {'base': df, 'ltf': df},
+                'orderbook': orderbook or {'bids': [], 'asks': []}
+            }
+
+            # Run single-timeframe detection (without smoothing for MTF)
+            try:
+                trend_metrics = self._detect_trend(df)
+                volatility_metrics = self._analyze_volatility(df)
+                liquidity_metrics = self._assess_liquidity(market_data)
+
+                regime, confidence = self._classify_regime(
+                    trend_metrics, volatility_metrics, liquidity_metrics
+                )
+
+                tf_detections[tf_name] = {
+                    'regime': regime,
+                    'confidence': confidence,
+                    'direction': trend_metrics['direction'],
+                    'adx': trend_metrics['adx'],
+                    'weight': tf_settings['weight'],
+                    'role': tf_settings['role']
+                }
+
+                self.logger.debug(
+                    f"MTF {tf_name} ({tf_key}): {regime.value}, "
+                    f"conf={confidence:.2f}, dir={trend_metrics['direction']:.2f}"
+                )
+
+            except Exception as e:
+                self.logger.warning(f"Error detecting regime for {tf_key}: {e}")
+                continue
+
+        # Need at least 2 timeframes for meaningful MTF analysis
+        if len(tf_detections) < 2:
+            self.logger.warning("Insufficient timeframes for MTF analysis, falling back to single-TF")
+            # Fall back to best available timeframe
+            if tf_detections:
+                best_tf = max(tf_detections.items(), key=lambda x: x[1]['weight'])
+                detection_data = best_tf[1]
+                return RegimeDetection(
+                    regime=detection_data['regime'],
+                    confidence=detection_data['confidence'] * 0.9,  # Penalty for single-TF
+                    strength=detection_data['adx'] / 50.0,
+                    trend_direction=detection_data['direction'],
+                    volatility_percentile=50.0,
+                    liquidity_score=0.7,
+                    metadata={'mtf_available': False, 'timeframes_used': 1}
+                )
+            return self._get_default_regime()
+
+        # Calculate MTF consensus
+        return self._calculate_mtf_consensus(tf_detections, orderbook)
+
+    def _calculate_mtf_consensus(
+        self,
+        tf_detections: Dict[str, Dict],
+        orderbook: Optional[Dict[str, Any]] = None
+    ) -> RegimeDetection:
+        """
+        Calculate weighted consensus across multiple timeframes.
+
+        Consensus Logic:
+        1. Weight each timeframe's vote by its configured weight and confidence
+        2. Group regimes into categories (bullish, bearish, neutral)
+        3. Apply alignment bonus when all timeframes agree
+        4. Reduce confidence when timeframes conflict
+
+        Args:
+            tf_detections: Dict of timeframe detections from detect_regime_mtf
+            orderbook: Optional orderbook for liquidity score
+
+        Returns:
+            RegimeDetection with consensus regime and MTF-adjusted confidence
+        """
+        # Weighted voting for regime classification
+        regime_votes: Dict[MarketRegime, float] = defaultdict(float)
+        direction_weighted_sum = 0.0
+        total_weight = 0.0
+
+        for tf_name, data in tf_detections.items():
+            # Vote weight = timeframe_weight * confidence
+            vote_weight = data['weight'] * data['confidence']
+            regime_votes[data['regime']] += vote_weight
+            direction_weighted_sum += data['direction'] * data['weight']
+            total_weight += data['weight']
+
+        # Consensus regime = highest weighted vote
+        consensus_regime = max(regime_votes.items(), key=lambda x: x[1])[0]
+        consensus_vote = regime_votes[consensus_regime]
+
+        # Calculate alignment metrics
+        unique_regimes = set(d['regime'] for d in tf_detections.values())
+        num_unique = len(unique_regimes)
+
+        # Regime category alignment (bullish/bearish/neutral)
+        bullish_regimes = {MarketRegime.STRONG_UPTREND, MarketRegime.MODERATE_UPTREND}
+        bearish_regimes = {MarketRegime.STRONG_DOWNTREND, MarketRegime.MODERATE_DOWNTREND}
+
+        category_votes = {'bullish': 0.0, 'bearish': 0.0, 'neutral': 0.0}
+        for tf_name, data in tf_detections.items():
+            vote = data['weight'] * data['confidence']
+            if data['regime'] in bullish_regimes:
+                category_votes['bullish'] += vote
+            elif data['regime'] in bearish_regimes:
+                category_votes['bearish'] += vote
+            else:
+                category_votes['neutral'] += vote
+
+        # Dominant category
+        dominant_category = max(category_votes.items(), key=lambda x: x[1])
+        category_alignment = dominant_category[1] / sum(category_votes.values()) if sum(category_votes.values()) > 0 else 0.5
+
+        # Calculate confidence with alignment adjustments
+        base_confidence = consensus_vote / total_weight if total_weight > 0 else 0.5
+
+        # Alignment bonus: all timeframes agree = +15% confidence
+        # Conflict penalty: many different regimes = reduced confidence
+        if num_unique == 1:
+            alignment_modifier = 1.15  # Perfect alignment
+        elif num_unique == 2:
+            alignment_modifier = 1.05  # Minor disagreement
+        elif num_unique == 3:
+            alignment_modifier = 0.95  # Moderate conflict
+        else:
+            alignment_modifier = 0.85  # Significant conflict
+
+        # Category alignment bonus
+        if category_alignment > 0.8:
+            category_bonus = 1.10
+        elif category_alignment > 0.6:
+            category_bonus = 1.0
+        else:
+            category_bonus = 0.90
+
+        # Final confidence
+        final_confidence = base_confidence * alignment_modifier * category_bonus
+        final_confidence = np.clip(final_confidence, 0.3, 0.95)
+
+        # Calculate weighted average direction
+        avg_direction = direction_weighted_sum / total_weight if total_weight > 0 else 0.0
+
+        # Weighted average ADX
+        avg_adx = sum(d['adx'] * d['weight'] for d in tf_detections.values()) / total_weight if total_weight > 0 else 25.0
+
+        # Resolve conflict type
+        conflict_type = self._classify_mtf_conflict(tf_detections)
+
+        # Build metadata
+        metadata = {
+            'mtf_available': True,
+            'timeframes_used': len(tf_detections),
+            'timeframe_regimes': {k: v['regime'].value for k, v in tf_detections.items()},
+            'unique_regimes': num_unique,
+            'alignment_modifier': alignment_modifier,
+            'category_alignment': category_alignment,
+            'dominant_category': dominant_category[0],
+            'conflict_type': conflict_type,
+            'regime_votes': {k.value: round(v, 3) for k, v in regime_votes.items()},
+            'adx': avg_adx,
+        }
+
+        # Apply smoothing to consensus regime
+        smoothed_regime = self._apply_regime_smoothing(consensus_regime)
+
+        return RegimeDetection(
+            regime=smoothed_regime,
+            confidence=float(final_confidence),
+            strength=min(avg_adx / 50.0, 1.0),
+            trend_direction=float(avg_direction),
+            volatility_percentile=50.0,  # Would need aggregation
+            liquidity_score=0.7,  # Would need orderbook
+            metadata=metadata
+        )
+
+    def _classify_mtf_conflict(self, tf_detections: Dict[str, Dict]) -> str:
+        """
+        Classify the type of conflict between timeframes.
+
+        Conflict Types:
+        - ALIGNED: All timeframes agree on direction
+        - PULLBACK: Macro bullish, micro bearish (potential dip buy)
+        - RALLY: Macro bearish, micro bullish (potential short entry)
+        - TRANSITION: Mixed signals, possible regime change
+        - RANGING: Multiple timeframes showing no clear trend
+
+        Args:
+            tf_detections: Dict of timeframe detections
+
+        Returns:
+            String describing the conflict type
+        """
+        bullish = {MarketRegime.STRONG_UPTREND, MarketRegime.MODERATE_UPTREND}
+        bearish = {MarketRegime.STRONG_DOWNTREND, MarketRegime.MODERATE_DOWNTREND}
+
+        macro = tf_detections.get('macro', tf_detections.get('mid', {}))
+        micro = tf_detections.get('micro', tf_detections.get('base', {}))
+
+        if not macro or not micro:
+            return 'UNKNOWN'
+
+        macro_regime = macro.get('regime')
+        micro_regime = micro.get('regime')
+
+        macro_bullish = macro_regime in bullish
+        macro_bearish = macro_regime in bearish
+        micro_bullish = micro_regime in bullish
+        micro_bearish = micro_regime in bearish
+
+        if macro_bullish and micro_bullish:
+            return 'ALIGNED_BULLISH'
+        elif macro_bearish and micro_bearish:
+            return 'ALIGNED_BEARISH'
+        elif macro_bullish and micro_bearish:
+            return 'PULLBACK'  # Potential dip buy opportunity
+        elif macro_bearish and micro_bullish:
+            return 'RALLY'  # Potential short entry (relief rally)
+        elif macro_regime == MarketRegime.RANGING or micro_regime == MarketRegime.RANGING:
+            return 'RANGING'
+        else:
+            return 'TRANSITION'
 
     def _detect_trend(self, df: pd.DataFrame) -> Dict[str, float]:
         """
@@ -368,15 +761,28 @@ class MarketRegimeDetector:
         self,
         trend_metrics: Dict[str, float],
         volatility_metrics: Dict[str, float],
-        liquidity_metrics: Dict[str, float]
+        liquidity_metrics: Dict[str, float],
+        confluence_score: Optional[float] = None
     ) -> Tuple[MarketRegime, float]:
         """
         Classify market regime based on analyzed metrics.
 
+        UNIFIED REGIME SYSTEM (v1.1):
+        When confluence_score is provided:
+        - Confluence is the PRIMARY directional signal (0=bearish, 100=bullish)
+        - ADX VALIDATES the confluence (confirms trend strength)
+        - Safety overrides still take highest priority
+
+        Legacy mode (confluence_score=None):
+        - Uses EMA direction for direction signal
+        - ADX determines trend strength
+
         Decision logic:
-        1. Check for low liquidity (overrides other regimes)
-        2. Check for high volatility (caution regime)
-        3. Classify trend strength and direction
+        1. Check for low liquidity (overrides - highest priority)
+        2. Check for high volatility (overrides)
+        3. If confluence provided: Use unified classification
+        4. Else: Use legacy trend classification
+        5. Calculate confidence
 
         Returns:
             Tuple of (MarketRegime, confidence_score)
@@ -387,43 +793,315 @@ class MarketRegimeDetector:
         volatility_pct = volatility_metrics['percentile']
         liquidity_score = liquidity_metrics['score']
 
-        confidence = 0.5  # Default confidence
+        # ============================================================
+        # SAFETY OVERRIDES (Priority 1 & 2) - Always checked first
+        # ============================================================
 
         # Priority 1: Low liquidity (highest priority)
         if liquidity_score < 0.3:
-            return MarketRegime.LOW_LIQUIDITY, 0.8
+            regime = MarketRegime.LOW_LIQUIDITY
+            confidence = self._calculate_confidence(
+                regime, trend_metrics, volatility_metrics, liquidity_metrics, confluence_score
+            )
+            return regime, confidence
 
         # Priority 2: High volatility
         if volatility_pct > self.thresholds['atr_percentile_high']:
-            confidence = min((volatility_pct - 75) / 25, 1.0)  # 75-100 -> 0-1
-            return MarketRegime.HIGH_VOLATILITY, confidence
+            regime = MarketRegime.HIGH_VOLATILITY
+            confidence = self._calculate_confidence(
+                regime, trend_metrics, volatility_metrics, liquidity_metrics, confluence_score
+            )
+            return regime, confidence
 
-        # Priority 3: Trend classification
+        # ============================================================
+        # UNIFIED CLASSIFICATION (when confluence_score provided)
+        # ============================================================
+        if confluence_score is not None:
+            regime = self._classify_unified(confluence_score, adx, direction)
+            confidence = self._calculate_unified_confidence(
+                regime, confluence_score, adx, trend_metrics, volatility_metrics, liquidity_metrics
+            )
+            return regime, confidence
+
+        # ============================================================
+        # LEGACY CLASSIFICATION (fallback when no confluence)
+        # ============================================================
         is_trending = adx > self.thresholds['adx_trending']
         is_strong_trend = adx > self.thresholds['adx_strong_trend']
 
         if is_strong_trend:
-            confidence = min(adx / 50, 1.0)  # Confidence scales with ADX
             if direction > 0.3:  # Bullish
-                return MarketRegime.STRONG_UPTREND, confidence
+                regime = MarketRegime.STRONG_BULLISH
             elif direction < -0.3:  # Bearish
-                return MarketRegime.STRONG_DOWNTREND, confidence
-            else:  # Conflicting signals
-                return MarketRegime.RANGING, 0.6
+                regime = MarketRegime.STRONG_BEARISH
+            else:  # Conflicting signals (high ADX but weak direction)
+                regime = MarketRegime.SIDEWAYS
 
         elif is_trending:
-            confidence = min(adx / 35, 0.8)
             if direction > 0.2:
-                return MarketRegime.MODERATE_UPTREND, confidence
+                regime = MarketRegime.BULLISH
             elif direction < -0.2:
-                return MarketRegime.MODERATE_DOWNTREND, confidence
+                regime = MarketRegime.BEARISH
             else:
-                return MarketRegime.RANGING, 0.7
+                regime = MarketRegime.SIDEWAYS
 
         else:
-            # Not trending = ranging market
-            confidence = max(0.5, 1.0 - (adx / 25))  # Lower ADX = higher confidence in ranging
-            return MarketRegime.RANGING, confidence
+            # Not trending = sideways market
+            regime = MarketRegime.SIDEWAYS
+
+        # Calculate confidence using regime-specific pattern matching
+        confidence = self._calculate_confidence(
+            regime, trend_metrics, volatility_metrics, liquidity_metrics, confluence_score
+        )
+
+        return regime, confidence
+
+    def _classify_unified(
+        self,
+        confluence: float,
+        adx: float,
+        ema_direction: float
+    ) -> MarketRegime:
+        """
+        Unified regime classification using confluence as primary signal.
+
+        Classification Logic:
+        - Confluence provides DIRECTION (0=bearish, 50=neutral, 100=bullish)
+        - ADX provides STRENGTH validation (confirms trend momentum)
+        - EMA direction can be used as tiebreaker in neutral zone (optional)
+
+        Thresholds (from design doc):
+        - Strong Bullish: confluence >= 70 AND adx >= 35
+        - Bullish: confluence >= 60 AND adx >= 20
+        - Sideways: confluence 40-60 OR adx < 20
+        - Bearish: confluence <= 40 AND adx >= 20
+        - Strong Bearish: confluence <= 30 AND adx >= 35
+
+        Args:
+            confluence: Confluence score (0-100)
+            adx: ADX value (0-100)
+            ema_direction: EMA direction (-1 to +1), used as tiebreaker
+
+        Returns:
+            MarketRegime classification
+        """
+        # Strong Bullish: High confluence + strong trend
+        if confluence >= 70 and adx >= 35:
+            return MarketRegime.STRONG_BULLISH
+
+        # Strong Bearish: Low confluence + strong trend
+        if confluence <= 30 and adx >= 35:
+            return MarketRegime.STRONG_BEARISH
+
+        # Bullish: Good confluence + decent trend
+        if confluence >= 60 and adx >= 20:
+            return MarketRegime.BULLISH
+
+        # Bearish: Low confluence + decent trend
+        if confluence <= 40 and adx >= 20:
+            return MarketRegime.BEARISH
+
+        # ADX too low = no real trend, regardless of confluence
+        if adx < 20:
+            return MarketRegime.SIDEWAYS
+
+        # Neutral zone (40 < confluence < 60) with moderate ADX
+        # This is mixed signals territory
+        return MarketRegime.SIDEWAYS
+
+    def _calculate_unified_confidence(
+        self,
+        regime: MarketRegime,
+        confluence: float,
+        adx: float,
+        trend_metrics: Dict[str, float],
+        volatility_metrics: Dict[str, float],
+        liquidity_metrics: Dict[str, float]
+    ) -> float:
+        """
+        Calculate confidence for unified regime classification.
+
+        Confidence Formula:
+        1. Base: Distance from neutral (|confluence - 50| / 50)
+        2. ADX bonus: +0.1 if ADX > 30
+        3. Agreement bonus: +0.1 if confluence direction matches ADX trend
+        4. Conflict penalty: -0.15 if strong confluence but weak ADX
+        5. Clamp to [0.3, 0.95]
+
+        Args:
+            regime: The classified regime
+            confluence: Confluence score (0-100)
+            adx: ADX value (0-100)
+            trend_metrics: Trend analysis metrics
+            volatility_metrics: Volatility analysis metrics
+            liquidity_metrics: Liquidity analysis metrics
+
+        Returns:
+            Confidence score between 0.3 and 0.95
+        """
+        # Base confidence: How far from neutral is the confluence?
+        direction_strength = abs(confluence - 50) / 50  # 0 at 50, 1 at 0 or 100
+
+        # ADX alignment bonus: Strong ADX confirms the signal
+        adx_bonus = 0.1 if adx > 30 else 0.0
+
+        # Agreement bonus: Confluence direction matches EMA direction
+        ema_direction = trend_metrics.get('direction', 0)
+        confluence_bullish = confluence > 55
+        confluence_bearish = confluence < 45
+        ema_bullish = ema_direction > 0.1
+        ema_bearish = ema_direction < -0.1
+
+        agreement_bonus = 0.0
+        if (confluence_bullish and ema_bullish) or (confluence_bearish and ema_bearish):
+            agreement_bonus = 0.1
+
+        # Conflict penalty: Strong confluence signal but weak ADX (no momentum backing)
+        conflict_penalty = 0.0
+        if abs(confluence - 50) > 20 and adx < 15:
+            conflict_penalty = 0.15  # Indicators say move, but no trend momentum
+
+        # Sideways penalty: Reduce confidence for neutral regime
+        if regime == MarketRegime.SIDEWAYS:
+            # But if clearly in neutral zone with low ADX, that's actually high confidence sideways
+            if 45 < confluence < 55 and adx < 20:
+                direction_strength = 0.5  # Clear sideways
+            else:
+                direction_strength *= 0.7  # Uncertain sideways
+
+        # Calculate final confidence
+        confidence = direction_strength + adx_bonus + agreement_bonus - conflict_penalty
+
+        # Clamp to valid range
+        return float(np.clip(confidence, 0.3, 0.95))
+
+    def _calculate_confidence(
+        self,
+        regime: MarketRegime,
+        trend_metrics: Dict[str, float],
+        volatility_metrics: Dict[str, float],
+        liquidity_metrics: Dict[str, float],
+        confluence_score: Optional[float] = None
+    ) -> float:
+        """
+        Calculate confidence score using regime-specific pattern matching.
+
+        This method implements a multi-factor confidence scoring system that:
+        1. Defines "ideal" signal patterns for each regime type
+        2. Measures how well observed signals match the ideal
+        3. Combines match scores using weighted geometric mean
+        4. Returns confidence in range [0.3, 0.95]
+
+        The geometric mean ensures that signal conflicts (e.g., high ADX with weak
+        direction) significantly reduce confidence, while signal alignment boosts it.
+
+        Args:
+            regime: The classified market regime
+            trend_metrics: Dict with 'adx', 'direction', 'strength', 'ema_slope'
+            volatility_metrics: Dict with 'percentile', 'atr_current', 'atr_mean'
+            liquidity_metrics: Dict with 'score', 'depth_usd', 'spread_bps'
+
+        Returns:
+            Confidence score between 0.3 (low) and 0.95 (high)
+
+        Example:
+            >>> # RANGING with clear signals: ADX=20, direction=0
+            >>> confidence = _calculate_confidence(...)
+            >>> # Returns ~0.85 (high confidence)
+
+            >>> # RANGING with conflicting signals: ADX=35, direction=0.05
+            >>> confidence = _calculate_confidence(...)
+            >>> # Returns ~0.55 (low confidence due to signal conflict)
+        """
+        # Extract metrics with safe defaults
+        adx = float(trend_metrics.get('adx', 25.0))
+        direction = float(trend_metrics.get('direction', 0.0))
+        vol_pct = float(volatility_metrics.get('percentile', 50.0))
+        liq_score = float(liquidity_metrics.get('score', 0.7))
+
+        # Handle edge cases
+        adx = np.clip(adx, 0.0, 100.0)
+        direction = np.clip(direction, -1.0, 1.0)
+        vol_pct = np.clip(vol_pct, 0.0, 100.0)
+        liq_score = np.clip(liq_score, 0.0, 1.0)
+
+        # Define regime-specific match functions
+        if regime == MarketRegime.RANGING:
+            # Ideal: Low ADX (<25), weak direction, normal volatility
+            # Use steeper penalty for ADX to differentiate ranging markets
+            adx_match = np.clip(1.0 - (adx - 20.0) / 20.0, 0.0, 1.0)  # Steeper: /20 instead of /30
+            dir_match = 1.0 - min(abs(direction) / 0.5, 1.0)
+            vol_match = 1.0 - abs(vol_pct - 50.0) / 50.0
+            liq_match = liq_score
+
+        elif regime in [MarketRegime.MODERATE_UPTREND, MarketRegime.MODERATE_DOWNTREND]:
+            # Ideal: ADX 25-40 (peaks at 30-35), clear direction, normal volatility
+            adx_below = min((adx - 25.0) / 10.0, 1.0) if adx >= 25.0 else 0.0
+            adx_above = min((45.0 - adx) / 10.0, 1.0) if adx <= 45.0 else 0.0
+            adx_match = max(adx_below * adx_above, 0.0)
+            dir_match = min(abs(direction) / 0.5, 1.0)
+            vol_match = 1.0 - abs(vol_pct - 50.0) / 50.0
+            liq_match = liq_score
+
+        elif regime in [MarketRegime.STRONG_UPTREND, MarketRegime.STRONG_DOWNTREND]:
+            # Ideal: High ADX (>40), strong direction, any volatility
+            adx_match = min((adx - 40.0) / 20.0, 1.0) if adx >= 40.0 else 0.0
+            dir_match = min(abs(direction) / 0.7, 1.0)
+            vol_match = 1.0  # Volatility doesn't affect strong trends
+            liq_match = liq_score
+
+        elif regime == MarketRegime.HIGH_VOLATILITY:
+            # Ideal: High volatility percentile (>75)
+            vol_match = min((vol_pct - 75.0) / 25.0, 1.0) if vol_pct >= 75.0 else 0.0
+            adx_match = 1.0  # Trend doesn't matter in high volatility
+            dir_match = 1.0
+            liq_match = liq_score
+
+        elif regime == MarketRegime.LOW_LIQUIDITY:
+            # Ideal: Low liquidity score (<0.3)
+            liq_match = np.clip((0.3 - liq_score) / 0.3, 0.0, 1.0)
+            # Simple linear confidence for liquidity regime
+            return np.clip(0.5 + liq_match * 0.3, 0.3, 0.8)
+
+        else:
+            # Fallback for unknown regime
+            self.logger.warning(f"Unknown regime: {regime}, using default confidence")
+            return 0.5
+
+        # Ensure all match scores are valid [0, 1]
+        adx_match = np.clip(adx_match, 0.0, 1.0)
+        dir_match = np.clip(dir_match, 0.0, 1.0)
+        vol_match = np.clip(vol_match, 0.0, 1.0)
+        liq_match = np.clip(liq_match, 0.0, 1.0)
+
+        # Weighted geometric mean (exponents sum to 1.0)
+        # ADX is most reliable (0.4), direction is important (0.3),
+        # volatility provides context (0.2), liquidity is usually stable (0.1)
+        weights = {'adx': 0.4, 'dir': 0.3, 'vol': 0.2, 'liq': 0.1}
+
+        # Add epsilon to prevent log(0) in case of zero match scores
+        epsilon = 1e-6
+        geo_mean = (
+            (adx_match + epsilon) ** weights['adx'] *
+            (dir_match + epsilon) ** weights['dir'] *
+            (vol_match + epsilon) ** weights['vol'] *
+            (liq_match + epsilon) ** weights['liq']
+        )
+
+        # Map geometric mean [0, 1] to confidence range [0.3, 0.95]
+        confidence = 0.3 + (geo_mean * 0.65)
+        confidence = np.clip(confidence, 0.3, 0.95)
+
+        self.logger.debug(
+            f"Confidence calculation for {regime.value}: "
+            f"ADX={adx:.1f}(match={adx_match:.2f}), "
+            f"Dir={direction:.2f}(match={dir_match:.2f}), "
+            f"Vol={vol_pct:.0f}%(match={vol_match:.2f}), "
+            f"Liq={liq_score:.2f}(match={liq_match:.2f}) "
+            f"→ geo_mean={geo_mean:.3f} → confidence={confidence:.3f}"
+        )
+
+        return float(confidence)
 
     def _apply_regime_smoothing(self, new_regime: MarketRegime) -> MarketRegime:
         """
@@ -728,3 +1406,282 @@ class MarketRegimeDetector:
             MarketRegime.LOW_LIQUIDITY: "Thin orderbook - exercise caution",
         }
         return descriptions.get(regime, "Unknown regime")
+
+    def enhance_regime_with_liquidation_risk(
+        self,
+        base_detection: RegimeDetection,
+        liquidation_risk: Dict[str, Any]
+    ) -> RegimeDetection:
+        """
+        Enhance regime detection with liquidation risk data from PredictiveLiquidationMonitor.
+
+        This method integrates cascade risk signals to:
+        1. Override to HIGH_VOLATILITY when cascade probability is high
+        2. Adjust confidence based on risk alignment/conflict
+        3. Add liquidation risk metadata for downstream use
+
+        Integration with PredictiveLiquidationMonitor:
+        - risk_score: 0-1 composite risk (funding 40% + OI 40% + volatility 20%)
+        - cascade_probability: Likelihood of multi-symbol cascade
+        - funding_rate: Current funding rate for crowded trade detection
+        - oi_change_pct: Open interest change for leverage buildup detection
+
+        Args:
+            base_detection: RegimeDetection from detect_regime() or detect_regime_mtf()
+            liquidation_risk: Dict from PredictiveLiquidationMonitor containing:
+                - risk_score: float (0-1)
+                - cascade_probability: float (0-1), optional
+                - funding_rate: float, optional
+                - oi_change_pct: float, optional
+                - severity: str ('info', 'warning', 'high', 'critical'), optional
+
+        Returns:
+            Enhanced RegimeDetection with liquidation risk integrated
+
+        Example:
+            >>> detector = MarketRegimeDetector()
+            >>> base = detector.detect_regime_mtf(ohlcv_data)
+            >>> risk_data = predictive_monitor.risk_scores.get('BTCUSDT', {})
+            >>> enhanced = detector.enhance_regime_with_liquidation_risk(base, risk_data)
+        """
+        if not liquidation_risk:
+            return base_detection
+
+        # Extract risk metrics
+        risk_score = float(liquidation_risk.get('risk_score', 0))
+        cascade_prob = float(liquidation_risk.get('cascade_probability', risk_score * 1.2))
+        severity = liquidation_risk.get('severity', 'info')
+        funding_rate = liquidation_risk.get('funding_rate')
+        oi_change_pct = liquidation_risk.get('oi_change_pct')
+
+        # Current regime and confidence
+        regime = base_detection.regime
+        confidence = base_detection.confidence
+
+        # === REGIME OVERRIDE LOGIC ===
+        # High cascade risk overrides to HIGH_VOLATILITY
+        regime_override = None
+        override_reason = None
+
+        if severity == 'critical' or cascade_prob >= 0.7:
+            regime_override = MarketRegime.HIGH_VOLATILITY
+            override_reason = f"Critical cascade risk ({cascade_prob:.0%})"
+
+        elif severity == 'high' or cascade_prob >= 0.5:
+            # Only override if not already in a strong trend
+            if regime not in [MarketRegime.STRONG_UPTREND, MarketRegime.STRONG_DOWNTREND]:
+                regime_override = MarketRegime.HIGH_VOLATILITY
+                override_reason = f"High cascade risk ({cascade_prob:.0%})"
+
+        # === CONFIDENCE ADJUSTMENT ===
+        # Risk-regime alignment affects confidence
+        confidence_modifier = 1.0
+
+        # High risk + downtrend = aligned (shorts at risk of squeeze)
+        if risk_score > 0.5 and regime in [MarketRegime.MODERATE_DOWNTREND, MarketRegime.STRONG_DOWNTREND]:
+            if funding_rate and funding_rate < -0.01:  # Shorts paying
+                confidence_modifier = 0.85  # Squeeze risk reduces confidence
+                self.logger.debug(f"Reduced confidence: short squeeze risk (funding={funding_rate:.4f})")
+
+        # High risk + uptrend = aligned (longs at risk of liquidation)
+        if risk_score > 0.5 and regime in [MarketRegime.MODERATE_UPTREND, MarketRegime.STRONG_UPTREND]:
+            if funding_rate and funding_rate > 0.01:  # Longs paying
+                confidence_modifier = 0.85  # Correction risk reduces confidence
+                self.logger.debug(f"Reduced confidence: long liquidation risk (funding={funding_rate:.4f})")
+
+        # Leverage buildup without price confirmation = unstable
+        if oi_change_pct and abs(oi_change_pct) > 0.1:
+            confidence_modifier *= 0.95  # High leverage = less stable regime
+
+        # Very high risk reduces all confidence
+        if risk_score > 0.7:
+            confidence_modifier *= 0.9
+
+        # Apply confidence adjustment
+        adjusted_confidence = np.clip(confidence * confidence_modifier, 0.3, 0.95)
+
+        # === BUILD ENHANCED DETECTION ===
+        final_regime = regime_override if regime_override else regime
+
+        # Merge metadata
+        enhanced_metadata = dict(base_detection.metadata)
+        enhanced_metadata.update({
+            'liquidation_enhanced': True,
+            'liquidation_risk_score': risk_score,
+            'cascade_probability': cascade_prob,
+            'liquidation_severity': severity,
+            'regime_override': regime_override.value if regime_override else None,
+            'override_reason': override_reason,
+            'confidence_modifier': confidence_modifier,
+        })
+
+        if funding_rate is not None:
+            enhanced_metadata['funding_rate'] = funding_rate
+        if oi_change_pct is not None:
+            enhanced_metadata['oi_change_pct'] = oi_change_pct
+
+        self.logger.info(
+            f"Liquidation enhancement: risk={risk_score:.2f}, cascade={cascade_prob:.2f}, "
+            f"regime={'OVERRIDE→' + final_regime.value if regime_override else 'unchanged'}, "
+            f"confidence={confidence:.2f}→{adjusted_confidence:.2f}"
+        )
+
+        return RegimeDetection(
+            regime=final_regime,
+            confidence=float(adjusted_confidence),
+            strength=base_detection.strength,
+            trend_direction=base_detection.trend_direction,
+            volatility_percentile=base_detection.volatility_percentile,
+            liquidity_score=base_detection.liquidity_score,
+            metadata=enhanced_metadata
+        )
+
+    def enhance_regime_with_external_data(
+        self,
+        base_detection: RegimeDetection,
+        external_signals: 'ExternalRegimeSignals'
+    ) -> RegimeDetection:
+        """
+        Enhance regime detection with external market data signals.
+
+        Integrates data from:
+        - crypto-perps-tracker: Derivatives sentiment (funding, basis, L/S ratio)
+        - CoinGecko: Global market structure (dominance, market cap trends)
+        - Alternative.me: Fear & Greed Index
+
+        Enhancement Logic:
+        1. Apply confidence modifier from external signal analysis
+        2. Override to HIGH_VOLATILITY when external signals indicate extreme conditions
+        3. Adjust trend direction bias based on derivatives sentiment
+        4. Add comprehensive external data metadata
+
+        Args:
+            base_detection: RegimeDetection from detect_regime() or detect_regime_mtf()
+            external_signals: ExternalRegimeSignals from ExternalRegimeDataProvider
+
+        Returns:
+            Enhanced RegimeDetection with external data integrated
+
+        Example:
+            >>> from .external_regime_data import ExternalRegimeDataProvider
+            >>> provider = ExternalRegimeDataProvider()
+            >>> signals = await provider.get_external_signals()
+            >>> enhanced = detector.enhance_regime_with_external_data(base, signals)
+        """
+        # Import here to avoid circular import
+        from .external_regime_data import SentimentBias
+
+        if external_signals is None:
+            return base_detection
+
+        # Current regime and confidence
+        regime = base_detection.regime
+        confidence = base_detection.confidence
+        trend_direction = base_detection.trend_direction
+
+        # === CONFIDENCE ADJUSTMENT ===
+        # Apply external signal confidence modifier (0.7 to 1.3 range)
+        adjusted_confidence = confidence * external_signals.confidence_modifier
+
+        # === REGIME OVERRIDE LOGIC ===
+        regime_override = None
+        override_reason = None
+
+        # High volatility warning from external data
+        if external_signals.volatility_warning:
+            # Only override if not already in HIGH_VOLATILITY or strong trends
+            if regime not in [
+                MarketRegime.HIGH_VOLATILITY,
+                MarketRegime.STRONG_UPTREND,
+                MarketRegime.STRONG_DOWNTREND
+            ]:
+                regime_override = MarketRegime.HIGH_VOLATILITY
+                override_reason = "External signals indicate elevated volatility risk"
+
+        # Liquidity warning from external data (basis in backwardation)
+        if external_signals.liquidity_warning and regime != MarketRegime.LOW_LIQUIDITY:
+            if base_detection.liquidity_score < 0.5:  # Confirm with orderbook data
+                regime_override = MarketRegime.LOW_LIQUIDITY
+                override_reason = "External signals indicate liquidity stress"
+
+        # === TREND DIRECTION ADJUSTMENT ===
+        # Bias adjustment from external sentiment (-1 to +1)
+        bias_map = {
+            SentimentBias.EXTREME_BULLISH: 0.3,
+            SentimentBias.BULLISH: 0.15,
+            SentimentBias.NEUTRAL: 0.0,
+            SentimentBias.BEARISH: -0.15,
+            SentimentBias.EXTREME_BEARISH: -0.3
+        }
+        external_bias = bias_map.get(external_signals.overall_bias, 0.0)
+
+        # Blend external bias with detected trend direction (30% external, 70% technical)
+        adjusted_direction = (trend_direction * 0.7) + (external_bias * 0.3)
+        adjusted_direction = np.clip(adjusted_direction, -1.0, 1.0)
+
+        # === REGIME UPGRADE/DOWNGRADE ===
+        # If external signals strongly conflict with detected regime, reduce confidence
+        is_bullish_regime = regime in [MarketRegime.STRONG_UPTREND, MarketRegime.MODERATE_UPTREND]
+        is_bearish_regime = regime in [MarketRegime.STRONG_DOWNTREND, MarketRegime.MODERATE_DOWNTREND]
+        external_bullish = external_signals.overall_bias in [SentimentBias.BULLISH, SentimentBias.EXTREME_BULLISH]
+        external_bearish = external_signals.overall_bias in [SentimentBias.BEARISH, SentimentBias.EXTREME_BEARISH]
+
+        if (is_bullish_regime and external_bearish) or (is_bearish_regime and external_bullish):
+            # Conflict between technical and external signals
+            adjusted_confidence *= 0.85  # Reduce confidence by 15%
+            self.logger.info(
+                f"External signal conflict: regime={regime.value}, "
+                f"external_bias={external_signals.overall_bias.value}"
+            )
+        elif (is_bullish_regime and external_bullish) or (is_bearish_regime and external_bearish):
+            # Alignment between technical and external signals
+            adjusted_confidence *= 1.1  # Boost confidence by 10%
+
+        # Clamp confidence
+        adjusted_confidence = np.clip(adjusted_confidence, 0.3, 0.95)
+
+        # === BUILD ENHANCED DETECTION ===
+        final_regime = regime_override if regime_override else regime
+
+        # Merge metadata
+        enhanced_metadata = dict(base_detection.metadata)
+        enhanced_metadata.update({
+            'external_enhanced': True,
+            'external_bias': external_signals.overall_bias.value,
+            'external_confidence_modifier': external_signals.confidence_modifier,
+            'external_volatility_warning': external_signals.volatility_warning,
+            'external_liquidity_warning': external_signals.liquidity_warning,
+            'external_data_quality': external_signals.data_quality,
+            'regime_override': regime_override.value if regime_override else None,
+            'override_reason': override_reason,
+            # Derivatives data
+            'funding_rate': external_signals.derivatives.funding_rate,
+            'funding_sentiment': external_signals.derivatives.funding_sentiment,
+            'basis_pct': external_signals.derivatives.basis_pct,
+            'basis_status': external_signals.derivatives.basis_status,
+            'long_short_ratio': f"{external_signals.derivatives.long_pct:.1f}/{external_signals.derivatives.short_pct:.1f}",
+            'total_open_interest': external_signals.derivatives.total_open_interest,
+            # Global market data
+            'btc_dominance': external_signals.global_market.btc_dominance,
+            'market_cap_change_24h': external_signals.global_market.market_cap_change_24h,
+            # Sentiment data
+            'fear_greed_value': external_signals.sentiment.value,
+            'fear_greed_label': external_signals.sentiment.classification,
+        })
+
+        self.logger.info(
+            f"External enhancement: bias={external_signals.overall_bias.value}, "
+            f"regime={'OVERRIDE→' + final_regime.value if regime_override else 'unchanged'}, "
+            f"confidence={confidence:.2f}→{adjusted_confidence:.2f}, "
+            f"direction={trend_direction:.2f}→{adjusted_direction:.2f}"
+        )
+
+        return RegimeDetection(
+            regime=final_regime,
+            confidence=float(adjusted_confidence),
+            strength=base_detection.strength,
+            trend_direction=float(adjusted_direction),
+            volatility_percentile=base_detection.volatility_percentile,
+            liquidity_score=base_detection.liquidity_score,
+            metadata=enhanced_metadata
+        )
