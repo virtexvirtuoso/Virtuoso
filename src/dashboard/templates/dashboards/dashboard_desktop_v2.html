@@ -6400,8 +6400,8 @@
 
                         this.recentAlerts = allAlerts.slice(0, 20).map(alert => ({
                             id: alert.id,
-                            type: alert.type || 'signal',
-                            icon: this.getAlertIcon(alert.type),
+                            type: alert.alert_type || alert.details?.type || 'signal',
+                            icon: this.getAlertIcon(alert.alert_type || alert.details?.type),
                             title: alert.message || alert.title || 'Alert',
                             subtitle: (alert.symbol || '').replace('USDT', ''),
                             value: alert.details?.confluence_score ? Math.round(alert.details.confluence_score) + '%' : '',
