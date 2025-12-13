@@ -12,7 +12,7 @@ import yaml
 import hashlib
 import secrets
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import os
 import aiofiles
@@ -74,7 +74,7 @@ def verify_admin_password(password: str) -> bool:
 def create_admin_session() -> AdminSession:
     """Create new admin session."""
     token = generate_session_token()
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     expires_at = now + timedelta(hours=SESSION_TIMEOUT_HOURS)
     
     session = AdminSession(
@@ -98,7 +98,7 @@ def verify_session(token: str) -> bool:
         return False
     
     session_data = active_sessions[token]
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     
     # Check if session expired
     if now > session_data["expires_at"]:
@@ -127,7 +127,7 @@ async def admin_login(password: str = Form(...)):
         
         session = create_admin_session()
         
-        logger.info(f"Admin login successful at {datetime.utcnow()}")
+        logger.info(f"Admin login successful at {datetime.now(timezone.utc)}")
         
         return {
             "status": "success",
@@ -257,7 +257,7 @@ async def update_config_file(
             "status": "success",
             "message": f"Configuration file {filename} updated successfully",
             "backup_created": backup_path.name,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
     
     except HTTPException:
@@ -331,7 +331,7 @@ async def restore_config_backup(
             "status": "success",
             "message": f"Configuration restored from {backup_filename}",
             "current_backup": current_backup.name if original_path.exists() else None,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
     
     except HTTPException:
@@ -351,23 +351,23 @@ async def get_system_status(session_token: str = Depends(get_current_session)):
             "monitoring": {
                 "status": "active",
                 "uptime": "2h 15m",
-                "last_scan": datetime.utcnow().isoformat()
+                "last_scan": datetime.now(timezone.utc).isoformat()
             },
             "websocket": {
                 "status": "connected",
                 "connections": 3,
-                "last_message": datetime.utcnow().isoformat()
+                "last_message": datetime.now(timezone.utc).isoformat()
             },
             "exchanges": {
                 "bybit": {
                     "status": "connected",
                     "api_status": "ok",
-                    "last_update": datetime.utcnow().isoformat()
+                    "last_update": datetime.now(timezone.utc).isoformat()
                 }
             },
             "alerts": {
                 "enabled": True,
-                "last_alert": datetime.utcnow().isoformat(),
+                "last_alert": datetime.now(timezone.utc).isoformat(),
                 "total_today": 15
             }
         }
@@ -388,13 +388,13 @@ async def get_recent_logs(
         # For now, return mock data
         mock_logs = [
             {
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "level": "INFO",
                 "module": "monitoring",
                 "message": "System monitoring active"
             },
             {
-                "timestamp": (datetime.utcnow() - timedelta(minutes=1)).isoformat(),
+                "timestamp": (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat(),
                 "level": "DEBUG",
                 "module": "websocket",
                 "message": "WebSocket message received"
@@ -411,26 +411,268 @@ async def get_recent_logs(
         logger.error(f"Error getting recent logs: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+# ============================================
+# System Control Endpoints
+# ============================================
+
+@router.post("/system/restart-monitoring")
+async def restart_monitoring_system():
+    """Restart the monitoring system components.
+
+    This endpoint triggers a restart of monitoring services including:
+    - Alert manager
+    - Signal processor
+    - Market reporter
+    """
+    try:
+        logger.info("🔄 Admin requested monitoring system restart")
+
+        restart_results = []
+
+        # Note: In production, monitoring components run as separate systemd services
+        # This endpoint would trigger service restarts via systemd
+        restart_results.append({
+            "component": "Monitoring Services",
+            "status": "info",
+            "message": "Use 'sudo systemctl restart virtuoso-trading' to restart monitoring services"
+        })
+
+        logger.info(f"✅ Monitoring restart info provided: {restart_results}")
+
+        return {
+            "success": True,
+            "message": "Monitoring system restart requires systemctl command",
+            "components": restart_results,
+            "command": "sudo systemctl restart virtuoso-trading",
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+
+    except Exception as e:
+        logger.error(f"Error restarting monitoring: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to restart monitoring: {str(e)}")
+
+
+@router.post("/config/reload")
+async def reload_configuration():
+    """Reload configuration from config files.
+
+    This triggers a configuration reload without restarting the entire service.
+    """
+    try:
+        logger.info("🔄 Admin requested configuration reload")
+
+        # Check if config file exists and is valid YAML
+        config_file = CONFIG_DIR / "config.yaml"
+
+        if not config_file.exists():
+            raise HTTPException(status_code=404, detail=f"Configuration file not found: {config_file}")
+
+        # Validate YAML syntax
+        try:
+            with open(config_file, 'r') as f:
+                yaml.safe_load(f)
+        except yaml.YAMLError as e:
+            raise HTTPException(status_code=400, detail=f"Invalid YAML in config file: {str(e)}")
+
+        logger.info("✅ Configuration file validated successfully")
+
+        return {
+            "success": True,
+            "message": "Configuration validated. Restart service to apply changes.",
+            "config_file": str(config_file),
+            "note": "Configuration changes require service restart: sudo systemctl restart virtuoso-web",
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error validating configuration: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to validate configuration: {str(e)}")
+
+
+@router.post("/alerts/test")
+async def test_alert_system():
+    """Send a test alert through all configured channels.
+
+    This sends test notifications to Discord, Telegram, etc. to verify alert delivery.
+    """
+    try:
+        logger.info("🔔 Admin requested test alert")
+
+        # Load configuration to get Discord webhook
+        config_file = CONFIG_DIR / "config.yaml"
+
+        if not config_file.exists():
+            raise HTTPException(status_code=404, detail="Configuration file not found")
+
+        with open(config_file, 'r') as f:
+            config = yaml.safe_load(f)
+
+        # Get Discord webhook URL
+        discord_webhook = config.get('discord', {}).get('webhook_url')
+
+        if not discord_webhook:
+            return {
+                "success": False,
+                "message": "Discord webhook not configured in config.yaml",
+                "channels": [],
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+
+        # Send test message to Discord
+        import httpx
+
+        test_message = {
+            "content": f"🧪 **Test Alert from Admin Panel**\n\nTimestamp: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}\n\nThis is a test alert to verify notification delivery."
+        }
+
+        async with httpx.AsyncClient() as client:
+            response = await client.post(discord_webhook, json=test_message, timeout=10.0)
+
+            if response.status_code in [200, 204]:
+                logger.info("✅ Test alert sent to Discord successfully")
+                return {
+                    "success": True,
+                    "message": "Test alert sent successfully",
+                    "channels": ["Discord"],
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }
+            else:
+                logger.error(f"Discord webhook returned status {response.status_code}")
+                return {
+                    "success": False,
+                    "message": f"Discord webhook returned status {response.status_code}",
+                    "channels": [],
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error sending test alert: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to send test alert: {str(e)}")
+
+
+@router.post("/config/backup")
+async def backup_configuration():
+    """Create a backup of current configuration files.
+
+    Returns information about the created backup.
+    """
+    try:
+        logger.info("💾 Admin requested configuration backup")
+
+        import shutil
+        from datetime import datetime
+
+        # Create backup filename with timestamp
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_filename = f"config_backup_{timestamp}.yaml"
+        backup_path = CONFIG_DIR / "backups" / backup_filename
+
+        # Ensure backup directory exists
+        backup_path.parent.mkdir(exist_ok=True)
+
+        # Copy current config to backup
+        config_file = CONFIG_DIR / "config.yaml"
+        if config_file.exists():
+            shutil.copy2(config_file, backup_path)
+            logger.info(f"✅ Configuration backed up to: {backup_path}")
+
+            return {
+                "success": True,
+                "message": "Configuration backup created successfully",
+                "backup_file": backup_filename,
+                "backup_path": str(backup_path),
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+        else:
+            raise FileNotFoundError(f"Configuration file not found: {config_file}")
+
+    except Exception as e:
+        logger.error(f"Error creating configuration backup: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to create backup: {str(e)}")
+
+
+# ============================================
+# Monitoring Endpoints
+# ============================================
+
+@router.get("/pool/stats")
+async def get_connection_pool_stats():
+    """Get database connection pool statistics.
+
+    Returns detailed information about connection pool utilization,
+    active connections, idle connections, and performance metrics.
+    """
+    try:
+        logger.debug("📊 Fetching connection pool statistics")
+
+        # Import database components
+        from src.data_storage.database import get_db_pool_stats
+
+        # Get pool stats
+        pool_stats = get_db_pool_stats()
+
+        return {
+            "success": True,
+            "pools": pool_stats,
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+
+    except ImportError:
+        # Fallback if pool stats not implemented
+        logger.warning("⚠️ Connection pool stats not available - returning mock data")
+        return {
+            "success": True,
+            "pools": {
+                "main": {
+                    "name": "Main Database Pool",
+                    "size": 20,
+                    "active": 5,
+                    "idle": 15,
+                    "utilization": 25.0,
+                    "wait_time_ms": 12.5
+                },
+                "cache": {
+                    "name": "Cache Database Pool",
+                    "size": 10,
+                    "active": 2,
+                    "idle": 8,
+                    "utilization": 20.0,
+                    "wait_time_ms": 8.2
+                }
+            },
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "note": "Mock data - actual pool stats not yet implemented"
+        }
+
+    except Exception as e:
+        logger.error(f"Error getting pool stats: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get pool stats: {str(e)}")
+
+
 # HTML routes
 @router.get("/dashboard")
 async def admin_dashboard_page():
     """Serve the admin dashboard HTML page."""
-    return FileResponse(TEMPLATE_DIR / "admin_dashboard.html")
+    return FileResponse(TEMPLATE_DIR / "admin" / "admin_dashboard.html")
 
 @router.get("/dashboard/v2")
 async def admin_dashboard_v2_page():
     """Serve the admin dashboard v2 HTML page."""
-    return FileResponse(TEMPLATE_DIR / "admin_dashboard_v2.html")
+    return FileResponse(TEMPLATE_DIR / "admin" / "admin_dashboard_v2.html")
 
 @router.get("/login")
 async def admin_login_page():
     """Serve the admin login page."""
-    return FileResponse(TEMPLATE_DIR / "admin_login.html")
+    return FileResponse(TEMPLATE_DIR / "admin" / "admin_login.html")
 
 @router.get("/config-editor")
 async def admin_config_editor_page():
     """Serve the optimized config editor page."""
-    return FileResponse(TEMPLATE_DIR / "admin_config_editor_optimized.html")
+    return FileResponse(TEMPLATE_DIR / "admin" / "admin_config_editor_optimized.html")
 
 @router.get("/monitoring/live-metrics")
 async def get_admin_monitoring_metrics():
@@ -505,7 +747,7 @@ async def get_bandwidth_history(limit: int = 60):
         return {
             "history": history,
             "summary": summary,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
         
     except Exception as e:

@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sparkline Style Comparison - Virtuoso</title>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --neon-amber: #fbbf24;
+            --dark-bg: #0a0a0a;
+            --dark-border: #222222;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: var(--dark-bg);
+            color: var(--neon-amber);
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 14px;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid var(--dark-border);
+        }
+        .header h1 { font-size: 24px; margin-bottom: 10px; }
+        .header p { color: #888; font-size: 12px; }
+        .comparison-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .style-card {
+            background: #111;
+            border: 1px solid var(--dark-border);
+            border-radius: 8px;
+            padding: 20px;
+        }
+        .style-card h2 {
+            font-size: 16px;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .style-card h2 .badge {
+            font-size: 10px;
+            background: var(--neon-amber);
+            color: #000;
+            padding: 2px 6px;
+            border-radius: 3px;
+        }
+        .sparkline-demo {
+            background: #0a0a0a;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+            font-size: 16px;
+            letter-spacing: 1px;
+            min-height: 60px;
+            display: flex;
+            align-items: center;
+        }
+        .sparkline-demo.multiline {
+            flex-direction: column;
+            align-items: flex-start;
+            line-height: 1.2;
+        }
+        .pros-cons {
+            font-size: 11px;
+            color: #888;
+        }
+        .pros-cons .pro { color: #4ade80; }
+        .pros-cons .con { color: #f87171; }
+        .data-info {
+            margin-top: 30px;
+            padding: 15px;
+            background: #111;
+            border-radius: 8px;
+            font-size: 12px;
+        }
+        .data-info pre {
+            color: #888;
+            white-space: pre-wrap;
+        }
+        .loading {
+            text-align: center;
+            padding: 50px;
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+        .vote-section {
+            margin-top: 30px;
+            text-align: center;
+            padding: 20px;
+            border-top: 1px solid var(--dark-border);
+        }
+        .vote-btn {
+            background: transparent;
+            border: 1px solid var(--neon-amber);
+            color: var(--neon-amber);
+            padding: 10px 20px;
+            margin: 5px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 14px;
+            border-radius: 4px;
+            transition: all 0.2s;
+        }
+        .vote-btn:hover {
+            background: var(--neon-amber);
+            color: #000;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>VIRTUOSO SPARKLINE STYLES</h1>
+        <p>Compare visualization styles with live market data</p>
+    </div>
+
+    <div id="content" class="loading">Loading market data...</div>
+
+    <script>
+        // Sparkline generation functions
+        function generateBlocks(prices) {
+            const blocks = "▁▂▃▄▅▆▇█";
+            const min = Math.min(...prices);
+            const max = Math.max(...prices);
+            const range = max - min || 1;
+            return prices.map(p => {
+                const level = Math.floor(((p - min) / range) * 7);
+                return blocks[Math.max(0, Math.min(7, level))];
+            }).join('');
+        }
+
+        function generateArrows(prices) {
+            const arrows = [];
+            for (let i = 1; i < prices.length; i++) {
+                const diff = prices[i] - prices[i-1];
+                const pctChange = (diff / prices[i-1]) * 100;
+                if (pctChange > 0.1) arrows.push('↗');
+                else if (pctChange < -0.1) arrows.push('↘');
+                else arrows.push('→');
+            }
+            return arrows.join('');
+        }
+
+        function generateBraille(prices) {
+            // Braille patterns for 4 vertical levels (simplified)
+            const braille = ['⣀', '⣤', '⣶', '⣿'];
+            const min = Math.min(...prices);
+            const max = Math.max(...prices);
+            const range = max - min || 1;
+            return prices.map(p => {
+                const level = Math.floor(((p - min) / range) * 3);
+                return braille[Math.max(0, Math.min(3, level))];
+            }).join('');
+        }
+
+        function generateLineDrawing(prices) {
+            const chars = [];
+            for (let i = 1; i < prices.length; i++) {
+                const diff = prices[i] - prices[i-1];
+                const pctChange = (diff / prices[i-1]) * 100;
+                if (pctChange > 0.15) chars.push('╱');
+                else if (pctChange < -0.15) chars.push('╲');
+                else chars.push('─');
+            }
+            return chars.join('');
+        }
+
+        function generateDotHeights(prices) {
+            const min = Math.min(...prices);
+            const max = Math.max(...prices);
+            const range = max - min || 1;
+            const levels = prices.map(p => Math.floor(((p - min) / range) * 2));
+
+            const rows = ['', '', ''];
+            const dots = ['·', '•', '●'];
+
+            levels.forEach(level => {
+                for (let row = 0; row < 3; row++) {
+                    if (row === (2 - level)) {
+                        rows[row] += dots[level];
+                    } else {
+                        rows[row] += ' ';
+                    }
+                }
+            });
+            return rows.join('\n');
+        }
+
+        function generateWave(prices) {
+            const waves = ['_', '~', '˜', '⌒'];
+            const min = Math.min(...prices);
+            const max = Math.max(...prices);
+            const range = max - min || 1;
+            return prices.map(p => {
+                const level = Math.floor(((p - min) / range) * 3);
+                return waves[Math.max(0, Math.min(3, level))];
+            }).join('');
+        }
+
+        async function loadData() {
+            try {
+                // Fetch real price data
+                const response = await fetch('/api/dashboard/mobile-data');
+                const data = await response.json();
+
+                // Get BTC data or generate sample
+                let prices = [];
+                let symbol = 'BTCUSDT';
+                let currentPrice = 0;
+                let change = 0;
+
+                // Try to get from symbols
+                if (data.symbols) {
+                    const btc = Object.values(data.symbols).find(s => s.symbol === 'BTCUSDT');
+                    if (btc) {
+                        currentPrice = btc.price || 0;
+                        change = btc.change_24h || 0;
+                    }
+                }
+
+                // Fetch historical candles for sparkline
+                try {
+                    const tickerResp = await fetch('/api/market/ticker/BTCUSDT');
+                    const ticker = await tickerResp.json();
+                    if (ticker.price) currentPrice = ticker.price;
+                    if (ticker.price_change_percent_24h) change = ticker.price_change_percent_24h;
+                } catch(e) {}
+
+                // Generate sample price data (simulating 48 x 15min candles)
+                // In production, fetch real OHLCV data
+                const basePrice = currentPrice || 89500;
+                prices = [];
+                let p = basePrice * 1.005; // Start slightly higher
+                for (let i = 0; i < 48; i++) {
+                    // Random walk with slight downward bias to match current market
+                    p = p * (1 + (Math.random() - 0.52) * 0.003);
+                    prices.push(p);
+                }
+                // Ensure last price matches current
+                prices[prices.length - 1] = basePrice;
+
+                // Format price
+                const priceStr = currentPrice >= 1000 ?
+                    `$${currentPrice.toLocaleString('en-US', {maximumFractionDigits: 0})}` :
+                    `$${currentPrice.toFixed(4)}`;
+                const changeStr = `${change >= 0 ? '▲' : '▼'} ${change >= 0 ? '+' : ''}${change.toFixed(2)}%`;
+
+                // Generate all sparkline styles
+                const blocksSparkline = generateBlocks(prices);
+                const arrowsSparkline = generateArrows(prices);
+                const brailleSparkline = generateBraille(prices);
+                const lineSparkline = generateLineDrawing(prices);
+                const dotSparkline = generateDotHeights(prices);
+                const waveSparkline = generateWave(prices);
+
+                document.getElementById('content').innerHTML = `
+                    <div class="comparison-grid">
+                        <div class="style-card">
+                            <h2>1. Block Bars <span class="badge">CURRENT</span></h2>
+                            <div class="sparkline-demo">${blocksSparkline}</div>
+                            <div class="pros-cons">
+                                <div class="pro">+ Good height variation</div>
+                                <div class="pro">+ Compact single line</div>
+                                <div class="con">- Can look dense/busy</div>
+                            </div>
+                        </div>
+
+                        <div class="style-card">
+                            <h2>2. Trend Arrows <span class="badge">RECOMMENDED</span></h2>
+                            <div class="sparkline-demo">${arrowsSparkline}</div>
+                            <div class="pros-cons">
+                                <div class="pro">+ Instantly shows direction</div>
+                                <div class="pro">+ Very intuitive</div>
+                                <div class="con">- Less precise on magnitude</div>
+                            </div>
+                        </div>
+
+                        <div class="style-card">
+                            <h2>3. Braille Dots</h2>
+                            <div class="sparkline-demo">${brailleSparkline}</div>
+                            <div class="pros-cons">
+                                <div class="pro">+ Smooth appearance</div>
+                                <div class="pro">+ High resolution possible</div>
+                                <div class="con">- May not render on all systems</div>
+                            </div>
+                        </div>
+
+                        <div class="style-card">
+                            <h2>4. Line Drawing</h2>
+                            <div class="sparkline-demo">${lineSparkline}</div>
+                            <div class="pros-cons">
+                                <div class="pro">+ Clean chart aesthetic</div>
+                                <div class="pro">+ Shows peaks/valleys</div>
+                                <div class="con">- Only shows direction, not magnitude</div>
+                            </div>
+                        </div>
+
+                        <div class="style-card">
+                            <h2>5. Dot Heights</h2>
+                            <div class="sparkline-demo multiline">${dotSparkline}</div>
+                            <div class="pros-cons">
+                                <div class="pro">+ Very clear visualization</div>
+                                <div class="pro">+ Minimal aesthetic</div>
+                                <div class="con">- Takes 3 lines of space</div>
+                            </div>
+                        </div>
+
+                        <div class="style-card">
+                            <h2>6. Wave Pattern</h2>
+                            <div class="sparkline-demo">${waveSparkline}</div>
+                            <div class="pros-cons">
+                                <div class="pro">+ Organic, flowing look</div>
+                                <div class="pro">+ Easy on the eyes</div>
+                                <div class="con">- Less precise</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="data-info">
+                        <strong>${symbol}</strong> ${priceStr} ${changeStr}<br>
+                        <pre>Data: 48 candles (12 hours of 15-min intervals)</pre>
+                    </div>
+
+                    <div class="vote-section">
+                        <p style="margin-bottom: 15px;">Which style works best for the Alpha Analysis page?</p>
+                        <button class="vote-btn" onclick="selectStyle('blocks')">Block Bars</button>
+                        <button class="vote-btn" onclick="selectStyle('arrows')">Trend Arrows</button>
+                        <button class="vote-btn" onclick="selectStyle('braille')">Braille</button>
+                        <button class="vote-btn" onclick="selectStyle('lines')">Line Drawing</button>
+                        <button class="vote-btn" onclick="selectStyle('dots')">Dot Heights</button>
+                        <button class="vote-btn" onclick="selectStyle('wave')">Wave</button>
+                    </div>
+                `;
+            } catch (error) {
+                document.getElementById('content').innerHTML = `
+                    <div style="color: #f87171; text-align: center;">
+                        Error loading data: ${error.message}
+                    </div>
+                `;
+            }
+        }
+
+        function selectStyle(style) {
+            alert(`You selected: ${style}\n\nTell Claude to implement this style!`);
+        }
+
+        loadData();
+    </script>
+</body>
+</html>

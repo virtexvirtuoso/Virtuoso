@@ -1,0 +1,321 @@
+<!-- Bitcoin Lead/Lag Prediction Widget -->
+<div class="widget-header" style="display: flex; align-items: center; justify-content: space-between; padding: 1rem; border-bottom: 1px solid rgba(251, 191, 36, 0.1);">
+    <div class="widget-title" style="display: flex; align-items: center; gap: 0.5rem; color: var(--text-primary, #f5f5f5); font-weight: 600; font-size: 0.95rem;">
+        <i data-lucide="activity" style="width: 18px; height: 18px; color: var(--neon-amber, #fbbf24);"></i>
+        BTC Lead/Lag Predictor
+    </div>
+    <div id="btc-pred-status-indicator" style="width: 8px; height: 8px; border-radius: 50%; background: var(--text-secondary, #a8a8a8); box-shadow: 0 0 8px currentColor;"></div>
+</div>
+
+<div class="widget-body" style="padding: 1rem; overflow-y: auto; max-height: calc(100% - 60px);">
+
+    <!-- Data Collection Progress Section -->
+    <div style="margin-bottom: 1.25rem;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
+            <span style="color: var(--text-secondary, #a8a8a8); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px;">Data Collection</span>
+            <span id="btc-pred-progress-text" style="color: var(--neon-amber, #fbbf24); font-size: 0.75rem; font-weight: 600;">0/60</span>
+        </div>
+
+        <!-- Progress Bar -->
+        <div style="position: relative; height: 6px; background: rgba(251, 191, 36, 0.1); border-radius: 3px; overflow: hidden;">
+            <div id="btc-pred-progress-bar" style="position: absolute; left: 0; top: 0; height: 100%; width: 0%; background: linear-gradient(90deg, var(--neon-amber, #fbbf24), #f59e0b); transition: width 0.3s ease; box-shadow: 0 0 10px var(--neon-amber, #fbbf24);"></div>
+        </div>
+
+        <div id="btc-pred-ready-message" style="margin-top: 0.5rem; padding: 0.5rem; background: rgba(251, 191, 36, 0.05); border-left: 2px solid var(--neon-amber, #fbbf24); border-radius: 3px; display: none;">
+            <span style="color: var(--accent-positive, #00d68f); font-size: 0.75rem; font-weight: 500;">
+                <i data-lucide="check-circle" style="width: 12px; height: 12px; display: inline; vertical-align: middle;"></i>
+                System Ready
+            </span>
+        </div>
+    </div>
+
+    <!-- Summary Metrics -->
+    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; margin-bottom: 1.25rem;">
+        <div style="background: rgba(251, 191, 36, 0.05); border-radius: 6px; padding: 0.75rem; border: 1px solid rgba(251, 191, 36, 0.1);">
+            <div style="color: var(--text-secondary, #a8a8a8); font-size: 0.65rem; text-transform: uppercase; margin-bottom: 0.25rem;">Active</div>
+            <div id="btc-pred-active-count" style="color: var(--accent-positive, #00d68f); font-size: 1.5rem; font-weight: 700; line-height: 1;">0</div>
+        </div>
+
+        <div style="background: rgba(251, 191, 36, 0.05); border-radius: 6px; padding: 0.75rem; border: 1px solid rgba(251, 191, 36, 0.1);">
+            <div style="color: var(--text-secondary, #a8a8a8); font-size: 0.65rem; text-transform: uppercase; margin-bottom: 0.25rem;">Avg Conf</div>
+            <div id="btc-pred-avg-confidence" style="color: var(--neon-amber, #fbbf24); font-size: 1.5rem; font-weight: 700; line-height: 1;">0%</div>
+        </div>
+
+        <div style="background: rgba(251, 191, 36, 0.05); border-radius: 6px; padding: 0.75rem; border: 1px solid rgba(251, 191, 36, 0.1);">
+            <div style="color: var(--text-secondary, #a8a8a8); font-size: 0.65rem; text-transform: uppercase; margin-bottom: 0.25rem;">Total</div>
+            <div id="btc-pred-total-symbols" style="color: var(--text-primary, #f5f5f5); font-size: 1.5rem; font-weight: 700; line-height: 1;">0</div>
+        </div>
+    </div>
+
+    <!-- Top Predictions List -->
+    <div style="margin-bottom: 1rem;">
+        <div style="color: var(--text-secondary, #a8a8a8); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 0.75rem;">
+            Top Predictions
+        </div>
+
+        <div id="btc-pred-predictions-list" style="display: flex; flex-direction: column; gap: 0.5rem;">
+            <!-- Predictions will be inserted here -->
+            <div style="text-align: center; padding: 1.5rem; color: var(--text-secondary, #a8a8a8); font-size: 0.8rem;">
+                Awaiting data collection...
+            </div>
+        </div>
+    </div>
+
+    <!-- Confidence Distribution Mini Chart -->
+    <div style="margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid rgba(251, 191, 36, 0.1);">
+        <div style="color: var(--text-secondary, #a8a8a8); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 0.5rem;">
+            Confidence Distribution
+        </div>
+        <canvas id="btc-pred-confidence-chart" style="width: 100%; height: 60px;"></canvas>
+    </div>
+
+</div>
+
+<script>
+(function() {
+    'use strict';
+
+    const CONFIG = {
+        updateInterval: 5000, // 5 seconds
+        endpoints: {
+            status: '/api/bitcoin-prediction/status',
+            analysis: '/api/bitcoin-prediction/analyze/all'
+        }
+    };
+
+    let chartInstance = null;
+
+    // Initialize Lucide icons
+    function initIcons() {
+        if (typeof lucide !== 'undefined') {
+            lucide.createIcons();
+        }
+    }
+
+    // Fetch data from API
+    async function fetchData(endpoint) {
+        try {
+            const response = await fetch(endpoint);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            return await response.json();
+        } catch (error) {
+            console.error(`[BTC Prediction Widget] Error fetching ${endpoint}:`, error);
+            return null;
+        }
+    }
+
+    // Update progress bar
+    function updateProgress(current, required) {
+        const percentage = Math.min((current / required) * 100, 100);
+        const progressBar = document.getElementById('btc-pred-progress-bar');
+        const progressText = document.getElementById('btc-pred-progress-text');
+        const readyMessage = document.getElementById('btc-pred-ready-message');
+
+        if (progressBar) progressBar.style.width = `${percentage}%`;
+        if (progressText) progressText.textContent = `${current}/${required}`;
+
+        if (readyMessage) {
+            readyMessage.style.display = current >= required ? 'block' : 'none';
+        }
+    }
+
+    // Update status indicator
+    function updateStatusIndicator(ready) {
+        const indicator = document.getElementById('btc-pred-status-indicator');
+        if (indicator) {
+            indicator.style.background = ready ? 'var(--accent-positive, #00d68f)' : 'var(--text-secondary, #a8a8a8)';
+            indicator.style.boxShadow = ready ? '0 0 10px var(--accent-positive, #00d68f)' : '0 0 8px var(--text-secondary, #a8a8a8)';
+        }
+    }
+
+    // Update summary metrics
+    function updateSummary(summary) {
+        const activeCount = document.getElementById('btc-pred-active-count');
+        const avgConfidence = document.getElementById('btc-pred-avg-confidence');
+        const totalSymbols = document.getElementById('btc-pred-total-symbols');
+
+        if (activeCount) activeCount.textContent = summary.active_signals || 0;
+        if (avgConfidence) avgConfidence.textContent = `${Math.round((summary.avg_confidence || 0) * 100)}%`;
+        if (totalSymbols) totalSymbols.textContent = summary.total_symbols || 0;
+    }
+
+    // Render prediction item
+    function renderPrediction(pred) {
+        const directionColor = pred.direction === 'long' ? 'var(--accent-positive, #00d68f)' : '#ef4444';
+        const directionIcon = pred.direction === 'long' ? 'trending-up' : 'trending-down';
+
+        return `
+            <div style="background: rgba(251, 191, 36, 0.03); border: 1px solid rgba(251, 191, 36, 0.1); border-radius: 6px; padding: 0.75rem;">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <span style="color: var(--text-primary, #f5f5f5); font-weight: 600; font-size: 0.85rem;">${pred.symbol}</span>
+                        <i data-lucide="${directionIcon}" style="width: 14px; height: 14px; color: ${directionColor};"></i>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <span style="color: var(--neon-amber, #fbbf24); font-size: 0.75rem; font-weight: 600;">${Math.round(pred.confidence * 100)}%</span>
+                        <span style="color: var(--text-secondary, #a8a8a8); font-size: 0.7rem;">+${pred.boost_points}pts</span>
+                    </div>
+                </div>
+
+                <!-- Confidence Bar -->
+                <div style="position: relative; height: 4px; background: rgba(251, 191, 36, 0.1); border-radius: 2px; overflow: hidden; margin-bottom: 0.5rem;">
+                    <div style="position: absolute; left: 0; top: 0; height: 100%; width: ${pred.confidence * 100}%; background: linear-gradient(90deg, var(--neon-amber, #fbbf24), #f59e0b); box-shadow: 0 0 6px var(--neon-amber, #fbbf24);"></div>
+                </div>
+
+                <div style="display: flex; justify-content: space-between; font-size: 0.7rem; color: var(--text-secondary, #a8a8a8);">
+                    <span>Move: <span style="color: ${directionColor};">${pred.expected_move_pct > 0 ? '+' : ''}${pred.expected_move_pct.toFixed(2)}%</span></span>
+                    <span>Lag: ${pred.lag_minutes}m</span>
+                    <span>β: ${pred.beta.toFixed(2)}</span>
+                    <span>Stability: ${pred.stability_score}</span>
+                </div>
+            </div>
+        `;
+    }
+
+    // Update predictions list
+    function updatePredictions(predictions) {
+        const listContainer = document.getElementById('btc-pred-predictions-list');
+        if (!listContainer) return;
+
+        if (!predictions || predictions.length === 0) {
+            listContainer.innerHTML = `
+                <div style="text-align: center; padding: 1.5rem; color: var(--text-secondary, #a8a8a8); font-size: 0.8rem;">
+                    No active predictions
+                </div>
+            `;
+            return;
+        }
+
+        // Show top 5 active predictions, sorted by confidence
+        const topPredictions = predictions
+            .filter(p => p.active)
+            .sort((a, b) => b.confidence - a.confidence)
+            .slice(0, 5);
+
+        if (topPredictions.length === 0) {
+            listContainer.innerHTML = `
+                <div style="text-align: center; padding: 1.5rem; color: var(--text-secondary, #a8a8a8); font-size: 0.8rem;">
+                    No active predictions
+                </div>
+            `;
+            return;
+        }
+
+        listContainer.innerHTML = topPredictions.map(renderPrediction).join('');
+        initIcons(); // Re-initialize icons for new content
+    }
+
+    // Initialize confidence distribution chart
+    function initChart() {
+        const canvas = document.getElementById('btc-pred-confidence-chart');
+        if (!canvas) return;
+
+        const ctx = canvas.getContext('2d');
+        chartInstance = {
+            canvas: canvas,
+            ctx: ctx,
+            data: []
+        };
+    }
+
+    // Update confidence distribution chart
+    function updateChart(predictions) {
+        if (!chartInstance) return;
+
+        const { canvas, ctx } = chartInstance;
+        const width = canvas.width = canvas.offsetWidth * window.devicePixelRatio;
+        const height = canvas.height = canvas.offsetHeight * window.devicePixelRatio;
+
+        ctx.clearRect(0, 0, width, height);
+
+        if (!predictions || predictions.length === 0) return;
+
+        // Create histogram bins for confidence scores
+        const bins = [0, 0, 0, 0, 0]; // 0-20%, 20-40%, 40-60%, 60-80%, 80-100%
+        predictions.forEach(pred => {
+            const binIndex = Math.min(Math.floor(pred.confidence * 5), 4);
+            bins[binIndex]++;
+        });
+
+        const maxBin = Math.max(...bins, 1);
+        const barWidth = width / bins.length;
+        const padding = 2 * window.devicePixelRatio;
+
+        bins.forEach((count, i) => {
+            const barHeight = (count / maxBin) * (height - padding * 2);
+            const x = i * barWidth + padding;
+            const y = height - barHeight - padding;
+
+            // Draw bar
+            ctx.fillStyle = 'rgba(251, 191, 36, 0.6)';
+            ctx.fillRect(x, y, barWidth - padding * 2, barHeight);
+
+            // Draw glow effect
+            ctx.shadowBlur = 10 * window.devicePixelRatio;
+            ctx.shadowColor = '#fbbf24';
+            ctx.fillStyle = 'rgba(251, 191, 36, 0.3)';
+            ctx.fillRect(x, y, barWidth - padding * 2, barHeight);
+            ctx.shadowBlur = 0;
+        });
+    }
+
+    // Main update function
+    async function updateWidget() {
+        const [statusData, analysisData] = await Promise.all([
+            fetchData(CONFIG.endpoints.status),
+            fetchData(CONFIG.endpoints.analysis)
+        ]);
+
+        if (statusData) {
+            updateProgress(statusData.btc_history_length, statusData.min_required);
+            updateStatusIndicator(statusData.ready);
+        }
+
+        if (analysisData) {
+            updateSummary(analysisData.summary);
+            updatePredictions(analysisData.predictions);
+            updateChart(analysisData.predictions);
+        }
+    }
+
+    // Initialize widget
+    function init() {
+        initIcons();
+        initChart();
+        updateWidget();
+        setInterval(updateWidget, CONFIG.updateInterval);
+    }
+
+    // Start when DOM is ready
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+})();
+</script>
+
+<style>
+/* Widget-specific styles */
+#btc-pred-predictions-list {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(251, 191, 36, 0.3) transparent;
+}
+
+#btc-pred-predictions-list::-webkit-scrollbar {
+    width: 4px;
+}
+
+#btc-pred-predictions-list::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+#btc-pred-predictions-list::-webkit-scrollbar-thumb {
+    background: rgba(251, 191, 36, 0.3);
+    border-radius: 2px;
+}
+
+#btc-pred-predictions-list::-webkit-scrollbar-thumb:hover {
+    background: rgba(251, 191, 36, 0.5);
+}
+</style>

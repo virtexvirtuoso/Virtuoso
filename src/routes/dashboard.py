@@ -6,7 +6,7 @@ from typing import Dict, List, Any, Optional
 import asyncio
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 import time
 from pathlib import Path
 import os
@@ -189,7 +189,7 @@ async def get_dashboard_overview() -> Dict[str, Any]:
             return {
                 "status": "initializing" if symbol_count > 0 else "error",
                 "message": "System initializing..." if symbol_count > 0 else "Dashboard integration service not available",
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "signals": {"total": 0, "strong": 0, "medium": 0, "weak": 0},
                 "alerts": {"total": 0, "critical": 0, "warning": 0},
                 "alpha_opportunities": {"total": 0, "high_confidence": 0, "medium_confidence": 0},
@@ -425,7 +425,7 @@ async def dashboard_websocket(websocket: WebSocket):
             await websocket.send_json({
                 "type": "dashboard_update",
                 "data": initial_data,
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             })
 
         # Keep connection alive and send periodic updates
@@ -437,7 +437,7 @@ async def dashboard_websocket(websocket: WebSocket):
                     await websocket.send_json({
                         "type": "dashboard_update",
                         "data": dashboard_data,
-                        "timestamp": datetime.utcnow().isoformat()
+                        "timestamp": datetime.now(timezone.utc).isoformat()
                     })
                 
                 await asyncio.sleep(10)  # Update every 10 seconds
@@ -466,7 +466,7 @@ async def update_dashboard_config(config: Dict[str, Any]) -> Dict[str, Any]:
         return {
             "status": "success",
             "message": "Configuration updated successfully",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "config": config
         }
 
@@ -494,7 +494,7 @@ async def get_dashboard_config() -> Dict[str, Any]:
                 "confidence_threshold": 75,
                 "risk_level": "Medium"
             },
-            "last_updated": datetime.utcnow().isoformat()
+            "last_updated": datetime.now(timezone.utc).isoformat()
         }
         
         return default_config
@@ -516,7 +516,7 @@ async def dashboard_health() -> Dict[str, Any]:
         
         return {
             "status": "healthy",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "integration_available": integration is not None,
             "active_websocket_connections": len(connection_manager.active_connections),
             "cache_performance": cache_info
@@ -526,7 +526,7 @@ async def dashboard_health() -> Dict[str, Any]:
         logger.error(f"Dashboard health check error: {e}")
         return {
             "status": "unhealthy",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "error": str(e)
         }
 
@@ -541,7 +541,7 @@ async def get_cache_stats() -> Dict[str, Any]:
             return {
                 "status": "phase1",
                 "message": "Phase 1 cache active (no Memcached stats available)",
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
         
         # Get Phase 2 cache performance
@@ -551,7 +551,7 @@ async def get_cache_stats() -> Dict[str, Any]:
             "status": "phase2",
             "message": "Phase 2 Memcached cache active",
             "performance": cache_performance,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
         
     except Exception as e:
@@ -564,7 +564,7 @@ async def dashboard_test() -> Dict[str, Any]:
     return {
         "status": "ok",
         "message": "Dashboard API is working",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "server_time": time.time()
     }
 
@@ -595,13 +595,13 @@ async def debug_components(request: Request) -> Dict[str, Any]:
         "has_integration": has_integration,
         "has_dashboard_data": has_data,
         "signal_count": signal_count,
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.now(timezone.utc).isoformat()
     }
 
 @router.get("/confluence-analysis-page")
 async def confluence_analysis_page():
     """Serve the terminal-style confluence analysis page."""
-    return FileResponse(TEMPLATE_DIR / "confluence_analysis.html")
+    return FileResponse(TEMPLATE_DIR / "dashboards" / "confluence_analysis.html")
 
 @router.get("/confluence-analysis/{symbol}")
 async def get_confluence_analysis(symbol: str) -> Dict[str, Any]:
@@ -675,7 +675,7 @@ async def get_confluence_scores() -> Dict[str, Any]:
         return {
             "scores": scores,
             "count": len(scores),
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
         
     except Exception as e:
@@ -705,7 +705,7 @@ async def get_mobile_dashboard_data_direct(request: Request) -> Dict[str, Any]:
                 "gainers": [],
                 "losers": []
             },
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "status": "success"
         }
         
@@ -781,7 +781,7 @@ async def get_mobile_dashboard_data_direct(request: Request) -> Dict[str, Any]:
         return {
             "status": "error",
             "error": str(e),
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
 
 @router.get("/mobile-data")
@@ -851,7 +851,7 @@ async def get_mobile_dashboard_data() -> Dict[str, Any]:
                 "gainers": [],
                 "losers": []
             },
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "status": "success"
         }
         
@@ -1115,7 +1115,7 @@ async def get_mobile_dashboard_data() -> Dict[str, Any]:
         return {
             "status": "error",
             "error": str(e),
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
 
 @router.get("/performance")
@@ -1134,7 +1134,7 @@ async def get_dashboard_performance() -> Dict[str, Any]:
             "api_latency": 12,
             "active_connections": 3,
             "uptime": "2h 15m",
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
         
     except Exception as e:
@@ -1145,7 +1145,7 @@ async def get_dashboard_performance() -> Dict[str, Any]:
             "api_latency": 0,
             "active_connections": 0,
             "uptime": "0h 0m",
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
 
 @router.get("/symbols")
@@ -1190,7 +1190,7 @@ async def get_dashboard_symbols() -> Dict[str, Any]:
                 {"symbol": "SOLUSDT", "confluence_score": 50, "change_24h": 3.21},
                 {"symbol": "DOTUSDT", "confluence_score": 50, "change_24h": -0.56}
             ],
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "message": "Waiting for live data from trading system"
         }
         
@@ -1200,14 +1200,14 @@ async def get_dashboard_symbols() -> Dict[str, Any]:
             "status": "error",
             "symbols": [],
             "error": str(e),
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
 
 # HTML Dashboard Routes
 @router.get("/login")
 async def login_page():
     """Serve the mobile login screen"""
-    return FileResponse(TEMPLATE_DIR / "login_mobile.html")
+    return FileResponse(TEMPLATE_DIR / "archive" / "login_mobile.html")
 
 @router.get("/favicon.svg")
 async def favicon():
@@ -1217,27 +1217,17 @@ async def favicon():
 @router.get("/mobile")
 async def mobile_dashboard_page():
     """Serve the mobile dashboard with all integrated components"""
-    return FileResponse(TEMPLATE_DIR / "dashboard_mobile_v1.html")
-
-@router.get("/")
-async def dashboard_page():
-    """Serve the main v10 Signal Confluence Matrix dashboard"""
-    return FileResponse(TEMPLATE_DIR / "dashboard_v10.html")
+    return FileResponse(TEMPLATE_DIR / "archive" / "dashboard_mobile_v1.html")
 
 @router.get("/v1")
 async def dashboard_v1_page():
     """Serve the original dashboard HTML page"""
-    return FileResponse(TEMPLATE_DIR / "dashboard.html")
-
-@router.get("/beta-analysis")
-async def beta_analysis_page():
-    """Serve the Beta Analysis dashboard"""
-    return FileResponse(TEMPLATE_DIR / "dashboard_beta_analysis.html")
+    return FileResponse(TEMPLATE_DIR / "archive" / "dashboard.html")
 
 @router.get("/market-analysis")
 async def market_analysis_page():
     """Serve the Market Analysis dashboard"""
-    return FileResponse(TEMPLATE_DIR / "dashboard_market_analysis.html")
+    return FileResponse(TEMPLATE_DIR / "archive" / "dashboard_market_analysis.html")
 
 @router.get("/api/bybit-direct/top-symbols")
 async def get_bybit_direct_symbols():
@@ -1440,7 +1430,7 @@ async def get_market_movers() -> Dict[str, Any]:
                                 "positive_percentage": round((positive_count / total_symbols * 100) if total_symbols > 0 else 0, 1),
                                 "negative_percentage": round((negative_count / total_symbols * 100) if total_symbols > 0 else 0, 1)
                             },
-                            "timestamp": datetime.utcnow().isoformat(),
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
                             "source": "bybit_direct"
                         }
                         
@@ -1503,7 +1493,7 @@ async def get_beta_analysis_data() -> Dict[str, Any]:
             "market_beta": 1.15,  # Overall market beta
             "btc_dominance": 54.2,
             "analysis_timeframe": "30d",
-            "last_update": datetime.utcnow().isoformat(),
+            "last_update": datetime.now(timezone.utc).isoformat(),
             "status": "success"
         }
         
@@ -1513,7 +1503,7 @@ async def get_beta_analysis_data() -> Dict[str, Any]:
             "status": "error",
             "error": str(e),
             "beta_analysis": [],
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
 
 @router.get("/correlation-matrix")
@@ -1558,7 +1548,7 @@ async def get_correlation_matrix() -> Dict[str, Any]:
             "symbols": symbols,
             "correlation_matrix": correlations,
             "timeframe": "unavailable",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "status": "partial",
             "data_source": "fallback_null_values",
             "message": "Real correlation data temporarily unavailable"
@@ -1569,7 +1559,7 @@ async def get_correlation_matrix() -> Dict[str, Any]:
         return {
             "status": "error",
             "error": str(e),
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
 
 @router.get("/market-analysis-summary")
@@ -1605,7 +1595,7 @@ async def get_market_analysis_summary() -> Dict[str, Any]:
                 "volatility_index": 45.2,
                 "liquidation_volume": "$287M"
             },
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "status": "success"
         }
         
@@ -1614,7 +1604,7 @@ async def get_market_analysis_summary() -> Dict[str, Any]:
         return {
             "status": "error",
             "error": str(e),
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
 
 @router.get("/beta-charts/time-series")
@@ -1626,7 +1616,7 @@ async def get_beta_time_series() -> Dict[str, Any]:
         from datetime import datetime, timedelta
         
         symbols = ["ETHUSDT", "SOLUSDT", "XRPUSDT", "ADAUSDT", "DOTUSDT"]
-        end_date = datetime.utcnow()
+        end_date = datetime.now(timezone.utc)
         
         # Use real beta calculations if available
         if CORRELATION_SERVICE_AVAILABLE:
@@ -1670,7 +1660,7 @@ async def get_beta_time_series() -> Dict[str, Any]:
         return {
             "chart_data": series_data,
             "period": "7d",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "status": "partial",
             "data_source": "fallback_null_values",
             "message": "Real beta data temporarily unavailable"
@@ -1721,7 +1711,7 @@ async def get_correlation_heatmap() -> Dict[str, Any]:
             "symbols": symbols,
             "min_correlation": 0.0,
             "max_correlation": 1.0,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "status": "partial",
             "data_source": "fallback_null_values",
             "message": "Real correlation data temporarily unavailable"
@@ -1777,7 +1767,7 @@ async def get_performance_chart() -> Dict[str, Any]:
                 "low_risk_high_return": [d for d in scatter_data if d['beta'] <= avg_beta and d['performance'] > avg_performance],
                 "low_risk_low_return": [d for d in scatter_data if d['beta'] <= avg_beta and d['performance'] <= avg_performance]
             },
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "status": "success"
         }
         
@@ -1810,7 +1800,7 @@ async def get_risk_distribution() -> Dict[str, Any]:
             "sector_allocation": sector_allocation,
             "total_assets": 15,
             "avg_portfolio_beta": 1.28,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "status": "success"
         }
         
@@ -1844,7 +1834,7 @@ async def get_all_beta_charts() -> Dict[str, Any]:
                 "total_assets": risk_dist.get("total_assets", 15),
                 "performance_quadrants": performance.get("quadrants", {})
             },
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "status": "success"
         }
         
@@ -1936,7 +1926,7 @@ async def get_mobile_beta_dashboard() -> Dict[str, Any]:
                     item["symbol"] for item in charts.get("summary", {}).get("performance_quadrants", {}).get("high_risk_low_return", [])
                 ]
             },
-            "last_update": datetime.utcnow().isoformat(),
+            "last_update": datetime.now(timezone.utc).isoformat(),
             "status": "success"
         }
         
@@ -1947,7 +1937,7 @@ async def get_mobile_beta_dashboard() -> Dict[str, Any]:
         return {
             "status": "error",
             "error": str(e),
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
 
 

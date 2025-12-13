@@ -1,0 +1,1230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bitcoin Beta Analysis | Virtuoso Trading</title>
+    <meta name="description" content="Real-time Bitcoin beta analysis with relative performance visualization across top cryptocurrencies">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
+    <style>
+        /*
+         * BITCOIN BETA ANALYSIS - Standalone Dashboard
+         * Connected to: /api/dashboard/beta-chart
+         *
+         * Features:
+         * 1. Full-screen LightweightCharts visualization
+         * 2. Stacked legend sorted by performance
+         * 3. Timeframe selector (1H, 4H, 8H, 12H, 24H)
+         * 4. Auto-refresh every 60s
+         * 5. Performance metrics
+         * 6. Virtuoso branding
+         */
+
+        :root {
+            /* Core palette - aligned with brand guide */
+            --bg-dark: #0a0a0a;
+            --bg-darker: #050505;
+            --card-bg: #111111;
+            --card-bg-hover: #1a1a1a;
+
+            /* Brand colors - consistent with Virtuoso brand */
+            --neon-amber: #fbbf24;
+            --accent-gold: #fbbf24; /* Alias for compatibility */
+            --accent-gold-dim: rgba(251, 191, 36, 0.6);
+            --accent-gold-subtle: rgba(251, 191, 36, 0.1);
+
+            /* Signal colors */
+            --bullish: #10b981;
+            --bullish-bright: #34d399;
+            --bearish: #ef4444;
+            --bearish-bright: #f87171;
+            --neutral: #9ca3af;
+
+            /* Typography - aligned with brand guide */
+            --text-primary: #e0e0e0;
+            --text-secondary: #9ca3af;
+            --text-muted: #6b7280;
+
+            /* Borders - aligned with brand guide */
+            --border-subtle: rgba(34, 34, 34, 0.5);
+            --border-hover: rgba(251, 191, 36, 0.2);
+            --dark-border: #222222;
+
+            /* BTC Orange */
+            --btc-orange: #F7931A;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html, body {
+            height: 100%;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: var(--bg-dark);
+            color: var(--text-primary);
+            overflow: hidden;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        /* Main Layout */
+        .app-container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+
+        /* Header */
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 24px;
+            background: linear-gradient(180deg, rgba(17, 17, 17, 0.98) 0%, rgba(17, 17, 17, 0.9) 100%);
+            border-bottom: 1px solid var(--dark-border);
+            flex-shrink: 0;
+            z-index: 100;
+            backdrop-filter: blur(10px);
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .logo {
+            font-family: 'Inter', sans-serif;
+            font-size: 1.1rem;
+            font-weight: 800;
+            letter-spacing: 0.2em;
+            background: linear-gradient(135deg, var(--neon-amber) 0%, #f59e0b 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            text-transform: uppercase;
+        }
+
+        .page-title {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .page-title h1 {
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .btc-icon {
+            width: 28px;
+            height: 28px;
+            background: var(--btc-orange);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 16px;
+            color: white;
+        }
+
+        .header-center {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .timeframe-selector {
+            display: flex;
+            gap: 4px;
+            background: rgba(255, 255, 255, 0.03);
+            padding: 4px;
+            border-radius: 10px;
+            border: 1px solid var(--border-subtle);
+        }
+
+        .timeframe-btn {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.75rem;
+            font-weight: 600;
+            padding: 8px 14px;
+            background: transparent;
+            border: none;
+            border-radius: 7px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.25s ease;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .timeframe-btn:hover {
+            background: rgba(251, 191, 36, 0.05);
+            color: var(--neon-amber);
+            border-color: var(--border-hover);
+        }
+
+        .timeframe-btn.active {
+            background: var(--accent-gold-subtle);
+            color: var(--neon-amber);
+            border: 1px solid rgba(251, 191, 36, 0.3);
+            box-shadow: 0 0 10px rgba(251, 191, 36, 0.2);
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 12px;
+            background: rgba(17, 17, 17, 0.95);
+            border-radius: 8px;
+            border: 1px solid var(--dark-border);
+            transition: all 0.3s ease;
+        }
+
+        .status-indicator:hover {
+            border-color: var(--neon-amber);
+            box-shadow: 0 0 10px rgba(251, 191, 36, 0.1);
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--neutral);
+            transition: background 0.3s ease;
+        }
+
+        .status-dot.connected {
+            background: var(--bullish);
+            box-shadow: 0 0 10px rgba(16, 185, 129, 0.6);
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        .status-dot.loading {
+            background: var(--neon-amber);
+            box-shadow: 0 0 10px rgba(251, 191, 36, 0.6);
+            animation: pulse 1s ease-in-out infinite;
+        }
+
+        .status-dot.error {
+            background: var(--bearish);
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .status-text {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.7rem;
+            color: var(--text-muted);
+        }
+
+        .timestamp {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            padding: 6px 12px;
+            background: rgba(17, 17, 17, 0.95);
+            border-radius: 8px;
+            border: 1px solid var(--dark-border);
+            transition: all 0.3s ease;
+        }
+
+        .timestamp:hover {
+            border-color: var(--neon-amber);
+            box-shadow: 0 0 10px rgba(251, 191, 36, 0.1);
+        }
+
+        .back-btn {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.75rem;
+            font-weight: 600;
+            padding: 8px 16px;
+            background: rgba(17, 17, 17, 0.95);
+            border: 1px solid var(--dark-border);
+            border-radius: 8px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .back-btn:hover {
+            background: rgba(251, 191, 36, 0.05);
+            border-color: var(--neon-amber);
+            color: var(--neon-amber);
+            box-shadow: 0 0 15px rgba(251, 191, 36, 0.2);
+        }
+
+        /* Main Content Area */
+        .main-content {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* Chart Container */
+        .chart-section {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+        }
+
+        .chart-container {
+            flex: 1;
+            position: relative;
+            background: var(--bg-darker);
+        }
+
+        #betaChart {
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Zero line label */
+        .zero-line-label {
+            position: absolute;
+            right: 60px;
+            background: rgba(128, 128, 128, 0.8);
+            color: white;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 10px;
+            pointer-events: none;
+            transform: translateY(-50%);
+        }
+
+        /* Legend Sidebar */
+        .legend-sidebar {
+            width: 200px;
+            background: var(--card-bg);
+            border-left: 1px solid var(--dark-border);
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+        }
+
+        .legend-header {
+            padding: 16px;
+            border-bottom: 1px solid var(--dark-border);
+        }
+
+        .legend-title {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--neon-amber);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+        }
+
+        .legend-subtitle {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
+
+        .legend-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 12px;
+        }
+
+        .legend-content::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        .legend-content::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .legend-content::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 2px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 10px;
+            border-radius: 6px;
+            margin-bottom: 4px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        .legend-item:hover {
+            background: rgba(255, 255, 255, 0.06);
+        }
+
+        .legend-item.btc {
+            background: rgba(247, 147, 26, 0.1);
+            border: 1px solid rgba(247, 147, 26, 0.3);
+        }
+
+        .legend-color {
+            width: 12px;
+            height: 3px;
+            border-radius: 1px;
+            flex-shrink: 0;
+        }
+
+        .legend-symbol {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.75rem;
+            font-weight: 500;
+            color: var(--text-primary);
+            flex: 1;
+        }
+
+        .legend-value {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.7rem;
+            font-weight: 600;
+        }
+
+        .legend-value.positive {
+            color: var(--bullish-bright);
+        }
+
+        .legend-value.negative {
+            color: var(--bearish-bright);
+        }
+
+        /* Stats Footer */
+        .stats-footer {
+            display: flex;
+            background: var(--card-bg);
+            border-top: 1px solid var(--dark-border);
+            padding: 12px 24px;
+            gap: 40px;
+            flex-shrink: 0;
+        }
+
+        .stat-group {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .stat-label {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.65rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+        }
+
+        .stat-value {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 1rem;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .stat-value.gold {
+            color: var(--neon-amber);
+            text-shadow: 0 0 10px rgba(251, 191, 36, 0.3);
+        }
+
+        .stat-value.positive {
+            color: var(--bullish-bright);
+        }
+
+        .stat-value.negative {
+            color: var(--bearish-bright);
+        }
+
+        .performance-badges {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .perf-badge {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.65rem;
+            padding: 4px 10px;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .perf-badge.outperformer {
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--bullish-bright);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+
+        .perf-badge.underperformer {
+            background: rgba(239, 68, 68, 0.15);
+            color: var(--bearish-bright);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
+        /* Loading State */
+        .loading-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(10, 10, 10, 0.9);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 50;
+        }
+
+        .loading-spinner {
+            width: 48px;
+            height: 48px;
+            border: 3px solid rgba(251, 191, 36, 0.2);
+            border-top-color: var(--neon-amber);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            box-shadow: 0 0 20px rgba(251, 191, 36, 0.3);
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .loading-text {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            margin-top: 16px;
+        }
+
+        /* Error State */
+        .error-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(10, 10, 10, 0.95);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 50;
+        }
+
+        .error-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+        }
+
+        .error-message {
+            color: var(--bearish-bright);
+            font-size: 1rem;
+            margin-bottom: 8px;
+        }
+
+        .error-details {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-bottom: 20px;
+        }
+
+        .retry-btn {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.8rem;
+            font-weight: 700;
+            padding: 10px 24px;
+            background: var(--neon-amber);
+            color: var(--bg-dark);
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .retry-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 0 30px rgba(251, 191, 36, 0.5);
+            background: #fcd34d;
+        }
+
+        /* Responsive */
+        @media (max-width: 900px) {
+            .header {
+                flex-wrap: wrap;
+                gap: 12px;
+                padding: 12px 16px;
+            }
+
+            .legend-sidebar {
+                width: 160px;
+            }
+
+            .stats-footer {
+                flex-wrap: wrap;
+                gap: 20px;
+            }
+        }
+
+        @media (max-width: 600px) {
+            .legend-sidebar {
+                display: none;
+            }
+
+            .header-center {
+                order: 3;
+                width: 100%;
+                justify-content: center;
+            }
+
+            .timestamp {
+                display: none;
+            }
+        }
+
+        /* Footer branding */
+        .footer-brand {
+            text-align: center;
+            padding: 12px;
+            background: var(--card-bg);
+            border-top: 1px solid var(--dark-border);
+        }
+
+        .footer-brand span {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            letter-spacing: 0.05em;
+        }
+
+        .footer-brand a {
+            color: var(--neon-amber);
+            text-decoration: none;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+
+        .footer-brand a:hover {
+            color: #fcd34d;
+            text-shadow: 0 0 10px rgba(251, 191, 36, 0.5);
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-left">
+                <div class="logo">VIRTUOSO</div>
+                <div class="page-title">
+                    <div class="btc-icon">₿</div>
+                    <h1>Bitcoin Beta Analysis</h1>
+                </div>
+            </div>
+
+            <div class="header-center">
+                <div class="timeframe-selector">
+                    <button class="timeframe-btn" data-timeframe="1">1H</button>
+                    <button class="timeframe-btn active" data-timeframe="4">4H</button>
+                    <button class="timeframe-btn" data-timeframe="8">8H</button>
+                    <button class="timeframe-btn" data-timeframe="12">12H</button>
+                    <button class="timeframe-btn" data-timeframe="24">24H</button>
+                </div>
+            </div>
+
+            <div class="header-right">
+                <div class="status-indicator">
+                    <span class="status-dot" id="statusDot"></span>
+                    <span class="status-text" id="statusText">Connecting...</span>
+                </div>
+                <span class="timestamp" id="timestamp">--</span>
+                <a href="/" class="back-btn">← Dashboard</a>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Chart Section -->
+            <div class="chart-section">
+                <div class="chart-container">
+                    <div id="betaChart"></div>
+                    <div id="loadingOverlay" class="loading-overlay">
+                        <div class="loading-spinner"></div>
+                        <div class="loading-text">Loading beta analysis data...</div>
+                    </div>
+                    <div id="errorOverlay" class="error-overlay" style="display: none;">
+                        <div class="error-icon">⚠️</div>
+                        <div class="error-message" id="errorMessage">Failed to load data</div>
+                        <div class="error-details" id="errorDetails">Check your connection</div>
+                        <button class="retry-btn" onclick="BetaAnalysis.refresh()">Retry</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Legend Sidebar -->
+            <aside class="legend-sidebar">
+                <div class="legend-header">
+                    <div class="legend-title">Performance</div>
+                    <div class="legend-subtitle">Relative to BTC</div>
+                </div>
+                <div class="legend-content" id="legendContent">
+                    <!-- Legend items populated by JS -->
+                </div>
+            </aside>
+        </div>
+
+        <!-- Stats Footer -->
+        <footer class="stats-footer">
+            <div class="stat-group">
+                <div class="stat-label">Timeframe</div>
+                <div class="stat-value gold" id="statTimeframe">4H</div>
+            </div>
+            <div class="stat-group">
+                <div class="stat-label">Assets Tracked</div>
+                <div class="stat-value" id="statAssets">--</div>
+            </div>
+            <div class="stat-group">
+                <div class="stat-label">Outperformers</div>
+                <div class="stat-value positive" id="statOutperformers">--</div>
+            </div>
+            <div class="stat-group">
+                <div class="stat-label">Underperformers</div>
+                <div class="stat-value negative" id="statUnderperformers">--</div>
+            </div>
+            <div class="stat-group" style="flex: 1;">
+                <div class="stat-label">Top Performers</div>
+                <div class="performance-badges" id="topPerformers">
+                    <!-- Populated by JS -->
+                </div>
+            </div>
+        </footer>
+
+        <!-- Footer Brand -->
+        <div class="footer-brand">
+            <span>Auto-refresh: 60s | <a href="https://virtuoso.trading" target="_blank">Virtuoso Trading</a></span>
+        </div>
+    </div>
+
+    <script>
+        /**
+         * Bitcoin Beta Analysis - Standalone Dashboard
+         * Live API: /api/dashboard/beta-chart
+         */
+
+        (function() {
+            'use strict';
+
+            // ===== CONFIGURATION =====
+            const CONFIG = {
+                API_ENDPOINT: '/api/dashboard/beta-chart',
+                REFRESH_INTERVAL: 60000, // 60 seconds
+                FETCH_TIMEOUT: 10000, // 10 seconds
+                DEFAULT_TIMEFRAME: 4,
+                DEBUG: true
+            };
+
+            // ===== COLOR PALETTE =====
+            const COLOR_PALETTE = [
+                '#00FF7F', '#FF1493', '#00CED1', '#FFD700', '#FF6347',
+                '#7B68EE', '#20B2AA', '#FF69B4', '#00FA9A', '#9370DB',
+                '#48D1CC', '#F0E68C', '#87CEEB', '#DDA0DD', '#98FB98',
+                '#FFA07A', '#B0E0E6', '#FFDAB9', '#E6E6FA', '#F5DEB3',
+                '#D8BFD8', '#AFEEEE', '#FFB6C1', '#FFFACD', '#E0FFFF'
+            ];
+
+            const BTC_COLOR = '#F7931A';
+
+            // ===== STATE =====
+            let state = {
+                chart: null,
+                seriesMap: {},
+                timeframe: CONFIG.DEFAULT_TIMEFRAME,
+                isLoading: false,
+                refreshTimer: null,
+                lastData: null
+            };
+
+            // ===== UTILITY FUNCTIONS =====
+
+            function log(...args) {
+                if (CONFIG.DEBUG) console.log('[BetaAnalysis]', ...args);
+            }
+
+            function formatPercent(value) {
+                const sign = value >= 0 ? '+' : '';
+                return sign + value.toFixed(2) + '%';
+            }
+
+            function formatTimestamp() {
+                return new Date().toLocaleString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                    hour12: false
+                });
+            }
+
+            // ===== UI UPDATES =====
+
+            function updateStatus(status, message) {
+                const dot = document.getElementById('statusDot');
+                const text = document.getElementById('statusText');
+
+                dot.className = 'status-dot ' + status;
+                text.textContent = message || {
+                    'connected': 'Live',
+                    'loading': 'Loading...',
+                    'error': 'Error'
+                }[status] || 'Unknown';
+            }
+
+            function updateTimestamp() {
+                document.getElementById('timestamp').textContent = formatTimestamp();
+            }
+
+            function showLoading(show) {
+                document.getElementById('loadingOverlay').style.display = show ? 'flex' : 'none';
+            }
+
+            function showError(message, details) {
+                document.getElementById('errorMessage').textContent = message;
+                document.getElementById('errorDetails').textContent = details || '';
+                document.getElementById('errorOverlay').style.display = 'flex';
+            }
+
+            function hideError() {
+                document.getElementById('errorOverlay').style.display = 'none';
+            }
+
+            function updateStats(data) {
+                // Use performance_summary or overview from API response
+                const summary = data.performance_summary || data.overview || {};
+                document.getElementById('statTimeframe').textContent = state.timeframe + 'H';
+                document.getElementById('statAssets').textContent = summary.symbols_count || data.performance_order?.length || '--';
+                document.getElementById('statOutperformers').textContent = summary.outperformers || '--';
+                document.getElementById('statUnderperformers').textContent = summary.underperformers || '--';
+
+                // Update top performers badges
+                const topContainer = document.getElementById('topPerformers');
+                const performanceOrder = data.performance_order || [];
+                const chartData = data.chart_data || {};
+
+                // Get top 3 outperformers and worst 3 underperformers
+                const sorted = performanceOrder
+                    .filter(s => s !== 'BTC')
+                    .map(symbol => {
+                        const series = chartData[symbol] || [];
+                        const lastPoint = series[series.length - 1];
+                        return {
+                            symbol,
+                            value: lastPoint?.value || 0
+                        };
+                    })
+                    .sort((a, b) => b.value - a.value);
+
+                const top3 = sorted.slice(0, 3);
+                const bottom3 = sorted.slice(-3).reverse();
+
+                let badgeHtml = '';
+                top3.forEach(item => {
+                    badgeHtml += `<span class="perf-badge outperformer">${item.symbol} ${formatPercent(item.value)}</span>`;
+                });
+                bottom3.forEach(item => {
+                    badgeHtml += `<span class="perf-badge underperformer">${item.symbol} ${formatPercent(item.value)}</span>`;
+                });
+
+                topContainer.innerHTML = badgeHtml;
+            }
+
+            function renderLegend(chartData, performanceOrder) {
+                const container = document.getElementById('legendContent');
+
+                // Sort by final value
+                const sorted = performanceOrder.map(symbol => {
+                    const series = chartData[symbol] || [];
+                    const lastPoint = series[series.length - 1];
+                    const color = symbol === 'BTC' ? BTC_COLOR : COLOR_PALETTE[performanceOrder.indexOf(symbol) % COLOR_PALETTE.length];
+                    return {
+                        symbol,
+                        value: lastPoint?.value || 0,
+                        color
+                    };
+                }).sort((a, b) => b.value - a.value);
+
+                let html = '';
+                sorted.forEach(item => {
+                    const valueClass = item.value >= 0 ? 'positive' : 'negative';
+                    const btcClass = item.symbol === 'BTC' ? 'btc' : '';
+
+                    html += `
+                        <div class="legend-item ${btcClass}" data-symbol="${item.symbol}">
+                            <span class="legend-color" style="background: ${item.color};"></span>
+                            <span class="legend-symbol">${item.symbol}</span>
+                            <span class="legend-value ${valueClass}">${formatPercent(item.value)}</span>
+                        </div>
+                    `;
+                });
+
+                container.innerHTML = html;
+
+                // Add click handlers for legend items
+                container.querySelectorAll('.legend-item').forEach(item => {
+                    item.addEventListener('click', () => {
+                        const symbol = item.dataset.symbol;
+                        toggleSeriesVisibility(symbol);
+                    });
+                });
+            }
+
+            function toggleSeriesVisibility(symbol) {
+                const seriesData = state.seriesMap[symbol];
+                if (seriesData) {
+                    seriesData.visible = !seriesData.visible;
+                    seriesData.series.applyOptions({
+                        visible: seriesData.visible
+                    });
+                }
+            }
+
+            // ===== CHART FUNCTIONS =====
+
+            function initChart() {
+                const container = document.getElementById('betaChart');
+
+                state.chart = LightweightCharts.createChart(container, {
+                    width: container.clientWidth,
+                    height: container.clientHeight,
+                    layout: {
+                        background: { type: 'solid', color: '#0a0a0a' },
+                        textColor: '#a1a1aa'
+                    },
+                    grid: {
+                        vertLines: { color: 'rgba(255, 255, 255, 0.03)' },
+                        horzLines: { color: 'rgba(255, 255, 255, 0.03)' }
+                    },
+                    rightPriceScale: {
+                        borderColor: 'rgba(255, 255, 255, 0.1)',
+                        scaleMargins: { top: 0.1, bottom: 0.1 }
+                    },
+                    timeScale: {
+                        borderColor: 'rgba(255, 255, 255, 0.1)',
+                        timeVisible: true,
+                        secondsVisible: false
+                    },
+                    crosshair: {
+                        mode: LightweightCharts.CrosshairMode.Normal,
+                        vertLine: {
+                            color: 'rgba(251, 191, 36, 0.4)',
+                            width: 1,
+                            style: LightweightCharts.LineStyle.Dashed,
+                            labelBackgroundColor: '#fbbf24'
+                        },
+                        horzLine: {
+                            color: 'rgba(251, 191, 36, 0.4)',
+                            width: 1,
+                            style: LightweightCharts.LineStyle.Dashed,
+                            labelBackgroundColor: '#fbbf24'
+                        }
+                    },
+                    handleScale: {
+                        axisPressedMouseMove: true
+                    },
+                    handleScroll: {
+                        mouseWheel: true,
+                        pressedMouseMove: true
+                    }
+                });
+
+                // Handle resize
+                window.addEventListener('resize', () => {
+                    state.chart.applyOptions({
+                        width: container.clientWidth,
+                        height: container.clientHeight
+                    });
+                });
+
+                log('Chart initialized');
+            }
+
+            function renderChart(data) {
+                if (!state.chart) return;
+
+                // Clear existing series
+                Object.values(state.seriesMap).forEach(item => {
+                    state.chart.removeSeries(item.series);
+                });
+                state.seriesMap = {};
+
+                const chartData = data.chart_data || {};
+                const performanceOrder = data.performance_order || Object.keys(chartData);
+
+                let colorIndex = 0;
+
+                // Add series for each symbol
+                performanceOrder.forEach(symbol => {
+                    const rawData = chartData[symbol];
+                    if (!rawData || rawData.length === 0) return;
+
+                    // Format data for LightweightCharts
+                    // API returns timestamp in milliseconds, convert to seconds
+                    const seriesData = rawData.map(point => ({
+                        time: point.timestamp ? Math.floor(point.timestamp / 1000) : Math.floor(new Date(point.time).getTime() / 1000),
+                        value: point.value
+                    }));
+
+                    // Determine color and line width
+                    const isBTC = symbol === 'BTC';
+                    const color = isBTC ? BTC_COLOR : COLOR_PALETTE[colorIndex % COLOR_PALETTE.length];
+                    const lineWidth = isBTC ? 3 : 1.5;
+
+                    if (!isBTC) colorIndex++;
+
+                    // Create line series
+                    const lineSeries = state.chart.addLineSeries({
+                        color: color,
+                        lineWidth: lineWidth,
+                        lastValueVisible: false,
+                        priceLineVisible: false,
+                        title: symbol
+                    });
+
+                    lineSeries.setData(seriesData);
+
+                    // Store reference
+                    state.seriesMap[symbol] = {
+                        series: lineSeries,
+                        color: color,
+                        visible: true,
+                        finalValue: seriesData[seriesData.length - 1]?.value || 0
+                    };
+                });
+
+                // Add zero reference line
+                if (performanceOrder.length > 0) {
+                    const firstSymbol = performanceOrder[0];
+                    const firstData = chartData[firstSymbol] || [];
+
+                    if (firstData.length > 0) {
+                        const zeroLine = state.chart.addLineSeries({
+                            color: 'rgba(128, 128, 128, 0.5)',
+                            lineWidth: 1,
+                            lineStyle: LightweightCharts.LineStyle.Dashed,
+                            lastValueVisible: false,
+                            priceLineVisible: false
+                        });
+
+                        const zeroData = firstData.map(point => ({
+                            time: point.timestamp ? Math.floor(point.timestamp / 1000) : Math.floor(new Date(point.time).getTime() / 1000),
+                            value: 0
+                        }));
+
+                        zeroLine.setData(zeroData);
+                        state.seriesMap['_zero'] = { series: zeroLine, visible: true };
+                    }
+                }
+
+                // Fit content
+                state.chart.timeScale().fitContent();
+
+                // Render sidebar legend
+                renderLegend(chartData, performanceOrder);
+
+                log('Chart rendered with', performanceOrder.length, 'series');
+            }
+
+            // ===== DATA FETCHING =====
+
+            async function fetchData() {
+                if (state.isLoading) {
+                    log('Fetch already in progress');
+                    return;
+                }
+
+                state.isLoading = true;
+                updateStatus('loading', 'Loading...');
+
+                try {
+                    const url = `${CONFIG.API_ENDPOINT}?timeframe=${state.timeframe}`;
+                    log('Fetching:', url);
+
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), CONFIG.FETCH_TIMEOUT);
+
+                    const response = await fetch(url, {
+                        signal: controller.signal
+                    });
+
+                    clearTimeout(timeoutId);
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+
+                    const data = await response.json();
+                    log('Received data:', data);
+
+                    if (data.status === 'error') {
+                        throw new Error(data.error || 'Unknown error');
+                    }
+
+                    state.lastData = data;
+                    hideError();
+                    showLoading(false);
+                    updateStatus('connected', 'Live');
+                    updateTimestamp();
+                    updateStats(data);
+                    renderChart(data);
+
+                } catch (error) {
+                    console.error('Fetch error:', error);
+
+                    let message = error.message;
+                    let details = '';
+
+                    if (error.name === 'AbortError') {
+                        message = 'Request timeout';
+                        details = 'Server took too long to respond';
+                    } else if (error.message.includes('Failed to fetch')) {
+                        message = 'Network error';
+                        details = 'Could not connect to server';
+                    }
+
+                    updateStatus('error', 'Error');
+                    showLoading(false);
+                    showError(message, details);
+
+                } finally {
+                    state.isLoading = false;
+                }
+            }
+
+            // ===== TIMEFRAME HANDLING =====
+
+            function setupTimeframeButtons() {
+                const buttons = document.querySelectorAll('.timeframe-btn');
+
+                buttons.forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        // Update active state
+                        buttons.forEach(b => b.classList.remove('active'));
+                        btn.classList.add('active');
+
+                        // Update timeframe and refresh
+                        state.timeframe = parseInt(btn.dataset.timeframe);
+                        log('Timeframe changed to:', state.timeframe);
+                        fetchData();
+                    });
+                });
+            }
+
+            // ===== AUTO REFRESH =====
+
+            function startAutoRefresh() {
+                if (state.refreshTimer) {
+                    clearInterval(state.refreshTimer);
+                }
+
+                state.refreshTimer = setInterval(fetchData, CONFIG.REFRESH_INTERVAL);
+                log('Auto-refresh started:', CONFIG.REFRESH_INTERVAL / 1000, 'seconds');
+            }
+
+            // ===== KEYBOARD SHORTCUTS =====
+
+            function setupKeyboardShortcuts() {
+                document.addEventListener('keydown', (e) => {
+                    // Cmd/Ctrl + R to refresh
+                    if (e.key === 'r' && (e.metaKey || e.ctrlKey)) {
+                        e.preventDefault();
+                        fetchData();
+                    }
+
+                    // Number keys for timeframes
+                    if (e.key >= '1' && e.key <= '5') {
+                        const timeframes = [1, 4, 8, 12, 24];
+                        const index = parseInt(e.key) - 1;
+                        if (index < timeframes.length) {
+                            const btn = document.querySelector(`[data-timeframe="${timeframes[index]}"]`);
+                            if (btn) btn.click();
+                        }
+                    }
+
+                    // Escape to go back
+                    if (e.key === 'Escape') {
+                        window.location.href = '/';
+                    }
+                });
+            }
+
+            // ===== INITIALIZATION =====
+
+            function init() {
+                log('Initializing Bitcoin Beta Analysis...');
+
+                initChart();
+                setupTimeframeButtons();
+                setupKeyboardShortcuts();
+
+                // Initial data load
+                fetchData();
+                startAutoRefresh();
+
+                log('Initialization complete');
+            }
+
+            // ===== PUBLIC API =====
+
+            window.BetaAnalysis = {
+                refresh: fetchData,
+                setTimeframe: (tf) => {
+                    const btn = document.querySelector(`[data-timeframe="${tf}"]`);
+                    if (btn) btn.click();
+                },
+                getState: () => ({ ...state }),
+                config: CONFIG
+            };
+
+            // ===== RUN =====
+
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', init);
+            } else {
+                init();
+            }
+        })();
+    </script>
+</body>
+</html>

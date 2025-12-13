@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>L/S Ratio - Optimized Glow</title>
+    <style>
+        :root {
+            --accent-positive: #00d68f;
+            --accent-negative: #ff5252;
+            --text-primary: #e0e0e0;
+            --text-secondary: #9ca3af;
+        }
+
+        body {
+            background: #0a0a0a;
+            color: var(--text-primary);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            padding: 40px;
+            display: flex;
+            flex-direction: column;
+            gap: 30px;
+        }
+
+        .demo-header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .demo-header h1 {
+            color: #fbbf24;
+            margin-bottom: 10px;
+        }
+
+        .demo-header p {
+            color: var(--text-secondary);
+            font-size: 14px;
+        }
+
+        .test-controls {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+            margin-bottom: 30px;
+        }
+
+        .test-btn {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: var(--text-primary);
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.2s ease;
+        }
+
+        .test-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: rgba(255, 255, 255, 0.2);
+        }
+
+        .demo-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .demo-card {
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 20px;
+        }
+
+        .demo-card h3 {
+            font-size: 12px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+
+        /* ===================================
+           OPTIMIZED L/S RATIO COMPONENT
+           =================================== */
+
+        .ls-ratio-container {
+            background: rgba(0, 0, 0, 0.2);
+            padding: 12px;
+            border-radius: 8px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .ls-ratio-header {
+            font-size: 9px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            text-align: center;
+            margin-bottom: 8px;
+        }
+
+        .ls-ratio-percentages {
+            display: flex;
+            justify-content: center;
+            gap: 6px;
+            align-items: baseline;
+            margin-bottom: 10px;
+        }
+
+        .ls-ratio-percentages .long-pct {
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--accent-positive);
+        }
+
+        .ls-ratio-percentages .divider {
+            color: var(--text-secondary);
+            font-size: 10px;
+        }
+
+        .ls-ratio-percentages .short-pct {
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--accent-negative);
+        }
+
+        /* Bar Container */
+        .ls-ratio-bar-container {
+            position: relative;
+            height: 20px;
+            margin-bottom: 8px;
+            border-radius: 4px;
+            overflow: hidden;
+            background: rgba(0, 0, 0, 0.3);
+        }
+
+        .ls-ratio-bar {
+            position: absolute;
+            height: 100%;
+            display: flex;
+            width: 100%;
+        }
+
+        /* Bar Sides - Base Styles */
+        .ls-ratio-bar .long-side,
+        .ls-ratio-bar .short-side {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            transition: all 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+            will-change: box-shadow, background;
+        }
+
+        .ls-ratio-bar .long-side {
+            background: var(--accent-positive);
+        }
+
+        .ls-ratio-bar .short-side {
+            background: var(--accent-negative);
+            flex: 1;
+        }
+
+        .side-label {
+            font-size: 9px;
+            font-weight: 700;
+            color: rgba(255, 255, 255, 0.9);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+        }
+
+        /* ===================================
+           OPTIMIZED GLOW SYSTEM
+           Single keyframe with CSS custom properties
+           =================================== */
+
+        @keyframes glow-pulse {
+            0%, 100% {
+                filter: drop-shadow(0 0 var(--glow-size-min) var(--glow-color))
+                        drop-shadow(0 0 calc(var(--glow-size-min) * 1.5) var(--glow-color-fade));
+            }
+            50% {
+                filter: drop-shadow(0 0 var(--glow-size-max) var(--glow-color-bright))
+                        drop-shadow(0 0 calc(var(--glow-size-max) * 1.5) var(--glow-color))
+                        drop-shadow(0 0 calc(var(--glow-size-max) * 2.5) var(--glow-color-fade));
+            }
+        }
+
+        /* Optimized gradient animation */
+        @keyframes shimmer {
+            0% { background-position: 0% 50%; }
+            100% { background-position: 200% 50%; }
+        }
+
+        /* ===================================
+           STATE CLASSES - OPTIMIZED
+           =================================== */
+
+        /* Moderate Long (55-65%) - Subtle static glow */
+        .ls-ratio-container.moderate-long .long-side {
+            --glow-color: rgba(0, 214, 143, 0.5);
+            --glow-color-fade: rgba(0, 214, 143, 0.3);
+            filter: drop-shadow(0 0 12px var(--glow-color))
+                    drop-shadow(0 0 20px var(--glow-color-fade))
+                    drop-shadow(0 0 30px rgba(0, 214, 143, 0.15));
+        }
+
+        /* Moderate Short (55-65%) - Subtle static glow */
+        .ls-ratio-container.moderate-short .short-side {
+            --glow-color: rgba(255, 82, 82, 0.5);
+            --glow-color-fade: rgba(255, 82, 82, 0.3);
+            filter: drop-shadow(0 0 12px var(--glow-color))
+                    drop-shadow(0 0 20px var(--glow-color-fade))
+                    drop-shadow(0 0 30px rgba(255, 82, 82, 0.15));
+        }
+
+        /* High Long (65-70%) - Medium pulsing glow + shimmer */
+        .ls-ratio-container.high-long .long-side {
+            --glow-size-min: 20px;
+            --glow-size-max: 45px;
+            --glow-color: rgba(0, 214, 143, 0.7);
+            --glow-color-bright: rgba(0, 255, 170, 0.95);
+            --glow-color-fade: rgba(0, 214, 143, 0.4);
+            animation: glow-pulse 2s ease-in-out infinite;
+            background: linear-gradient(
+                110deg,
+                var(--accent-positive) 0%,
+                rgba(0, 255, 170, 0.9) 40%,
+                var(--accent-positive) 50%,
+                rgba(0, 255, 170, 0.85) 60%,
+                var(--accent-positive) 100%
+            );
+            background-size: 200% 100%;
+            animation: glow-pulse 2s ease-in-out infinite,
+                       shimmer 3s linear infinite;
+        }
+
+        /* High Short (65-70%) - Medium pulsing glow + shimmer */
+        .ls-ratio-container.high-short .short-side {
+            --glow-size-min: 20px;
+            --glow-size-max: 45px;
+            --glow-color: rgba(255, 82, 82, 0.7);
+            --glow-color-bright: rgba(255, 120, 120, 0.95);
+            --glow-color-fade: rgba(255, 82, 82, 0.4);
+            animation: glow-pulse 2s ease-in-out infinite;
+            background: linear-gradient(
+                110deg,
+                var(--accent-negative) 0%,
+                rgba(255, 120, 120, 0.9) 40%,
+                var(--accent-negative) 50%,
+                rgba(255, 120, 120, 0.85) 60%,
+                var(--accent-negative) 100%
+            );
+            background-size: 200% 100%;
+            animation: glow-pulse 2s ease-in-out infinite,
+                       shimmer 3s linear infinite;
+        }
+
+        /* Extreme Long (>70%) - MASSIVE pulsing glow + fast shimmer */
+        .ls-ratio-container.extreme-long .long-side {
+            --glow-size-min: 35px;
+            --glow-size-max: 80px;
+            --glow-color: rgba(0, 214, 143, 0.85);
+            --glow-color-bright: rgba(0, 255, 170, 1.0);
+            --glow-color-fade: rgba(0, 214, 143, 0.5);
+            animation: glow-pulse 1.2s ease-in-out infinite;
+            background: linear-gradient(
+                110deg,
+                #00ffaa 0%,
+                var(--accent-positive) 25%,
+                #00ffaa 50%,
+                var(--accent-positive) 75%,
+                #00ffaa 100%
+            );
+            background-size: 300% 100%;
+            animation: glow-pulse 1.2s ease-in-out infinite,
+                       shimmer 1.5s linear infinite;
+        }
+
+        /* Extreme Short (>70%) - MASSIVE pulsing glow + fast shimmer */
+        .ls-ratio-container.extreme-short .short-side {
+            --glow-size-min: 35px;
+            --glow-size-max: 80px;
+            --glow-color: rgba(255, 82, 82, 0.85);
+            --glow-color-bright: rgba(255, 100, 100, 1.0);
+            --glow-color-fade: rgba(255, 82, 82, 0.5);
+            animation: glow-pulse 1.2s ease-in-out infinite;
+            background: linear-gradient(
+                110deg,
+                #ff7070 0%,
+                var(--accent-negative) 25%,
+                #ff7070 50%,
+                var(--accent-negative) 75%,
+                #ff7070 100%
+            );
+            background-size: 300% 100%;
+            animation: glow-pulse 1.2s ease-in-out infinite,
+                       shimmer 1.5s linear infinite;
+        }
+
+        /* Label styling */
+        .ls-ratio-label {
+            font-size: 9px;
+            color: var(--text-secondary);
+            text-align: center;
+        }
+
+        .ls-ratio-label.extreme-warning {
+            color: var(--accent-positive);
+            font-weight: 600;
+        }
+
+        .ls-ratio-label.extreme-warning.short {
+            color: var(--accent-negative);
+        }
+
+        /* Performance optimization notes */
+        .ls-ratio-bar-container {
+            /* Hardware acceleration for smoother animations */
+            transform: translateZ(0);
+            backface-visibility: hidden;
+        }
+    </style>
+</head>
+<body>
+    <div class="demo-header">
+        <h1>⚡ L/S Ratio - Optimized</h1>
+        <p>GPU-accelerated glow using CSS filters + custom properties</p>
+        <p style="font-size: 12px; margin-top: 5px; color: #666;">
+            Single @keyframe reused across all states • 60fps animations • Hardware accelerated
+        </p>
+    </div>
+
+    <div class="test-controls">
+        <button class="test-btn" onclick="setState('balanced')">⚖️ Balanced (50/50)</button>
+        <button class="test-btn" onclick="setState('moderateLong')">📈 Moderate Long (60/40)</button>
+        <button class="test-btn" onclick="setState('moderateShort')">📉 Moderate Short (40/60)</button>
+        <button class="test-btn" onclick="setState('highLong')">🟢 High Long (68/32)</button>
+        <button class="test-btn" onclick="setState('highShort')">🔴 High Short (32/68)</button>
+        <button class="test-btn" onclick="setState('extremeLong')">💚 Extreme Long (75/25)</button>
+        <button class="test-btn" onclick="setState('extremeShort')">❤️ Extreme Short (25/75)</button>
+        <button class="test-btn" onclick="setState('current')">📊 Current Live (62.4/37.6)</button>
+    </div>
+
+    <div class="demo-grid">
+        <!-- Balanced -->
+        <div class="demo-card">
+            <h3>Balanced (50/50)</h3>
+            <div class="ls-ratio-container balanced">
+                <div class="ls-ratio-header">Long / Short</div>
+                <div class="ls-ratio-percentages">
+                    <span class="long-pct">50.0%</span>
+                    <span class="divider">/</span>
+                    <span class="short-pct">50.0%</span>
+                </div>
+                <div class="ls-ratio-bar-container">
+                    <div class="ls-ratio-bar">
+                        <div class="long-side" style="width: 50%">
+                            <span class="side-label">LONG</span>
+                        </div>
+                        <div class="short-side">
+                            <span class="side-label">SHORT</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="ls-ratio-label">BALANCED</div>
+            </div>
+        </div>
+
+        <!-- Moderate Long -->
+        <div class="demo-card">
+            <h3>Moderate Long (60/40)</h3>
+            <div class="ls-ratio-container moderate-long">
+                <div class="ls-ratio-header">Long / Short</div>
+                <div class="ls-ratio-percentages">
+                    <span class="long-pct">60.0%</span>
+                    <span class="divider">/</span>
+                    <span class="short-pct">40.0%</span>
+                </div>
+                <div class="ls-ratio-bar-container">
+                    <div class="ls-ratio-bar">
+                        <div class="long-side" style="width: 60%">
+                            <span class="side-label">LONG</span>
+                        </div>
+                        <div class="short-side">
+                            <span class="side-label">SHORT</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="ls-ratio-label">MODERATE LONG</div>
+            </div>
+        </div>
+
+        <!-- High Long -->
+        <div class="demo-card">
+            <h3>High Long (68/32)</h3>
+            <div class="ls-ratio-container high-long">
+                <div class="ls-ratio-header">Long / Short</div>
+                <div class="ls-ratio-percentages">
+                    <span class="long-pct">68.0%</span>
+                    <span class="divider">/</span>
+                    <span class="short-pct">32.0%</span>
+                </div>
+                <div class="ls-ratio-bar-container">
+                    <div class="ls-ratio-bar">
+                        <div class="long-side" style="width: 68%">
+                            <span class="side-label">LONG</span>
+                        </div>
+                        <div class="short-side">
+                            <span class="side-label">SHORT</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="ls-ratio-label">HIGH LONG</div>
+            </div>
+        </div>
+
+        <!-- Extreme Long -->
+        <div class="demo-card">
+            <h3>Extreme Long (75/25)</h3>
+            <div class="ls-ratio-container extreme-long">
+                <div class="ls-ratio-header">Long / Short</div>
+                <div class="ls-ratio-percentages">
+                    <span class="long-pct">75.0%</span>
+                    <span class="divider">/</span>
+                    <span class="short-pct">25.0%</span>
+                </div>
+                <div class="ls-ratio-bar-container">
+                    <div class="ls-ratio-bar">
+                        <div class="long-side" style="width: 75%">
+                            <span class="side-label">LONG</span>
+                        </div>
+                        <div class="short-side">
+                            <span class="side-label">SHORT</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="ls-ratio-label extreme-warning">⚠️ EXTREME LONG</div>
+            </div>
+        </div>
+
+        <!-- High Short -->
+        <div class="demo-card">
+            <h3>High Short (32/68)</h3>
+            <div class="ls-ratio-container high-short">
+                <div class="ls-ratio-header">Long / Short</div>
+                <div class="ls-ratio-percentages">
+                    <span class="long-pct">32.0%</span>
+                    <span class="divider">/</span>
+                    <span class="short-pct">68.0%</span>
+                </div>
+                <div class="ls-ratio-bar-container">
+                    <div class="ls-ratio-bar">
+                        <div class="long-side" style="width: 32%">
+                            <span class="side-label">LONG</span>
+                        </div>
+                        <div class="short-side">
+                            <span class="side-label">SHORT</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="ls-ratio-label">HIGH SHORT</div>
+            </div>
+        </div>
+
+        <!-- Extreme Short -->
+        <div class="demo-card">
+            <h3>Extreme Short (25/75)</h3>
+            <div class="ls-ratio-container extreme-short">
+                <div class="ls-ratio-header">Long / Short</div>
+                <div class="ls-ratio-percentages">
+                    <span class="long-pct">25.0%</span>
+                    <span class="divider">/</span>
+                    <span class="short-pct">75.0%</span>
+                </div>
+                <div class="ls-ratio-bar-container">
+                    <div class="ls-ratio-bar">
+                        <div class="long-side" style="width: 25%">
+                            <span class="side-label">LONG</span>
+                        </div>
+                        <div class="short-side">
+                            <span class="side-label">SHORT</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="ls-ratio-label extreme-warning short">⚠️ EXTREME SHORT</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="interactive-demo" style="max-width: 500px; margin: 40px auto; padding: 30px; background: rgba(0,0,0,0.3); border-radius: 12px; border: 1px solid rgba(255,255,255,0.1);">
+        <h3 style="text-align: center; color: #fbbf24; margin-bottom: 20px; font-size: 14px; text-transform: uppercase;">Interactive Demo</h3>
+        <div class="ls-ratio-container" id="interactive-card">
+            <div class="ls-ratio-header">Long / Short</div>
+            <div class="ls-ratio-percentages">
+                <span class="long-pct" id="long-pct">62.4%</span>
+                <span class="divider">/</span>
+                <span class="short-pct" id="short-pct">37.6%</span>
+            </div>
+            <div class="ls-ratio-bar-container" id="bar-container">
+                <div class="ls-ratio-bar">
+                    <div class="long-side" id="long-bar" style="width: 62.4%">
+                        <span class="side-label">LONG</span>
+                    </div>
+                    <div class="short-side">
+                        <span class="side-label">SHORT</span>
+                    </div>
+                </div>
+            </div>
+            <div class="ls-ratio-label" id="label">MODERATE LONG</div>
+        </div>
+
+        <div style="margin-top: 25px; padding: 20px; background: rgba(0,0,0,0.2); border-radius: 8px; font-size: 11px; color: var(--text-secondary); line-height: 1.8;">
+            <div style="color: #fbbf24; font-weight: 600; margin-bottom: 12px; font-size: 12px;">⚡ Performance Optimizations:</div>
+            <div style="display: grid; grid-template-columns: auto 1fr; gap: 8px 12px;">
+                <span style="color: #00d68f;">✓</span>
+                <span><strong style="color: var(--text-primary);">CSS Custom Properties:</strong> Single @keyframe reused with --glow-size variables</span>
+
+                <span style="color: #00d68f;">✓</span>
+                <span><strong style="color: var(--text-primary);">GPU Acceleration:</strong> filter: drop-shadow() uses GPU vs box-shadow (CPU)</span>
+
+                <span style="color: #00d68f;">✓</span>
+                <span><strong style="color: var(--text-primary);">Reduced Paint:</strong> will-change hints for smooth 60fps animations</span>
+
+                <span style="color: #00d68f;">✓</span>
+                <span><strong style="color: var(--text-primary);">Consolidated Gradients:</strong> Shimmer effect integrated into single animation</span>
+
+                <span style="color: #00d68f;">✓</span>
+                <span><strong style="color: var(--text-primary);">Hardware Layer:</strong> translateZ(0) forces GPU compositing layer</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const states = {
+            balanced: { long: 50.0, short: 50.0, label: 'BALANCED', class: 'balanced', labelClass: '' },
+            moderateLong: { long: 60.0, short: 40.0, label: 'MODERATE LONG', class: 'moderate-long', labelClass: '' },
+            moderateShort: { long: 40.0, short: 60.0, label: 'MODERATE SHORT', class: 'moderate-short', labelClass: '' },
+            highLong: { long: 68.0, short: 32.0, label: 'HIGH LONG', class: 'high-long', labelClass: '' },
+            highShort: { long: 32.0, short: 68.0, label: 'HIGH SHORT', class: 'high-short', labelClass: '' },
+            extremeLong: { long: 75.0, short: 25.0, label: '⚠️ EXTREME LONG', class: 'extreme-long', labelClass: 'extreme-warning' },
+            extremeShort: { long: 25.0, short: 75.0, label: '⚠️ EXTREME SHORT', class: 'extreme-short', labelClass: 'extreme-warning short' },
+            current: { long: 62.4, short: 37.6, label: 'MODERATE LONG', class: 'moderate-long', labelClass: '' }
+        };
+
+        function setState(stateName) {
+            const state = states[stateName];
+            const card = document.getElementById('interactive-card');
+            const longPct = document.getElementById('long-pct');
+            const shortPct = document.getElementById('short-pct');
+            const longBar = document.getElementById('long-bar');
+            const label = document.getElementById('label');
+
+            longPct.textContent = state.long.toFixed(1) + '%';
+            shortPct.textContent = state.short.toFixed(1) + '%';
+            longBar.style.width = state.long + '%';
+            label.textContent = state.label;
+            card.className = 'ls-ratio-container ' + state.class;
+            label.className = 'ls-ratio-label ' + state.labelClass;
+        }
+
+        setState('current');
+    </script>
+</body>
+</html>

@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Animated L/S Ratio - Standalone Demo</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <style>
+        :root {
+            --bg-primary: #0a0e27;
+            --bg-secondary: #131829;
+            --text-primary: #e4e6eb;
+            --text-secondary: #8b92a7;
+            --accent-positive: #00d68f;
+            --accent-negative: #ff5252;
+            --border-color: rgba(255, 255, 255, 0.1);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            padding: 40px;
+            min-height: 100vh;
+        }
+
+        .demo-container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .demo-header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .demo-header h1 {
+            font-size: 32px;
+            font-weight: 700;
+            margin-bottom: 10px;
+        }
+
+        .demo-header p {
+            font-size: 14px;
+            color: var(--text-secondary);
+        }
+
+        .demo-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+            margin-bottom: 40px;
+        }
+
+        .demo-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 20px;
+        }
+
+        .demo-card h3 {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 15px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .control-panel {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 40px;
+        }
+
+        .control-panel h2 {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 20px;
+        }
+
+        .control-buttons {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 12px;
+        }
+
+        .control-btn {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 12px 16px;
+            color: var(--text-primary);
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .control-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+            transform: translateY(-2px);
+        }
+
+        .control-btn.active {
+            background: rgba(99, 102, 241, 0.2);
+            border-color: rgba(99, 102, 241, 0.5);
+        }
+
+        /* L/S Ratio Component Styles */
+        .ls-ratio-container {
+            background: rgba(0, 0, 0, 0.2);
+            padding: 12px;
+            border-radius: 8px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .ls-ratio-header {
+            font-size: 9px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            text-align: center;
+            margin-bottom: 8px;
+        }
+
+        .ls-ratio-percentages {
+            display: flex;
+            justify-content: center;
+            gap: 6px;
+            align-items: baseline;
+            margin-bottom: 10px;
+            position: relative;
+            z-index: 2;
+        }
+
+        .ls-ratio-percentages .long-pct {
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--accent-positive);
+        }
+
+        .ls-ratio-percentages .divider {
+            color: var(--text-secondary);
+            font-size: 10px;
+        }
+
+        .ls-ratio-percentages .short-pct {
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--accent-negative);
+        }
+
+        /* Animated Bar */
+        .ls-ratio-bar-container {
+            position: relative;
+            height: 20px;
+            margin-bottom: 8px;
+            border-radius: 4px;
+            overflow: hidden;
+            background: rgba(0, 0, 0, 0.3);
+        }
+
+        .ls-ratio-bar {
+            position: absolute;
+            height: 100%;
+            display: flex;
+            width: 100%;
+        }
+
+        .ls-ratio-bar .long-side {
+            background: linear-gradient(90deg, var(--accent-positive) 0%, rgba(0, 214, 143, 0.7) 100%);
+            transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            padding-right: 6px;
+            position: relative;
+        }
+
+        .ls-ratio-bar .short-side {
+            background: linear-gradient(90deg, rgba(255, 82, 82, 0.7) 0%, var(--accent-negative) 100%);
+            transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            padding-left: 6px;
+            flex: 1;
+            position: relative;
+        }
+
+        .side-label {
+            font-size: 9px;
+            font-weight: 700;
+            color: white;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+        }
+
+        /* Dominance Arrow */
+        .dominance-arrow {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 10px;
+            font-weight: 700;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .long-side .dominance-arrow {
+            right: 2px;
+        }
+
+        .short-side .dominance-arrow {
+            left: 2px;
+        }
+
+        /* Pulse Animations */
+        @keyframes pulse-glow-green {
+            0%, 100% {
+                box-shadow: 0 0 5px rgba(0, 214, 143, 0.3),
+                            0 0 10px rgba(0, 214, 143, 0.2),
+                            inset 0 0 10px rgba(0, 214, 143, 0.1);
+            }
+            50% {
+                box-shadow: 0 0 15px rgba(0, 214, 143, 0.6),
+                            0 0 25px rgba(0, 214, 143, 0.4),
+                            inset 0 0 20px rgba(0, 214, 143, 0.2);
+            }
+        }
+
+        @keyframes pulse-glow-red {
+            0%, 100% {
+                box-shadow: 0 0 5px rgba(255, 82, 82, 0.3),
+                            0 0 10px rgba(255, 82, 82, 0.2),
+                            inset 0 0 10px rgba(255, 82, 82, 0.1);
+            }
+            50% {
+                box-shadow: 0 0 15px rgba(255, 82, 82, 0.6),
+                            0 0 25px rgba(255, 82, 82, 0.4),
+                            inset 0 0 20px rgba(255, 82, 82, 0.2);
+            }
+        }
+
+        @keyframes pressure-wave-right {
+            0% {
+                background-position: 0% 50%;
+            }
+            100% {
+                background-position: 100% 50%;
+            }
+        }
+
+        @keyframes pressure-wave-left {
+            0% {
+                background-position: 100% 50%;
+            }
+            100% {
+                background-position: 0% 50%;
+            }
+        }
+
+        /* State: Balanced (45-55%) */
+        .ls-ratio-bar-container.balanced {
+            /* No animation */
+        }
+
+        /* State: Moderate Bias (55-65%) */
+        .ls-ratio-bar-container.moderate-long .long-side .dominance-arrow,
+        .ls-ratio-bar-container.moderate-short .short-side .dominance-arrow {
+            opacity: 0.6;
+        }
+
+        /* State: High Crowding (65-70%) */
+        .ls-ratio-bar-container.high-long {
+            animation: pulse-glow-green 2s ease-in-out infinite;
+        }
+
+        .ls-ratio-bar-container.high-short {
+            animation: pulse-glow-red 2s ease-in-out infinite;
+        }
+
+        .ls-ratio-bar-container.high-long .long-side {
+            background: linear-gradient(270deg,
+                var(--accent-positive) 0%,
+                rgba(0, 214, 143, 0.9) 25%,
+                rgba(0, 214, 143, 0.7) 50%,
+                rgba(0, 214, 143, 0.9) 75%,
+                var(--accent-positive) 100%);
+            background-size: 200% 100%;
+            animation: pressure-wave-right 2s linear infinite;
+        }
+
+        .ls-ratio-bar-container.high-short .short-side {
+            background: linear-gradient(90deg,
+                var(--accent-negative) 0%,
+                rgba(255, 82, 82, 0.9) 25%,
+                rgba(255, 82, 82, 0.7) 50%,
+                rgba(255, 82, 82, 0.9) 75%,
+                var(--accent-negative) 100%);
+            background-size: 200% 100%;
+            animation: pressure-wave-left 2s linear infinite;
+        }
+
+        .ls-ratio-bar-container.high-long .long-side .dominance-arrow,
+        .ls-ratio-bar-container.high-short .short-side .dominance-arrow {
+            opacity: 0.9;
+            animation: arrow-bounce 1s ease-in-out infinite;
+        }
+
+        /* State: Extreme Crowding (>70%) */
+        .ls-ratio-bar-container.extreme-long {
+            animation: pulse-glow-green 1.5s ease-in-out infinite;
+        }
+
+        .ls-ratio-bar-container.extreme-short {
+            animation: pulse-glow-red 1.5s ease-in-out infinite;
+        }
+
+        .ls-ratio-bar-container.extreme-long .long-side {
+            background: linear-gradient(270deg,
+                var(--accent-positive) 0%,
+                #00ffaa 20%,
+                var(--accent-positive) 40%,
+                #00ffaa 60%,
+                var(--accent-positive) 80%,
+                #00ffaa 100%);
+            background-size: 300% 100%;
+            animation: pressure-wave-right 1.5s linear infinite;
+        }
+
+        .ls-ratio-bar-container.extreme-short .short-side {
+            background: linear-gradient(90deg,
+                var(--accent-negative) 0%,
+                #ff7070 20%,
+                var(--accent-negative) 40%,
+                #ff7070 60%,
+                var(--accent-negative) 80%,
+                #ff7070 100%);
+            background-size: 300% 100%;
+            animation: pressure-wave-left 1.5s linear infinite;
+        }
+
+        .ls-ratio-bar-container.extreme-long .long-side .dominance-arrow,
+        .ls-ratio-bar-container.extreme-short .short-side .dominance-arrow {
+            opacity: 1;
+            font-size: 12px;
+            animation: arrow-bounce-strong 0.8s ease-in-out infinite;
+        }
+
+        @keyframes arrow-bounce {
+            0%, 100% {
+                transform: translateX(0);
+            }
+            50% {
+                transform: translateX(3px);
+            }
+        }
+
+        @keyframes arrow-bounce-strong {
+            0%, 100% {
+                transform: translateX(0) scale(1);
+            }
+            50% {
+                transform: translateX(5px) scale(1.2);
+            }
+        }
+
+        /* Label */
+        .ls-ratio-label {
+            font-size: 9px;
+            color: var(--text-secondary);
+            text-align: center;
+        }
+
+        .ls-ratio-label.extreme-warning {
+            color: var(--accent-positive);
+            font-weight: 600;
+        }
+
+        .ls-ratio-label.extreme-warning.short {
+            color: var(--accent-negative);
+        }
+
+        /* Code Display */
+        .code-block {
+            background: #1a1f36;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 40px;
+            overflow-x: auto;
+        }
+
+        .code-block pre {
+            margin: 0;
+            color: #e4e6eb;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+
+        .code-block code {
+            color: #00d68f;
+        }
+    </style>
+</head>
+<body>
+    <div id="app" class="demo-container">
+        <div class="demo-header">
+            <h1>Animated Long/Short Ratio Visualization</h1>
+            <p>Interactive demo showing dominance animations across different positioning states</p>
+        </div>
+
+        <!-- Control Panel -->
+        <div class="control-panel">
+            <h2>Test Different States</h2>
+            <div class="control-buttons">
+                <button class="control-btn" :class="{ active: testState === 'balanced' }" @click="setState('balanced')">
+                    ⚖️ Balanced (50/50)
+                </button>
+                <button class="control-btn" :class="{ active: testState === 'moderate-long' }" @click="setState('moderate-long')">
+                    📈 Moderate Long (60/40)
+                </button>
+                <button class="control-btn" :class="{ active: testState === 'moderate-short' }" @click="setState('moderate-short')">
+                    📉 Moderate Short (40/60)
+                </button>
+                <button class="control-btn" :class="{ active: testState === 'high-long' }" @click="setState('high-long')">
+                    🟢 High Long (68/32)
+                </button>
+                <button class="control-btn" :class="{ active: testState === 'high-short' }" @click="setState('high-short')">
+                    🔴 High Short (32/68)
+                </button>
+                <button class="control-btn" :class="{ active: testState === 'extreme-long' }" @click="setState('extreme-long')">
+                    💚 Extreme Long (75/25)
+                </button>
+                <button class="control-btn" :class="{ active: testState === 'extreme-short' }" @click="setState('extreme-short')">
+                    ❤️ Extreme Short (25/75)
+                </button>
+                <button class="control-btn" :class="{ active: testState === 'random' }" @click="setRandomState()">
+                    🎲 Random State
+                </button>
+            </div>
+        </div>
+
+        <!-- Demo Grid -->
+        <div class="demo-grid">
+            <!-- Current State -->
+            <div class="demo-card">
+                <h3>Current State: {{ perpsPulse.lsLabel }}</h3>
+                <div class="ls-ratio-container">
+                    <div class="ls-ratio-header">Long / Short</div>
+                    <div class="ls-ratio-percentages">
+                        <span class="long-pct">{{ perpsPulse.longPct }}%</span>
+                        <span class="divider">/</span>
+                        <span class="short-pct">{{ perpsPulse.shortPct }}%</span>
+                    </div>
+                    <div class="ls-ratio-bar-container" :class="lsBarClass">
+                        <div class="ls-ratio-bar">
+                            <div class="long-side" :style="{ width: perpsPulse.longPct + '%' }">
+                                <span class="side-label">LONG</span>
+                                <span class="dominance-arrow">▶▶</span>
+                            </div>
+                            <div class="short-side">
+                                <span class="dominance-arrow">◀◀</span>
+                                <span class="side-label">SHORT</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="ls-ratio-label" :class="lsLabelClass">
+                        {{ perpsPulse.lsLabel }}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Balanced Example -->
+            <div class="demo-card">
+                <h3>Balanced (45-55%)</h3>
+                <div class="ls-ratio-container">
+                    <div class="ls-ratio-header">Long / Short</div>
+                    <div class="ls-ratio-percentages">
+                        <span class="long-pct">50%</span>
+                        <span class="divider">/</span>
+                        <span class="short-pct">50%</span>
+                    </div>
+                    <div class="ls-ratio-bar-container balanced">
+                        <div class="ls-ratio-bar">
+                            <div class="long-side" style="width: 50%">
+                                <span class="side-label">LONG</span>
+                                <span class="dominance-arrow">▶▶</span>
+                            </div>
+                            <div class="short-side">
+                                <span class="dominance-arrow">◀◀</span>
+                                <span class="side-label">SHORT</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="ls-ratio-label">
+                        Neutral
+                    </div>
+                </div>
+            </div>
+
+            <!-- Extreme Long Example -->
+            <div class="demo-card">
+                <h3>Extreme Long (>70%)</h3>
+                <div class="ls-ratio-container">
+                    <div class="ls-ratio-header">Long / Short</div>
+                    <div class="ls-ratio-percentages">
+                        <span class="long-pct">75%</span>
+                        <span class="divider">/</span>
+                        <span class="short-pct">25%</span>
+                    </div>
+                    <div class="ls-ratio-bar-container extreme-long">
+                        <div class="ls-ratio-bar">
+                            <div class="long-side" style="width: 75%">
+                                <span class="side-label">LONG</span>
+                                <span class="dominance-arrow">▶▶</span>
+                            </div>
+                            <div class="short-side">
+                                <span class="dominance-arrow">◀◀</span>
+                                <span class="side-label">SHORT</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="ls-ratio-label extreme-warning">
+                        Extreme Long Crowding
+                    </div>
+                </div>
+            </div>
+
+            <!-- Extreme Short Example -->
+            <div class="demo-card">
+                <h3>Extreme Short (>70%)</h3>
+                <div class="ls-ratio-container">
+                    <div class="ls-ratio-header">Long / Short</div>
+                    <div class="ls-ratio-percentages">
+                        <span class="long-pct">25%</span>
+                        <span class="divider">/</span>
+                        <span class="short-pct">75%</span>
+                    </div>
+                    <div class="ls-ratio-bar-container extreme-short">
+                        <div class="ls-ratio-bar">
+                            <div class="long-side" style="width: 25%">
+                                <span class="side-label">LONG</span>
+                                <span class="dominance-arrow">▶▶</span>
+                            </div>
+                            <div class="short-side">
+                                <span class="dominance-arrow">◀◀</span>
+                                <span class="side-label">SHORT</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="ls-ratio-label extreme-warning short">
+                        Extreme Short Crowding
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Code Display -->
+        <div class="code-block">
+            <pre><code>&lt;!-- Enhanced L/S Ratio Component --&gt;
+&lt;div class="ls-ratio-container"&gt;
+    &lt;div class="ls-ratio-header"&gt;Long / Short&lt;/div&gt;
+    &lt;div class="ls-ratio-percentages"&gt;
+        &lt;span class="long-pct"&gt;{{ "{{" }} perpsPulse.longPct }}%&lt;/span&gt;
+        &lt;span class="divider"&gt;/&lt;/span&gt;
+        &lt;span class="short-pct"&gt;{{ "{{" }} perpsPulse.shortPct }}%&lt;/span&gt;
+    &lt;/div&gt;
+    &lt;div class="ls-ratio-bar-container" :class="lsBarClass"&gt;
+        &lt;div class="ls-ratio-bar"&gt;
+            &lt;div class="long-side" :style="{ width: perpsPulse.longPct + '%' }"&gt;
+                &lt;span class="side-label"&gt;LONG&lt;/span&gt;
+                &lt;span class="dominance-arrow"&gt;▶▶&lt;/span&gt;
+            &lt;/div&gt;
+            &lt;div class="short-side"&gt;
+                &lt;span class="dominance-arrow"&gt;◀◀&lt;/span&gt;
+                &lt;span class="side-label"&gt;SHORT&lt;/span&gt;
+            &lt;/div&gt;
+        &lt;/div&gt;
+    &lt;/div&gt;
+    &lt;div class="ls-ratio-label" :class="lsLabelClass"&gt;
+        {{ "{{" }} perpsPulse.lsLabel }}
+    &lt;/div&gt;
+&lt;/div&gt;
+
+&lt;!-- Vue.js Computed Properties --&gt;
+computed: {
+    lsBarClass() {
+        const longPct = parseFloat(this.perpsPulse.longPct);
+        const shortPct = parseFloat(this.perpsPulse.shortPct);
+
+        // Determine dominance level
+        if (longPct >= 70) return 'extreme-long';
+        if (shortPct >= 70) return 'extreme-short';
+        if (longPct >= 65) return 'high-long';
+        if (shortPct >= 65) return 'high-short';
+        if (longPct >= 55) return 'moderate-long';
+        if (shortPct >= 55) return 'moderate-short';
+        return 'balanced';
+    },
+    lsLabelClass() {
+        const longPct = parseFloat(this.perpsPulse.longPct);
+        const shortPct = parseFloat(this.perpsPulse.shortPct);
+
+        if (longPct >= 70) return 'extreme-warning';
+        if (shortPct >= 70) return 'extreme-warning short';
+        return '';
+    }
+}</code></pre>
+        </div>
+    </div>
+
+    <script>
+        const { createApp } = Vue;
+
+        createApp({
+            data() {
+                return {
+                    testState: 'balanced',
+                    perpsPulse: {
+                        longPct: 50,
+                        shortPct: 50,
+                        lsLabel: 'Neutral'
+                    }
+                };
+            },
+            computed: {
+                lsBarClass() {
+                    const longPct = parseFloat(this.perpsPulse.longPct);
+                    const shortPct = parseFloat(this.perpsPulse.shortPct);
+
+                    // Determine dominance level
+                    if (longPct >= 70) return 'extreme-long';
+                    if (shortPct >= 70) return 'extreme-short';
+                    if (longPct >= 65) return 'high-long';
+                    if (shortPct >= 65) return 'high-short';
+                    if (longPct >= 55) return 'moderate-long';
+                    if (shortPct >= 55) return 'moderate-short';
+                    return 'balanced';
+                },
+                lsLabelClass() {
+                    const longPct = parseFloat(this.perpsPulse.longPct);
+                    const shortPct = parseFloat(this.perpsPulse.shortPct);
+
+                    if (longPct >= 70) return 'extreme-warning';
+                    if (shortPct >= 70) return 'extreme-warning short';
+                    return '';
+                }
+            },
+            methods: {
+                setState(state) {
+                    this.testState = state;
+                    const states = {
+                        'balanced': { long: 50, short: 50, label: 'Neutral' },
+                        'moderate-long': { long: 60, short: 40, label: 'Moderate Long Bias' },
+                        'moderate-short': { long: 40, short: 60, label: 'Moderate Short Bias' },
+                        'high-long': { long: 68, short: 32, label: 'High Long Crowding' },
+                        'high-short': { long: 32, short: 68, label: 'High Short Crowding' },
+                        'extreme-long': { long: 75, short: 25, label: 'Extreme Long Crowding' },
+                        'extreme-short': { long: 25, short: 75, label: 'Extreme Short Crowding' }
+                    };
+
+                    const config = states[state];
+                    this.perpsPulse.longPct = config.long;
+                    this.perpsPulse.shortPct = config.short;
+                    this.perpsPulse.lsLabel = config.label;
+                },
+                setRandomState() {
+                    this.testState = 'random';
+                    const longPct = Math.floor(Math.random() * 100);
+                    const shortPct = 100 - longPct;
+
+                    this.perpsPulse.longPct = longPct;
+                    this.perpsPulse.shortPct = shortPct;
+
+                    // Generate label
+                    if (longPct >= 70) {
+                        this.perpsPulse.lsLabel = 'Extreme Long Crowding';
+                    } else if (shortPct >= 70) {
+                        this.perpsPulse.lsLabel = 'Extreme Short Crowding';
+                    } else if (longPct >= 65) {
+                        this.perpsPulse.lsLabel = 'High Long Crowding';
+                    } else if (shortPct >= 65) {
+                        this.perpsPulse.lsLabel = 'High Short Crowding';
+                    } else if (longPct >= 55) {
+                        this.perpsPulse.lsLabel = 'Moderate Long Bias';
+                    } else if (shortPct >= 55) {
+                        this.perpsPulse.lsLabel = 'Moderate Short Bias';
+                    } else {
+                        this.perpsPulse.lsLabel = 'Neutral';
+                    }
+                }
+            },
+            mounted() {
+                // Initialize with balanced state
+                this.setState('balanced');
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>

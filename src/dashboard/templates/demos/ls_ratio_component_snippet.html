@@ -1,0 +1,391 @@
+<!--
+  ANIMATED LONG/SHORT RATIO COMPONENT
+
+  This snippet contains the CSS and HTML for the animated L/S ratio visualization.
+
+  INTEGRATION STEPS:
+  1. Add the CSS to your dashboard's <style> section
+  2. Replace the existing L/S div in the Perpetuals Pulse card
+  3. Add the computed properties to your Vue.js component
+
+  FEATURES:
+  - Animated tug-of-war bar visualization
+  - Dominance indicators (arrows) for crowded positions
+  - Pulse/glow effects for extreme positioning
+  - Gradient wave animations showing "pressure" direction
+  - 4 states: Balanced, Moderate, High, Extreme
+  - Smooth transitions on data updates
+-->
+
+<!-- ============================================ -->
+<!-- STEP 1: ADD THIS CSS TO YOUR <style> SECTION -->
+<!-- ============================================ -->
+<style>
+    /* L/S Ratio Component Styles */
+    .ls-ratio-container {
+        background: rgba(0, 0, 0, 0.2);
+        padding: 12px;
+        border-radius: 8px;
+        position: relative;
+        overflow: hidden;
+    }
+
+    .ls-ratio-header {
+        font-size: 9px;
+        color: var(--text-secondary);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        text-align: center;
+        margin-bottom: 8px;
+    }
+
+    .ls-ratio-percentages {
+        display: flex;
+        justify-content: center;
+        gap: 6px;
+        align-items: baseline;
+        margin-bottom: 10px;
+        position: relative;
+        z-index: 2;
+    }
+
+    .ls-ratio-percentages .long-pct {
+        font-size: 15px;
+        font-weight: 700;
+        color: var(--accent-positive);
+    }
+
+    .ls-ratio-percentages .divider {
+        color: var(--text-secondary);
+        font-size: 10px;
+    }
+
+    .ls-ratio-percentages .short-pct {
+        font-size: 15px;
+        font-weight: 700;
+        color: var(--accent-negative);
+    }
+
+    /* Animated Bar */
+    .ls-ratio-bar-container {
+        position: relative;
+        height: 20px;
+        margin-bottom: 8px;
+        border-radius: 4px;
+        overflow: hidden;
+        background: rgba(0, 0, 0, 0.3);
+    }
+
+    .ls-ratio-bar {
+        position: absolute;
+        height: 100%;
+        display: flex;
+        width: 100%;
+    }
+
+    .ls-ratio-bar .long-side {
+        background: linear-gradient(90deg, var(--accent-positive) 0%, rgba(0, 214, 143, 0.7) 100%);
+        transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        padding-right: 6px;
+        position: relative;
+    }
+
+    .ls-ratio-bar .short-side {
+        background: linear-gradient(90deg, rgba(255, 82, 82, 0.7) 0%, var(--accent-negative) 100%);
+        transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+        display: flex;
+        align-items: center;
+        justify-content: flex-start;
+        padding-left: 6px;
+        flex: 1;
+        position: relative;
+    }
+
+    .side-label {
+        font-size: 9px;
+        font-weight: 700;
+        color: white;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+    }
+
+    /* Dominance Arrow */
+    .dominance-arrow {
+        position: absolute;
+        top: 50%;
+        transform: translateY(-50%);
+        font-size: 10px;
+        font-weight: 700;
+        opacity: 0;
+        transition: opacity 0.3s ease;
+    }
+
+    .long-side .dominance-arrow {
+        right: 2px;
+    }
+
+    .short-side .dominance-arrow {
+        left: 2px;
+    }
+
+    /* Pulse Animations */
+    @keyframes pulse-glow-green {
+        0%, 100% {
+            box-shadow: 0 0 5px rgba(0, 214, 143, 0.3),
+                        0 0 10px rgba(0, 214, 143, 0.2),
+                        inset 0 0 10px rgba(0, 214, 143, 0.1);
+        }
+        50% {
+            box-shadow: 0 0 15px rgba(0, 214, 143, 0.6),
+                        0 0 25px rgba(0, 214, 143, 0.4),
+                        inset 0 0 20px rgba(0, 214, 143, 0.2);
+        }
+    }
+
+    @keyframes pulse-glow-red {
+        0%, 100% {
+            box-shadow: 0 0 5px rgba(255, 82, 82, 0.3),
+                        0 0 10px rgba(255, 82, 82, 0.2),
+                        inset 0 0 10px rgba(255, 82, 82, 0.1);
+        }
+        50% {
+            box-shadow: 0 0 15px rgba(255, 82, 82, 0.6),
+                        0 0 25px rgba(255, 82, 82, 0.4),
+                        inset 0 0 20px rgba(255, 82, 82, 0.2);
+        }
+    }
+
+    @keyframes pressure-wave-right {
+        0% {
+            background-position: 0% 50%;
+        }
+        100% {
+            background-position: 100% 50%;
+        }
+    }
+
+    @keyframes pressure-wave-left {
+        0% {
+            background-position: 100% 50%;
+        }
+        100% {
+            background-position: 0% 50%;
+        }
+    }
+
+    /* State: Balanced (45-55%) */
+    .ls-ratio-bar-container.balanced {
+        /* No animation */
+    }
+
+    /* State: Moderate Bias (55-65%) */
+    .ls-ratio-bar-container.moderate-long .long-side .dominance-arrow,
+    .ls-ratio-bar-container.moderate-short .short-side .dominance-arrow {
+        opacity: 0.6;
+    }
+
+    /* State: High Crowding (65-70%) */
+    .ls-ratio-bar-container.high-long {
+        animation: pulse-glow-green 2s ease-in-out infinite;
+    }
+
+    .ls-ratio-bar-container.high-short {
+        animation: pulse-glow-red 2s ease-in-out infinite;
+    }
+
+    .ls-ratio-bar-container.high-long .long-side {
+        background: linear-gradient(270deg,
+            var(--accent-positive) 0%,
+            rgba(0, 214, 143, 0.9) 25%,
+            rgba(0, 214, 143, 0.7) 50%,
+            rgba(0, 214, 143, 0.9) 75%,
+            var(--accent-positive) 100%);
+        background-size: 200% 100%;
+        animation: pressure-wave-right 2s linear infinite;
+    }
+
+    .ls-ratio-bar-container.high-short .short-side {
+        background: linear-gradient(90deg,
+            var(--accent-negative) 0%,
+            rgba(255, 82, 82, 0.9) 25%,
+            rgba(255, 82, 82, 0.7) 50%,
+            rgba(255, 82, 82, 0.9) 75%,
+            var(--accent-negative) 100%);
+        background-size: 200% 100%;
+        animation: pressure-wave-left 2s linear infinite;
+    }
+
+    .ls-ratio-bar-container.high-long .long-side .dominance-arrow,
+    .ls-ratio-bar-container.high-short .short-side .dominance-arrow {
+        opacity: 0.9;
+        animation: arrow-bounce 1s ease-in-out infinite;
+    }
+
+    /* State: Extreme Crowding (>70%) */
+    .ls-ratio-bar-container.extreme-long {
+        animation: pulse-glow-green 1.5s ease-in-out infinite;
+    }
+
+    .ls-ratio-bar-container.extreme-short {
+        animation: pulse-glow-red 1.5s ease-in-out infinite;
+    }
+
+    .ls-ratio-bar-container.extreme-long .long-side {
+        background: linear-gradient(270deg,
+            var(--accent-positive) 0%,
+            #00ffaa 20%,
+            var(--accent-positive) 40%,
+            #00ffaa 60%,
+            var(--accent-positive) 80%,
+            #00ffaa 100%);
+        background-size: 300% 100%;
+        animation: pressure-wave-right 1.5s linear infinite;
+    }
+
+    .ls-ratio-bar-container.extreme-short .short-side {
+        background: linear-gradient(90deg,
+            var(--accent-negative) 0%,
+            #ff7070 20%,
+            var(--accent-negative) 40%,
+            #ff7070 60%,
+            var(--accent-negative) 80%,
+            #ff7070 100%);
+        background-size: 300% 100%;
+        animation: pressure-wave-left 1.5s linear infinite;
+    }
+
+    .ls-ratio-bar-container.extreme-long .long-side .dominance-arrow,
+    .ls-ratio-bar-container.extreme-short .short-side .dominance-arrow {
+        opacity: 1;
+        font-size: 12px;
+        animation: arrow-bounce-strong 0.8s ease-in-out infinite;
+    }
+
+    @keyframes arrow-bounce {
+        0%, 100% {
+            transform: translateX(0);
+        }
+        50% {
+            transform: translateX(3px);
+        }
+    }
+
+    @keyframes arrow-bounce-strong {
+        0%, 100% {
+            transform: translateX(0) scale(1);
+        }
+        50% {
+            transform: translateX(5px) scale(1.2);
+        }
+    }
+
+    /* Label */
+    .ls-ratio-label {
+        font-size: 9px;
+        color: var(--text-secondary);
+        text-align: center;
+    }
+
+    .ls-ratio-label.extreme-warning {
+        color: var(--accent-positive);
+        font-weight: 600;
+    }
+
+    .ls-ratio-label.extreme-warning.short {
+        color: var(--accent-negative);
+    }
+</style>
+
+<!-- ============================================ -->
+<!-- STEP 2: REPLACE EXISTING L/S DIV WITH THIS -->
+<!-- ============================================ -->
+
+<!-- Replace the current Long/Short div (around line 2365) with this: -->
+<div class="ls-ratio-container">
+    <div class="ls-ratio-header">Long / Short</div>
+    <div class="ls-ratio-percentages">
+        <span class="long-pct">{{ perpsPulse.longPct }}%</span>
+        <span class="divider">/</span>
+        <span class="short-pct">{{ perpsPulse.shortPct }}%</span>
+    </div>
+    <div class="ls-ratio-bar-container" :class="lsBarClass">
+        <div class="ls-ratio-bar">
+            <div class="long-side" :style="{ width: perpsPulse.longPct + '%' }">
+                <span class="side-label">LONG</span>
+                <span class="dominance-arrow">▶▶</span>
+            </div>
+            <div class="short-side">
+                <span class="dominance-arrow">◀◀</span>
+                <span class="side-label">SHORT</span>
+            </div>
+        </div>
+    </div>
+    <div class="ls-ratio-label" :class="lsLabelClass">
+        {{ perpsPulse.lsLabel }}
+    </div>
+</div>
+
+<!-- ============================================ -->
+<!-- STEP 3: ADD THESE COMPUTED PROPERTIES TO VUE.JS -->
+<!-- ============================================ -->
+
+<!--
+Add these to your Vue component's computed section:
+
+computed: {
+    // ... existing computed properties ...
+
+    lsBarClass() {
+        const longPct = parseFloat(this.perpsPulse.longPct);
+        const shortPct = parseFloat(this.perpsPulse.shortPct);
+
+        // Determine dominance level based on positioning
+        if (longPct >= 70) return 'extreme-long';
+        if (shortPct >= 70) return 'extreme-short';
+        if (longPct >= 65) return 'high-long';
+        if (shortPct >= 65) return 'high-short';
+        if (longPct >= 55) return 'moderate-long';
+        if (shortPct >= 55) return 'moderate-short';
+        return 'balanced';
+    },
+
+    lsLabelClass() {
+        const longPct = parseFloat(this.perpsPulse.longPct);
+        const shortPct = parseFloat(this.perpsPulse.shortPct);
+
+        // Highlight extreme crowding states
+        if (longPct >= 70) return 'extreme-warning';
+        if (shortPct >= 70) return 'extreme-warning short';
+        return '';
+    }
+}
+-->
+
+<!-- ============================================ -->
+<!-- THRESHOLDS EXPLANATION -->
+<!-- ============================================ -->
+
+<!--
+ANIMATION STATES:
+- Balanced (45-55%): No animation, static bar
+- Moderate (55-65%): Subtle arrow indicator
+- High (65-70%): Pulse glow + animated gradient wave + bouncing arrows
+- Extreme (>70%): Strong pulse + bright gradient + large bouncing arrows
+
+VISUAL INDICATORS:
+- Green glow: Long side dominance
+- Red glow: Short side dominance
+- Animated gradient: Shows "pressure" direction (tug of war)
+- Arrows (▶▶ / ◀◀): Directional dominance markers
+- Label color change: Warns of extreme crowding
+
+CUSTOMIZATION:
+- Adjust thresholds in computed properties (currently 55/65/70)
+- Modify animation speeds in @keyframes (currently 1.5s-2s)
+- Change colors via CSS variables
+- Add additional states if needed
+-->

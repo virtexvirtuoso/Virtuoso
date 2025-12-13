@@ -1,0 +1,1655 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bull vs Bear Arena | Virtuoso</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --color-bg: #0a0a0a;
+      --color-card: #1a1a1a;
+      --color-card-hover: #222222;
+      --color-text-primary: #f5f5f5;
+      --color-text-secondary: #9ca3af;
+      --color-text-muted: #6b7280;
+      --color-border: rgba(255, 255, 255, 0.06);
+
+      --color-bearish: #ef4444;
+      --color-bearish-muted: rgba(239, 68, 68, 0.15);
+      --color-bearish-glow: rgba(239, 68, 68, 0.4);
+
+      --color-bullish: #10b981;
+      --color-bullish-muted: rgba(16, 185, 129, 0.15);
+      --color-bullish-glow: rgba(16, 185, 129, 0.4);
+
+      --color-neutral: #fbbf24;
+      --color-neutral-muted: rgba(251, 191, 36, 0.2);
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: var(--color-bg);
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      color: var(--color-text-primary);
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .arena-container {
+      width: 100%;
+      max-width: 800px;
+    }
+
+    /* ===== HEADER ===== */
+    .arena-header {
+      text-align: center;
+      margin-bottom: 16px;
+      opacity: 0;
+      animation: fadeSlideDown 0.5s ease-out forwards;
+    }
+
+    .arena-header h1 {
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--color-text-muted);
+      text-transform: uppercase;
+      letter-spacing: 3px;
+      margin-bottom: 4px;
+    }
+
+    .arena-header h2 {
+      font-size: 28px;
+      font-weight: 900;
+      background: linear-gradient(135deg, var(--color-bearish) 0%, var(--color-neutral) 50%, var(--color-bullish) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      letter-spacing: -0.5px;
+    }
+
+    .connection-status {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      margin-top: 6px;
+      font-size: 10px;
+      color: var(--color-text-muted);
+    }
+
+    .status-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--color-text-muted);
+    }
+
+    .status-dot.connected { background: var(--color-bullish); }
+    .status-dot.error { background: var(--color-bearish); }
+    .status-dot.loading { background: var(--color-neutral); animation: pulse 1s infinite; }
+
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+    /* ===== BATTLE STAGE ===== */
+    .battle-stage-container {
+      background: var(--color-card);
+      border-radius: 16px;
+      padding: 20px;
+      margin-bottom: 16px;
+      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4), 0 0 0 1px var(--color-border);
+      opacity: 0;
+      animation: fadeSlideUp 0.5s ease-out 0.1s forwards;
+    }
+
+    .battle-stage {
+      position: relative;
+      height: 280px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Power Bars Row */
+    .power-bar-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+      gap: 16px;
+    }
+
+    .power-bar-container {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .power-bar-container.bear-power { align-items: flex-start; }
+    .power-bar-container.bull-power { align-items: flex-end; }
+
+    .power-label {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+    }
+
+    .bear-power .power-label { color: var(--color-bearish); }
+    .bull-power .power-label { color: var(--color-bullish); }
+
+    .power-bar {
+      width: 100%;
+      height: 12px;
+      background: rgba(255,255,255,0.05);
+      border-radius: 6px;
+      overflow: hidden;
+      position: relative;
+      box-shadow: inset 0 2px 4px rgba(0,0,0,0.4);
+    }
+
+    .power-bar-fill {
+      height: 100%;
+      transition: width 0.8s cubic-bezier(0.34, 1.56, 0.64, 1);
+      position: relative;
+    }
+
+    .power-bar-fill.bull {
+      background: linear-gradient(90deg, #059669, #10b981, #34d399);
+      box-shadow: 0 0 15px var(--color-bullish-glow);
+      float: right;
+    }
+
+    .power-bar-fill.bear {
+      background: linear-gradient(90deg, #f87171, #ef4444, #dc2626);
+      box-shadow: 0 0 15px var(--color-bearish-glow);
+    }
+
+    .power-bar-fill::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 50%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+      animation: shine 2s infinite;
+    }
+
+    @keyframes shine {
+      0% { left: -100%; }
+      100% { left: 200%; }
+    }
+
+    .power-bar-fill.critical { animation: critical-pulse 0.5s infinite; }
+    @keyframes critical-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+
+    .power-bar-fill.taking-damage { animation: damage-flash 0.3s ease-out; }
+    @keyframes damage-flash { 0%, 100% { filter: brightness(1); } 50% { filter: brightness(2); } }
+
+    .power-value {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .bear-power .power-value { color: var(--color-bearish); }
+    .bull-power .power-value { color: var(--color-bullish); }
+
+    .vs-badge {
+      font-size: 12px;
+      font-weight: 900;
+      color: var(--color-neutral);
+      background: var(--color-neutral-muted);
+      padding: 6px 12px;
+      border-radius: 6px;
+      letter-spacing: 2px;
+    }
+
+    /* Fighters Container */
+    .fighters-container {
+      flex: 1;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+
+    .fighter {
+      position: absolute;
+      width: 140px;
+      height: 120px;
+      transition: transform 0.8s cubic-bezier(0.34, 1.56, 0.64, 1);
+      will-change: transform;
+    }
+
+    .bear-fighter {
+      left: 8%;
+      transform-origin: right center;
+    }
+
+    .bull-fighter {
+      right: 8%;
+      transform-origin: left center;
+    }
+
+    /* Battle States */
+    .battle-stage[data-sentiment="clash"] .bear-fighter,
+    .battle-stage[data-sentiment="clash"] .bull-fighter {
+      animation: clash-struggle 0.6s infinite alternate ease-in-out;
+    }
+
+    .battle-stage[data-sentiment="bull-advantage"] .bear-fighter {
+      transform: translateX(-25px) rotate(-5deg);
+      opacity: 0.85;
+    }
+    .battle-stage[data-sentiment="bull-advantage"] .bull-fighter {
+      transform: translateX(-20px) scale(1.05);
+    }
+
+    .battle-stage[data-sentiment="bear-advantage"] .bull-fighter {
+      transform: translateX(25px) rotate(5deg);
+      opacity: 0.85;
+    }
+    .battle-stage[data-sentiment="bear-advantage"] .bear-fighter {
+      transform: translateX(20px) scale(1.05);
+    }
+
+    .battle-stage[data-sentiment="bull-domination"] .bear-fighter {
+      transform: translateX(-50px) rotate(-15deg);
+      opacity: 0.6;
+    }
+    .battle-stage[data-sentiment="bull-domination"] .bull-fighter {
+      transform: translateX(-30px) scale(1.15);
+      filter: drop-shadow(0 0 20px var(--color-bullish));
+    }
+
+    .battle-stage[data-sentiment="bear-domination"] .bull-fighter {
+      transform: translateX(50px) rotate(15deg);
+      opacity: 0.6;
+    }
+    .battle-stage[data-sentiment="bear-domination"] .bear-fighter {
+      transform: translateX(30px) scale(1.15);
+      filter: drop-shadow(0 0 20px var(--color-bearish));
+    }
+
+    @keyframes clash-struggle {
+      0% { transform: translateX(0) rotate(-2deg); }
+      100% { transform: translateX(-8px) rotate(2deg); }
+    }
+
+    .bear-fighter.attacking { animation: bear-attack 0.5s ease-out !important; }
+    .bull-fighter.attacking { animation: bull-attack 0.5s ease-out !important; }
+
+    @keyframes bear-attack {
+      0% { transform: translateX(0) scale(1); }
+      25% { transform: translateX(-15px) scale(0.95); }
+      50% { transform: translateX(35px) scale(1.15); }
+      75% { transform: translateX(25px) scale(1.05); }
+      100% { transform: translateX(20px) scale(1); }
+    }
+
+    @keyframes bull-attack {
+      0% { transform: translateX(0) scale(1); }
+      25% { transform: translateX(15px) scale(0.95); }
+      50% { transform: translateX(-35px) scale(1.15); }
+      75% { transform: translateX(-25px) scale(1.05); }
+      100% { transform: translateX(-20px) scale(1); }
+    }
+
+    /* Clash Zone */
+    .clash-zone {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      width: 120px;
+      height: 120px;
+      pointer-events: none;
+      z-index: 10;
+    }
+
+    .clash-burst {
+      width: 100%;
+      height: 100%;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+
+    .battle-stage[data-sentiment="clash"] .clash-burst {
+      opacity: 1;
+      animation: pulse-burst 0.8s infinite;
+    }
+
+    @keyframes pulse-burst {
+      0%, 100% { transform: scale(1); opacity: 0.7; }
+      50% { transform: scale(1.15); opacity: 1; }
+    }
+
+    .burst-rays {
+      transform-origin: center;
+      animation: rotate-slow 6s linear infinite;
+    }
+
+    @keyframes rotate-slow {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
+    .clash-burst.impact {
+      animation: impact-flash 0.4s ease-out !important;
+      opacity: 1 !important;
+    }
+
+    @keyframes impact-flash {
+      0% { transform: scale(0.5); opacity: 1; }
+      50% { transform: scale(2.5); opacity: 1; }
+      100% { transform: scale(2); opacity: 0; }
+    }
+
+    .particle-container {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      overflow: visible;
+    }
+
+    /* Momentum Indicator */
+    .momentum-indicator {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      margin-top: 12px;
+    }
+
+    .momentum-track {
+      width: 80%;
+      height: 6px;
+      background: linear-gradient(90deg, var(--color-bearish-muted), var(--color-neutral-muted), var(--color-bullish-muted));
+      border-radius: 3px;
+      position: relative;
+    }
+
+    .momentum-marker {
+      position: absolute;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      width: 16px;
+      height: 16px;
+      background: var(--color-text-primary);
+      border-radius: 50%;
+      border: 3px solid var(--color-bg);
+      box-shadow: 0 0 10px rgba(0,0,0,0.5);
+      transition: left 0.8s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    .momentum-label {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      transition: color 0.3s;
+    }
+
+    .momentum-label.bullish { color: var(--color-bullish); }
+    .momentum-label.bearish { color: var(--color-bearish); }
+    .momentum-label.neutral { color: var(--color-neutral); }
+
+    /* ===== WEAPON RACK ===== */
+    .weapon-rack {
+      background: var(--color-card);
+      border-radius: 12px;
+      padding: 14px;
+      margin-bottom: 16px;
+      opacity: 0;
+      animation: fadeSlideUp 0.5s ease-out 0.2s forwards;
+    }
+
+    .weapon-rack-title {
+      font-size: 9px;
+      font-weight: 600;
+      letter-spacing: 2px;
+      color: var(--color-text-muted);
+      text-align: center;
+      margin-bottom: 10px;
+    }
+
+    .weapon-slots {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 6px;
+    }
+
+    @media (max-width: 600px) {
+      .weapon-slots { grid-template-columns: repeat(3, 1fr); }
+    }
+
+    .weapon-slot {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 8px 4px;
+      border-radius: 8px;
+      background: rgba(0,0,0,0.25);
+      border: 1px solid var(--color-border);
+      transition: all 0.3s ease;
+    }
+
+    .weapon-slot.bull-active {
+      border-color: var(--color-bullish-glow);
+      box-shadow: 0 0 12px var(--color-bullish-muted);
+    }
+
+    .weapon-slot.bear-active {
+      border-color: var(--color-bearish-glow);
+      box-shadow: 0 0 12px var(--color-bearish-muted);
+    }
+
+    .weapon-icon {
+      width: 22px;
+      height: 22px;
+      color: var(--color-text-muted);
+      margin-bottom: 4px;
+      transition: color 0.3s, filter 0.3s;
+    }
+
+    .weapon-slot.bull-active .weapon-icon {
+      color: var(--color-bullish);
+      filter: drop-shadow(0 0 4px var(--color-bullish));
+    }
+
+    .weapon-slot.bear-active .weapon-icon {
+      color: var(--color-bearish);
+      filter: drop-shadow(0 0 4px var(--color-bearish));
+    }
+
+    .weapon-bar {
+      width: 100%;
+      height: 3px;
+      background: rgba(255,255,255,0.08);
+      border-radius: 2px;
+      position: relative;
+      margin: 4px 0;
+      overflow: hidden;
+    }
+
+    .weapon-fill {
+      position: absolute;
+      top: 0;
+      height: 100%;
+      transition: width 0.6s ease-out;
+    }
+
+    .weapon-fill.bull-side {
+      right: 50%;
+      background: linear-gradient(270deg, var(--color-bullish), transparent);
+      border-radius: 2px 0 0 2px;
+    }
+
+    .weapon-fill.bear-side {
+      left: 50%;
+      background: linear-gradient(90deg, var(--color-bearish), transparent);
+      border-radius: 0 2px 2px 0;
+    }
+
+    .weapon-center {
+      position: absolute;
+      left: 50%;
+      top: -2px;
+      width: 1px;
+      height: 7px;
+      background: var(--color-neutral);
+      transform: translateX(-50%);
+    }
+
+    .weapon-label {
+      font-size: 7px;
+      font-weight: 600;
+      letter-spacing: 0.3px;
+      color: var(--color-text-muted);
+      margin-top: 2px;
+    }
+
+    .weapon-value {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--color-text-secondary);
+    }
+
+    /* ===== BATTLE STATS ===== */
+    .battle-stats-bar {
+      display: flex;
+      justify-content: center;
+      gap: 24px;
+      padding: 12px;
+      background: var(--color-card);
+      border-radius: 10px;
+      margin-bottom: 16px;
+      opacity: 0;
+      animation: fadeSlideUp 0.5s ease-out 0.25s forwards;
+    }
+
+    .stat-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+    }
+
+    .stat-label {
+      font-size: 9px;
+      font-weight: 600;
+      letter-spacing: 1px;
+      color: var(--color-text-muted);
+      text-transform: uppercase;
+    }
+
+    .stat-value {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 16px;
+      font-weight: 700;
+    }
+
+    .stat-value.bullish { color: var(--color-bullish); }
+    .stat-value.bearish { color: var(--color-bearish); }
+
+    /* ===== ARENA CARD (Fighter Roster) ===== */
+    .arena-card {
+      background: var(--color-card);
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4), 0 0 0 1px var(--color-border);
+      opacity: 0;
+      animation: fadeSlideUp 0.5s ease-out 0.3s forwards;
+    }
+
+    .arena-battlefield {
+      display: grid;
+      grid-template-columns: 1fr 2px 1fr;
+      min-height: 320px;
+    }
+
+    .arena-divider {
+      background: linear-gradient(180deg, transparent 0%, var(--color-neutral-muted) 10%, var(--color-neutral) 50%, var(--color-neutral-muted) 90%, transparent 100%);
+    }
+
+    .arena-zone {
+      padding: 14px;
+      position: relative;
+    }
+
+    .bearish-zone {
+      background: linear-gradient(135deg, var(--color-bearish-muted) 0%, transparent 60%);
+    }
+
+    .bullish-zone {
+      background: linear-gradient(225deg, var(--color-bullish-muted) 0%, transparent 60%);
+    }
+
+    .zone-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 10px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--color-border);
+    }
+
+    .bearish-zone .zone-header { justify-content: flex-start; }
+    .bullish-zone .zone-header { justify-content: flex-end; flex-direction: row-reverse; }
+
+    .zone-icon { font-size: 12px; font-weight: bold; }
+    .bearish-zone .zone-icon { color: var(--color-bearish); }
+    .bullish-zone .zone-icon { color: var(--color-bullish); }
+
+    .zone-header h3 {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+    }
+
+    .bearish-zone .zone-header h3 { color: var(--color-bearish); }
+    .bullish-zone .zone-header h3 { color: var(--color-bullish); }
+
+    .zone-stats {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 9px;
+      color: var(--color-text-muted);
+    }
+
+    .bullish-zone .zone-stats { margin-left: 0; margin-right: auto; }
+
+    .zone-stat { display: flex; align-items: center; gap: 3px; }
+
+    .zone-stat-value {
+      font-family: 'IBM Plex Mono', monospace;
+      font-weight: 600;
+      color: var(--color-text-secondary);
+    }
+
+    /* Asset Cards */
+    .asset-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .asset-card {
+      background: rgba(0, 0, 0, 0.25);
+      border-radius: 8px;
+      padding: 10px;
+      border: 1px solid var(--color-border);
+      opacity: 0;
+      transform: translateY(12px);
+      animation: cardEntrance 0.4s ease-out forwards;
+      transition: background 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+      position: relative;
+    }
+
+    .asset-card:hover {
+      background: rgba(0, 0, 0, 0.4);
+      transform: translateY(-2px);
+    }
+
+    .asset-card.top-signal { border-width: 2px; }
+
+    .bearish-zone .asset-card.top-signal {
+      border-color: var(--color-bearish-glow);
+      box-shadow: inset 0 0 15px var(--color-bearish-muted);
+    }
+
+    .bullish-zone .asset-card.top-signal {
+      border-color: var(--color-bullish-glow);
+      box-shadow: inset 0 0 15px var(--color-bullish-muted);
+    }
+
+    .top-badge {
+      position: absolute;
+      top: -5px;
+      font-size: 8px;
+      background: var(--color-card);
+      padding: 2px 5px;
+      border-radius: 3px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+    }
+
+    .bearish-zone .top-badge { left: 8px; color: var(--color-bearish); border: 1px solid var(--color-bearish-glow); }
+    .bullish-zone .top-badge { right: 8px; color: var(--color-bullish); border: 1px solid var(--color-bullish-glow); }
+
+    .asset-main-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 6px;
+    }
+
+    .asset-identity {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .asset-direction-icon {
+      font-size: 9px;
+      font-weight: bold;
+      width: 16px;
+      height: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 3px;
+    }
+
+    .bearish-zone .asset-direction-icon { background: var(--color-bearish-muted); color: var(--color-bearish); }
+    .bullish-zone .asset-direction-icon { background: var(--color-bullish-muted); color: var(--color-bullish); }
+
+    .asset-symbol {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--color-text-primary);
+    }
+
+    .score-circle {
+      position: relative;
+      width: 36px;
+      height: 36px;
+    }
+
+    .score-circle svg { transform: rotate(-90deg); }
+    .score-circle-bg { fill: none; stroke: rgba(255, 255, 255, 0.08); stroke-width: 3; }
+    .score-circle-fill { fill: none; stroke-width: 3; stroke-linecap: round; transition: stroke-dashoffset 0.8s ease-out; }
+    .bearish-zone .score-circle-fill { stroke: var(--color-bearish); }
+    .bullish-zone .score-circle-fill { stroke: var(--color-bullish); }
+
+    .score-value {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .bearish-zone .score-value { color: var(--color-bearish); }
+    .bullish-zone .score-value { color: var(--color-bullish); }
+
+    .asset-meta-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .asset-price-info {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 9px;
+      color: var(--color-text-muted);
+    }
+
+    .asset-price { font-family: 'IBM Plex Mono', monospace; }
+
+    .asset-change {
+      font-family: 'IBM Plex Mono', monospace;
+      font-weight: 600;
+      padding: 1px 4px;
+      border-radius: 3px;
+    }
+
+    .asset-change.positive { color: var(--color-bullish); background: var(--color-bullish-muted); }
+    .asset-change.negative { color: var(--color-bearish); background: var(--color-bearish-muted); }
+
+    .signal-strength {
+      display: flex;
+      align-items: flex-end;
+      gap: 2px;
+      height: 12px;
+    }
+
+    .strength-bar {
+      width: 3px;
+      border-radius: 1px;
+      transition: height 0.4s ease-out, background 0.3s ease;
+    }
+
+    .strength-bar.inactive { background: rgba(255, 255, 255, 0.1); }
+    .bearish-zone .strength-bar.active { background: var(--color-bearish); }
+    .bullish-zone .strength-bar.active { background: var(--color-bullish); }
+
+    .conviction-label {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 8px;
+      color: var(--color-text-muted);
+      margin-left: 4px;
+    }
+
+    .empty-zone, .loading-zone {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 150px;
+      color: var(--color-text-muted);
+      font-size: 11px;
+      gap: 8px;
+    }
+
+    .empty-zone-icon { font-size: 20px; opacity: 0.5; }
+
+    .loading-spinner {
+      width: 20px;
+      height: 20px;
+      border: 2px solid var(--color-border);
+      border-top-color: var(--color-neutral);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Footer */
+    .arena-footer {
+      padding: 12px 16px;
+      background: rgba(0, 0, 0, 0.3);
+      border-top: 1px solid var(--color-border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .arena-summary { display: flex; gap: 16px; }
+
+    .summary-item { display: flex; align-items: center; gap: 5px; }
+
+    .summary-dot {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+    }
+
+    .summary-dot.bearish { background: var(--color-bearish); }
+    .summary-dot.bullish { background: var(--color-bullish); }
+
+    .summary-label { font-size: 9px; color: var(--color-text-muted); }
+
+    .summary-value {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--color-text-primary);
+    }
+
+    .arena-timestamp {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 9px;
+      color: var(--color-text-muted);
+    }
+
+    /* Animations */
+    @keyframes fadeSlideDown {
+      from { opacity: 0; transform: translateY(-10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes fadeSlideUp {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes cardEntrance {
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Responsive */
+    @media (max-width: 600px) {
+      body { padding: 12px; }
+      .battle-stage { height: 240px; }
+      .fighter { width: 100px; height: 85px; }
+      .arena-battlefield { grid-template-columns: 1fr; grid-template-rows: auto 2px auto; }
+      .arena-divider { background: linear-gradient(90deg, transparent 0%, var(--color-neutral-muted) 10%, var(--color-neutral) 50%, var(--color-neutral-muted) 90%, transparent 100%); height: 2px; }
+      .bullish-zone .zone-header { justify-content: flex-start; flex-direction: row; }
+      .bullish-zone .zone-stats { margin-left: auto; margin-right: 0; }
+      .bullish-zone .top-badge { right: auto; left: 8px; }
+      .arena-footer { flex-direction: column; gap: 8px; align-items: flex-start; }
+      .power-bar-row { flex-direction: column; gap: 8px; }
+      .power-bar-container.bear-power, .power-bar-container.bull-power { align-items: stretch; }
+      .vs-badge { align-self: center; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="arena-container">
+    <!-- Header -->
+    <div class="arena-header">
+      <h1>Market Signals</h1>
+      <h2>Bull vs Bear Arena</h2>
+      <div class="connection-status">
+        <div class="status-dot loading" id="status-dot"></div>
+        <span id="status-text">Connecting...</span>
+      </div>
+    </div>
+
+    <!-- Battle Stage -->
+    <div class="battle-stage-container">
+      <div class="battle-stage" id="battle-stage" data-sentiment="clash">
+        <!-- Power Bars -->
+        <div class="power-bar-row">
+          <div class="power-bar-container bear-power">
+            <div class="power-label">🐻 BEAR POWER</div>
+            <div class="power-bar">
+              <div class="power-bar-fill bear" id="bear-power-fill" style="width: 50%"></div>
+            </div>
+            <div class="power-value" id="bear-power-val">50%</div>
+          </div>
+          <div class="vs-badge">⚔️ VS</div>
+          <div class="power-bar-container bull-power">
+            <div class="power-label">BULL POWER 🐂</div>
+            <div class="power-bar">
+              <div class="power-bar-fill bull" id="bull-power-fill" style="width: 50%"></div>
+            </div>
+            <div class="power-value" id="bull-power-val">50%</div>
+          </div>
+        </div>
+
+        <!-- Fighters -->
+        <div class="fighters-container">
+          <!-- Bear Fighter -->
+          <svg class="fighter bear-fighter" id="bear-fighter" viewBox="0 0 120 100">
+            <defs>
+              <filter id="bear-glow">
+                <feGaussianBlur stdDeviation="2" result="blur"/>
+                <feFlood flood-color="#ef4444" flood-opacity="0.5"/>
+                <feComposite in2="blur" operator="in"/>
+                <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+              </filter>
+              <linearGradient id="bear-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#ef4444"/>
+                <stop offset="100%" stop-color="#dc2626"/>
+              </linearGradient>
+            </defs>
+            <g filter="url(#bear-glow)">
+              <ellipse cx="55" cy="55" rx="38" ry="28" fill="url(#bear-gradient)"/>
+              <circle cx="25" cy="45" r="20" fill="url(#bear-gradient)"/>
+              <circle cx="10" cy="28" r="7" fill="url(#bear-gradient)"/>
+              <circle cx="40" cy="28" r="7" fill="url(#bear-gradient)"/>
+              <ellipse cx="10" cy="50" rx="9" ry="7" fill="#b91c1c"/>
+              <line x1="16" y1="38" x2="26" y2="42" stroke="#0a0a0a" stroke-width="3" stroke-linecap="round"/>
+              <circle cx="22" cy="42" r="2.5" fill="#0a0a0a"/>
+              <g class="claws">
+                <path d="M90 55 Q96 46 102 52" stroke="#ef4444" stroke-width="3" fill="none"/>
+                <path d="M94 62 Q102 53 108 60" stroke="#ef4444" stroke-width="3" fill="none"/>
+                <path d="M92 70 Q100 63 106 70" stroke="#ef4444" stroke-width="3" fill="none"/>
+              </g>
+              <line x1="40" y1="78" x2="30" y2="95" stroke="url(#bear-gradient)" stroke-width="7" stroke-linecap="round"/>
+              <line x1="60" y1="80" x2="55" y2="95" stroke="url(#bear-gradient)" stroke-width="7" stroke-linecap="round"/>
+              <line x1="78" y1="78" x2="85" y2="95" stroke="url(#bear-gradient)" stroke-width="7" stroke-linecap="round"/>
+            </g>
+          </svg>
+
+          <!-- Clash Zone -->
+          <div class="clash-zone">
+            <svg class="clash-burst" id="clash-burst" viewBox="0 0 100 100">
+              <defs>
+                <radialGradient id="clash-gradient" cx="50%" cy="50%" r="50%">
+                  <stop offset="0%" stop-color="#fbbf24" stop-opacity="1"/>
+                  <stop offset="50%" stop-color="#f59e0b" stop-opacity="0.5"/>
+                  <stop offset="100%" stop-color="#d97706" stop-opacity="0"/>
+                </radialGradient>
+              </defs>
+              <g class="burst-rays">
+                <line x1="50" y1="50" x2="50" y2="8" stroke="#fbbf24" stroke-width="2"/>
+                <line x1="50" y1="50" x2="85" y2="20" stroke="#fbbf24" stroke-width="2"/>
+                <line x1="50" y1="50" x2="92" y2="50" stroke="#fbbf24" stroke-width="2"/>
+                <line x1="50" y1="50" x2="85" y2="80" stroke="#fbbf24" stroke-width="2"/>
+                <line x1="50" y1="50" x2="50" y2="92" stroke="#fbbf24" stroke-width="2"/>
+                <line x1="50" y1="50" x2="15" y2="80" stroke="#fbbf24" stroke-width="2"/>
+                <line x1="50" y1="50" x2="8" y2="50" stroke="#fbbf24" stroke-width="2"/>
+                <line x1="50" y1="50" x2="15" y2="20" stroke="#fbbf24" stroke-width="2"/>
+              </g>
+              <circle cx="50" cy="50" r="12" fill="url(#clash-gradient)"/>
+            </svg>
+            <div class="particle-container" id="particles"></div>
+          </div>
+
+          <!-- Bull Fighter -->
+          <svg class="fighter bull-fighter" id="bull-fighter" viewBox="0 0 120 100">
+            <defs>
+              <filter id="bull-glow">
+                <feGaussianBlur stdDeviation="2" result="blur"/>
+                <feFlood flood-color="#10b981" flood-opacity="0.5"/>
+                <feComposite in2="blur" operator="in"/>
+                <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+              </filter>
+              <linearGradient id="bull-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#10b981"/>
+                <stop offset="100%" stop-color="#059669"/>
+              </linearGradient>
+            </defs>
+            <g filter="url(#bull-glow)">
+              <ellipse cx="65" cy="60" rx="38" ry="26" fill="url(#bull-gradient)"/>
+              <circle cx="30" cy="50" r="18" fill="url(#bull-gradient)"/>
+              <path d="M22 38 Q12 22 8 28" stroke="#10b981" stroke-width="5" fill="none" stroke-linecap="round"/>
+              <path d="M38 38 Q48 22 52 28" stroke="#10b981" stroke-width="5" fill="none" stroke-linecap="round"/>
+              <circle cx="25" cy="48" r="2.5" fill="#0a0a0a"/>
+              <g class="steam">
+                <circle cx="15" cy="58" r="2" fill="rgba(255,255,255,0.5)">
+                  <animate attributeName="opacity" values="0.5;0;0.5" dur="1.5s" repeatCount="indefinite"/>
+                  <animate attributeName="cy" values="58;52;58" dur="1.5s" repeatCount="indefinite"/>
+                </circle>
+                <circle cx="12" cy="55" r="1.5" fill="rgba(255,255,255,0.3)">
+                  <animate attributeName="opacity" values="0.3;0;0.3" dur="1.8s" repeatCount="indefinite"/>
+                  <animate attributeName="cy" values="55;48;55" dur="1.8s" repeatCount="indefinite"/>
+                </circle>
+              </g>
+              <line x1="40" y1="78" x2="30" y2="95" stroke="url(#bull-gradient)" stroke-width="6" stroke-linecap="round"/>
+              <line x1="55" y1="82" x2="50" y2="95" stroke="url(#bull-gradient)" stroke-width="6" stroke-linecap="round"/>
+              <line x1="75" y1="82" x2="80" y2="95" stroke="url(#bull-gradient)" stroke-width="6" stroke-linecap="round"/>
+              <line x1="90" y1="78" x2="100" y2="92" stroke="url(#bull-gradient)" stroke-width="6" stroke-linecap="round"/>
+            </g>
+          </svg>
+        </div>
+
+        <!-- Momentum Indicator -->
+        <div class="momentum-indicator">
+          <div class="momentum-track">
+            <div class="momentum-marker" id="momentum-marker" style="left: 50%"></div>
+          </div>
+          <div class="momentum-label neutral" id="momentum-label">BALANCED</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Weapon Rack -->
+    <div class="weapon-rack">
+      <div class="weapon-rack-title">⚔️ BATTLE COMPONENTS</div>
+      <div class="weapon-slots">
+        <div class="weapon-slot" data-component="technical">
+          <div class="weapon-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+            </svg>
+          </div>
+          <div class="weapon-bar">
+            <div class="weapon-fill bull-side" style="width: 0%"></div>
+            <div class="weapon-center"></div>
+            <div class="weapon-fill bear-side" style="width: 0%"></div>
+          </div>
+          <div class="weapon-label">TECHNICAL</div>
+          <div class="weapon-value">--</div>
+        </div>
+        <div class="weapon-slot" data-component="volume">
+          <div class="weapon-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="4" y="14" width="4" height="6"/><rect x="10" y="10" width="4" height="10"/><rect x="16" y="4" width="4" height="16"/>
+            </svg>
+          </div>
+          <div class="weapon-bar">
+            <div class="weapon-fill bull-side" style="width: 0%"></div>
+            <div class="weapon-center"></div>
+            <div class="weapon-fill bear-side" style="width: 0%"></div>
+          </div>
+          <div class="weapon-label">VOLUME</div>
+          <div class="weapon-value">--</div>
+        </div>
+        <div class="weapon-slot" data-component="orderflow">
+          <div class="weapon-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M5 12h14M12 5l7 7-7 7"/>
+            </svg>
+          </div>
+          <div class="weapon-bar">
+            <div class="weapon-fill bull-side" style="width: 0%"></div>
+            <div class="weapon-center"></div>
+            <div class="weapon-fill bear-side" style="width: 0%"></div>
+          </div>
+          <div class="weapon-label">ORDERFLOW</div>
+          <div class="weapon-value">--</div>
+        </div>
+        <div class="weapon-slot" data-component="sentiment">
+          <div class="weapon-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/>
+            </svg>
+          </div>
+          <div class="weapon-bar">
+            <div class="weapon-fill bull-side" style="width: 0%"></div>
+            <div class="weapon-center"></div>
+            <div class="weapon-fill bear-side" style="width: 0%"></div>
+          </div>
+          <div class="weapon-label">SENTIMENT</div>
+          <div class="weapon-value">--</div>
+        </div>
+        <div class="weapon-slot" data-component="orderbook">
+          <div class="weapon-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/>
+            </svg>
+          </div>
+          <div class="weapon-bar">
+            <div class="weapon-fill bull-side" style="width: 0%"></div>
+            <div class="weapon-center"></div>
+            <div class="weapon-fill bear-side" style="width: 0%"></div>
+          </div>
+          <div class="weapon-label">ORDERBOOK</div>
+          <div class="weapon-value">--</div>
+        </div>
+        <div class="weapon-slot" data-component="price_structure">
+          <div class="weapon-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 21h18M3 10h18M3 3l9 7 9-7"/>
+            </svg>
+          </div>
+          <div class="weapon-bar">
+            <div class="weapon-fill bull-side" style="width: 0%"></div>
+            <div class="weapon-center"></div>
+            <div class="weapon-fill bear-side" style="width: 0%"></div>
+          </div>
+          <div class="weapon-label">STRUCTURE</div>
+          <div class="weapon-value">--</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Battle Stats -->
+    <div class="battle-stats-bar">
+      <div class="stat-item">
+        <span class="stat-label">Bears</span>
+        <span class="stat-value bearish" id="bear-count">0</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-label">Bear Avg</span>
+        <span class="stat-value" id="bear-avg">--</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-label">Bulls</span>
+        <span class="stat-value bullish" id="bull-count">0</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-label">Bull Avg</span>
+        <span class="stat-value" id="bull-avg">--</span>
+      </div>
+    </div>
+
+    <!-- Arena Card (Fighter Roster) -->
+    <div class="arena-card">
+      <div class="arena-battlefield">
+        <div class="arena-zone bearish-zone">
+          <div class="zone-header">
+            <span class="zone-icon">▼</span>
+            <h3>Bearish</h3>
+            <div class="zone-stats">
+              <div class="zone-stat">
+                <span>Avg:</span>
+                <span class="zone-stat-value" id="bear-zone-avg">--</span>
+              </div>
+            </div>
+          </div>
+          <div class="asset-list" id="bearish-list">
+            <div class="loading-zone">
+              <div class="loading-spinner"></div>
+              <span>Loading fighters...</span>
+            </div>
+          </div>
+        </div>
+        <div class="arena-divider"></div>
+        <div class="arena-zone bullish-zone">
+          <div class="zone-header">
+            <span class="zone-icon">▲</span>
+            <h3>Bullish</h3>
+            <div class="zone-stats">
+              <div class="zone-stat">
+                <span>Avg:</span>
+                <span class="zone-stat-value" id="bull-zone-avg">--</span>
+              </div>
+            </div>
+          </div>
+          <div class="asset-list" id="bullish-list">
+            <div class="loading-zone">
+              <div class="loading-spinner"></div>
+              <span>Loading fighters...</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="arena-footer">
+        <div class="arena-summary">
+          <div class="summary-item">
+            <div class="summary-dot bearish"></div>
+            <span class="summary-label">Bears</span>
+            <span class="summary-value" id="footer-bear-count">0</span>
+          </div>
+          <div class="summary-item">
+            <div class="summary-dot bullish"></div>
+            <span class="summary-label">Bulls</span>
+            <span class="summary-value" id="footer-bull-count">0</span>
+          </div>
+        </div>
+        <div class="arena-timestamp" id="timestamp">--</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function() {
+      'use strict';
+
+      const CONFIG = {
+        API_ENDPOINT: '/api/dashboard/overview',
+        REFRESH_INTERVAL: 30000,
+        FETCH_TIMEOUT: 10000,
+        BULLISH_THRESHOLD: 55,
+        BEARISH_THRESHOLD: 45,
+        DEBUG: false
+      };
+
+      let state = {
+        previousData: null,
+        isLoading: false,
+        lastUpdate: null
+      };
+
+      // ===== PARTICLE SYSTEM =====
+      class ParticleSystem {
+        constructor(container) {
+          this.container = container;
+          this.particles = [];
+          this.maxParticles = 25;
+        }
+
+        createImpact(x, y, color, count = 10) {
+          for (let i = 0; i < count; i++) {
+            if (this.particles.length >= this.maxParticles) this.removeOldest();
+
+            const particle = document.createElement('div');
+            const angle = (Math.PI * 2 / count) * i + Math.random() * 0.5;
+            const velocity = 60 + Math.random() * 80;
+
+            particle.style.cssText = `
+              position: absolute;
+              left: ${x}px; top: ${y}px;
+              width: 5px; height: 5px;
+              background: ${color};
+              border-radius: 50%;
+              pointer-events: none;
+              box-shadow: 0 0 8px ${color};
+            `;
+
+            this.container.appendChild(particle);
+            this.particles.push({
+              el: particle,
+              vx: Math.cos(angle) * velocity,
+              vy: Math.sin(angle) * velocity,
+              life: 1
+            });
+          }
+          this.animate();
+        }
+
+        createDamageNumber(x, y, value, isBull) {
+          const number = document.createElement('div');
+          const color = isBull ? '#10b981' : '#ef4444';
+          const sign = value > 0 ? '+' : '';
+
+          number.textContent = `${sign}${value.toFixed(1)}`;
+          number.style.cssText = `
+            position: absolute;
+            left: ${x}px; top: ${y}px;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 14px; font-weight: 700;
+            color: ${color};
+            text-shadow: 0 0 8px ${color};
+            pointer-events: none;
+            z-index: 100;
+          `;
+
+          this.container.appendChild(number);
+
+          number.animate([
+            { opacity: 1, transform: 'translateY(0) scale(1)' },
+            { opacity: 0, transform: 'translateY(-40px) scale(1.3)' }
+          ], { duration: 1200, easing: 'ease-out' }).onfinish = () => number.remove();
+        }
+
+        animate() {
+          if (this.particles.length === 0) return;
+
+          this.particles = this.particles.filter(p => {
+            p.life -= 0.025;
+            if (p.life <= 0) { p.el.remove(); return false; }
+
+            const currentX = parseFloat(p.el.style.left);
+            const currentY = parseFloat(p.el.style.top);
+
+            p.el.style.left = (currentX + p.vx * 0.018) + 'px';
+            p.el.style.top = (currentY + p.vy * 0.018) + 'px';
+            p.el.style.opacity = p.life;
+            p.el.style.transform = `scale(${p.life})`;
+            p.vy += 2.5;
+            return true;
+          });
+
+          if (this.particles.length > 0) requestAnimationFrame(() => this.animate());
+        }
+
+        removeOldest() {
+          if (this.particles.length > 0) {
+            const oldest = this.particles.shift();
+            oldest.el.remove();
+          }
+        }
+      }
+
+      const particles = new ParticleSystem(document.getElementById('particles'));
+
+      // ===== UTILITY FUNCTIONS =====
+      function log(...args) { if (CONFIG.DEBUG) console.log('[Arena]', ...args); }
+
+      function formatPrice(price) {
+        if (price >= 1000) return '$' + price.toLocaleString('en-US', { maximumFractionDigits: 0 });
+        if (price >= 1) return '$' + price.toFixed(2);
+        if (price >= 0.01) return '$' + price.toFixed(4);
+        return '$' + price.toFixed(6);
+      }
+
+      function formatChange(change) {
+        return (change >= 0 ? '+' : '') + change.toFixed(1) + '%';
+      }
+
+      function getConviction(score) {
+        return Math.abs(score - 50) * 2;
+      }
+
+      function getCircleParams(score) {
+        const radius = 14;
+        const circumference = 2 * Math.PI * radius;
+        const dashoffset = circumference * (1 - score / 100);
+        return { circumference, dashoffset };
+      }
+
+      function getStrengthBars(conviction) {
+        const bars = [];
+        const levels = [20, 40, 60, 80, 100];
+        const heights = [3, 5, 7, 9, 11];
+        for (let i = 0; i < 5; i++) {
+          bars.push(`<div class="strength-bar ${conviction >= levels[i] ? 'active' : 'inactive'}" style="height: ${heights[i]}px"></div>`);
+        }
+        return bars.join('');
+      }
+
+      function getSentimentState(avgScore) {
+        if (avgScore >= 70) return 'bull-domination';
+        if (avgScore >= 55) return 'bull-advantage';
+        if (avgScore <= 30) return 'bear-domination';
+        if (avgScore <= 45) return 'bear-advantage';
+        return 'clash';
+      }
+
+      function updateStatus(status, message) {
+        document.getElementById('status-dot').className = 'status-dot ' + status;
+        document.getElementById('status-text').textContent = message;
+      }
+
+      // ===== DATA TRANSFORMATION =====
+      function transformAPIData(apiResponse) {
+        if (!apiResponse || !apiResponse.signals) {
+          throw new Error('Invalid API response');
+        }
+
+        return apiResponse.signals.map(item => {
+          const symbol = item.symbol.replace(/USDT$/i, '');
+          let signal = 'NEUTRAL';
+          if (item.confluence_score >= CONFIG.BULLISH_THRESHOLD) signal = 'LONG';
+          else if (item.confluence_score <= CONFIG.BEARISH_THRESHOLD) signal = 'SHORT';
+
+          return {
+            symbol,
+            price: item.price,
+            change: item.change_24h,
+            score: Math.round(item.confluence_score * 100) / 100,
+            signal,
+            components: item.components || {}
+          };
+        });
+      }
+
+      // ===== DETECT CHANGES =====
+      function detectChanges(oldData, newData) {
+        const changes = [];
+        if (!oldData) return changes;
+
+        const oldScores = new Map(oldData.map(d => [d.symbol, d]));
+
+        for (const item of newData) {
+          const old = oldScores.get(item.symbol);
+          if (old) {
+            const scoreDiff = item.score - old.score;
+            if (Math.abs(scoreDiff) >= 4) {
+              changes.push({
+                symbol: item.symbol,
+                type: Math.abs(scoreDiff) >= 8 ? 'major' : 'minor',
+                direction: scoreDiff > 0 ? 'bull' : 'bear',
+                magnitude: Math.abs(scoreDiff)
+              });
+            }
+          }
+        }
+        return changes;
+      }
+
+      // ===== TRIGGER ATTACK =====
+      function triggerAttack(change) {
+        const bullFighter = document.getElementById('bull-fighter');
+        const bearFighter = document.getElementById('bear-fighter');
+        const clashBurst = document.getElementById('clash-burst');
+        const stage = document.getElementById('battle-stage');
+        const container = stage.querySelector('.fighters-container');
+
+        const centerX = container.offsetWidth / 2;
+        const centerY = container.offsetHeight / 2;
+
+        if (change.direction === 'bull') {
+          bullFighter.classList.add('attacking');
+          setTimeout(() => {
+            bullFighter.classList.remove('attacking');
+            clashBurst.classList.add('impact');
+            particles.createImpact(centerX, centerY, '#10b981', change.type === 'major' ? 15 : 8);
+            particles.createDamageNumber(centerX - 30, centerY - 20, change.magnitude, true);
+            setTimeout(() => clashBurst.classList.remove('impact'), 400);
+          }, 250);
+        } else {
+          bearFighter.classList.add('attacking');
+          setTimeout(() => {
+            bearFighter.classList.remove('attacking');
+            clashBurst.classList.add('impact');
+            particles.createImpact(centerX, centerY, '#ef4444', change.type === 'major' ? 15 : 8);
+            particles.createDamageNumber(centerX + 30, centerY - 20, -change.magnitude, false);
+            setTimeout(() => clashBurst.classList.remove('impact'), 400);
+          }, 250);
+        }
+      }
+
+      // ===== CREATE ASSET CARD =====
+      function createAssetCard(asset, index, isBearish, isTop = false) {
+        const conviction = getConviction(asset.score);
+        const delay = index * 0.06 + 0.2;
+        const { circumference, dashoffset } = getCircleParams(asset.score);
+        const directionIcon = isBearish ? '▼' : '▲';
+
+        return `
+          <div class="asset-card ${isTop ? 'top-signal' : ''}" style="animation-delay: ${delay}s">
+            ${isTop ? '<span class="top-badge">TOP</span>' : ''}
+            <div class="asset-main-row">
+              <div class="asset-identity">
+                <span class="asset-direction-icon">${directionIcon}</span>
+                <span class="asset-symbol">${asset.symbol}</span>
+              </div>
+              <div class="score-circle">
+                <svg width="36" height="36" viewBox="0 0 36 36">
+                  <circle class="score-circle-bg" cx="18" cy="18" r="14"/>
+                  <circle class="score-circle-fill" cx="18" cy="18" r="14"
+                    stroke-dasharray="${circumference}" stroke-dashoffset="${dashoffset}"
+                    style="transition-delay: ${delay}s"/>
+                </svg>
+                <span class="score-value">${Math.round(asset.score)}</span>
+              </div>
+            </div>
+            <div class="asset-meta-row">
+              <div class="asset-price-info">
+                <span class="asset-price">${formatPrice(asset.price)}</span>
+                <span class="asset-change ${asset.change >= 0 ? 'positive' : 'negative'}">${formatChange(asset.change)}</span>
+              </div>
+              <div class="signal-strength">
+                ${getStrengthBars(conviction)}
+                <span class="conviction-label">${Math.round(conviction)}%</span>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+
+      // ===== RENDER ARENA =====
+      function renderArena(data) {
+        const bullish = data.filter(a => a.signal === 'LONG').sort((a, b) => b.score - a.score);
+        const bearish = data.filter(a => a.signal === 'SHORT').sort((a, b) => a.score - b.score);
+
+        log('Bulls:', bullish.length, 'Bears:', bearish.length);
+
+        // Update roster lists
+        document.getElementById('bearish-list').innerHTML = bearish.length > 0
+          ? bearish.map((a, i) => createAssetCard(a, i, true, i === 0)).join('')
+          : '<div class="empty-zone"><span class="empty-zone-icon">▲</span>No bearish fighters</div>';
+
+        document.getElementById('bullish-list').innerHTML = bullish.length > 0
+          ? bullish.map((a, i) => createAssetCard(a, i, false, i === 0)).join('')
+          : '<div class="empty-zone"><span class="empty-zone-icon">▼</span>No bullish fighters</div>';
+
+        // Calculate overall sentiment
+        const allScores = data.map(d => d.score);
+        const avgScore = allScores.length > 0 ? allScores.reduce((a, b) => a + b, 0) / allScores.length : 50;
+
+        const bullPower = Math.max(0, Math.min(100, (avgScore - 50) * 2));
+        const bearPower = Math.max(0, Math.min(100, (50 - avgScore) * 2));
+
+        // Update battle stage sentiment
+        document.getElementById('battle-stage').dataset.sentiment = getSentimentState(avgScore);
+
+        // Update power bars
+        document.getElementById('bull-power-fill').style.width = bullPower + '%';
+        document.getElementById('bear-power-fill').style.width = bearPower + '%';
+        document.getElementById('bull-power-val').textContent = Math.round(bullPower) + '%';
+        document.getElementById('bear-power-val').textContent = Math.round(bearPower) + '%';
+
+        // Update momentum
+        const momentumMarker = document.getElementById('momentum-marker');
+        const momentumLabel = document.getElementById('momentum-label');
+        momentumMarker.style.left = avgScore + '%';
+
+        if (avgScore >= 55) {
+          momentumLabel.textContent = avgScore >= 70 ? 'BULLS DOMINATING' : 'BULLS ADVANCING';
+          momentumLabel.className = 'momentum-label bullish';
+        } else if (avgScore <= 45) {
+          momentumLabel.textContent = avgScore <= 30 ? 'BEARS DOMINATING' : 'BEARS ADVANCING';
+          momentumLabel.className = 'momentum-label bearish';
+        } else {
+          momentumLabel.textContent = 'ACTIVE COMBAT';
+          momentumLabel.className = 'momentum-label neutral';
+        }
+
+        // Update weapon rack (aggregate components)
+        const components = ['technical', 'volume', 'orderflow', 'sentiment', 'orderbook', 'price_structure'];
+        for (const comp of components) {
+          const scores = data.map(d => d.components?.[comp] || 50).filter(s => s !== undefined);
+          const avgCompScore = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 50;
+
+          const deviation = avgCompScore - 50;
+          const bullWidth = Math.max(0, deviation) + '%';
+          const bearWidth = Math.max(0, -deviation) + '%';
+          const activeClass = deviation > 8 ? 'bull-active' : deviation < -8 ? 'bear-active' : '';
+
+          const slot = document.querySelector(`[data-component="${comp}"]`);
+          if (slot) {
+            slot.className = `weapon-slot ${activeClass}`;
+            slot.querySelector('.weapon-fill.bull-side').style.width = bullWidth;
+            slot.querySelector('.weapon-fill.bear-side').style.width = bearWidth;
+            slot.querySelector('.weapon-value').textContent = avgCompScore.toFixed(0);
+          }
+        }
+
+        // Update stats
+        document.getElementById('bear-count').textContent = bearish.length;
+        document.getElementById('bull-count').textContent = bullish.length;
+        document.getElementById('footer-bear-count').textContent = bearish.length;
+        document.getElementById('footer-bull-count').textContent = bullish.length;
+
+        const bearAvg = bearish.length > 0 ? Math.round(bearish.reduce((s, a) => s + a.score, 0) / bearish.length) : '--';
+        const bullAvg = bullish.length > 0 ? Math.round(bullish.reduce((s, a) => s + a.score, 0) / bullish.length) : '--';
+
+        document.getElementById('bear-avg').textContent = bearAvg;
+        document.getElementById('bull-avg').textContent = bullAvg;
+        document.getElementById('bear-zone-avg').textContent = bearAvg;
+        document.getElementById('bull-zone-avg').textContent = bullAvg;
+
+        // Timestamp
+        const now = new Date();
+        state.lastUpdate = now;
+        document.getElementById('timestamp').textContent =
+          now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) +
+          ' | ' + now.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+        // Detect and trigger attacks
+        const changes = detectChanges(state.previousData, data);
+        changes.slice(0, 3).forEach((change, i) => {
+          setTimeout(() => triggerAttack(change), i * 500);
+        });
+
+        state.previousData = [...data];
+      }
+
+      // ===== FETCH DATA =====
+      async function fetchData() {
+        if (state.isLoading) return;
+        state.isLoading = true;
+        updateStatus('loading', 'Updating...');
+
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), CONFIG.FETCH_TIMEOUT);
+
+          const response = await fetch(CONFIG.API_ENDPOINT, {
+            signal: controller.signal,
+            headers: { 'Accept': 'application/json' }
+          });
+
+          clearTimeout(timeoutId);
+
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+          const apiData = await response.json();
+          log('API Response:', apiData);
+
+          const transformedData = transformAPIData(apiData);
+          renderArena(transformedData);
+          updateStatus('connected', `Live • ${transformedData.length} fighters`);
+
+        } catch (error) {
+          console.error('[Arena] Fetch error:', error);
+          updateStatus('error', 'Connection error');
+
+          if (!state.previousData) {
+            document.getElementById('bearish-list').innerHTML = '<div class="empty-zone"><span class="empty-zone-icon">!</span>Failed to load</div>';
+            document.getElementById('bullish-list').innerHTML = '<div class="empty-zone"><span class="empty-zone-icon">!</span>Failed to load</div>';
+          }
+        } finally {
+          state.isLoading = false;
+        }
+      }
+
+      // ===== INITIALIZATION =====
+      function init() {
+        log('Initializing Bull vs Bear Arena...');
+        fetchData();
+        setInterval(fetchData, CONFIG.REFRESH_INTERVAL);
+
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState === 'visible') {
+            const timeSinceUpdate = Date.now() - (state.lastUpdate?.getTime() || 0);
+            if (timeSinceUpdate > CONFIG.REFRESH_INTERVAL) fetchData();
+          }
+        });
+      }
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+      } else {
+        init();
+      }
+    })();
+  </script>
+</body>
+</html>
