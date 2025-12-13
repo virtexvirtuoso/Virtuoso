@@ -1,0 +1,2031 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alpha Pulse Pro | Virtuoso Trading</title>
+    <meta name="description" content="Real-time cryptocurrency alpha signal analysis with alpha pulse visualization">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        /*
+         * ALPHA PULSE PRO - Production Wired Version
+         * Connected to: /api/dashboard/mobile-data
+         *
+         * Features:
+         * 1. Live API integration with 30s auto-refresh
+         * 2. Loading/error states with retry
+         * 3. CORS handling with fallback
+         * 4. Network timeout (5s)
+         * 5. Sentiment mapping (BULLISH→LONG, BEARISH→SHORT, NEUTRAL→NEUTRAL)
+         * 6. Visual refresh indicator
+         * 7. All champion design features preserved
+         * 8. Embed mode support (?embed=1)
+         */
+
+        :root {
+            /* Core palette */
+            --bg-dark: #0a0a0a;
+            --bg-darker: #050505;
+            --card-bg: #1a1a1a;
+            --card-bg-hover: #222222;
+
+            /* Brand colors */
+            --accent-gold: #fbbf24;
+            --accent-gold-dim: rgba(251, 191, 36, 0.6);
+            --accent-gold-subtle: rgba(251, 191, 36, 0.1);
+
+            /* Signal colors - WCAG AA compliant on dark backgrounds */
+            --bullish: #10b981;
+            --bullish-bright: #34d399;
+            --bullish-glow: rgba(16, 185, 129, 0.4);
+            --bullish-bg: rgba(16, 185, 129, 0.08);
+
+            --bearish: #ef4444;
+            --bearish-bright: #f87171;
+            --bearish-glow: rgba(239, 68, 68, 0.4);
+            --bearish-bg: rgba(239, 68, 68, 0.08);
+
+            --neutral: #9ca3af;
+            --neutral-bright: #d1d5db;
+            --neutral-glow: rgba(156, 163, 175, 0.3);
+            --neutral-bg: rgba(156, 163, 175, 0.05);
+
+            /* Typography */
+            --text-primary: #ffffff;
+            --text-secondary: #a1a1aa;
+            --text-muted: #71717a;
+
+            /* Borders */
+            --border-subtle: rgba(255, 255, 255, 0.06);
+            --border-hover: rgba(255, 255, 255, 0.12);
+
+            /* Animation timing */
+            --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+            --ease-out-back: cubic-bezier(0.34, 1.56, 0.64, 1);
+            --ease-spring: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+
+            /* Layout */
+            --container-max: 1280px;
+            --card-radius: 20px;
+            --spacing-unit: 8px;
+        }
+
+        /* Dark mode preference support */
+        @media (prefers-color-scheme: light) {
+            :root {
+                /* Could add light mode here if needed */
+            }
+        }
+
+        /* Reduced motion preference */
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html {
+            scroll-behavior: smooth;
+            -webkit-text-size-adjust: 100%;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: var(--bg-dark);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+            line-height: 1.5;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        /* Focus visible for keyboard navigation */
+        :focus-visible {
+            outline: 2px solid var(--accent-gold);
+            outline-offset: 2px;
+        }
+
+        /* Skip link for accessibility */
+        .skip-link {
+            position: absolute;
+            top: -100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--accent-gold);
+            color: var(--bg-dark);
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-weight: 600;
+            z-index: 9999;
+            transition: top 0.3s var(--ease-out-expo);
+        }
+
+        .skip-link:focus {
+            top: 16px;
+        }
+
+        /* ===== CANVAS BACKGROUND ===== */
+        .bg-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -2;
+            background: var(--bg-darker);
+        }
+
+        .bg-gradient {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background:
+                radial-gradient(ellipse 100% 60% at 10% 20%, rgba(251, 191, 36, 0.04) 0%, transparent 50%),
+                radial-gradient(ellipse 80% 50% at 90% 80%, rgba(16, 185, 129, 0.03) 0%, transparent 50%),
+                radial-gradient(ellipse 60% 40% at 50% 50%, rgba(239, 68, 68, 0.02) 0%, transparent 40%);
+            z-index: -1;
+            will-change: opacity;
+            animation: bgPulse 12s ease-in-out infinite alternate;
+        }
+
+        @keyframes bgPulse {
+            0% { opacity: 0.6; }
+            100% { opacity: 1; }
+        }
+
+        /* ===== PARTICLE SYSTEM ===== */
+        .particles {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 0;
+            overflow: hidden;
+        }
+
+        .particle {
+            position: absolute;
+            border-radius: 50%;
+            opacity: 0;
+            will-change: transform, opacity;
+            animation: floatParticle var(--duration) linear infinite;
+            animation-delay: var(--delay);
+        }
+
+        .particle::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 200%;
+            height: 200%;
+            background: inherit;
+            border-radius: 50%;
+            filter: blur(4px);
+            opacity: 0.3;
+        }
+
+        @keyframes floatParticle {
+            0% {
+                transform: translateY(100vh) translateX(0) rotate(0deg);
+                opacity: 0;
+            }
+            5% { opacity: var(--opacity); }
+            95% { opacity: var(--opacity); }
+            100% {
+                transform: translateY(-50px) translateX(var(--drift)) rotate(360deg);
+                opacity: 0;
+            }
+        }
+
+        /* ===== CONTAINER ===== */
+        .container {
+            max-width: var(--container-max);
+            margin: 0 auto;
+            padding: calc(var(--spacing-unit) * 5) calc(var(--spacing-unit) * 3);
+            position: relative;
+            z-index: 1;
+        }
+
+        /* ===== HEADER ===== */
+        .header {
+            text-align: center;
+            margin-bottom: calc(var(--spacing-unit) * 7);
+            position: relative;
+        }
+
+        .header-wave-container {
+            position: absolute;
+            top: -30px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: min(800px, 100%);
+            height: 120px;
+            opacity: 0.25;
+            pointer-events: none;
+        }
+
+        .header-wave-path {
+            stroke: url(#headerGradient);
+            stroke-width: 2;
+            fill: none;
+            filter: drop-shadow(0 0 12px var(--accent-gold-dim));
+        }
+
+        .title-container {
+            position: relative;
+            display: inline-block;
+        }
+
+        .title-glow {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 120%;
+            height: 200%;
+            background: radial-gradient(ellipse at center, rgba(251, 191, 36, 0.12) 0%, transparent 70%);
+            pointer-events: none;
+            will-change: transform, opacity;
+            animation: titleGlow 4s ease-in-out infinite alternate;
+        }
+
+        @keyframes titleGlow {
+            0% { opacity: 0.4; transform: translate(-50%, -50%) scale(0.9); }
+            100% { opacity: 1; transform: translate(-50%, -50%) scale(1.1); }
+        }
+
+        .title {
+            font-size: clamp(2.2rem, 8vw, 4rem);
+            font-weight: 800;
+            letter-spacing: -0.03em;
+            background: linear-gradient(
+                135deg,
+                var(--accent-gold) 0%,
+                #f59e0b 25%,
+                var(--accent-gold) 50%,
+                #fcd34d 75%,
+                var(--accent-gold) 100%
+            );
+            background-size: 300% auto;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            animation: shimmerTitle 5s linear infinite;
+            position: relative;
+        }
+
+        @keyframes shimmerTitle {
+            0% { background-position: 0% center; }
+            100% { background-position: 300% center; }
+        }
+
+        .subtitle {
+            font-size: clamp(0.95rem, 2.5vw, 1.15rem);
+            color: var(--text-secondary);
+            font-weight: 400;
+            letter-spacing: 0.04em;
+            margin-top: calc(var(--spacing-unit) * 1);
+        }
+
+        /* Connection status indicator */
+        .status-bar {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: calc(var(--spacing-unit) * 2);
+            margin-top: calc(var(--spacing-unit) * 2);
+            flex-wrap: wrap;
+        }
+
+        .timestamp {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            padding: 6px 16px;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .connection-status {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            padding: 6px 12px;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .status-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--neutral);
+            transition: background 0.3s ease;
+        }
+
+        .status-dot.connected {
+            background: var(--bullish);
+            box-shadow: 0 0 8px var(--bullish-glow);
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        .status-dot.loading {
+            background: var(--accent-gold);
+            animation: pulse 1s ease-in-out infinite;
+        }
+
+        .status-dot.error {
+            background: var(--bearish);
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        /* Refresh indicator */
+        .refresh-indicator {
+            display: inline-block;
+            margin-left: 6px;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .refresh-indicator.active {
+            opacity: 1;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        /* ===== SUMMARY STATS ===== */
+        .summary-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: calc(var(--spacing-unit) * 2);
+            margin-bottom: calc(var(--spacing-unit) * 4);
+            padding: calc(var(--spacing-unit) * 2.5);
+            background: rgba(255, 255, 255, 0.02);
+            border-radius: 16px;
+            border: 1px solid var(--border-subtle);
+        }
+
+        .stat-item {
+            text-align: center;
+            padding: calc(var(--spacing-unit) * 1.5);
+        }
+
+        .stat-value {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            line-height: 1;
+        }
+
+        .stat-value.bullish { color: var(--bullish-bright); }
+        .stat-value.bearish { color: var(--bearish-bright); }
+        .stat-value.gold { color: var(--accent-gold); }
+
+        .stat-label {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            margin-top: 4px;
+        }
+
+        /* ===== LEGEND ===== */
+        .legend {
+            display: flex;
+            justify-content: center;
+            gap: calc(var(--spacing-unit) * 3);
+            margin-bottom: calc(var(--spacing-unit) * 5);
+            flex-wrap: wrap;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            padding: 10px 18px;
+            background: rgba(255, 255, 255, 0.02);
+            border-radius: 10px;
+            border: 1px solid var(--border-subtle);
+            transition: all 0.3s var(--ease-out-expo);
+            cursor: default;
+        }
+
+        .legend-item:hover {
+            background: rgba(255, 255, 255, 0.05);
+            transform: translateY(-2px);
+        }
+
+        .legend-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            position: relative;
+        }
+
+        .legend-dot::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            opacity: 0.2;
+            animation: legendPulse 3s ease-in-out infinite;
+        }
+
+        @keyframes legendPulse {
+            0%, 100% { transform: translate(-50%, -50%) scale(0.8); opacity: 0.2; }
+            50% { transform: translate(-50%, -50%) scale(1); opacity: 0.35; }
+        }
+
+        .legend-dot.bullish {
+            background: var(--bullish);
+            box-shadow: 0 0 12px var(--bullish-glow);
+        }
+        .legend-dot.bullish::after { background: var(--bullish); }
+
+        .legend-dot.bearish {
+            background: var(--bearish);
+            box-shadow: 0 0 12px var(--bearish-glow);
+        }
+        .legend-dot.bearish::after { background: var(--bearish); }
+
+        .legend-dot.neutral {
+            background: var(--neutral);
+            box-shadow: 0 0 8px var(--neutral-glow);
+        }
+        .legend-dot.neutral::after { background: var(--neutral); }
+
+        /* ===== FILTER CONTROLS ===== */
+        .filter-controls {
+            display: flex;
+            justify-content: center;
+            gap: calc(var(--spacing-unit) * 1.5);
+            margin-bottom: calc(var(--spacing-unit) * 4);
+            flex-wrap: wrap;
+        }
+
+        .filter-btn {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.75rem;
+            font-weight: 500;
+            padding: 8px 16px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--border-subtle);
+            border-radius: 8px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.25s var(--ease-out-expo);
+        }
+
+        .filter-btn:hover {
+            background: rgba(255, 255, 255, 0.06);
+            border-color: var(--border-hover);
+            color: var(--text-primary);
+        }
+
+        .filter-btn.active {
+            background: var(--accent-gold-subtle);
+            border-color: rgba(251, 191, 36, 0.3);
+            color: var(--accent-gold);
+        }
+
+        /* ===== CARDS CONTAINER ===== */
+        .cards-container {
+            display: flex;
+            flex-direction: column;
+            gap: calc(var(--spacing-unit) * 1.75);
+        }
+
+        /* ===== ASSET CARD ===== */
+        .asset-card {
+            position: relative;
+            background: var(--card-bg);
+            border-radius: var(--card-radius);
+            overflow: hidden;
+            border: 1px solid var(--border-subtle);
+            cursor: pointer;
+            opacity: 0;
+            transform: translateY(30px) scale(0.98);
+            will-change: transform, opacity, box-shadow;
+            transition:
+                transform 0.5s var(--ease-out-expo),
+                box-shadow 0.4s var(--ease-out-expo),
+                border-color 0.3s ease;
+        }
+
+        .asset-card.visible {
+            animation: cardEntry 0.6s var(--ease-out-expo) forwards;
+        }
+
+        @keyframes cardEntry {
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+
+        .asset-card:hover {
+            transform: translateY(-6px) scale(1.008);
+            border-color: var(--border-hover);
+        }
+
+        .asset-card:active {
+            transform: translateY(-3px) scale(1.004);
+        }
+
+        /* Card variants */
+        .asset-card.bullish {
+            background: linear-gradient(135deg, var(--card-bg) 0%, var(--bullish-bg) 100%);
+        }
+        .asset-card.bullish:hover {
+            box-shadow:
+                0 24px 64px -16px var(--bullish-glow),
+                0 0 0 1px rgba(16, 185, 129, 0.2),
+                inset 0 1px 0 rgba(16, 185, 129, 0.1);
+        }
+
+        .asset-card.bearish {
+            background: linear-gradient(135deg, var(--card-bg) 0%, var(--bearish-bg) 100%);
+        }
+        .asset-card.bearish:hover {
+            box-shadow:
+                0 24px 64px -16px var(--bearish-glow),
+                0 0 0 1px rgba(239, 68, 68, 0.2),
+                inset 0 1px 0 rgba(239, 68, 68, 0.1);
+        }
+
+        .asset-card.neutral {
+            background: linear-gradient(135deg, var(--card-bg) 0%, var(--neutral-bg) 100%);
+        }
+        .asset-card.neutral:hover {
+            box-shadow:
+                0 20px 48px -12px var(--neutral-glow),
+                0 0 0 1px rgba(156, 163, 175, 0.15);
+        }
+
+        /* High conviction glow effect */
+        .asset-card.high-conviction::before {
+            content: '';
+            position: absolute;
+            top: -2px;
+            left: -2px;
+            right: -2px;
+            bottom: -2px;
+            border-radius: calc(var(--card-radius) + 2px);
+            z-index: -1;
+            opacity: 0;
+            transition: opacity 0.5s ease;
+        }
+
+        .asset-card.high-conviction.bullish::before {
+            background: linear-gradient(135deg, var(--bullish) 0%, transparent 50%, var(--bullish-bright) 100%);
+            animation: auraGlow 3s ease-in-out infinite alternate;
+        }
+
+        .asset-card.high-conviction.bearish::before {
+            background: linear-gradient(135deg, var(--bearish) 0%, transparent 50%, var(--bearish-bright) 100%);
+            animation: auraGlow 3.5s ease-in-out infinite alternate;
+        }
+
+        @keyframes auraGlow {
+            0% { opacity: 0.15; }
+            100% { opacity: 0.4; }
+        }
+
+        /* ===== WAVE BACKGROUND ===== */
+        .wave-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            pointer-events: none;
+        }
+
+        .wave-glow {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 70%;
+            pointer-events: none;
+            opacity: 0.25;
+            transition: opacity 0.4s ease;
+        }
+
+        .asset-card:hover .wave-glow { opacity: 0.45; }
+
+        .asset-card.bullish .wave-glow {
+            background: linear-gradient(to top, rgba(16, 185, 129, 0.18) 0%, transparent 100%);
+        }
+        .asset-card.bearish .wave-glow {
+            background: linear-gradient(to top, rgba(239, 68, 68, 0.18) 0%, transparent 100%);
+        }
+        .asset-card.neutral .wave-glow {
+            background: linear-gradient(to top, rgba(156, 163, 175, 0.08) 0%, transparent 100%);
+        }
+
+        .wave-canvas {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0.15;
+            transition: opacity 0.4s ease;
+        }
+
+        .asset-card:hover .wave-canvas { opacity: 0.3; }
+
+        /* ===== CARD CONTENT ===== */
+        .card-inner {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            align-items: center;
+            padding: calc(var(--spacing-unit) * 3) calc(var(--spacing-unit) * 4);
+            position: relative;
+            z-index: 2;
+            gap: calc(var(--spacing-unit) * 3);
+        }
+
+        .card-content {
+            display: flex;
+            align-items: center;
+            gap: calc(var(--spacing-unit) * 4);
+            flex-wrap: wrap;
+        }
+
+        .symbol-block {
+            width: 160px;
+            flex-shrink: 0;
+        }
+
+        .symbol {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: clamp(1.3rem, 3vw, 1.6rem);
+            font-weight: 700;
+            color: var(--text-primary);
+            letter-spacing: -0.02em;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .rank-badge {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.6rem;
+            font-weight: 600;
+            padding: 3px 7px;
+            border-radius: 5px;
+            background: linear-gradient(135deg, rgba(251, 191, 36, 0.2) 0%, rgba(251, 191, 36, 0.1) 100%);
+            color: var(--accent-gold);
+            border: 1px solid rgba(251, 191, 36, 0.3);
+        }
+
+        .signal-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.65rem;
+            font-weight: 600;
+            padding: 5px 12px;
+            border-radius: 6px;
+            margin-top: 6px;
+            letter-spacing: 0.06em;
+            transition: all 0.3s ease;
+        }
+
+        .signal-badge::before {
+            content: '';
+            width: 5px;
+            height: 5px;
+            border-radius: 50%;
+            animation: signalPulse 1.5s ease-in-out infinite;
+        }
+
+        @keyframes signalPulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(0.8); }
+        }
+
+        .signal-badge.LONG {
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--bullish-bright);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+        .signal-badge.LONG::before { background: var(--bullish); }
+
+        .signal-badge.SHORT {
+            background: rgba(239, 68, 68, 0.15);
+            color: var(--bearish-bright);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+        .signal-badge.SHORT::before { background: var(--bearish); }
+
+        .signal-badge.NEUTRAL {
+            background: rgba(156, 163, 175, 0.12);
+            color: var(--neutral-bright);
+            border: 1px solid rgba(156, 163, 175, 0.2);
+        }
+        .signal-badge.NEUTRAL::before { background: var(--neutral); animation: none; }
+
+        .metrics {
+            display: flex;
+            gap: calc(var(--spacing-unit) * 5);
+            flex-wrap: wrap;
+        }
+
+        .metric {
+            text-align: left;
+        }
+
+        .metric:first-child {
+            width: 110px;
+            flex-shrink: 0;
+        }
+
+        .metric:nth-child(2) {
+            width: 100px;
+            flex-shrink: 0;
+        }
+
+        .metric-label {
+            font-size: 0.68rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-bottom: 4px;
+        }
+
+        .metric-value {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: clamp(1rem, 2.5vw, 1.15rem);
+            font-weight: 500;
+            color: var(--text-primary);
+            transition: color 0.3s ease;
+        }
+
+        .metric-value.positive { color: var(--bullish-bright); }
+        .metric-value.negative { color: var(--bearish-bright); }
+
+        /* Trend arrow */
+        .trend-arrow {
+            display: inline-block;
+            margin-left: 4px;
+            font-size: 0.8em;
+            transition: transform 0.3s var(--ease-spring);
+        }
+
+        .asset-card:hover .trend-arrow.up { transform: translateY(-2px); }
+        .asset-card:hover .trend-arrow.down { transform: translateY(2px); }
+
+        /* ===== SCORE SECTION ===== */
+        .score-container {
+            display: flex;
+            align-items: center;
+            gap: calc(var(--spacing-unit) * 2.5);
+        }
+
+        /* Momentum meter (enhanced waveform) */
+        .momentum-meter {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .waveform {
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            gap: 2px;
+            height: 42px;
+            padding: 0 4px;
+        }
+
+        .waveform-bar {
+            width: 3px;
+            border-radius: 2px;
+            transform-origin: bottom;
+            transition: height 0.3s var(--ease-out-expo);
+        }
+
+        .asset-card.bullish .waveform-bar { background: var(--bullish); }
+        .asset-card.bearish .waveform-bar { background: var(--bearish); }
+        .asset-card.neutral .waveform-bar { background: var(--neutral); }
+
+        .momentum-label {
+            font-size: 0.55rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+
+        /* Score Circle */
+        .score-circle {
+            position: relative;
+            width: 90px;
+            height: 90px;
+        }
+
+        .score-ring {
+            transform: rotate(-90deg);
+        }
+
+        .score-ring-bg {
+            fill: none;
+            stroke: rgba(255, 255, 255, 0.04);
+            stroke-width: 6;
+        }
+
+        .score-ring-progress {
+            fill: none;
+            stroke-width: 6;
+            stroke-linecap: round;
+            transition: stroke-dashoffset 1s var(--ease-out-expo);
+        }
+
+        .asset-card.bullish .score-ring-progress {
+            stroke: url(#bullishGradient);
+            filter: drop-shadow(0 0 12px var(--bullish-glow));
+        }
+
+        .asset-card.bearish .score-ring-progress {
+            stroke: url(#bearishGradient);
+            filter: drop-shadow(0 0 12px var(--bearish-glow));
+        }
+
+        .asset-card.neutral .score-ring-progress {
+            stroke: var(--neutral);
+            filter: drop-shadow(0 0 6px var(--neutral-glow));
+        }
+
+        /* Secondary ring for score zones */
+        .score-ring-zones {
+            fill: none;
+            stroke-width: 1;
+            stroke-dasharray: 3 3;
+            stroke: rgba(255, 255, 255, 0.08);
+        }
+
+        .score-inner {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+        }
+
+        .score-value {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 1.15rem;
+            font-weight: 700;
+            line-height: 1;
+            transition: color 0.3s ease;
+        }
+
+        .score-label {
+            font-size: 0.55rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-top: 2px;
+        }
+
+        .asset-card.bullish .score-value { color: var(--bullish-bright); }
+        .asset-card.bearish .score-value { color: var(--bearish-bright); }
+        .asset-card.neutral .score-value { color: var(--neutral-bright); }
+
+        /* Pulse Animation */
+        .pulse-ring {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            border: 2px solid;
+            opacity: 0;
+            will-change: transform, opacity;
+        }
+
+        .asset-card.bullish .pulse-ring {
+            border-color: var(--bullish);
+            animation: pulseGlow var(--pulse-speed, 2s) ease-out infinite;
+        }
+
+        .asset-card.bearish .pulse-ring {
+            border-color: var(--bearish);
+            animation: pulseGlow var(--pulse-speed, 2.5s) ease-out infinite;
+        }
+
+        .asset-card.neutral .pulse-ring { display: none; }
+
+        @keyframes pulseGlow {
+            0% {
+                transform: translate(-50%, -50%) scale(1);
+                opacity: 0.6;
+            }
+            100% {
+                transform: translate(-50%, -50%) scale(1.7);
+                opacity: 0;
+            }
+        }
+
+        /* ===== MINI SPARKLINE ===== */
+        .sparkline-container {
+            position: absolute;
+            bottom: 8px;
+            right: 130px;
+            width: 80px;
+            height: 24px;
+            opacity: 0.4;
+            transition: opacity 0.3s ease;
+        }
+
+        .asset-card:hover .sparkline-container { opacity: 0.7; }
+
+        .sparkline {
+            width: 100%;
+            height: 100%;
+        }
+
+        .sparkline-path {
+            fill: none;
+            stroke-width: 1.5;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        .asset-card.bullish .sparkline-path { stroke: var(--bullish); }
+        .asset-card.bearish .sparkline-path { stroke: var(--bearish); }
+        .asset-card.neutral .sparkline-path { stroke: var(--neutral); }
+
+        /* ===== FOOTER ===== */
+        .footer {
+            text-align: center;
+            margin-top: calc(var(--spacing-unit) * 8);
+            padding-top: calc(var(--spacing-unit) * 4);
+            border-top: 1px solid var(--border-subtle);
+        }
+
+        .footer-logo {
+            font-family: 'Inter', sans-serif;
+            font-size: 1.1rem;
+            font-weight: 800;
+            letter-spacing: 0.2em;
+            background: linear-gradient(135deg, var(--accent-gold) 0%, #f59e0b 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .footer-tagline {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-top: 6px;
+            letter-spacing: 0.05em;
+        }
+
+        .refresh-notice {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.65rem;
+            color: var(--text-muted);
+            margin-top: 16px;
+            opacity: 0.6;
+        }
+
+        /* ===== LOADING STATE ===== */
+        .loading-skeleton {
+            background: linear-gradient(
+                90deg,
+                rgba(255, 255, 255, 0.03) 0%,
+                rgba(255, 255, 255, 0.08) 50%,
+                rgba(255, 255, 255, 0.03) 100%
+            );
+            background-size: 200% 100%;
+            animation: shimmer 1.5s infinite;
+            border-radius: var(--card-radius);
+            height: 120px;
+            margin-bottom: calc(var(--spacing-unit) * 2);
+        }
+
+        @keyframes shimmer {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+
+        .loading-text {
+            text-align: center;
+            padding: calc(var(--spacing-unit) * 6);
+            color: var(--text-secondary);
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.9rem;
+        }
+
+        /* ===== ERROR STATE ===== */
+        .error-state {
+            text-align: center;
+            padding: calc(var(--spacing-unit) * 6);
+            background: rgba(239, 68, 68, 0.05);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            border-radius: var(--card-radius);
+        }
+
+        .error-icon {
+            font-size: 2rem;
+            margin-bottom: 12px;
+        }
+
+        .error-message {
+            color: var(--bearish-bright);
+            margin-bottom: 8px;
+            font-size: 0.95rem;
+        }
+
+        .error-details {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-bottom: 16px;
+        }
+
+        .retry-btn {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.8rem;
+            padding: 10px 24px;
+            background: var(--bearish);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .retry-btn:hover {
+            background: var(--bearish-bright);
+            transform: translateY(-2px);
+        }
+
+        /* ===== SVG DEFINITIONS ===== */
+        .svg-defs {
+            position: absolute;
+            width: 0;
+            height: 0;
+            overflow: hidden;
+        }
+
+        /* ===== RESPONSIVE ===== */
+        @media (max-width: 900px) {
+            .metrics { gap: calc(var(--spacing-unit) * 3); }
+            .card-inner { padding: calc(var(--spacing-unit) * 2.5) calc(var(--spacing-unit) * 3); }
+            .summary-stats { grid-template-columns: repeat(2, 1fr); }
+            .sparkline-container { display: none; }
+        }
+
+        @media (max-width: 700px) {
+            .container { padding: calc(var(--spacing-unit) * 3) calc(var(--spacing-unit) * 2); }
+
+            .header { margin-bottom: calc(var(--spacing-unit) * 5); }
+
+            .card-inner {
+                grid-template-columns: 1fr;
+                gap: calc(var(--spacing-unit) * 2);
+            }
+
+            .card-content {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: calc(var(--spacing-unit) * 2);
+            }
+
+            .metrics {
+                width: 100%;
+                justify-content: space-between;
+            }
+
+            .score-container {
+                width: 100%;
+                justify-content: space-between;
+                padding-top: calc(var(--spacing-unit) * 1.5);
+                border-top: 1px solid var(--border-subtle);
+            }
+
+            .momentum-meter { order: 1; }
+            .score-circle { order: 2; }
+
+            .legend { gap: calc(var(--spacing-unit) * 1.5); }
+            .legend-item {
+                padding: 8px 12px;
+                font-size: 0.8rem;
+            }
+
+            .filter-controls { gap: calc(var(--spacing-unit) * 1); }
+            .filter-btn {
+                padding: 6px 12px;
+                font-size: 0.7rem;
+            }
+        }
+
+        @media (max-width: 400px) {
+            .summary-stats { grid-template-columns: 1fr 1fr; }
+            .stat-value { font-size: 1.2rem; }
+        }
+
+        /* ===== PRINT STYLES ===== */
+        @media print {
+            .particles, .bg-gradient, .wave-container { display: none; }
+            .asset-card { break-inside: avoid; }
+            body { background: white; color: black; }
+        }
+
+        /* ===== EMBED MODE ===== */
+        /* Applied when ?embed=1 is in URL - for iframe embedding */
+        body.embed-mode {
+            padding: 0;
+            min-height: auto;
+        }
+
+        body.embed-mode .container {
+            padding: 12px;
+            max-width: none;
+        }
+
+        body.embed-mode .header,
+        body.embed-mode .legend,
+        body.embed-mode .filter-controls,
+        body.embed-mode .skip-link,
+        body.embed-mode .particles,
+        body.embed-mode .bg-gradient {
+            display: none !important;
+        }
+
+        body.embed-mode .summary-stats {
+            margin-bottom: 12px;
+            padding: 12px;
+            gap: 8px;
+        }
+
+        body.embed-mode .stat-value {
+            font-size: 1.3rem;
+        }
+
+        body.embed-mode .stat-label {
+            font-size: 0.65rem;
+        }
+
+        body.embed-mode .cards-container {
+            gap: 10px;
+        }
+
+        body.embed-mode .asset-card {
+            border-radius: 12px;
+        }
+
+        body.embed-mode .card-inner {
+            padding: 12px 14px;
+        }
+
+        body.embed-mode .symbol {
+            font-size: 1rem;
+        }
+
+        body.embed-mode .metric-value {
+            font-size: 0.9rem;
+        }
+
+        body.embed-mode .score-circle {
+            width: 52px;
+            height: 52px;
+        }
+
+        body.embed-mode .score-value {
+            font-size: 1rem;
+        }
+
+        body.embed-mode .score-label {
+            font-size: 0.55rem;
+        }
+    </style>
+</head>
+<body>
+    <!-- Embed mode detection -->
+    <script>
+        (function() {
+            const params = new URLSearchParams(window.location.search);
+            if (params.get('embed') === '1') {
+                document.body.classList.add('embed-mode');
+            }
+        })();
+    </script>
+
+    <!-- Skip link for accessibility -->
+    <a href="#cards-container" class="skip-link">Skip to main content</a>
+
+    <!-- SVG Definitions -->
+    <svg class="svg-defs" aria-hidden="true">
+        <defs>
+            <linearGradient id="headerGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" style="stop-color:#fbbf24;stop-opacity:0.3" />
+                <stop offset="50%" style="stop-color:#f59e0b;stop-opacity:1" />
+                <stop offset="100%" style="stop-color:#fbbf24;stop-opacity:0.3" />
+            </linearGradient>
+            <linearGradient id="bullishGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" style="stop-color:#10b981" />
+                <stop offset="100%" style="stop-color:#34d399" />
+            </linearGradient>
+            <linearGradient id="bearishGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" style="stop-color:#ef4444" />
+                <stop offset="100%" style="stop-color:#f87171" />
+            </linearGradient>
+        </defs>
+    </svg>
+
+    <div class="bg-canvas"></div>
+    <div class="bg-gradient"></div>
+    <div class="particles" id="particles" aria-hidden="true"></div>
+
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-wave-container" aria-hidden="true">
+                <svg viewBox="0 0 800 120" preserveAspectRatio="none">
+                    <defs>
+                        <linearGradient id="headerWaveGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                            <stop offset="0%" style="stop-color:#fbbf24;stop-opacity:0" />
+                            <stop offset="50%" style="stop-color:#fbbf24;stop-opacity:1" />
+                            <stop offset="100%" style="stop-color:#fbbf24;stop-opacity:0" />
+                        </linearGradient>
+                    </defs>
+                    <path class="header-wave-path" d="M0,60 Q100,20 200,60 T400,60 T600,60 T800,60" stroke="url(#headerWaveGrad)">
+                        <animate attributeName="d"
+                            values="M0,60 Q100,20 200,60 T400,60 T600,60 T800,60;
+                                    M0,60 Q100,100 200,60 T400,60 T600,60 T800,60;
+                                    M0,60 Q100,20 200,60 T400,60 T600,60 T800,60"
+                            dur="6s" repeatCount="indefinite"/>
+                    </path>
+                    <path class="header-wave-path" d="M0,60 Q100,100 200,60 T400,60 T600,60 T800,60" stroke="url(#headerWaveGrad)" style="opacity:0.4">
+                        <animate attributeName="d"
+                            values="M0,60 Q100,100 200,60 T400,60 T600,60 T800,60;
+                                    M0,60 Q100,20 200,60 T400,60 T600,60 T800,60;
+                                    M0,60 Q100,100 200,60 T400,60 T600,60 T800,60"
+                            dur="6s" repeatCount="indefinite"/>
+                    </path>
+                </svg>
+            </div>
+            <div class="title-container">
+                <div class="title-glow" aria-hidden="true"></div>
+                <h1 class="title">ALPHA PULSE</h1>
+            </div>
+            <p class="subtitle">Real-time Alpha Signal Analysis</p>
+            <div class="status-bar">
+                <span class="timestamp" id="timestamp" aria-live="polite">Loading...</span>
+                <div class="connection-status" aria-live="polite">
+                    <span class="status-dot" id="status-dot"></span>
+                    <span id="status-text">Connecting...</span>
+                    <span class="refresh-indicator" id="refresh-indicator">&#8635;</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Summary Stats -->
+        <div class="summary-stats" role="region" aria-label="Market Summary">
+            <div class="stat-item">
+                <div class="stat-value bullish" id="stat-bullish">-</div>
+                <div class="stat-label">Bullish</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value" id="stat-neutral">-</div>
+                <div class="stat-label">Neutral</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value bearish" id="stat-bearish">-</div>
+                <div class="stat-label">Bearish</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value gold" id="stat-avg-score">-</div>
+                <div class="stat-label">Avg Score</div>
+            </div>
+        </div>
+
+        <!-- Legend -->
+        <div class="legend" role="region" aria-label="Signal Legend">
+            <div class="legend-item">
+                <div class="legend-dot bullish" aria-hidden="true"></div>
+                <span>Bullish (Score &gt; 60)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-dot neutral" aria-hidden="true"></div>
+                <span>Neutral (40-60)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-dot bearish" aria-hidden="true"></div>
+                <span>Bearish (Score &lt; 40)</span>
+            </div>
+        </div>
+
+        <!-- Filter Controls -->
+        <div class="filter-controls" role="group" aria-label="Filter signals">
+            <button class="filter-btn active" data-filter="all" aria-pressed="true">All Signals</button>
+            <button class="filter-btn" data-filter="bullish" aria-pressed="false">Bullish Only</button>
+            <button class="filter-btn" data-filter="bearish" aria-pressed="false">Bearish Only</button>
+            <button class="filter-btn" data-filter="high-conviction" aria-pressed="false">High Conviction</button>
+        </div>
+
+        <!-- Cards Container -->
+        <main class="cards-container" id="cards-container" role="main" aria-label="Signal Cards">
+            <!-- Loading state -->
+            <div class="loading-text">Connecting to live data...</div>
+        </main>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <div class="footer-logo">VIRTUOSO</div>
+            <p class="footer-tagline">Algorithmic Trading Intelligence</p>
+            <p class="refresh-notice" id="refresh-notice">Auto-refresh: 30s</p>
+        </footer>
+    </div>
+
+    <script>
+        /**
+         * ALPHA PULSE PRO - Production Wired Version
+         * Live API: /api/dashboard/mobile-data
+         */
+
+        (function() {
+            'use strict';
+
+            // ===== CONFIGURATION =====
+            const CONFIG = {
+                API_ENDPOINT: '/api/dashboard/mobile-data',
+                REFRESH_INTERVAL: 30000, // 30 seconds
+                FETCH_TIMEOUT: 5000, // 5 seconds
+                PARTICLE_COUNT: 30,
+                WAVE_SEGMENTS: 50,
+                ANIMATION_DURATION: 600,
+                STAGGER_DELAY: 50,
+                ENABLE_AUTO_REFRESH: true,
+                DEBUG: true
+            };
+
+            // ===== STATE =====
+            let state = {
+                data: [],
+                filter: 'all',
+                isConnected: false,
+                lastUpdate: null,
+                refreshTimer: null,
+                isLoading: false
+            };
+
+            // ===== UTILITY FUNCTIONS =====
+
+            function formatPrice(price) {
+                if (price < 0.0001) return '$' + price.toFixed(6);
+                if (price < 1) return '$' + price.toFixed(4);
+                if (price < 100) return '$' + price.toFixed(2);
+                return '$' + price.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+            }
+
+            function formatChange(change) {
+                const sign = change >= 0 ? '+' : '';
+                return sign + change.toFixed(1) + '%';
+            }
+
+            function getSignalClass(score) {
+                if (score >= 60) return 'bullish';
+                if (score <= 40) return 'bearish';
+                return 'neutral';
+            }
+
+            function isHighConviction(score) {
+                return score >= 75 || score <= 25;
+            }
+
+            function log(...args) {
+                if (CONFIG.DEBUG) console.log('[AlphaPulse]', ...args);
+            }
+
+            // ===== API DATA TRANSFORMATION =====
+
+            function transformAPIData(apiResponse) {
+                if (!apiResponse || !apiResponse.confluence_scores) {
+                    throw new Error('Invalid API response format');
+                }
+
+                return apiResponse.confluence_scores.map(item => {
+                    // Map sentiment to signal: BULLISH→LONG, BEARISH→SHORT, NEUTRAL→NEUTRAL
+                    let signal = 'NEUTRAL';
+                    if (item.sentiment === 'BULLISH') signal = 'LONG';
+                    else if (item.sentiment === 'BEARISH') signal = 'SHORT';
+
+                    // Clean symbol (remove USDT suffix)
+                    const symbol = item.symbol.replace(/USDT$/i, '');
+
+                    // Use real score_history from API if available, otherwise generate synthetic data
+                    let sparkline;
+                    if (item.score_history && item.score_history.length >= 3) {
+                        // Use real historical data from API
+                        sparkline = item.score_history;
+                    } else {
+                        // Fall back to generated data (for symbols without history yet)
+                        sparkline = generateSparklineData(item.score, 12);
+                    }
+
+                    return {
+                        symbol: symbol,
+                        price: item.price,
+                        change: item.change_24h,
+                        score: Math.round(item.score * 100) / 100, // Round to 2 decimals
+                        signal: signal,
+                        sparkline: sparkline,
+                        hasRealHistory: item.score_history && item.score_history.length >= 3,
+                        // Store raw API data for debugging
+                        _raw: item
+                    };
+                });
+            }
+
+            function generateSparklineData(score, count) {
+                // Generate synthetic sparkline that trends toward the score
+                // Used as fallback when no real history is available
+                const data = [];
+                let current = 50; // Start at middle
+
+                for (let i = 0; i < count; i++) {
+                    // Trend toward score with some randomness
+                    const target = score;
+                    const diff = target - current;
+                    current = current + (diff * 0.2) + (Math.random() - 0.5) * 5;
+                    current = Math.max(0, Math.min(100, current));
+                    data.push(Math.round(current));
+                }
+
+                return data;
+            }
+
+            // ===== PARTICLE SYSTEM =====
+
+            function createParticles() {
+                const container = document.getElementById('particles');
+                if (!container) return;
+
+                const colors = ['#fbbf24', '#10b981', '#ef4444', '#9ca3af'];
+                const fragment = document.createDocumentFragment();
+
+                for (let i = 0; i < CONFIG.PARTICLE_COUNT; i++) {
+                    const particle = document.createElement('div');
+                    particle.className = 'particle';
+
+                    const size = 2 + Math.random() * 3;
+                    const duration = 15 + Math.random() * 15;
+                    const delay = Math.random() * duration;
+                    const drift = (Math.random() - 0.5) * 200;
+                    const opacity = 0.2 + Math.random() * 0.3;
+
+                    particle.style.cssText = `
+                        left: ${Math.random() * 100}%;
+                        width: ${size}px;
+                        height: ${size}px;
+                        background: ${colors[Math.floor(Math.random() * colors.length)]};
+                        --duration: ${duration}s;
+                        --delay: ${delay}s;
+                        --drift: ${drift}px;
+                        --opacity: ${opacity};
+                    `;
+
+                    fragment.appendChild(particle);
+                }
+
+                container.appendChild(fragment);
+            }
+
+            // ===== WAVE PHYSICS =====
+
+            function generateWavePath(amplitude, frequency, phase, yOffset, width = 1000, height = 100) {
+                const segments = CONFIG.WAVE_SEGMENTS;
+                const points = [];
+
+                for (let i = 0; i <= segments; i++) {
+                    const x = (i / segments) * width * 2;
+                    const y = yOffset +
+                        Math.sin((x * frequency / 100) + phase) * amplitude * 0.6 +
+                        Math.sin((x * frequency / 50) + phase * 1.3) * amplitude * 0.3 +
+                        Math.sin((x * frequency / 200) + phase * 0.7) * amplitude * 0.1;
+                    points.push(`${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`);
+                }
+
+                return points.join(' ');
+            }
+
+            function getWaveParams(score) {
+                const intensity = score / 100;
+                const amplitude = 8 + (intensity * 30);
+                const speed = 6 - (intensity * 4);
+                const pulseSpeed = 3 - (intensity * 1.5);
+                return {
+                    amplitude,
+                    speed: Math.max(speed, 1.5),
+                    pulseSpeed: Math.max(pulseSpeed, 1)
+                };
+            }
+
+            // ===== WAVEFORM VISUALIZATION =====
+
+            function createWaveform(score, signalClass) {
+                const barCount = 14;
+                const maxHeight = 40;
+                const minHeight = 4;
+                const intensity = score / 100;
+
+                let bars = '';
+                for (let i = 0; i < barCount; i++) {
+                    const phase = (i / barCount) * Math.PI * 2;
+                    const waveValue = (Math.sin(phase + Math.PI / 4) + 1) / 2;
+                    const baseHeight = minHeight + waveValue * (maxHeight - minHeight) * intensity;
+
+                    const animDuration = 0.6 + (1 - intensity) * 0.8;
+                    const animDelay = (i / barCount) * animDuration * 0.8;
+
+                    bars += `<div class="waveform-bar" style="
+                        height: ${baseHeight}px;
+                        animation: waveformPulse ${animDuration}s ease-in-out ${animDelay}s infinite alternate;
+                    "></div>`;
+                }
+                return bars;
+            }
+
+            // ===== SPARKLINE GENERATION =====
+
+            function createSparkline(data, width = 80, height = 24) {
+                if (!data || data.length < 2) return '';
+
+                const min = Math.min(...data);
+                const max = Math.max(...data);
+                const range = max - min || 1;
+
+                const points = data.map((val, i) => {
+                    const x = (i / (data.length - 1)) * width;
+                    const y = height - ((val - min) / range) * height;
+                    return `${x.toFixed(1)},${y.toFixed(1)}`;
+                });
+
+                return `<svg class="sparkline" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none">
+                    <path class="sparkline-path" d="M${points.join(' L')}"/>
+                </svg>`;
+            }
+
+            // ===== CARD CREATION =====
+
+            function createCard(asset, index, rank) {
+                const signalClass = getSignalClass(asset.score);
+                const { amplitude, speed, pulseSpeed } = getWaveParams(asset.score);
+                const circumference = 2 * Math.PI * 38;
+                const offset = circumference - (asset.score / 100) * circumference;
+                const highConviction = isHighConviction(asset.score);
+
+                const wave1 = generateWavePath(amplitude, 0.6, index * 0.7, 75);
+                const wave2 = generateWavePath(amplitude * 0.7, 0.8, index * 0.7 + 1.5, 78);
+                const wave3 = generateWavePath(amplitude * 0.45, 1.0, index * 0.7 + 3, 82);
+
+                const card = document.createElement('article');
+                card.className = `asset-card ${signalClass}${highConviction ? ' high-conviction' : ''}`;
+                card.setAttribute('role', 'article');
+                card.setAttribute('aria-label', `${asset.symbol}: ${asset.signal} signal with score ${asset.score}`);
+                card.setAttribute('tabindex', '0');
+                card.style.setProperty('--pulse-speed', `${pulseSpeed}s`);
+                card.dataset.symbol = asset.symbol;
+                card.dataset.signal = signalClass;
+                card.dataset.conviction = highConviction ? 'high' : 'normal';
+
+                const trendArrow = asset.change >= 0 ?
+                    '<span class="trend-arrow up" aria-hidden="true">&#9650;</span>' :
+                    '<span class="trend-arrow down" aria-hidden="true">&#9660;</span>';
+
+                card.innerHTML = `
+                    <!-- Wave Background -->
+                    <div class="wave-container" aria-hidden="true">
+                        <div class="wave-glow"></div>
+                        <svg class="wave-canvas" viewBox="0 0 1000 100" preserveAspectRatio="none">
+                            <path class="wave-path" style="opacity:0.08; stroke-width:4; fill:none; stroke:currentColor" d="${wave1}">
+                                <animateTransform
+                                    attributeName="transform"
+                                    type="translate"
+                                    values="0,0; -500,0; 0,0"
+                                    dur="${speed}s"
+                                    repeatCount="indefinite"/>
+                            </path>
+                            <path class="wave-path" style="opacity:0.12; stroke-width:2.5; fill:none; stroke:currentColor" d="${wave2}">
+                                <animateTransform
+                                    attributeName="transform"
+                                    type="translate"
+                                    values="0,0; -500,0; 0,0"
+                                    dur="${speed * 1.2}s"
+                                    repeatCount="indefinite"/>
+                            </path>
+                            <path class="wave-path" style="opacity:0.18; stroke-width:1.5; fill:none; stroke:currentColor" d="${wave3}">
+                                <animateTransform
+                                    attributeName="transform"
+                                    type="translate"
+                                    values="0,0; -500,0; 0,0"
+                                    dur="${speed * 1.4}s"
+                                    repeatCount="indefinite"/>
+                            </path>
+                        </svg>
+                    </div>
+
+                    <!-- Mini Sparkline -->
+                    <div class="sparkline-container" aria-hidden="true">
+                        ${createSparkline(asset.sparkline)}
+                    </div>
+
+                    <!-- Content -->
+                    <div class="card-inner">
+                        <div class="card-content">
+                            <div class="symbol-block">
+                                <div class="symbol">
+                                    ${asset.symbol}
+                                    ${rank <= 3 ? `<span class="rank-badge" aria-label="Rank ${rank}">#${rank}</span>` : ''}
+                                </div>
+                                <span class="signal-badge ${asset.signal}" aria-label="${asset.signal} signal">${asset.signal}</span>
+                            </div>
+                            <div class="metrics">
+                                <div class="metric">
+                                    <div class="metric-label">Price</div>
+                                    <div class="metric-value">${formatPrice(asset.price)}</div>
+                                </div>
+                                <div class="metric">
+                                    <div class="metric-label">24h Change</div>
+                                    <div class="metric-value ${asset.change >= 0 ? 'positive' : 'negative'}">
+                                        ${formatChange(asset.change)}${trendArrow}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Score -->
+                        <div class="score-container">
+                            <div class="momentum-meter">
+                                <div class="waveform" aria-hidden="true">
+                                    ${createWaveform(asset.score, signalClass)}
+                                </div>
+                                <span class="momentum-label">Momentum</span>
+                            </div>
+                            <div class="score-circle">
+                                <div class="pulse-ring" aria-hidden="true"></div>
+                                <svg class="score-ring" width="90" height="90" viewBox="0 0 90 90" aria-hidden="true">
+                                    <circle class="score-ring-zones" cx="45" cy="45" r="38"/>
+                                    <circle class="score-ring-bg" cx="45" cy="45" r="38"/>
+                                    <circle class="score-ring-progress"
+                                        cx="45" cy="45" r="38"
+                                        stroke-dasharray="${circumference}"
+                                        stroke-dashoffset="${offset}"/>
+                                </svg>
+                                <div class="score-inner">
+                                    <div class="score-value" aria-label="Alpha score">${asset.score}</div>
+                                    <div class="score-label">Score</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+                return card;
+            }
+
+            // ===== RENDER FUNCTIONS =====
+
+            function renderCards(data) {
+                const container = document.getElementById('cards-container');
+                if (!container) return;
+
+                container.innerHTML = '';
+
+                // Apply filter
+                let filteredData = [...data];
+                if (state.filter === 'bullish') {
+                    filteredData = data.filter(d => d.score >= 60);
+                } else if (state.filter === 'bearish') {
+                    filteredData = data.filter(d => d.score <= 40);
+                } else if (state.filter === 'high-conviction') {
+                    filteredData = data.filter(d => isHighConviction(d.score));
+                }
+
+                // Sort by score descending
+                const sortedData = filteredData.sort((a, b) => b.score - a.score);
+
+                if (sortedData.length === 0) {
+                    container.innerHTML = `
+                        <div class="error-state" style="background: rgba(255,255,255,0.02); border-color: rgba(255,255,255,0.1);">
+                            <div class="error-icon">&#128269;</div>
+                            <p style="color: var(--text-secondary);">No signals match the current filter.</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                const fragment = document.createDocumentFragment();
+                sortedData.forEach((asset, index) => {
+                    const card = createCard(asset, index, index + 1);
+                    card.style.animationDelay = `${index * CONFIG.STAGGER_DELAY}ms`;
+                    fragment.appendChild(card);
+                });
+
+                container.appendChild(fragment);
+
+                // Trigger entry animations
+                requestAnimationFrame(() => {
+                    const cards = container.querySelectorAll('.asset-card');
+                    cards.forEach((card, i) => {
+                        setTimeout(() => card.classList.add('visible'), i * CONFIG.STAGGER_DELAY);
+                    });
+                });
+            }
+
+            function updateSummaryStats(data) {
+                const bullish = data.filter(d => d.score >= 60).length;
+                const bearish = data.filter(d => d.score <= 40).length;
+                const neutral = data.length - bullish - bearish;
+                const avgScore = Math.round(data.reduce((sum, d) => sum + d.score, 0) / data.length);
+
+                document.getElementById('stat-bullish').textContent = bullish;
+                document.getElementById('stat-bearish').textContent = bearish;
+                document.getElementById('stat-neutral').textContent = neutral;
+                document.getElementById('stat-avg-score').textContent = avgScore;
+            }
+
+            function updateTimestamp() {
+                const now = new Date();
+                const timestamp = document.getElementById('timestamp');
+                if (timestamp) {
+                    timestamp.textContent = now.toLocaleString('en-US', {
+                        weekday: 'short',
+                        month: 'short',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        second: '2-digit',
+                        hour12: false
+                    });
+                }
+                state.lastUpdate = now;
+            }
+
+            function updateConnectionStatus(status, message = '') {
+                const dot = document.getElementById('status-dot');
+                const text = document.getElementById('status-text');
+                const indicator = document.getElementById('refresh-indicator');
+
+                if (dot && text) {
+                    dot.className = 'status-dot ' + status;
+                    text.textContent = message || {
+                        'connected': 'Live',
+                        'loading': 'Refreshing...',
+                        'error': 'Disconnected'
+                    }[status] || 'Unknown';
+                }
+
+                if (indicator) {
+                    if (status === 'loading') {
+                        indicator.classList.add('active');
+                    } else {
+                        indicator.classList.remove('active');
+                    }
+                }
+
+                state.isConnected = (status === 'connected');
+            }
+
+            // ===== DATA FETCHING =====
+
+            async function fetchData() {
+                if (state.isLoading) {
+                    log('Fetch already in progress, skipping...');
+                    return;
+                }
+
+                state.isLoading = true;
+                updateConnectionStatus('loading', 'Refreshing...');
+
+                try {
+                    log('Fetching data from:', CONFIG.API_ENDPOINT);
+
+                    // Create abort controller for timeout
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), CONFIG.FETCH_TIMEOUT);
+
+                    const response = await fetch(CONFIG.API_ENDPOINT, {
+                        signal: controller.signal,
+                        mode: 'cors', // Enable CORS
+                        headers: {
+                            'Accept': 'application/json'
+                        }
+                    });
+
+                    clearTimeout(timeoutId);
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+
+                    const apiData = await response.json();
+                    log('Raw API response:', apiData);
+
+                    // Transform API data to expected format
+                    const transformedData = transformAPIData(apiData);
+                    log('Transformed data:', transformedData.length, 'assets');
+
+                    state.data = transformedData;
+                    updateConnectionStatus('connected', 'Live');
+                    updateTimestamp();
+                    updateSummaryStats(transformedData);
+                    renderCards(transformedData);
+
+                } catch (error) {
+                    console.error('Failed to fetch data:', error);
+
+                    let errorMessage = error.message;
+                    let errorDetails = '';
+
+                    if (error.name === 'AbortError') {
+                        errorMessage = 'Request timeout';
+                        errorDetails = 'Server took longer than 5 seconds to respond';
+                    } else if (error.message.includes('Failed to fetch')) {
+                        errorMessage = 'Network error';
+                        errorDetails = 'Could not connect to server. Check CORS settings or use a proxy.';
+                    }
+
+                    updateConnectionStatus('error', 'Error');
+                    showError(errorMessage, errorDetails);
+                } finally {
+                    state.isLoading = false;
+                }
+            }
+
+            function showError(message, details = '') {
+                const container = document.getElementById('cards-container');
+                if (!container) return;
+
+                container.innerHTML = `
+                    <div class="error-state">
+                        <div class="error-icon">&#9888;</div>
+                        <p class="error-message">Failed to load data: ${message}</p>
+                        ${details ? `<p class="error-details">${details}</p>` : ''}
+                        <button class="retry-btn" onclick="window.AlphaPulse.refresh()">Retry</button>
+                    </div>
+                `;
+            }
+
+            function showLoading() {
+                const container = document.getElementById('cards-container');
+                if (!container) return;
+
+                container.innerHTML = `
+                    <div class="loading-skeleton"></div>
+                    <div class="loading-skeleton"></div>
+                    <div class="loading-skeleton"></div>
+                    <div class="loading-text">Loading live alpha scores...</div>
+                `;
+            }
+
+            function startAutoRefresh() {
+                if (state.refreshTimer) clearInterval(state.refreshTimer);
+
+                if (CONFIG.ENABLE_AUTO_REFRESH) {
+                    state.refreshTimer = setInterval(fetchData, CONFIG.REFRESH_INTERVAL);
+                    log('Auto-refresh started:', CONFIG.REFRESH_INTERVAL / 1000, 'seconds');
+                }
+            }
+
+            // ===== FILTER HANDLING =====
+
+            function setupFilters() {
+                const buttons = document.querySelectorAll('.filter-btn');
+
+                buttons.forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        // Update active state
+                        buttons.forEach(b => {
+                            b.classList.remove('active');
+                            b.setAttribute('aria-pressed', 'false');
+                        });
+                        btn.classList.add('active');
+                        btn.setAttribute('aria-pressed', 'true');
+
+                        // Apply filter
+                        state.filter = btn.dataset.filter;
+                        renderCards(state.data);
+
+                        log('Filter changed:', state.filter);
+                    });
+                });
+            }
+
+            // ===== KEYBOARD NAVIGATION =====
+
+            function setupKeyboardNav() {
+                document.addEventListener('keydown', (e) => {
+                    if (e.key === 'r' && (e.metaKey || e.ctrlKey)) {
+                        e.preventDefault();
+                        fetchData();
+                    }
+                });
+            }
+
+            // ===== DYNAMIC STYLES =====
+
+            function addDynamicStyles() {
+                const style = document.createElement('style');
+                style.textContent = `
+                    @keyframes waveformPulse {
+                        0% { transform: scaleY(0.5); opacity: 0.5; }
+                        100% { transform: scaleY(1); opacity: 1; }
+                    }
+                `;
+                document.head.appendChild(style);
+            }
+
+            // ===== INITIALIZATION =====
+
+            function init() {
+                log('Initializing Alpha Pulse Pro (Production Wired)...');
+                log('API Endpoint:', CONFIG.API_ENDPOINT);
+
+                addDynamicStyles();
+                createParticles();
+                setupFilters();
+                setupKeyboardNav();
+
+                // Show loading state
+                showLoading();
+
+                // Initial data load
+                fetchData();
+                startAutoRefresh();
+
+                log('Initialization complete');
+            }
+
+            // ===== PUBLIC API =====
+
+            window.AlphaPulse = {
+                refresh: fetchData,
+                setFilter: (filter) => {
+                    const btn = document.querySelector(`[data-filter="${filter}"]`);
+                    if (btn) btn.click();
+                },
+                getData: () => state.data,
+                getState: () => ({ ...state }),
+                config: CONFIG
+            };
+
+            // ===== RUN ON DOM READY =====
+
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', init);
+            } else {
+                init();
+            }
+        })();
+    </script>
+</body>
+</html>

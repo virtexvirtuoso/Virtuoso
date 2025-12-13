@@ -1,0 +1,758 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MTF Altcoin Rankings | Virtuoso</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            /* Virtuoso Brand Colors */
+            --neon-amber: #fbbf24;
+            --neon-cyan: #06B6D4;
+            --neon-red: #ff0066;
+
+            /* Dark Mode Palette */
+            --dark-bg-primary: #0a0a0a;
+            --dark-bg-secondary: #111111;
+            --dark-border: #222222;
+            --text-primary: #e0e0e0;
+            --text-secondary: #9ca3af;
+            --text-tertiary: #6b7280;
+
+            /* Semantic Colors */
+            --accent-positive: #10b981;
+            --accent-negative: #ef4444;
+            --accent-warning: #f59e0b;
+            --accent-info: #3b82f6;
+
+            /* Typography */
+            --font-primary: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            --font-mono: 'IBM Plex Mono', monospace;
+        }
+
+        body {
+            font-family: var(--font-primary);
+            background: var(--dark-bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            padding: 1.5rem;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        /* Header */
+        .header {
+            margin-bottom: 2rem;
+        }
+
+        .header-top {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .title-section {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .brand-icon {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, var(--neon-amber), #f59e0b);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 0 20px rgba(251, 191, 36, 0.3);
+        }
+
+        h1 {
+            font-size: 2rem;
+            font-weight: 800;
+            color: var(--text-primary);
+            letter-spacing: -0.5px;
+        }
+
+        .title-accent {
+            color: var(--neon-amber);
+            text-shadow: 0 0 20px rgba(251, 191, 36, 0.5);
+        }
+
+        .subtitle {
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-top: 0.25rem;
+        }
+
+        .live-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-family: var(--font-mono);
+            font-size: 0.7rem;
+            font-weight: 600;
+            color: var(--accent-positive);
+            letter-spacing: 1px;
+        }
+
+        .live-dot {
+            width: 8px;
+            height: 8px;
+            background: var(--accent-positive);
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+            box-shadow: 0 0 8px var(--accent-positive);
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.6; transform: scale(1.1); }
+        }
+
+        /* Stats Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            background: var(--dark-bg-secondary);
+            border: 1px solid var(--dark-border);
+            border-radius: 12px;
+            padding: 1.25rem;
+            transition: all 0.3s ease;
+        }
+
+        .stat-card:hover {
+            border-color: var(--neon-amber);
+            box-shadow: 0 0 20px rgba(251, 191, 36, 0.1);
+            transform: translateY(-2px);
+        }
+
+        .stat-label {
+            font-family: var(--font-mono);
+            font-size: 0.65rem;
+            color: var(--text-tertiary);
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: 800;
+            color: var(--text-primary);
+            line-height: 1;
+        }
+
+        .stat-value.accent {
+            color: var(--neon-amber);
+        }
+
+        /* Cluster Tabs */
+        .cluster-tabs {
+            display: flex;
+            gap: 0.75rem;
+            margin-bottom: 2rem;
+            flex-wrap: wrap;
+        }
+
+        .cluster-tab {
+            background: rgba(251, 191, 36, 0.05);
+            border: 1px solid rgba(251, 191, 36, 0.1);
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-secondary);
+        }
+
+        .cluster-tab:hover {
+            background: rgba(251, 191, 36, 0.1);
+            border-color: rgba(251, 191, 36, 0.3);
+            color: var(--neon-amber);
+        }
+
+        .cluster-tab.active {
+            background: rgba(251, 191, 36, 0.15);
+            border-color: var(--neon-amber);
+            color: var(--neon-amber);
+            box-shadow: 0 0 15px rgba(251, 191, 36, 0.2);
+        }
+
+        /* Rankings Grid */
+        .rankings-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        /* Ranking Card */
+        .ranking-card {
+            background: var(--dark-bg-secondary);
+            border: 1px solid var(--dark-border);
+            border-radius: 12px;
+            padding: 1.5rem;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .ranking-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, var(--signal-color), transparent);
+        }
+
+        .ranking-card:hover {
+            transform: translateY(-4px);
+            border-color: rgba(251, 191, 36, 0.3);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 20px rgba(251, 191, 36, 0.1);
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 1rem;
+        }
+
+        .rank-badge {
+            font-family: var(--font-mono);
+            font-size: 0.65rem;
+            color: var(--neon-amber);
+            font-weight: 700;
+            letter-spacing: 1px;
+            background: rgba(251, 191, 36, 0.1);
+            padding: 0.25rem 0.75rem;
+            border-radius: 6px;
+            border: 1px solid rgba(251, 191, 36, 0.2);
+        }
+
+        .signal-badge {
+            font-family: var(--font-mono);
+            font-size: 0.65rem;
+            font-weight: 600;
+            padding: 0.3rem 0.75rem;
+            border-radius: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .symbol-name {
+            font-size: 1.75rem;
+            font-weight: 800;
+            color: var(--text-primary);
+            margin-bottom: 0.75rem;
+            letter-spacing: -0.5px;
+        }
+
+        /* Signal Colors */
+        .signal-strong-buy {
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--accent-positive);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            --signal-color: var(--accent-positive);
+        }
+
+        .signal-buy {
+            background: rgba(59, 130, 246, 0.15);
+            color: var(--accent-info);
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            --signal-color: var(--accent-info);
+        }
+
+        .signal-weak-buy {
+            background: rgba(139, 92, 246, 0.15);
+            color: #8b5cf6;
+            border: 1px solid rgba(139, 92, 246, 0.3);
+            --signal-color: #8b5cf6;
+        }
+
+        .signal-neutral {
+            background: rgba(107, 114, 128, 0.15);
+            color: var(--text-secondary);
+            border: 1px solid rgba(107, 114, 128, 0.3);
+            --signal-color: var(--text-secondary);
+        }
+
+        /* Metrics Grid */
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 0.75rem;
+            margin-bottom: 1.25rem;
+        }
+
+        .metric {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 0.75rem;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.03);
+        }
+
+        .metric-label {
+            font-family: var(--font-mono);
+            font-size: 0.65rem;
+            color: var(--text-tertiary);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 0.25rem;
+        }
+
+        .metric-value {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .metric-value.positive {
+            color: var(--accent-positive);
+        }
+
+        .metric-value.negative {
+            color: var(--accent-negative);
+        }
+
+        /* Score Display */
+        .score-display {
+            background: rgba(251, 191, 36, 0.05);
+            border: 1px solid rgba(251, 191, 36, 0.15);
+            border-radius: 10px;
+            padding: 1.25rem;
+            text-align: center;
+            margin-bottom: 1rem;
+        }
+
+        .score-label {
+            font-family: var(--font-mono);
+            font-size: 0.65rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            margin-bottom: 0.5rem;
+        }
+
+        .score-value {
+            font-size: 3rem;
+            font-weight: 800;
+            color: var(--neon-amber);
+            line-height: 1;
+            text-shadow: 0 0 20px rgba(251, 191, 36, 0.3);
+        }
+
+        .score-max {
+            font-size: 1rem;
+            color: var(--text-tertiary);
+            margin-left: 0.25rem;
+        }
+
+        /* Timeframe Breakdown */
+        .timeframe-breakdown {
+            padding-top: 1rem;
+            border-top: 1px solid var(--dark-border);
+        }
+
+        .breakdown-label {
+            font-family: var(--font-mono);
+            font-size: 0.65rem;
+            color: var(--text-tertiary);
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            margin-bottom: 0.75rem;
+        }
+
+        .tf-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 0.5rem;
+        }
+
+        .tf-item {
+            background: rgba(0, 0, 0, 0.2);
+            padding: 0.6rem;
+            border-radius: 6px;
+            text-align: center;
+            border: 1px solid rgba(255, 255, 255, 0.03);
+        }
+
+        .tf-label {
+            font-family: var(--font-mono);
+            font-size: 0.65rem;
+            color: var(--text-tertiary);
+            text-transform: uppercase;
+            margin-bottom: 0.25rem;
+        }
+
+        .tf-value {
+            font-size: 0.9rem;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .tf-value.positive {
+            color: var(--accent-positive);
+        }
+
+        .tf-value.negative {
+            color: var(--accent-negative);
+        }
+
+        /* Loading State */
+        .loading {
+            text-align: center;
+            padding: 4rem 2rem;
+            color: var(--text-secondary);
+        }
+
+        .spinner {
+            border: 3px solid rgba(251, 191, 36, 0.1);
+            border-top: 3px solid var(--neon-amber);
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 1rem;
+            box-shadow: 0 0 20px rgba(251, 191, 36, 0.2);
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Error State */
+        .error-message {
+            color: var(--accent-negative);
+            font-weight: 600;
+        }
+
+        .error-detail {
+            font-size: 0.85rem;
+            margin-top: 0.5rem;
+            color: var(--text-secondary);
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            body {
+                padding: 1rem;
+            }
+
+            h1 {
+                font-size: 1.5rem;
+            }
+
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .rankings-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .cluster-tabs {
+                gap: 0.5rem;
+            }
+
+            .cluster-tab {
+                padding: 0.6rem 1rem;
+                font-size: 0.7rem;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .header-top {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .tf-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <div class="header-top">
+                <div class="title-section">
+                    <div class="brand-icon">
+                        <i data-lucide="bar-chart-3" style="width: 24px; height: 24px; color: white;"></i>
+                    </div>
+                    <div>
+                        <h1><span class="title-accent">MTF</span> Altcoin Rankings</h1>
+                        <p class="subtitle">Multi-Timeframe Signal Analysis</p>
+                    </div>
+                </div>
+                <div class="live-badge">
+                    <span class="live-dot"></span>
+                    LIVE DATA
+                </div>
+            </div>
+        </div>
+
+        <!-- Stats Grid -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-label">Total Symbols</div>
+                <div class="stat-value" id="totalSymbols">--</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Timeframes</div>
+                <div class="stat-value" id="totalTimeframes">--</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Avg Score</div>
+                <div class="stat-value accent" id="avgScore">--</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Execution</div>
+                <div class="stat-value" id="execTime">
+                    <span style="font-size: 1.5rem;">--</span>
+                    <span style="font-size: 1rem; color: var(--text-tertiary);">ms</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Cluster Tabs -->
+        <div class="cluster-tabs">
+            <div class="cluster-tab active" data-cluster="day_trading">
+                <i data-lucide="trending-up" style="width: 14px; height: 14px; display: inline; vertical-align: middle; margin-right: 4px;"></i>
+                Day Trading
+            </div>
+            <div class="cluster-tab" data-cluster="scalping">
+                <i data-lucide="zap" style="width: 14px; height: 14px; display: inline; vertical-align: middle; margin-right: 4px;"></i>
+                Scalping
+            </div>
+            <div class="cluster-tab" data-cluster="swing_trading">
+                <i data-lucide="activity" style="width: 14px; height: 14px; display: inline; vertical-align: middle; margin-right: 4px;"></i>
+                Swing Trading
+            </div>
+            <div class="cluster-tab" data-cluster="comprehensive">
+                <i data-lucide="layers" style="width: 14px; height: 14px; display: inline; vertical-align: middle; margin-right: 4px;"></i>
+                Comprehensive
+            </div>
+        </div>
+
+        <!-- Rankings Grid -->
+        <div class="rankings-grid" id="rankingsGrid">
+            <div class="loading">
+                <div class="spinner"></div>
+                <p>Loading rankings...</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentCluster = 'day_trading';
+        let refreshInterval = null;
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            loadRankings();
+            setupClusterTabs();
+            startAutoRefresh();
+            lucide.createIcons();
+        });
+
+        function setupClusterTabs() {
+            document.querySelectorAll('.cluster-tab').forEach(tab => {
+                tab.addEventListener('click', () => {
+                    document.querySelectorAll('.cluster-tab').forEach(t => t.classList.remove('active'));
+                    tab.classList.add('active');
+                    currentCluster = tab.dataset.cluster;
+                    loadRankings();
+                });
+            });
+        }
+
+        async function loadRankings() {
+            const grid = document.getElementById('rankingsGrid');
+            grid.innerHTML = '<div class="loading"><div class="spinner"></div><p>Loading rankings...</p></div>';
+
+            try {
+                const response = await fetch(`/api/altcoins/mtf-ranking?cluster=${currentCluster}&top_n=12`);
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    renderRankings(data.data);
+                    updateStats(data.data);
+                } else {
+                    throw new Error(data.message || 'Failed to load rankings');
+                }
+            } catch (error) {
+                console.error('Error loading rankings:', error);
+                grid.innerHTML = `
+                    <div class="loading">
+                        <p class="error-message">Failed to load rankings</p>
+                        <p class="error-detail">Retrying in 10 seconds...</p>
+                    </div>
+                `;
+                setTimeout(loadRankings, 10000);
+            }
+        }
+
+        function renderRankings(data) {
+            const grid = document.getElementById('rankingsGrid');
+            const rankings = data.rankings || [];
+
+            if (rankings.length === 0) {
+                grid.innerHTML = '<div class="loading"><p>No rankings available</p></div>';
+                return;
+            }
+
+            grid.innerHTML = rankings.map((coin, index) => {
+                const signalClass = `signal-${coin.signal.toLowerCase().replace(/_/g, '-')}`;
+
+                return `
+                    <div class="ranking-card ${signalClass}">
+                        <div class="card-header">
+                            <span class="rank-badge">#${String(coin.rank).padStart(2, '0')}</span>
+                            <span class="signal-badge ${signalClass}">${coin.signal.replace(/_/g, ' ')}</span>
+                        </div>
+
+                        <div class="symbol-name">${coin.symbol}</div>
+
+                        <div class="metrics-grid">
+                            <div class="metric">
+                                <div class="metric-label">Outperformance</div>
+                                <div class="metric-value ${coin.total_outperformance >= 0 ? 'positive' : 'negative'}">
+                                    ${coin.total_outperformance >= 0 ? '+' : ''}${coin.total_outperformance.toFixed(2)}%
+                                </div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Consistency</div>
+                                <div class="metric-value">
+                                    ${(coin.consistency_ratio * 100).toFixed(0)}%
+                                </div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Aligned TFs</div>
+                                <div class="metric-value">
+                                    ${coin.aligned_timeframes}/${coin.total_timeframes}
+                                </div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Volatility</div>
+                                <div class="metric-value">
+                                    ${coin.volatility.toFixed(2)}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="score-display">
+                            <div class="score-label">MTF Score</div>
+                            <div>
+                                <span class="score-value">${coin.mtf_score.toFixed(0)}</span>
+                                <span class="score-max">/100</span>
+                            </div>
+                        </div>
+
+                        <div class="timeframe-breakdown">
+                            <div class="breakdown-label">Timeframe Breakdown</div>
+                            <div class="tf-grid">
+                                ${Object.entries(coin.timeframe_details).map(([tf, value]) => `
+                                    <div class="tf-item">
+                                        <div class="tf-label">${formatTimeframe(tf)}</div>
+                                        <div class="tf-value ${value >= 0 ? 'positive' : 'negative'}">
+                                            ${value >= 0 ? '+' : ''}${value.toFixed(2)}%
+                                        </div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            // Reinitialize Lucide icons
+            lucide.createIcons();
+        }
+
+        function updateStats(data) {
+            document.getElementById('totalSymbols').textContent = data.total_symbols || '--';
+            document.getElementById('totalTimeframes').textContent = (data.timeframes_analyzed || []).length;
+
+            const rankings = data.rankings || [];
+            if (rankings.length > 0) {
+                const avgScore = rankings.reduce((sum, coin) => sum + coin.mtf_score, 0) / rankings.length;
+                document.getElementById('avgScore').textContent = avgScore.toFixed(1);
+            } else {
+                document.getElementById('avgScore').textContent = '--';
+            }
+
+            const execTimeMs = Math.round((data.execution_time_seconds || 0) * 1000);
+            document.getElementById('execTime').innerHTML = `
+                <span style="font-size: 1.5rem;">${execTimeMs}</span>
+                <span style="font-size: 1rem; color: var(--text-tertiary);">ms</span>
+            `;
+        }
+
+        function formatTimeframe(tf) {
+            const hours = parseFloat(tf);
+            if (hours < 1) {
+                return `${Math.round(hours * 60)}m`;
+            } else {
+                return `${hours}h`;
+            }
+        }
+
+        function startAutoRefresh() {
+            // Refresh every 2 minutes
+            refreshInterval = setInterval(loadRankings, 120000);
+        }
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            if (refreshInterval) {
+                clearInterval(refreshInterval);
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Virtuoso News - Live Crypto Feed</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=Inter:wght@300;400;500;600;700&display=swap');
+
+        :root {
+            /* Virtuoso Brand Colors */
+            --neon-amber: #fbbf24;
+            --neon-cyan: #06B6D4;
+            --neon-red: #ff0066;
+
+            /* Dark Mode */
+            --dark-bg-primary: #0a0a0a;
+            --dark-bg-secondary: #111111;
+            --dark-bg-tertiary: #1a1a1a;
+            --dark-border: #222222;
+            --dark-text-primary: #e0e0e0;
+            --dark-text-secondary: #9ca3af;
+            --dark-text-tertiary: #6b7280;
+
+            /* Semantic */
+            --success: #10b981;
+            --error: #ef4444;
+            --warning: #f59e0b;
+            --info: #3b82f6;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--dark-bg-primary);
+            color: var(--dark-text-primary);
+            margin: 0;
+            padding: 0;
+            line-height: 1.6;
+        }
+
+        .font-mono {
+            font-family: 'IBM Plex Mono', monospace;
+        }
+
+        /* Widget Container */
+        .news-widget {
+            max-width: 600px;
+            margin: 0 auto;
+            background: var(--dark-bg-secondary);
+            border: 1px solid var(--dark-border);
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+        }
+
+        /* Header */
+        .widget-header {
+            background: linear-gradient(135deg, var(--dark-bg-tertiary) 0%, var(--dark-bg-secondary) 100%);
+            border-bottom: 1px solid var(--dark-border);
+            padding: 16px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .widget-title {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .widget-logo {
+            width: 32px;
+            height: 32px;
+            background: var(--dark-bg-primary);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid var(--neon-amber);
+            box-shadow: 0 0 12px rgba(251, 191, 36, 0.2);
+        }
+
+        .widget-logo svg {
+            width: 20px;
+            height: 20px;
+        }
+
+        .widget-title h1 {
+            font-size: 1.125rem;
+            font-weight: 600;
+            margin: 0;
+            color: var(--dark-text-primary);
+        }
+
+        .widget-title span {
+            color: var(--neon-amber);
+            text-shadow: 0 0 8px rgba(251, 191, 36, 0.4);
+        }
+
+        .live-indicator {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.75rem;
+            color: var(--success);
+            font-weight: 500;
+        }
+
+        .live-dot {
+            width: 8px;
+            height: 8px;
+            background: var(--success);
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }
+            50% { opacity: 0.8; box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+        }
+
+        /* News Feed */
+        .news-feed {
+            max-height: 500px;
+            overflow-y: auto;
+            scrollbar-width: thin;
+            scrollbar-color: var(--dark-border) transparent;
+        }
+
+        .news-feed::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .news-feed::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .news-feed::-webkit-scrollbar-thumb {
+            background: var(--dark-border);
+            border-radius: 3px;
+        }
+
+        .news-feed::-webkit-scrollbar-thumb:hover {
+            background: var(--neon-amber);
+        }
+
+        /* News Item */
+        .news-item {
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--dark-border);
+            transition: all 0.2s ease;
+            cursor: pointer;
+        }
+
+        .news-item:hover {
+            background: var(--dark-bg-tertiary);
+            border-left: 3px solid var(--neon-amber);
+            padding-left: 17px;
+        }
+
+        .news-item:last-child {
+            border-bottom: none;
+        }
+
+        .news-source {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+
+        .source-avatar {
+            width: 24px;
+            height: 24px;
+            background: var(--dark-bg-primary);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--neon-amber);
+            border: 1px solid var(--dark-border);
+        }
+
+        .source-name {
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--neon-cyan);
+        }
+
+        .source-handle {
+            font-size: 0.75rem;
+            color: var(--dark-text-tertiary);
+        }
+
+        .news-time {
+            font-size: 0.75rem;
+            color: var(--dark-text-tertiary);
+            margin-left: auto;
+        }
+
+        .news-text {
+            font-size: 0.9375rem;
+            color: var(--dark-text-primary);
+            line-height: 1.5;
+            margin-bottom: 10px;
+        }
+
+        .news-text a {
+            color: var(--neon-cyan);
+            text-decoration: none;
+        }
+
+        .news-text a:hover {
+            text-decoration: underline;
+        }
+
+        /* Highlight breaking news */
+        .news-text .breaking {
+            color: var(--neon-amber);
+            font-weight: 600;
+        }
+
+        .news-meta {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            font-size: 0.75rem;
+            color: var(--dark-text-tertiary);
+        }
+
+        .news-meta span {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .news-meta i {
+            font-size: 0.7rem;
+        }
+
+        /* Footer */
+        .widget-footer {
+            background: var(--dark-bg-tertiary);
+            border-top: 1px solid var(--dark-border);
+            padding: 12px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 0.75rem;
+        }
+
+        .footer-stats {
+            color: var(--dark-text-tertiary);
+        }
+
+        .footer-stats .cached-badge {
+            background: var(--dark-bg-primary);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.65rem;
+            margin-left: 8px;
+            color: var(--neon-cyan);
+        }
+
+        .footer-brand {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            color: var(--dark-text-secondary);
+        }
+
+        .footer-brand span {
+            color: var(--neon-amber);
+        }
+
+        /* Loading State */
+        .loading {
+            padding: 40px;
+            text-align: center;
+            color: var(--dark-text-secondary);
+        }
+
+        .loading-spinner {
+            width: 32px;
+            height: 32px;
+            border: 3px solid var(--dark-border);
+            border-top-color: var(--neon-amber);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 16px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Error State */
+        .error-state {
+            padding: 40px;
+            text-align: center;
+            color: var(--error);
+        }
+
+        .error-state i {
+            font-size: 2rem;
+            margin-bottom: 12px;
+        }
+
+        /* Empty State */
+        .empty-state {
+            padding: 40px;
+            text-align: center;
+            color: var(--dark-text-secondary);
+        }
+
+        /* Refresh Button */
+        .refresh-btn {
+            background: transparent;
+            border: 1px solid var(--dark-border);
+            border-radius: 6px;
+            padding: 6px 12px;
+            color: var(--dark-text-secondary);
+            cursor: pointer;
+            font-size: 0.75rem;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s ease;
+        }
+
+        .refresh-btn:hover {
+            border-color: var(--neon-amber);
+            color: var(--neon-amber);
+        }
+
+        .refresh-btn.loading i {
+            animation: spin 1s linear infinite;
+        }
+
+        /* Ticker Mode (horizontal scroll) */
+        .ticker-mode {
+            overflow: hidden;
+            white-space: nowrap;
+            padding: 12px 0;
+            background: var(--dark-bg-secondary);
+            border-bottom: 1px solid var(--dark-border);
+        }
+
+        .ticker-content {
+            display: inline-block;
+            animation: ticker 60s linear infinite;
+        }
+
+        .ticker-content:hover {
+            animation-play-state: paused;
+        }
+
+        .ticker-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 0 24px;
+            font-size: 0.875rem;
+        }
+
+        .ticker-source {
+            color: var(--neon-cyan);
+            font-weight: 600;
+        }
+
+        .ticker-text {
+            color: var(--dark-text-primary);
+        }
+
+        .ticker-separator {
+            color: var(--neon-amber);
+            margin: 0 12px;
+        }
+
+        @keyframes ticker {
+            0% { transform: translateX(0); }
+            100% { transform: translateX(-50%); }
+        }
+
+        /* Source filter pills */
+        .source-filters {
+            display: flex;
+            gap: 8px;
+            padding: 12px 20px;
+            overflow-x: auto;
+            border-bottom: 1px solid var(--dark-border);
+            scrollbar-width: none;
+        }
+
+        .source-filters::-webkit-scrollbar {
+            display: none;
+        }
+
+        .source-pill {
+            flex-shrink: 0;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            background: var(--dark-bg-primary);
+            border: 1px solid var(--dark-border);
+            color: var(--dark-text-secondary);
+        }
+
+        .source-pill:hover {
+            border-color: var(--neon-amber);
+            color: var(--neon-amber);
+        }
+
+        .source-pill.active {
+            background: var(--neon-amber);
+            border-color: var(--neon-amber);
+            color: var(--dark-bg-primary);
+        }
+
+        /* Mode Toggle Tabs */
+        .mode-tabs {
+            display: flex;
+            gap: 0;
+            background: var(--dark-bg-primary);
+            border-radius: 8px;
+            padding: 4px;
+        }
+
+        .mode-tab {
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            color: var(--dark-text-tertiary);
+            background: transparent;
+            border: none;
+        }
+
+        .mode-tab:hover {
+            color: var(--dark-text-secondary);
+        }
+
+        .mode-tab.active {
+            background: var(--neon-amber);
+            color: var(--dark-bg-primary);
+        }
+    </style>
+</head>
+<body>
+    <div style="padding: 20px;">
+        <!-- Main Widget -->
+        <div class="news-widget" id="newsWidget">
+            <!-- Header -->
+            <div class="widget-header">
+                <div class="widget-title">
+                    <div class="widget-logo">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"></polyline>
+                            <polyline points="16 7 22 7 22 13"></polyline>
+                        </svg>
+                    </div>
+                    <h1><span>Virtuoso</span> News</h1>
+                </div>
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <div class="mode-tabs">
+                        <button class="mode-tab active" data-mode="feed" onclick="setMode('feed')">
+                            <i class="fas fa-list"></i>
+                        </button>
+                        <button class="mode-tab" data-mode="ticker" onclick="setMode('ticker')">
+                            <i class="fas fa-align-left"></i>
+                        </button>
+                    </div>
+                    <button class="refresh-btn" id="refreshBtn" onclick="refreshNews()">
+                        <i class="fas fa-sync-alt"></i>
+                        Refresh
+                    </button>
+                    <div class="live-indicator">
+                        <div class="live-dot"></div>
+                        LIVE
+                    </div>
+                </div>
+            </div>
+
+            <!-- Source Filters (Feed Mode) -->
+            <div class="source-filters" id="sourceFilters">
+                <div class="source-pill active" data-source="all">All</div>
+            </div>
+
+            <!-- News Feed (Feed Mode) -->
+            <div class="news-feed" id="newsFeed">
+                <div class="loading">
+                    <div class="loading-spinner"></div>
+                    <div>Loading crypto news...</div>
+                </div>
+            </div>
+
+            <!-- Ticker Mode -->
+            <div class="ticker-mode" id="tickerMode" style="display: none;">
+                <div class="ticker-content" id="tickerContent">
+                    Loading news...
+                </div>
+            </div>
+
+            <!-- Footer -->
+            <div class="widget-footer">
+                <div class="footer-stats" id="footerStats">
+                    Updated just now
+                </div>
+                <div class="footer-brand">
+                    Powered by <span>Virtuoso</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ============================================================
+        // DASHBOARD SERVICES INTEGRATION
+        // Uses same patterns as dashboard_mobile_v3.html and desktop_v2.html
+        // ============================================================
+
+        // Configuration - matches dashboard patterns
+        const NEWS_CACHE_KEY = 'virtuoso_news_widget_cache';
+        const NEWS_REFRESH_INTERVAL = 300000; // 5 minutes (same as dashboard)
+        const MAX_NEWS_ITEMS = 30;
+
+        // State
+        let allNews = [];
+        let currentFilter = 'all';
+        let currentMode = 'feed'; // 'feed' or 'ticker'
+        let lastUpdate = null;
+        let isCached = false;
+        let refreshTimer = null;
+
+        // Source display names and colors - RSS sources from dashboard
+        const sourceConfig = {
+            // RSS Sources (from /api/dashboard/news)
+            'Decrypt': { name: 'Decrypt', color: '#06B6D4' },
+            'The Block': { name: 'The Block', color: '#3b82f6' },
+            'Cointelegraph': { name: 'Cointelegraph', color: '#22c55e' },
+            'WatcherGuru': { name: 'WatcherGuru', color: '#10b981' },
+            'CryptoPotato': { name: 'CryptoPotato', color: '#f59e0b' },
+            'CryptoSlate': { name: 'CryptoSlate', color: '#8b5cf6' },
+            'CryptoNews': { name: 'CryptoNews', color: '#ef4444' },
+            'SmartLiquidity': { name: 'SmartLiquidity', color: '#ec4899' },
+            // Twitter Sources (from /api/news/x) - kept for compatibility
+            'tier10k': { name: 'Tier10K', color: '#fbbf24' },
+            'whale_alert': { name: 'Whale Alert', color: '#06B6D4' },
+            'DocumentingBTC': { name: 'DocumentingBTC', color: '#f7931a' },
+            'DeItaone': { name: 'DeItaone', color: '#ef4444' },
+            'unusual_whales': { name: 'Unusual Whales', color: '#8b5cf6' },
+            'zaboratz': { name: 'Zaboratz', color: '#3b82f6' }
+        };
+
+        // ============================================================
+        // CACHING SERVICE - Same pattern as mobile_v3
+        // ============================================================
+
+        function getNewsFromCache() {
+            try {
+                const cached = localStorage.getItem(NEWS_CACHE_KEY);
+                if (cached) {
+                    const { news, timestamp } = JSON.parse(cached);
+                    // Check if cache is still valid (within refresh interval)
+                    if (Date.now() - timestamp < NEWS_REFRESH_INTERVAL) {
+                        return news;
+                    }
+                }
+            } catch (e) {
+                console.warn('Failed to read news cache:', e);
+            }
+            return null;
+        }
+
+        function saveNewsToCache(news) {
+            try {
+                localStorage.setItem(NEWS_CACHE_KEY, JSON.stringify({
+                    news: news,
+                    timestamp: Date.now()
+                }));
+            } catch (e) {
+                console.warn('Failed to save news cache:', e);
+            }
+        }
+
+        // ============================================================
+        // TIME FORMATTING - Same as dashboard
+        // ============================================================
+
+        function getTimeAgo(timestamp) {
+            // API returns timestamp in SECONDS, not milliseconds
+            const now = Math.floor(Date.now() / 1000);
+            const diff = now - timestamp;
+
+            if (diff < 0) return 'just now'; // Future timestamp protection
+            if (diff < 60) return 'just now';
+            if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+            if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+            return `${Math.floor(diff / 86400)}d ago`;
+        }
+
+        // ============================================================
+        // RENDERING FUNCTIONS
+        // ============================================================
+
+        function renderNewsItem(item) {
+            const source = item.source || 'Unknown';
+            const config = sourceConfig[source] || { name: source, color: '#9ca3af' };
+            const initials = config.name.substring(0, 2).toUpperCase();
+            const timeAgo = item.timestamp ? getTimeAgo(item.timestamp) : '';
+            const url = item.url || item.link || '#';
+
+            return `
+                <div class="news-item" onclick="window.open('${url}', '_blank')">
+                    <div class="news-source">
+                        <div class="source-avatar" style="color: ${config.color}; border-color: ${config.color}40;">
+                            ${initials}
+                        </div>
+                        <span class="source-name" style="color: ${config.color}">
+                            ${config.name}
+                        </span>
+                        <span class="news-time">${timeAgo}</span>
+                    </div>
+                    <div class="news-text">${escapeHtml(item.title || item.text || '')}</div>
+                </div>
+            `;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function renderNewsFeed() {
+            const feed = document.getElementById('newsFeed');
+
+            let filteredNews = allNews;
+            if (currentFilter !== 'all') {
+                filteredNews = allNews.filter(item => item.source === currentFilter);
+            }
+
+            if (filteredNews.length === 0) {
+                feed.innerHTML = `
+                    <div class="empty-state">
+                        <i class="far fa-newspaper" style="font-size: 2rem; margin-bottom: 12px;"></i>
+                        <div>No news available</div>
+                    </div>
+                `;
+                return;
+            }
+
+            feed.innerHTML = filteredNews
+                .slice(0, MAX_NEWS_ITEMS)
+                .map(renderNewsItem)
+                .join('');
+        }
+
+        function renderSourceFilters() {
+            const filters = document.getElementById('sourceFilters');
+            const sources = [...new Set(allNews.map(item => item.source).filter(Boolean))];
+
+            let html = '<div class="source-pill ' + (currentFilter === 'all' ? 'active' : '') + '" data-source="all" onclick="setFilter(\'all\')">All</div>';
+
+            sources.forEach(source => {
+                const config = sourceConfig[source] || { name: source };
+                const isActive = currentFilter === source ? 'active' : '';
+                html += `<div class="source-pill ${isActive}" data-source="${source}" onclick="setFilter('${source}')">${config.name}</div>`;
+            });
+
+            filters.innerHTML = html;
+        }
+
+        function renderTicker() {
+            const ticker = document.getElementById('tickerContent');
+            if (!ticker || allNews.length === 0) {
+                ticker.innerHTML = '<span class="ticker-item">No news available</span>';
+                return;
+            }
+
+            const items = allNews.slice(0, 15).map(item => {
+                const source = item.source || 'News';
+                const config = sourceConfig[source] || { name: source };
+                const text = (item.title || item.text || '').substring(0, 80);
+                const url = item.url || item.link || '#';
+                return `
+                    <a href="${url}" target="_blank" class="ticker-item" style="text-decoration: none;">
+                        <span class="ticker-source">${config.name}</span>
+                        <span class="ticker-text">${escapeHtml(text)}</span>
+                    </a>
+                    <span class="ticker-separator">●</span>
+                `;
+            }).join('');
+
+            // Duplicate for seamless loop
+            ticker.innerHTML = items + items;
+
+            // Adjust animation speed based on content width
+            setTimeout(() => {
+                const contentWidth = ticker.scrollWidth / 2;
+                const speed = Math.max(30, contentWidth / 50); // ~50px per second
+                ticker.style.animationDuration = `${speed}s`;
+            }, 100);
+        }
+
+        function updateFooterStats() {
+            const stats = document.getElementById('footerStats');
+            if (lastUpdate) {
+                const timeStr = getTimeAgo(lastUpdate);
+                const cachedBadge = isCached ? '<span class="cached-badge">CACHED</span>' : '';
+                stats.innerHTML = `Updated ${timeStr} • ${allNews.length} items${cachedBadge}`;
+            }
+        }
+
+        // ============================================================
+        // INTERACTION HANDLERS
+        // ============================================================
+
+        function setFilter(source) {
+            currentFilter = source;
+            renderSourceFilters();
+            renderNewsFeed();
+        }
+
+        function setMode(mode) {
+            currentMode = mode;
+
+            // Update tab states
+            document.querySelectorAll('.mode-tab').forEach(tab => {
+                tab.classList.toggle('active', tab.dataset.mode === mode);
+            });
+
+            // Show/hide appropriate view
+            const feed = document.getElementById('newsFeed');
+            const filters = document.getElementById('sourceFilters');
+            const ticker = document.getElementById('tickerMode');
+
+            if (mode === 'feed') {
+                feed.style.display = 'block';
+                filters.style.display = 'flex';
+                ticker.style.display = 'none';
+            } else {
+                feed.style.display = 'none';
+                filters.style.display = 'none';
+                ticker.style.display = 'block';
+                renderTicker();
+            }
+        }
+
+        // ============================================================
+        // NEWS LOADING SERVICE - Same pattern as dashboard
+        // ============================================================
+
+        async function loadNews() {
+            const btn = document.getElementById('refreshBtn');
+            const feed = document.getElementById('newsFeed');
+
+            // 1. INSTANT: Show cached news immediately (no blocking)
+            const cached = getNewsFromCache();
+            if (cached && cached.length > 0) {
+                allNews = cached;
+                isCached = true;
+                lastUpdate = Date.now();
+                renderSourceFilters();
+                renderNewsFeed();
+                renderTicker();
+                updateFooterStats();
+            } else {
+                // First visit - show loading state
+                feed.innerHTML = `
+                    <div class="loading">
+                        <div class="loading-spinner"></div>
+                        <div>Loading crypto news...</div>
+                    </div>
+                `;
+            }
+
+            // 2. BACKGROUND: Fetch fresh news without blocking UI
+            btn.classList.add('loading');
+            try {
+                // Use dashboard news endpoint (RSS aggregation)
+                const response = await fetch('/api/dashboard/news?limit=' + MAX_NEWS_ITEMS);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+                const data = await response.json();
+
+                if (data.news && data.news.length > 0) {
+                    allNews = data.news;
+                    isCached = false;
+                    lastUpdate = Date.now();
+
+                    // Save to cache for next page load
+                    saveNewsToCache(allNews);
+
+                    // Update display with fresh data
+                    renderSourceFilters();
+                    renderNewsFeed();
+                    renderTicker();
+                    updateFooterStats();
+                }
+
+            } catch (error) {
+                console.error('Error loading news:', error);
+                // Only show error if no cached data
+                if (!cached || cached.length === 0) {
+                    feed.innerHTML = `
+                        <div class="error-state">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            <div>Failed to load news</div>
+                            <div style="font-size: 0.75rem; margin-top: 8px; color: var(--dark-text-tertiary);">
+                                ${error.message}
+                            </div>
+                        </div>
+                    `;
+                }
+            } finally {
+                btn.classList.remove('loading');
+            }
+        }
+
+        function refreshNews() {
+            // Clear cache to force fresh fetch
+            localStorage.removeItem(NEWS_CACHE_KEY);
+            loadNews();
+        }
+
+        function startNewsRefresh() {
+            // Clear any existing timer
+            if (refreshTimer) clearInterval(refreshTimer);
+            // Refresh news every 5 minutes
+            refreshTimer = setInterval(() => loadNews(), NEWS_REFRESH_INTERVAL);
+        }
+
+        // ============================================================
+        // INITIALIZATION
+        // ============================================================
+
+        document.addEventListener('DOMContentLoaded', () => {
+            // Load news (instant from cache, then background refresh)
+            loadNews();
+
+            // Start background refresh timer
+            startNewsRefresh();
+
+            // Update "time ago" every 30 seconds
+            setInterval(updateFooterStats, 30000);
+        });
+    </script>
+</body>
+</html>

@@ -6,7 +6,7 @@ from typing import Dict, List, Any, Optional
 import asyncio
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 import time
 from pathlib import Path
 import os
@@ -75,6 +75,86 @@ except ImportError:
 # Resolve paths relative to the project root
 PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
 TEMPLATE_DIR = PROJECT_ROOT / "src" / "dashboard" / "templates"
+
+
+def derive_momentum_opportunities(confluence_scores: List[Dict[str, Any]], limit: int = 5) -> List[Dict[str, Any]]:
+    """
+    Derive trading opportunities from confluence scores + momentum.
+
+    Strategy: Combine high confluence scores with strong price momentum
+    to identify breakout/trend-following opportunities.
+
+    Args:
+        confluence_scores: List of symbol data with scores and price changes
+        limit: Max number of opportunities to return
+
+    Returns:
+        List of opportunity objects for the dashboard
+    """
+    if not confluence_scores:
+        return []
+
+    opportunities = []
+
+    for item in confluence_scores:
+        # Skip invalid or system entries
+        symbol = item.get('symbol', '')
+        if not symbol or 'SYSTEM' in symbol or symbol == 'SYSTEM_STATUS':
+            continue
+
+        score = item.get('score', item.get('confluence_score', 0))
+        if score < 50:  # Only consider symbols with decent confluence (lowered from 60)
+            continue
+
+        # Get price change for momentum calculation
+        price_change = item.get('price_change_24h', item.get('change_24h', item.get('priceChange', 0)))
+        if price_change is None:
+            price_change = 0
+
+        # Calculate momentum strength (absolute value, direction doesn't matter for "opportunity")
+        momentum_strength = abs(float(price_change))
+
+        # Determine direction based on price change AND sentiment
+        sentiment = item.get('sentiment', 'neutral')
+        if price_change > 0:
+            direction = 'bullish'
+            momentum_label = f"+{price_change:.1f}%"
+        elif price_change < 0:
+            direction = 'bearish'
+            momentum_label = f"{price_change:.1f}%"
+        else:
+            direction = sentiment.lower() if sentiment else 'neutral'
+            momentum_label = "0.0%"
+
+        # Get volume info
+        volume = item.get('volume_24h', item.get('volume', 0))
+        if volume and volume > 1_000_000:
+            volume_label = f"${volume/1_000_000:.1f}M"
+        elif volume and volume > 1_000:
+            volume_label = f"${volume/1_000:.0f}K"
+        else:
+            volume_label = "N/A"
+
+        # Combined opportunity score: confluence × momentum factor
+        # Momentum factor: 1.0 + (momentum_strength / 10) capped at 2.0
+        momentum_factor = min(2.0, 1.0 + (momentum_strength / 10))
+        opportunity_score = score * momentum_factor
+
+        opportunities.append({
+            'symbol': symbol.replace('USDT', '').replace('USD', ''),  # Clean symbol
+            'full_symbol': symbol,
+            'score': round(score),
+            'momentum': momentum_label,
+            'volume': volume_label,
+            'direction': direction,
+            'opportunity_score': opportunity_score,
+            'price_change': price_change
+        })
+
+    # Sort by opportunity_score descending (best opportunities first)
+    opportunities.sort(key=lambda x: x['opportunity_score'], reverse=True)
+
+    return opportunities[:limit]
 
 # WebSocket connection manager
 class ConnectionManager:
@@ -189,6 +269,45 @@ async def get_dashboard_overview() -> Dict[str, Any]:
                     overview['signals'] = enriched_signals
                     logger.info(f"✅ Enriched {len(enriched_signals)} signals with breakdown data")
 
+                # ENHANCEMENT: Add momentum + confluence opportunities
+                # Try multiple data sources for confluence scores
+                opportunities = []
+                try:
+                    confluence_scores = None
+
+                    # Try web_cache first
+                    if web_cache:
+                        mobile_data = await web_cache.get_mobile_data()
+                        if mobile_data and mobile_data.get('confluence_scores'):
+                            confluence_scores = mobile_data['confluence_scores']
+
+                    # Fallback to direct_cache if web_cache didn't have data
+                    if not confluence_scores and USE_DIRECT_CACHE:
+                        direct_mobile = await direct_cache.get_mobile_data()
+                        if direct_mobile and direct_mobile.get('confluence_scores'):
+                            confluence_scores = direct_mobile['confluence_scores']
+
+                    # Fallback to overview's own signals if available
+                    if not confluence_scores and overview.get('signals'):
+                        # Convert signals to confluence_scores format
+                        confluence_scores = [
+                            {
+                                'symbol': s.get('symbol'),
+                                'score': s.get('confluence_score', s.get('score', 50)),
+                                'price_change_24h': s.get('price_change', 0),
+                                'volume_24h': s.get('volume', 0)
+                            }
+                            for s in overview['signals'] if s.get('symbol')
+                        ]
+
+                    if confluence_scores:
+                        opportunities = derive_momentum_opportunities(confluence_scores)
+
+                except Exception as opp_error:
+                    logger.debug(f"Failed to derive opportunities: {opp_error}")
+
+                overview['opportunities'] = opportunities
+
                 return overview
 
         # Check Memcached for real-time status
@@ -222,13 +341,33 @@ async def get_dashboard_overview() -> Dict[str, Any]:
         # integration = get_dashboard_integration()
         if not integration:
             logger.warning("Dashboard integration service not available")
+            # Try to get opportunities from multiple sources
+            opportunities = []
+            try:
+                confluence_scores = None
+                # Try web_cache first
+                if web_cache:
+                    mobile_data = await web_cache.get_mobile_data()
+                    if mobile_data and mobile_data.get('confluence_scores'):
+                        confluence_scores = mobile_data['confluence_scores']
+                # Fallback to direct_cache
+                if not confluence_scores and USE_DIRECT_CACHE:
+                    direct_mobile = await direct_cache.get_mobile_data()
+                    if direct_mobile and direct_mobile.get('confluence_scores'):
+                        confluence_scores = direct_mobile['confluence_scores']
+                if confluence_scores:
+                    opportunities = derive_momentum_opportunities(confluence_scores)
+            except Exception as e:
+                logger.debug(f"Failed to get opportunities in fallback: {e}")
+
             return {
                 "status": "initializing" if symbol_count > 0 else "error",
                 "message": "System initializing..." if symbol_count > 0 else "Dashboard integration service not available",
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "signals": {"total": 0, "strong": 0, "medium": 0, "weak": 0},
                 "alerts": {"total": 0, "critical": 0, "warning": 0},
                 "alpha_opportunities": {"total": 0, "high_confidence": 0, "medium_confidence": 0},
+                "opportunities": opportunities,
                 "system_status": {
                     "monitoring": "active" if symbol_count > 0 else "inactive",
                     "data_feed": "connected" if symbol_count > 0 else "disconnected",
@@ -249,10 +388,11 @@ async def get_dashboard_overview() -> Dict[str, Any]:
             return {
                 "status": "error",
                 "message": "Integration service returned invalid data type",
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "signals": {"total": 0, "strong": 0, "medium": 0, "weak": 0},
                 "alerts": {"total": 0, "critical": 0, "warning": 0},
                 "alpha_opportunities": {"total": 0, "high_confidence": 0, "medium_confidence": 0},
+                "opportunities": [],
                 "system_status": {
                     "monitoring": "error",
                     "data_feed": "disconnected",
@@ -298,6 +438,74 @@ async def get_dashboard_overview() -> Dict[str, Any]:
         tb = traceback.format_exc()
         logger.error(f"Error getting dashboard overview: {e}\nTraceback:\n{tb}")
         raise HTTPException(status_code=500, detail=f"Error getting dashboard overview: {str(e)}")
+
+
+@router.get("/opportunities")
+async def get_opportunities() -> List[Dict[str, Any]]:
+    """
+    Get trading opportunities based on momentum + confluence analysis.
+
+    This endpoint provides standalone access to opportunity data that combines:
+    - High confluence scores (signal quality)
+    - Strong price momentum (trend strength)
+    - Volume confirmation
+
+    Returns opportunities sorted by combined opportunity score.
+    """
+    try:
+        opportunities = []
+
+        # Try web_cache first (shared cache with live data)
+        if web_cache:
+            try:
+                mobile_data = await web_cache.get_mobile_data()
+                if mobile_data and mobile_data.get('data_source') != 'fallback':
+                    confluence_scores = mobile_data.get('confluence_scores', [])
+                    if confluence_scores:
+                        opportunities = derive_momentum_opportunities(confluence_scores, limit=10)
+                        logger.info(f"✅ Opportunities endpoint: {len(opportunities)} from web cache")
+                        return opportunities
+            except Exception as e:
+                logger.warning(f"Web cache error in opportunities: {e}")
+
+        # Fallback to direct_cache
+        if USE_DIRECT_CACHE:
+            try:
+                mobile_data = await direct_cache.get_mobile_data()
+                if mobile_data and mobile_data.get('confluence_scores'):
+                    confluence_scores = mobile_data['confluence_scores']
+                    opportunities = derive_momentum_opportunities(confluence_scores, limit=10)
+                    logger.info(f"✅ Opportunities endpoint: {len(opportunities)} from direct cache")
+                    return opportunities
+            except Exception as e:
+                logger.warning(f"Direct cache error in opportunities: {e}")
+
+        # Last fallback: try to get from overview's signals
+        try:
+            overview = await direct_cache.get_dashboard_overview() if USE_DIRECT_CACHE else {}
+            if overview and isinstance(overview, dict) and overview.get('signals'):
+                confluence_scores = [
+                    {
+                        'symbol': s.get('symbol'),
+                        'score': s.get('confluence_score', s.get('score', 50)),
+                        'price_change_24h': s.get('change_24h', 0),
+                        'volume_24h': s.get('volume_24h', 0)
+                    }
+                    for s in overview['signals'] if s.get('symbol')
+                ]
+                opportunities = derive_momentum_opportunities(confluence_scores, limit=10)
+                logger.info(f"✅ Opportunities endpoint: {len(opportunities)} from overview signals")
+                return opportunities
+        except Exception as e:
+            logger.warning(f"Overview fallback error in opportunities: {e}")
+
+        # Return empty if all sources fail
+        logger.warning("No opportunity data available from any source")
+        return []
+
+    except Exception as e:
+        logger.error(f"Error getting opportunities: {e}")
+        raise HTTPException(status_code=500, detail=f"Error getting opportunities: {str(e)}")
 
 
 @router.get("/performance/flags")
@@ -356,44 +564,615 @@ async def performance_flags() -> Dict[str, Any]:
     }
 )
 async def get_dashboard_signals() -> List[Dict[str, Any]]:
-    """Get recent signals for dashboard display."""
-    try:
-        integration = get_dashboard_integration()
-        if not integration:
-            return []
+    """Get recent signals for dashboard display.
 
-        signals_data = await integration.get_signals_data()
-        return signals_data
+    FIXED: Now includes fallback to direct cache when integration service
+    returns empty data. This mirrors the self-population pattern used by
+    the /overview endpoint.
+    """
+    try:
+        signals_data = []
+
+        # Try integration service first
+        integration = get_dashboard_integration()
+        if integration:
+            try:
+                signals_data = await integration.get_signals_data()
+            except Exception as e:
+                logger.warning(f"Integration service failed for signals: {e}")
+
+        # FALLBACK 1: Try web cache (shared cache with live data)
+        if not signals_data and web_cache:
+            try:
+                mobile_data = await web_cache.get_mobile_data()
+                if mobile_data and mobile_data.get('data_source') != 'fallback':
+                    # Extract signals from confluence scores
+                    confluence_scores = mobile_data.get('confluence_scores', [])
+                    signals_data = [
+                        {
+                            'symbol': s.get('symbol'),
+                            'confluence_score': s.get('score', 50),
+                            'score': s.get('score', 50),
+                            'price': s.get('price', 0),
+                            'change_24h': s.get('change_24h', 0),
+                            'volume_24h': s.get('volume_24h', 0),
+                            'components': s.get('components', {}),
+                            'sentiment': s.get('sentiment', 'NEUTRAL'),
+                            'signal_type': 'BUY' if s.get('score', 50) >= 65 else ('SELL' if s.get('score', 50) <= 35 else 'NEUTRAL'),
+                            'has_breakdown': bool(s.get('components'))
+                        }
+                        for s in confluence_scores if s.get('symbol')
+                    ]
+                    if signals_data:
+                        logger.info(f"✅ Signals endpoint: {len(signals_data)} from web cache")
+            except Exception as e:
+                logger.warning(f"Web cache fallback failed for signals: {e}")
+
+        # FALLBACK 2: Try direct cache adapter
+        if not signals_data and USE_DIRECT_CACHE:
+            try:
+                overview = await direct_cache.get_dashboard_overview()
+                if overview and isinstance(overview, dict):
+                    signals_data = overview.get('signals', [])
+                    if signals_data:
+                        logger.info(f"✅ Signals endpoint: {len(signals_data)} from direct cache overview")
+            except Exception as e:
+                logger.warning(f"Direct cache fallback failed for signals: {e}")
+
+        return signals_data if signals_data else []
 
     except Exception as e:
         logger.error(f"Error getting dashboard signals: {e}")
         raise HTTPException(status_code=500, detail=f"Error getting signals: {str(e)}")
 
-@router.get("/alerts/recent")
-async def get_recent_alerts(
-    limit: int = 50,
-    integration = Depends(get_dashboard_integration)
-) -> List[Dict[str, Any]]:
-    """Get recent alerts from the monitoring system."""
+def _get_regime_dashboard_threshold() -> float:
+    """Get the regime confidence threshold from config.yaml.
+
+    Reads from monitoring.alerts.regime.dashboard_confidence_threshold
+    Default: 0.80 (80%)
+    """
     try:
-        alerts = await integration.get_alerts_data()
-        return alerts[:limit]
+        import yaml
+        config_path = Path(__file__).parent.parent.parent.parent / 'config' / 'config.yaml'
+        if config_path.exists():
+            with open(config_path, 'r') as f:
+                config = yaml.safe_load(f)
+                threshold = (config.get('monitoring', {})
+                            .get('alerts', {})
+                            .get('regime', {})
+                            .get('dashboard_confidence_threshold', 0.80))
+                return float(threshold)
+    except Exception as e:
+        logger.warning(f"Failed to load regime threshold from config: {e}")
+    return 0.80  # Default 80%
+
+
+def _filter_alerts_for_dashboard(alerts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Filter alerts to only show high-quality alerts on dashboard.
+
+    Applies the dashboard confidence threshold (configurable, default 80%) for regime alerts
+    while keeping other alert types that passed their respective thresholds.
+
+    Config: monitoring.alerts.regime.dashboard_confidence_threshold in config.yaml
+    """
+    threshold = _get_regime_dashboard_threshold()
+
+    filtered = []
+    for alert in alerts:
+        alert_type = alert.get('type', '').lower()
+
+        # For regime alerts, check confidence threshold
+        if alert_type == 'regime_change' or 'regime' in alert_type:
+            # Extract confidence from details or message
+            details = alert.get('details', {})
+            confidence = details.get('confidence', 0)
+
+            # Also check score field which might hold confidence
+            if not confidence:
+                confidence = details.get('score', 0)
+                if confidence > 1:  # If it's a percentage (e.g., 75), convert to decimal
+                    confidence = confidence / 100
+
+            # Try to extract from message if not in details (e.g., "75% conf")
+            if not confidence:
+                import re
+                message = alert.get('message', '')
+                match = re.search(r'(\d+(?:\.\d+)?)\s*%', message)
+                if match:
+                    confidence = float(match.group(1)) / 100
+
+            # Filter out low-confidence regime alerts
+            if confidence > 0 and confidence < threshold:
+                logger.debug(f"Filtering regime alert: {alert.get('symbol')} confidence {confidence:.0%} < {threshold:.0%}")
+                continue
+
+        filtered.append(alert)
+
+    return filtered
+
+
+@router.get("/alerts/recent")
+async def get_recent_alerts(limit: int = 50) -> List[Dict[str, Any]]:
+    """Get recent alerts from the monitoring system.
+
+    FIXED: Now reads directly from 'dashboard:alerts' cache populated by AlertManager.
+    Falls back to integration service, then SQLite if cache is empty.
+
+    Applies dashboard confidence threshold filtering for regime alerts (75%+).
+    """
+    try:
+        alerts = []
+
+        # PRIMARY: Read directly from dashboard:alerts cache
+        try:
+            from pymemcache.client.base import Client
+            from pymemcache import serde
+
+            cache = Client(('localhost', 11211), serde=serde.pickle_serde)
+            cached_alerts = cache.get('dashboard:alerts')
+            cache.close()
+
+            if cached_alerts and isinstance(cached_alerts, list):
+                # Apply dashboard filtering for regime confidence
+                filtered_alerts = _filter_alerts_for_dashboard(cached_alerts)
+                alerts = filtered_alerts[:limit]
+                logger.info(f"✅ Alerts endpoint: {len(alerts)} from dashboard:alerts cache (filtered from {len(cached_alerts)})")
+                return alerts
+        except Exception as cache_error:
+            logger.warning(f"Cache read failed for alerts: {cache_error}")
+
+        # FALLBACK 1: Try integration service
+        integration = get_dashboard_integration()
+        if integration:
+            try:
+                alerts = await integration.get_alerts_data()
+                if alerts:
+                    # Apply dashboard filtering for regime confidence
+                    filtered_alerts = _filter_alerts_for_dashboard(alerts)
+                    logger.info(f"✅ Alerts endpoint: {len(filtered_alerts)} from integration service (filtered from {len(alerts)})")
+                    return filtered_alerts[:limit]
+            except Exception as e:
+                logger.warning(f"Integration service failed for alerts: {e}")
+
+        # FALLBACK 2: Read from SQLite database (persistent storage)
+        try:
+            from src.database.alert_storage import AlertStorage
+            import os
+
+            # Get database path from environment or use default
+            db_path = os.getenv('DATABASE_URL', 'sqlite:///./data/virtuoso.db')
+            if db_path.startswith('sqlite:///'):
+                db_path = db_path.replace('sqlite:///', '')
+
+            if os.path.exists(db_path):
+                storage = AlertStorage(db_path)
+                db_alerts = storage.get_alerts(limit=limit * 2)  # Fetch more to account for filtering
+
+                if db_alerts:
+                    # Convert SQLite format to dashboard format
+                    formatted_alerts = []
+                    for alert in db_alerts:
+                        formatted_alert = {
+                            'id': alert.get('alert_id', str(alert.get('id', ''))),
+                            'type': alert.get('alert_type', 'system'),
+                            'level': alert.get('severity', 'info').lower(),
+                            'symbol': alert.get('symbol', 'SYSTEM'),
+                            'message': alert.get('message', alert.get('title', '')),
+                            'timestamp': alert.get('created_at', ''),
+                            'unix_timestamp': alert.get('timestamp', 0) / 1000 if alert.get('timestamp') else 0,
+                            'details': alert.get('details', {})
+                        }
+                        formatted_alerts.append(formatted_alert)
+
+                    # Apply dashboard filtering for regime confidence
+                    filtered_alerts = _filter_alerts_for_dashboard(formatted_alerts)
+                    logger.info(f"✅ Alerts endpoint: {len(filtered_alerts)} from SQLite fallback (filtered from {len(formatted_alerts)})")
+                    return filtered_alerts[:limit]
+        except ImportError:
+            logger.debug("AlertStorage not available for SQLite fallback")
+        except Exception as sqlite_error:
+            logger.warning(f"SQLite fallback failed for alerts: {sqlite_error}")
+
+        return []
+
     except Exception as e:
         logger.error(f"Error getting recent alerts: {str(e)}")
         return []
 
+
 @router.get("/alerts")
-async def get_alerts(
-    limit: int = 50,
-    integration = Depends(get_dashboard_integration)
-) -> List[Dict[str, Any]]:
-    """Get alerts from the monitoring system (alias for /alerts/recent)."""
+async def get_alerts(limit: int = 50) -> List[Dict[str, Any]]:
+    """Get alerts from the monitoring system (alias for /alerts/recent).
+
+    FIXED: Now reads directly from 'dashboard:alerts' cache populated by AlertManager.
+    """
+    # Delegate to get_recent_alerts for consistent behavior
+    return await get_recent_alerts(limit)
+
+
+@router.get("/signal-reports/{symbol}")
+async def get_signal_reports(symbol: str, limit: int = 10) -> Dict[str, Any]:
+    """Get available PDF and HTML reports for a given symbol.
+
+    Returns the most recent reports matching the symbol, sorted by date.
+    Used by the mobile dashboard to link alerted signals to their generated reports.
+    """
     try:
-        alerts = await integration.get_alerts_data()
-        return alerts[:limit]
+        # Normalize symbol (case-insensitive)
+        symbol_lower = symbol.lower().replace('/', '')
+
+        # Get reports directories
+        project_root = Path(__file__).parent.parent.parent.parent
+        pdf_dir = project_root / "reports" / "pdf"
+        html_dir = project_root / "reports" / "html"
+
+        reports = {
+            "symbol": symbol.upper(),
+            "pdf_reports": [],
+            "html_reports": []
+        }
+
+        # Find PDF reports for this symbol
+        if pdf_dir.exists():
+            pdf_files = sorted(
+                [f for f in pdf_dir.glob(f"{symbol_lower}*.pdf")],
+                key=lambda x: x.stat().st_mtime,
+                reverse=True
+            )[:limit]
+
+            for pdf_file in pdf_files:
+                stat = pdf_file.stat()
+                reports["pdf_reports"].append({
+                    "filename": pdf_file.name,
+                    "url": f"/reports/pdf/{pdf_file.name}",
+                    "size_kb": round(stat.st_size / 1024, 2),
+                    "created": datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat()
+                })
+
+        # Find HTML reports for this symbol
+        if html_dir.exists():
+            html_files = sorted(
+                [f for f in html_dir.glob(f"{symbol_lower}*.html")],
+                key=lambda x: x.stat().st_mtime,
+                reverse=True
+            )[:limit]
+
+            for html_file in html_files:
+                stat = html_file.stat()
+                reports["html_reports"].append({
+                    "filename": html_file.name,
+                    "url": f"/reports/html/{html_file.name}",
+                    "size_kb": round(stat.st_size / 1024, 2),
+                    "created": datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat()
+                })
+
+        # Add most recent report URLs for quick access
+        if reports["pdf_reports"]:
+            reports["latest_pdf"] = reports["pdf_reports"][0]["url"]
+        if reports["html_reports"]:
+            reports["latest_html"] = reports["html_reports"][0]["url"]
+
+        return reports
+
     except Exception as e:
-        logger.error(f"Error getting alerts: {str(e)}")
-        return []
+        logger.error(f"Error getting signal reports for {symbol}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error getting signal reports: {str(e)}")
+
+
+@router.post("/save-analysis-snapshot/{symbol}")
+async def save_analysis_snapshot(symbol: str) -> Dict[str, Any]:
+    """Save a snapshot of the current confluence analysis as an HTML file.
+
+    Creates a self-contained HTML file in reports/html/ that can be viewed later.
+    This captures the current market conditions at the moment of the snapshot.
+    """
+    try:
+        from html import escape
+        from datetime import datetime, timezone
+
+        # Normalize symbol
+        symbol_upper = symbol.upper().replace('/', '')
+
+        # Get current confluence analysis by calling the existing endpoint internally
+        analysis_data = await get_confluence_analysis(symbol_upper)
+        if not analysis_data or "analysis" not in analysis_data:
+            raise HTTPException(status_code=404, detail=f"No analysis data available for {symbol_upper}")
+
+        analysis_text = analysis_data.get("analysis", "")
+        timestamp = datetime.now(timezone.utc)
+        timestamp_str = timestamp.strftime("%Y%m%d_%H%M%S")
+
+        # Extract score from analysis for filename
+        score_str = "0p0"
+        for line in analysis_text.split('\n'):
+            if "Alpha Score:" in line:
+                try:
+                    score_part = line.split("Alpha Score:")[1].split("/")[0].strip()
+                    score_float = float(score_part)
+                    score_str = f"{int(score_float)}p{int((score_float % 1) * 10)}"
+                except (ValueError, IndexError):
+                    pass
+                break
+
+        # Determine signal direction from score
+        signal = "NEUTRAL"
+        for line in analysis_text.split('\n'):
+            if "│" in line and ("BUY" in line.upper() or "SELL" in line.upper() or "NEUTRAL" in line.upper()):
+                if "BUY" in line.upper():
+                    signal = "BUY"
+                elif "SELL" in line.upper():
+                    signal = "SELL"
+                break
+
+        # Create filename
+        filename = f"{symbol_upper.lower()}_SNAPSHOT_{signal}_{score_str}_{timestamp_str}.html"
+
+        # Get reports directory
+        project_root = Path(__file__).parent.parent.parent.parent
+        html_dir = project_root / "reports" / "html"
+        html_dir.mkdir(parents=True, exist_ok=True)
+
+        # Generate self-contained HTML snapshot
+        html_content = f'''<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alpha Analysis Snapshot - {symbol_upper}</title>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {{
+            --neon-amber: #fbbf24;
+            --neon-amber-dim: #b38600;
+            --dark-bg: #0a0a0a;
+            --dark-bg-secondary: #111111;
+            --dark-border: #222222;
+            --text-primary: #e0e0e0;
+            --text-secondary: #9ca3af;
+        }}
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{
+            background: var(--dark-bg);
+            color: var(--neon-amber);
+            font-family: 'IBM Plex Mono', 'SF Mono', monospace;
+            font-size: clamp(10px, 2.5vw, 13px);
+            line-height: 1.5;
+            min-height: 100vh;
+        }}
+        .header {{
+            position: fixed;
+            top: 0; left: 0; right: 0;
+            height: 50px;
+            background: var(--dark-bg-secondary);
+            border-bottom: 1px solid var(--dark-border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 16px;
+            z-index: 1000;
+        }}
+        .brand {{
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }}
+        .brand-icon {{
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            filter: drop-shadow(0 0 6px rgba(251, 191, 36, 0.6));
+        }}
+        .brand-logo {{
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--neon-amber);
+            text-shadow: 0 0 10px rgba(251, 191, 36, 0.5);
+            letter-spacing: -0.5px;
+        }}
+        .brand-title {{
+            font-size: 14px;
+            color: var(--neon-amber);
+            font-weight: 500;
+        }}
+        .snapshot-badge {{
+            background: rgba(251, 191, 36, 0.2);
+            color: var(--neon-amber);
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 11px;
+            border: 1px solid var(--neon-amber);
+        }}
+        .main {{
+            padding: 66px 16px 20px 16px;
+        }}
+        .terminal-container {{
+            max-width: 600px;
+            margin: 0 auto;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }}
+        .footer {{
+            text-align: center;
+            padding: 20px;
+            color: var(--text-secondary);
+            font-size: 11px;
+            border-top: 1px solid var(--dark-border);
+            margin-top: 30px;
+        }}
+        .footer a {{ color: var(--neon-amber); text-decoration: none; }}
+        @media (max-width: 768px) {{
+            .header {{ height: 44px; padding: 0 10px; }}
+            .brand-logo {{ font-size: clamp(14px, 4vw, 18px); }}
+            .brand-title {{ display: none; }}
+            .main {{ padding: 56px 10px 16px 10px; }}
+        }}
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="brand">
+            <span class="brand-icon">
+                <svg width="22" height="22" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M2 38L14 26L22 34L38 14" stroke="#fbbf24" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M28 14H38V24" stroke="#fbbf24" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+            </span>
+            <span class="brand-logo">VIRTUOSO</span>
+            <span class="brand-title">| {symbol_upper}</span>
+        </div>
+        <span class="snapshot-badge">📸 SNAPSHOT</span>
+    </header>
+    <main class="main">
+        <div class="terminal-container"><pre id="analysis-content">{escape(analysis_text)}</pre></div>
+        <div class="footer">
+            <strong>Snapshot captured: {timestamp.strftime("%Y-%m-%d %H:%M:%S UTC")}</strong><br>
+            <span style="color: #666;">This is a historical snapshot. Data may have changed since capture.</span><br>
+            <a href="/">virtuosocrypto.com</a>
+        </div>
+    </main>
+</body>
+</html>'''
+
+        # Save the file
+        output_path = html_dir / filename
+        with open(output_path, 'w', encoding='utf-8') as f:
+            f.write(html_content)
+
+        logger.info(f"Saved analysis snapshot: {filename}")
+
+        return {
+            "status": "success",
+            "message": f"Analysis snapshot saved for {symbol_upper}",
+            "filename": filename,
+            "url": f"/reports/html/{filename}",
+            "timestamp": timestamp.isoformat(),
+            "symbol": symbol_upper,
+            "signal": signal,
+            "file_size_kb": round(len(html_content) / 1024, 2)
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error saving analysis snapshot for {symbol}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error saving snapshot: {str(e)}")
+
+
+@router.get("/signal-performance/{symbol}")
+async def get_signal_performance(symbol: str) -> Dict[str, Any]:
+    """
+    Get performance tracking for the latest signal on a symbol.
+
+    Compares current price to entry price from the signal,
+    checks if targets or stop loss were hit.
+
+    Args:
+        symbol: Trading pair (e.g., BTCUSDT)
+
+    Returns:
+        Performance data including P&L, targets hit, and signal validity
+    """
+    symbol_upper = symbol.upper().replace("/", "")
+
+    try:
+        # Find the latest signal JSON for this symbol
+        exports_dir = Path(__file__).parent.parent.parent.parent / "exports"
+        signal_files = sorted(
+            exports_dir.glob(f"*_{symbol_upper.lower()}_*.json"),
+            key=lambda x: x.stat().st_mtime,
+            reverse=True
+        )
+
+        if not signal_files:
+            raise HTTPException(status_code=404, detail=f"No signal data found for {symbol_upper}")
+
+        # Load the signal data
+        with open(signal_files[0], 'r') as f:
+            signal_data = json.load(f)
+
+        # Extract trade parameters
+        trade_params = signal_data.get("trade_params", {})
+        entry_price = trade_params.get("entry_price", signal_data.get("price", 0))
+        stop_loss = trade_params.get("stop_loss", 0)
+        targets = trade_params.get("targets", signal_data.get("targets", []))
+        signal_type = signal_data.get("signal_type", signal_data.get("signal", "NEUTRAL")).upper()
+        signal_timestamp = signal_files[0].stat().st_mtime
+
+        if not entry_price:
+            raise HTTPException(status_code=400, detail="Signal missing entry price")
+
+        # Fetch current price from Bybit
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                f"https://api.bybit.com/v5/market/tickers?category=linear&symbol={symbol_upper}",
+                timeout=aiohttp.ClientTimeout(total=10)
+            ) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    if data.get("result", {}).get("list"):
+                        current_price = float(data["result"]["list"][0]["lastPrice"])
+                    else:
+                        raise HTTPException(status_code=500, detail="Could not fetch current price")
+                else:
+                    raise HTTPException(status_code=500, detail="Bybit API error")
+
+        # Calculate P&L
+        if signal_type in ["LONG", "BUY"]:
+            pnl_percent = ((current_price - entry_price) / entry_price) * 100
+            is_profitable = current_price > entry_price
+            stop_hit = current_price <= stop_loss if stop_loss else False
+            targets_hit = [t for t in targets if current_price >= t.get("price", float("inf"))]
+        else:  # SHORT/SELL
+            pnl_percent = ((entry_price - current_price) / entry_price) * 100
+            is_profitable = current_price < entry_price
+            stop_hit = current_price >= stop_loss if stop_loss else False
+            targets_hit = [t for t in targets if current_price <= t.get("price", 0)]
+
+        # Determine signal status
+        if stop_hit:
+            status = "STOPPED_OUT"
+            status_color = "red"
+        elif len(targets_hit) == len(targets) and targets:
+            status = "ALL_TARGETS_HIT"
+            status_color = "green"
+        elif targets_hit:
+            status = f"TARGET_{len(targets_hit)}_HIT"
+            status_color = "green"
+        elif is_profitable:
+            status = "IN_PROFIT"
+            status_color = "green"
+        else:
+            status = "IN_DRAWDOWN"
+            status_color = "amber"
+
+        # Signal age
+        signal_age_hours = (time.time() - signal_timestamp) / 3600
+
+        return {
+            "symbol": symbol_upper,
+            "signal_type": signal_type,
+            "entry_price": entry_price,
+            "current_price": current_price,
+            "stop_loss": stop_loss,
+            "pnl_percent": round(pnl_percent, 2),
+            "is_profitable": is_profitable,
+            "status": status,
+            "status_color": status_color,
+            "targets": targets,
+            "targets_hit": len(targets_hit),
+            "targets_total": len(targets),
+            "stop_hit": stop_hit,
+            "signal_age_hours": round(signal_age_hours, 1),
+            "signal_file": signal_files[0].name,
+            "last_updated": datetime.now(timezone.utc).isoformat()
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting signal performance for {symbol}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error getting performance: {str(e)}")
+
 
 @router.get("/alpha-opportunities")
 async def get_alpha_opportunities() -> List[Dict[str, Any]]:
@@ -409,6 +1188,137 @@ async def get_alpha_opportunities() -> List[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"Error getting alpha opportunities: {e}")
         raise HTTPException(status_code=500, detail=f"Error getting alpha opportunities: {str(e)}")
+
+
+# News feed cache and sources
+_news_cache: Dict[str, Any] = {"data": [], "timestamp": 0}
+NEWS_CACHE_TTL = 300  # 5 minutes
+
+NEWS_SOURCES = [
+    # {"name": "CryptoPanic", "url": "https://cryptopanic.com/news/rss/"},  # Paused
+    {"name": "Decrypt", "url": "https://decrypt.co/feed"},
+    {"name": "The Block", "url": "https://www.theblock.co/rss.xml"},
+    {"name": "Cointelegraph", "url": "https://cointelegraph.com/rss"},
+    {"name": "WatcherGuru", "url": "https://watcher.guru/news/feed"},
+    {"name": "CryptoPotato", "url": "https://cryptopotato.com/feed/"},
+    {"name": "CryptoSlate", "url": "https://cryptoslate.com/feed/"},
+    {"name": "CryptoNews", "url": "https://cryptonews.com/news/feed/"},
+    {"name": "SmartLiquidity", "url": "https://smartliquidity.info/feed/"},
+]
+
+
+async def _fetch_rss_feed(session: aiohttp.ClientSession, source: Dict[str, str]) -> List[Dict[str, Any]]:
+    """Fetch and parse a single RSS feed."""
+    import xml.etree.ElementTree as ET
+    from datetime import datetime
+    from email.utils import parsedate_to_datetime
+
+    items = []
+    try:
+        async with session.get(
+            source["url"],
+            timeout=aiohttp.ClientTimeout(total=8)
+        ) as response:
+            if response.status == 200:
+                xml_content = await response.text()
+                root = ET.fromstring(xml_content)
+
+                for item in root.findall('.//item')[:10]:  # Limit per source
+                    title = item.find('title')
+                    link = item.find('link')
+                    pub_date = item.find('pubDate')
+
+                    if title is not None and title.text:
+                        # Parse publish date for sorting
+                        timestamp = 0
+                        if pub_date is not None and pub_date.text:
+                            try:
+                                dt = parsedate_to_datetime(pub_date.text)
+                                timestamp = int(dt.timestamp())
+                            except Exception:
+                                pass
+
+                        items.append({
+                            "title": title.text.strip()[:150],  # Truncate long titles
+                            "link": link.text if link is not None else "",
+                            "source": source["name"],
+                            "timestamp": timestamp,
+                        })
+    except Exception as e:
+        logger.debug(f"Error fetching {source['name']} RSS: {e}")
+
+    return items
+
+
+@router.get("/news")
+async def get_crypto_news(limit: int = 25) -> Dict[str, Any]:
+    """Get latest crypto news from multiple RSS feeds.
+
+    Aggregates news from CryptoPanic, Decrypt, The Block, Cointelegraph, and WatcherGuru.
+    Results are sorted by publish time and cached for 5 minutes.
+    """
+    global _news_cache
+    now = time.time()
+
+    # Return cached data if fresh
+    if _news_cache["data"] and (now - _news_cache["timestamp"]) < NEWS_CACHE_TTL:
+        return {
+            "news": _news_cache["data"][:limit],
+            "sources": [s["name"] for s in NEWS_SOURCES],
+            "cached": True,
+            "timestamp": int(now)
+        }
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            # Fetch all feeds concurrently
+            tasks = [_fetch_rss_feed(session, source) for source in NEWS_SOURCES]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+
+            # Combine and sort by timestamp (newest first)
+            all_news = []
+            for result in results:
+                if isinstance(result, list):
+                    all_news.extend(result)
+
+            # Sort by timestamp descending, then dedupe by title similarity
+            all_news.sort(key=lambda x: x.get("timestamp", 0), reverse=True)
+
+            # Simple dedupe - remove items with very similar titles
+            seen_titles = set()
+            unique_news = []
+            for item in all_news:
+                # Create simple hash of first 50 chars
+                title_key = item["title"][:50].lower()
+                if title_key not in seen_titles:
+                    seen_titles.add(title_key)
+                    unique_news.append(item)
+
+            # Update cache
+            _news_cache = {
+                "data": unique_news,
+                "timestamp": now
+            }
+
+            return {
+                "news": unique_news[:limit],
+                "sources": [s["name"] for s in NEWS_SOURCES],
+                "cached": False,
+                "timestamp": int(now)
+            }
+
+    except Exception as e:
+        logger.error(f"Error fetching crypto news: {e}")
+
+    # Return cached data even if stale, or empty list
+    return {
+        "news": _news_cache.get("data", [])[:limit],
+        "sources": [s["name"] for s in NEWS_SOURCES],
+        "cached": True,
+        "stale": True,
+        "timestamp": int(now)
+    }
+
 
 @router.get("/market-overview")
 async def get_market_overview() -> Dict[str, Any]:
@@ -431,8 +1341,8 @@ async def get_market_overview() -> Dict[str, Any]:
                         "trend_strength": market_overview.get('trend_strength', 0),
                         "trend_score": market_overview.get('trend_strength', 0),
                         "volatility": market_overview.get('volatility', 0),
-                        "current_volatility": market_overview.get('market_dispersion', 0),
-                        "avg_volatility": market_overview.get('avg_market_dispersion', 0),
+                        "current_volatility": market_overview.get('current_volatility', market_overview.get('market_dispersion', 0)),
+                        "avg_volatility": market_overview.get('avg_volatility', market_overview.get('avg_market_dispersion', 0)),
                         "btc_price": market_overview.get('btc_price', 0),
                         "btc_volatility": market_overview.get('btc_volatility', 0),
                         "btc_dominance": market_overview.get('btc_dominance', 59.3),
@@ -512,7 +1422,7 @@ async def dashboard_websocket(websocket: WebSocket):
             await websocket.send_json({
                 "type": "dashboard_update",
                 "data": initial_data,
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             })
 
         # Keep connection alive and send periodic updates
@@ -524,7 +1434,7 @@ async def dashboard_websocket(websocket: WebSocket):
                     await websocket.send_json({
                         "type": "dashboard_update",
                         "data": dashboard_data,
-                        "timestamp": datetime.utcnow().isoformat()
+                        "timestamp": datetime.now(timezone.utc).isoformat()
                     })
                 
                 await asyncio.sleep(10)  # Update every 10 seconds
@@ -553,7 +1463,7 @@ async def update_dashboard_config(config: Dict[str, Any]) -> Dict[str, Any]:
         return {
             "status": "success",
             "message": "Configuration updated successfully",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "config": config
         }
 
@@ -581,7 +1491,7 @@ async def get_dashboard_config() -> Dict[str, Any]:
                 "confidence_threshold": 75,
                 "risk_level": "Medium"
             },
-            "last_updated": datetime.utcnow().isoformat()
+            "last_updated": datetime.now(timezone.utc).isoformat()
         }
         
         return default_config
@@ -603,7 +1513,7 @@ async def dashboard_health() -> Dict[str, Any]:
         
         return {
             "status": "healthy",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "integration_available": integration is not None,
             "active_websocket_connections": len(connection_manager.active_connections),
             "cache_performance": cache_info
@@ -613,9 +1523,77 @@ async def dashboard_health() -> Dict[str, Any]:
         logger.error(f"Dashboard health check error: {e}")
         return {
             "status": "unhealthy",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "error": str(e)
         }
+
+
+@router.get("/perpetuals-pulse")
+async def get_perpetuals_pulse() -> Dict[str, Any]:
+    """
+    Proxy endpoint for crypto-perps-tracker perpetuals pulse data.
+    Fetches from local perps-tracker service running on port 8050.
+    """
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                'http://localhost:8050/api/perpetuals-pulse',
+                timeout=aiohttp.ClientTimeout(total=15)
+            ) as response:
+                if response.status == 200:
+                    data = await response.json()
+
+                    # Enrich with funding z-score and L/S entropy
+                    funding_rate = data.get('funding_rate', 0)
+                    funding_zscore = funding_rate / 0.0003 if funding_rate != 0 else 0.0
+
+                    long_pct = data.get('long_pct', 50)
+                    short_pct = data.get('short_pct', 50)
+
+                    # Calculate Shannon entropy
+                    import math
+                    if long_pct > 0 and short_pct > 0:
+                        p_long = long_pct / 100
+                        p_short = short_pct / 100
+                        entropy = -(p_long * math.log2(p_long) + p_short * math.log2(p_short))
+                        ls_entropy = entropy / 1.0
+                    else:
+                        ls_entropy = 0.0
+
+                    # Add calculated fields
+                    data['funding_zscore'] = round(funding_zscore, 2)
+                    data['ls_entropy'] = round(ls_entropy, 2)
+
+                    return data
+                else:
+                    logger.warning(f"Perps tracker returned status {response.status}")
+                    return {
+                        "status": "error",
+                        "error": f"Perps tracker returned status {response.status}",
+                        "timestamp": datetime.now(timezone.utc).isoformat()
+                    }
+    except asyncio.TimeoutError:
+        logger.warning("Perps tracker request timed out")
+        return {
+            "status": "error",
+            "error": "Request timed out",
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+    except aiohttp.ClientError as e:
+        logger.warning(f"Could not connect to perps tracker: {e}")
+        return {
+            "status": "error",
+            "error": f"Connection error: {str(e)}",
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Perpetuals pulse error: {e}")
+        return {
+            "status": "error",
+            "error": str(e),
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+
 
 @router.get("/cache-stats")
 async def get_cache_stats() -> Dict[str, Any]:
@@ -628,7 +1606,7 @@ async def get_cache_stats() -> Dict[str, Any]:
             return {
                 "status": "phase1",
                 "message": "Phase 1 cache active (no Memcached stats available)",
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
         
         # Get Phase 2 cache performance
@@ -638,7 +1616,7 @@ async def get_cache_stats() -> Dict[str, Any]:
             "status": "phase2",
             "message": "Phase 2 Memcached cache active",
             "performance": cache_performance,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
         
     except Exception as e:
@@ -651,7 +1629,7 @@ async def dashboard_test() -> Dict[str, Any]:
     return {
         "status": "ok",
         "message": "Dashboard API is working",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "server_time": time.time()
     }
 
@@ -682,13 +1660,29 @@ async def debug_components(request: Request) -> Dict[str, Any]:
         "has_integration": has_integration,
         "has_dashboard_data": has_data,
         "signal_count": signal_count,
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.now(timezone.utc).isoformat()
     }
 
 @router.get("/confluence-analysis-page")
 async def confluence_analysis_page():
-    """Serve the terminal-style confluence analysis page."""
-    return FileResponse(TEMPLATE_DIR / "confluence_analysis.html")
+    """Serve the terminal-style confluence analysis page.
+
+    Navigation flow:
+    - Linked from: /api/dashboard/mobile (Alpha Pulse cards)
+    - Back button returns to: /api/dashboard/mobile
+    - Data from: /api/dashboard/confluence-analysis/{symbol}
+    """
+    return FileResponse(TEMPLATE_DIR / "dashboards" / "confluence_analysis.html")
+
+@router.get("/sparkline-comparison")
+async def sparkline_comparison_page():
+    """Serve the sparkline style comparison page."""
+    return FileResponse(TEMPLATE_DIR / "demos" / "sparkline_comparison.html")
+
+@router.get("/alpha-viz-showcase")
+async def alpha_viz_showcase_page():
+    """Serve the Alpha Score visualization showcase page."""
+    return FileResponse(TEMPLATE_DIR / "demos" / "alpha_viz_showcase.html")
 
 @router.get("/confluence-analysis/{symbol}")
 async def get_confluence_analysis(symbol: str) -> Dict[str, Any]:
@@ -700,45 +1694,342 @@ async def get_confluence_analysis(symbol: str) -> Dict[str, Any]:
         # Try to get cached breakdown for this symbol
         breakdown = await confluence_cache_service.get_cached_breakdown(symbol)
 
+        # Get price data from the dashboard overview cache
+        price_data = {}
+        try:
+            if USE_DIRECT_CACHE and direct_cache:
+                overview = await direct_cache.get_dashboard_overview()
+                if overview and isinstance(overview, dict):
+                    signals = overview.get('signals', [])
+                    for sig in signals:
+                        if sig.get('symbol') == symbol:
+                            price_data = {
+                                'price': sig.get('price', 0),
+                                'change_24h': sig.get('change_24h', 0),
+                                'high_24h': sig.get('high_24h', 0),
+                                'low_24h': sig.get('low_24h', 0),
+                                'volume_24h': sig.get('volume_24h', 0)
+                            }
+                            break
+        except Exception as price_err:
+            logger.debug(f"Could not fetch price data for {symbol}: {price_err}")
+
         if breakdown and isinstance(breakdown, dict):
             # Format the breakdown into readable analysis text
-            score = breakdown.get('confluence_score', 50)
+            # Note: Cache uses 'overall_score', not 'confluence_score'
+            score = breakdown.get('overall_score', breakdown.get('confluence_score', 50))
             components = breakdown.get('components', {})
             interpretations = breakdown.get('interpretations', {})
             reliability = breakdown.get('reliability', 0)
 
-            # Build formatted analysis text
+            # Post-process interpretations to ensure rich, consistent output
+            def enrich_interpretations(interps: dict, comps: dict) -> dict:
+                """Standardize and enrich all interpretations."""
+                result = {}
+                for comp, interp in interps.items():
+                    comp_score = comps.get(comp, 50)
+
+                    # Handle sentiment dict -> prose conversion
+                    if comp == 'sentiment' and isinstance(interp, dict):
+                        parts = []
+                        if interp.get('sentiment'):
+                            parts.append(interp['sentiment'])
+                        if interp.get('funding_rate'):
+                            parts.append(f"with {interp['funding_rate'].lower()}")
+                        if interp.get('long_short_ratio'):
+                            parts.append(f"and {interp['long_short_ratio'].lower()}")
+                        if interp.get('market_activity'):
+                            parts.append(f"amid {interp['market_activity'].lower()}")
+
+                        base = ". ".join(parts) + "." if parts else "Neutral market sentiment."
+
+                        # Add score-based context
+                        if comp_score >= 65:
+                            base += " Strong bullish sentiment suggests continuation of upward momentum with high conviction from market participants."
+                        elif comp_score >= 55:
+                            base += " Moderately bullish sentiment supports upward price action with reasonable conviction."
+                        elif comp_score <= 35:
+                            base += " Strong bearish sentiment suggests continuation of downward momentum with high conviction from market participants."
+                        elif comp_score <= 45:
+                            base += " Moderately bearish sentiment supports downward price action with reasonable conviction."
+                        else:
+                            base += " Neutral sentiment indicates market indecision with no clear directional bias."
+                        result[comp] = base
+
+                    # Enrich short orderflow interpretation
+                    elif comp == 'orderflow' and isinstance(interp, str) and len(interp) < 250:
+                        if comp_score >= 60:
+                            extra = " Buying pressure dominates with strong accumulation patterns. Large orders are predominantly on the bid side, suggesting institutional buying interest. Volume-weighted order flow supports upward price movement."
+                        elif comp_score <= 40:
+                            extra = " Selling pressure dominates with distribution patterns evident. Large orders are predominantly on the ask side, suggesting institutional selling interest. Volume-weighted order flow supports downward price movement."
+                        else:
+                            extra = " Order flow shows equilibrium between buyers and sellers. Large orders are evenly distributed across both sides. This balance suggests potential consolidation or range-bound price action."
+                        result[comp] = interp + extra
+
+                    # Enrich short price_structure interpretation
+                    elif comp == 'price_structure' and isinstance(interp, str) and len(interp) < 150:
+                        if comp_score >= 60:
+                            extra = " Key support levels are holding firm with higher lows forming. Resistance levels are being tested with increasing momentum. The overall structure favors bullish continuation with well-defined risk levels."
+                        elif comp_score <= 40:
+                            extra = " Key support levels are breaking down with lower highs forming. Resistance levels are capping price advances. The overall structure favors bearish continuation with breakdown targets in focus."
+                        else:
+                            extra = " Price is consolidating within a defined range. Support and resistance levels are well-established, creating a balanced trading environment. Breakout direction will likely determine the next trend."
+                        result[comp] = interp + extra
+                    else:
+                        result[comp] = str(interp) if not isinstance(interp, str) else interp
+
+                return result
+
+            interpretations = enrich_interpretations(interpretations, components)
+
+            # Determine signal direction
+            if score >= 60:
+                signal_dir = "BULLISH"
+            elif score <= 40:
+                signal_dir = "BEARISH"
+            else:
+                signal_dir = "NEUTRAL"
+
+            # Build formatted analysis text - mobile-friendly design
+            import textwrap
+            from datetime import datetime
             analysis_lines = []
-            analysis_lines.append(f"═══════════════════════════════════════════════════════════════")
-            analysis_lines.append(f"  CONFLUENCE ANALYSIS: {symbol}")
-            analysis_lines.append(f"═══════════════════════════════════════════════════════════════")
-            analysis_lines.append(f"")
-            analysis_lines.append(f"Overall Confluence Score: {score:.2f}/100")
-            analysis_lines.append(f"Signal Reliability: {reliability:.1f}%")
-            analysis_lines.append(f"")
-            analysis_lines.append(f"───────────────────────────────────────────────────────────────")
-            analysis_lines.append(f"COMPONENT SCORES")
-            analysis_lines.append(f"───────────────────────────────────────────────────────────────")
 
-            # Display component scores
+            # Get timestamp
+            timestamp = breakdown.get('timestamp', 0)
+            if timestamp:
+                dt = datetime.fromtimestamp(timestamp)
+                time_str = dt.strftime("%H:%M:%S")
+                date_str = dt.strftime("%Y-%m-%d")
+            else:
+                now = datetime.now(timezone.utc)
+                time_str = now.strftime("%H:%M:%S")
+                date_str = now.strftime("%Y-%m-%d")
+
+            # Header with branding (60 char width for modern mobile)
+            analysis_lines.append("╔════════════════════════════════════════════════════════════╗")
+            analysis_lines.append("║                  VIRTUOSO ALPHA ANALYSIS                   ║")
+            analysis_lines.append("╚════════════════════════════════════════════════════════════╝")
+            analysis_lines.append("")
+            analysis_lines.append(f"  {symbol}")
+
+            # Add price line if available
+            if price_data.get('price', 0) > 0:
+                price = price_data['price']
+                change = price_data.get('change_24h', 0)
+                high = price_data.get('high_24h', 0)
+                low = price_data.get('low_24h', 0)
+
+                # Format price with appropriate precision
+                if price >= 1000:
+                    price_str = f"${price:,.2f}"
+                elif price >= 1:
+                    price_str = f"${price:.4f}"
+                else:
+                    price_str = f"${price:.6f}"
+
+                # Format change with sign
+                change_sign = "+" if change >= 0 else ""
+                change_str = f"{change_sign}{change:.2f}%"
+
+                analysis_lines.append(f"  {price_str}  ({change_str})")
+
+                # Add 24h range
+                if high > 0 and low > 0:
+                    if high >= 1:
+                        range_str = f"  24h Range: ${low:.4f} - ${high:.4f}"
+                    else:
+                        range_str = f"  24h Range: ${low:.6f} - ${high:.6f}"
+                    analysis_lines.append(range_str)
+
+            analysis_lines.append(f"  {date_str}  {time_str} UTC")
+            analysis_lines.append("")
+            # Center-align the alpha score line (60 char width)
+            score_line = f"Alpha Score: {score:.1f}  │  Signal: {signal_dir}  │  Reliability: {reliability:.0f}%"
+            analysis_lines.append("────────────────────────────────────────────────────────────")
+            analysis_lines.append(score_line.center(60))
+            analysis_lines.append("────────────────────────────────────────────────────────────")
+            analysis_lines.append("")
+
+            # Confluence Score History Sparkline (if available)
+            score_history = breakdown.get('score_history', [])
+            if score_history and len(score_history) >= 2:
+                # Normalize to actual min/max for full height utilization
+                min_score = min(score_history)
+                max_score = max(score_history)
+                score_range = max_score - min_score if max_score != min_score else 1
+
+                # Calculate score trend and statistics
+                first_scores = score_history[:len(score_history)//2]
+                last_scores = score_history[len(score_history)//2:]
+                avg_first = sum(first_scores) / len(first_scores) if first_scores else 50
+                avg_last = sum(last_scores) / len(last_scores) if last_scores else 50
+                net_change = score_history[-1] - score_history[0]
+
+                if avg_last > avg_first + 3:
+                    conf_trend = "▲"
+                elif avg_last < avg_first - 3:
+                    conf_trend = "▼"
+                else:
+                    conf_trend = "─"
+
+                # === BRAILLE SPARKLINE ===
+                # Braille chars have 4 rows × 2 cols of dots per character
+                # This gives 8x vertical resolution in compact horizontal space
+                # Each character encodes 2 data points side-by-side
+
+                chart_height = 4  # 4 text rows (each braille char has 4 dot rows)
+                target_width = 40  # Number of braille characters wide
+
+                # We need 2 data points per braille char (left and right columns)
+                target_points = target_width * 2
+
+                # Resample score_history to target points
+                if len(score_history) < target_points:
+                    resampled = []
+                    for i in range(target_points):
+                        idx = i * (len(score_history) - 1) / (target_points - 1)
+                        lower_idx = int(idx)
+                        upper_idx = min(lower_idx + 1, len(score_history) - 1)
+                        frac = idx - lower_idx
+                        val = score_history[lower_idx] * (1 - frac) + score_history[upper_idx] * frac
+                        resampled.append(val)
+                    data_points = resampled
+                else:
+                    data_points = score_history[-target_points:]
+
+                # Braille dot positions (Unicode braille is 0x2800 + dot pattern)
+                # Dots are numbered: 1,4 (col1,col2 row1), 2,5 (row2), 3,6 (row3), 7,8 (row4)
+                # Dot values: 1=0x01, 2=0x02, 3=0x04, 4=0x08, 5=0x10, 6=0x20, 7=0x40, 8=0x80
+                LEFT_DOTS = [0x01, 0x02, 0x04, 0x40]   # Dots 1,2,3,7 (top to bottom)
+                RIGHT_DOTS = [0x08, 0x10, 0x20, 0x80]  # Dots 4,5,6,8 (top to bottom)
+
+                # Build braille chart - 4 text rows
+                chart_rows = [""] * chart_height
+
+                for char_idx in range(target_width):
+                    left_val = data_points[char_idx * 2]
+                    right_val = data_points[char_idx * 2 + 1] if char_idx * 2 + 1 < len(data_points) else left_val
+
+                    # Normalize values to 0-15 range (4 rows × 4 levels per row)
+                    left_level = int(((left_val - min_score) / score_range) * 15) if score_range > 0 else 8
+                    right_level = int(((right_val - min_score) / score_range) * 15) if score_range > 0 else 8
+                    left_level = max(0, min(15, left_level))
+                    right_level = max(0, min(15, right_level))
+
+                    # For each text row (0=top, 3=bottom), determine braille pattern
+                    for row in range(chart_height):
+                        # Calculate which dot rows should be filled for this text row
+                        # Row 0 covers levels 12-15, Row 1: 8-11, Row 2: 4-7, Row 3: 0-3
+                        row_min_level = (chart_height - 1 - row) * 4
+                        row_max_level = row_min_level + 3
+
+                        braille_char = 0x2800  # Empty braille
+
+                        # Left column dots (for this text row)
+                        if left_level >= row_min_level:
+                            dots_to_fill = min(4, left_level - row_min_level + 1)
+                            for d in range(dots_to_fill):
+                                dot_idx = 3 - d  # Fill from bottom up within this row
+                                braille_char |= LEFT_DOTS[dot_idx]
+
+                        # Right column dots
+                        if right_level >= row_min_level:
+                            dots_to_fill = min(4, right_level - row_min_level + 1)
+                            for d in range(dots_to_fill):
+                                dot_idx = 3 - d
+                                braille_char |= RIGHT_DOTS[dot_idx]
+
+                        chart_rows[row] += chr(braille_char)
+
+                # Add axis labels
+                analysis_lines.append("  α ALPHA SCORE TREND")
+                analysis_lines.append("  ──────────────────────────────────────────────────────")
+                analysis_lines.append(f"  {max_score:5.0f} ┤{chart_rows[0]}")
+                for i in range(1, chart_height - 1):
+                    analysis_lines.append(f"        │{chart_rows[i]}")
+                analysis_lines.append(f"  {min_score:5.0f} ┤{chart_rows[-1]}")
+                analysis_lines.append(f"        └{'─' * target_width}  {conf_trend}")
+
+                # Calculate time range (30 second intervals, 24 max points = ~12 mins)
+                from datetime import datetime, timedelta
+                now = datetime.now(timezone.utc)
+                total_seconds = len(score_history) * 30  # 30 sec per data point
+                start_time = now - timedelta(seconds=total_seconds)
+                time_label = f"         {start_time.strftime('%H:%M')} {'─' * (target_width - 12)} {now.strftime('%H:%M')} UTC"
+                analysis_lines.append(time_label)
+                analysis_lines.append("")
+
+                # --- Style 2: Momentum-First (Delta Encoding) ---
+                # Shows direction changes: △▲ up, ▽▼ down, ─ flat
+                # delta_line = ""
+                # for i in range(1, len(score_history)):
+                #     delta = score_history[i] - score_history[i-1]
+                #     if delta > 2: delta_line += "▲"
+                #     elif delta > 0.5: delta_line += "△"
+                #     elif delta < -2: delta_line += "▼"
+                #     elif delta < -0.5: delta_line += "▽"
+                #     else: delta_line += "─"
+                # analysis_lines.append("  α ALPHA SCORE")
+                # analysis_lines.append("  ──────────────────────────────────────────────────────")
+                # analysis_lines.append(f"  Δ {delta_line}")
+                # analysis_lines.append(f"  [{min_score:.0f}→{max_score:.0f}] Net: {'+' if net_change >= 0 else ''}{net_change:.0f}")
+                # analysis_lines.append("")
+
+                # --- Style 3: Multi-Layer Ultimate (7 dimensions) ---
+                # analysis_lines.append("  α ALPHA SCORE")
+                # analysis_lines.append("  ──────────────────────────────────────────────────────")
+                # analysis_lines.append(f"  {annotations}")
+                # analysis_lines.append(f"  {sparkline}")
+                # momentum_arrows = "↗" * 4 if conf_trend == "▲" else "↘" * 4 if conf_trend == "▼" else "→" * 4
+                # regime = "BULL" if avg_last > 55 else "BEAR" if avg_last < 45 else "NEUTRAL"
+                # std_dev = (sum((s - avg_last)**2 for s in score_history) / len(score_history)) ** 0.5
+                # analysis_lines.append(f"  [{min_score:.0f}→{max_score:.0f} Δ{'+' if net_change >= 0 else ''}{net_change:.0f} σ{std_dev:.0f}] {regime} {momentum_arrows}")
+                # analysis_lines.append("")
+
+                # --- Style 4: Zone-Density (texture = zone) ---
+                # zone_chars = ""
+                # for s in score_history:
+                #     if s >= 70: zone_chars += "█"
+                #     elif s >= 60: zone_chars += "▓"
+                #     elif s >= 50: zone_chars += "▒"
+                #     elif s >= 40: zone_chars += "░"
+                #     else: zone_chars += "·"
+                # analysis_lines.append("  α ALPHA SCORE")
+                # analysis_lines.append("  ──────────────────────────────────────────────────────")
+                # analysis_lines.append(f"  {zone_chars}  {conf_trend}")
+                # analysis_lines.append("")
+
+            # Component Scores Section
+            analysis_lines.append("  COMPONENT SCORES")
+            analysis_lines.append("  ──────────────────────────────────────────────────────")
+            analysis_lines.append("")
+
+            # Display component scores - compact bars (16 chars to align with PRICE_STRUCTURE)
             for component, component_score in components.items():
-                bar_length = int(component_score / 2)  # Scale to 50 chars max
-                bar = "█" * bar_length + "░" * (50 - bar_length)
-                analysis_lines.append(f"{component.upper():20s} [{bar}] {component_score:.2f}")
+                bar_len = int(component_score / 5)  # Scale to 20 chars
+                bar = "█" * bar_len + "░" * (20 - bar_len)
+                ind = "▲" if component_score >= 55 else "▼" if component_score <= 45 else "●"
+                analysis_lines.append(f"  {component.upper():16s} {bar} {component_score:4.0f}{ind}")
 
-            analysis_lines.append(f"")
-            analysis_lines.append(f"───────────────────────────────────────────────────────────────")
-            analysis_lines.append(f"DETAILED INTERPRETATIONS")
-            analysis_lines.append(f"───────────────────────────────────────────────────────────────")
-            analysis_lines.append(f"")
+            analysis_lines.append("")
 
-            # Display interpretations
+            # Interpretations Section
+            analysis_lines.append("  DETAILED ANALYSIS")
+            analysis_lines.append("  ──────────────────────────────────────────────────────")
+
+            # Display interpretations with word wrap (56 chars for modern mobile)
             for component, interpretation in interpretations.items():
-                analysis_lines.append(f"▸ {component.upper()}")
-                analysis_lines.append(f"  {interpretation}")
-                analysis_lines.append(f"")
+                analysis_lines.append("")
+                analysis_lines.append(f"  ▸ {component.upper()}")
+                wrapped = textwrap.wrap(str(interpretation), width=56)
+                for line in wrapped:
+                    analysis_lines.append(f"    {line}")
 
-            analysis_lines.append(f"═══════════════════════════════════════════════════════════════")
+            analysis_lines.append("")
+            analysis_lines.append("════════════════════════════════════════════════════════════")
+            analysis_lines.append("         Powered by Virtuoso  •  virtuosocrypto.com         ")
+            analysis_lines.append("════════════════════════════════════════════════════════════")
 
             formatted_analysis = "\n".join(analysis_lines)
 
@@ -749,7 +2040,8 @@ async def get_confluence_analysis(symbol: str) -> Dict[str, Any]:
                 "score": score,
                 "components": components,
                 "interpretations": interpretations,
-                "reliability": reliability
+                "reliability": reliability,
+                **price_data  # Include price, change_24h, high_24h, low_24h, volume_24h
             }
 
         # Fallback: No data available
@@ -757,7 +2049,8 @@ async def get_confluence_analysis(symbol: str) -> Dict[str, Any]:
             "symbol": symbol,
             "analysis": f"No analysis available for {symbol}. The monitoring system may not be tracking this symbol yet.",
             "timestamp": 0,
-            "score": 50
+            "score": 50,
+            **price_data  # Include price data even in fallback
         }
 
     except Exception as e:
@@ -799,7 +2092,7 @@ async def get_confluence_scores() -> Dict[str, Any]:
         return {
             "scores": scores,
             "count": len(scores),
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
         
     except Exception as e:
@@ -829,20 +2122,22 @@ async def get_mobile_dashboard_data_direct(request: Request) -> Dict[str, Any]:
                 "gainers": [],
                 "losers": []
             },
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "status": "success"
         }
         
-        # Get top symbols
+        # Get top symbols - use config value for consistency
         if top_symbols_manager:
             try:
-                top_symbols = await top_symbols_manager.get_top_symbols(limit=10)
+                # Get max_symbols from config (default 20)
+                max_symbols = 20  # Match config.yaml market.symbols.max_symbols
+                top_symbols = await top_symbols_manager.get_top_symbols(limit=max_symbols)
                 confluence_scores = []
-                
+
                 # Import confluence cache service
                 from src.core.cache.confluence_cache_service import confluence_cache_service
-                
-                for symbol_info in top_symbols[:10]:
+
+                for symbol_info in top_symbols:
                     symbol = symbol_info.get('symbol', symbol_info) if isinstance(symbol_info, dict) else symbol_info
                     
                     try:
@@ -914,7 +2209,7 @@ async def get_mobile_dashboard_data_direct(request: Request) -> Dict[str, Any]:
         return {
             "status": "error",
             "error": str(e),
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
 
 @router.get("/mobile-data")
@@ -961,6 +2256,12 @@ async def get_mobile_dashboard_data() -> Dict[str, Any]:
                         # Update mobile_data with deduplicated scores
                         mobile_data['confluence_scores'] = confluence_scores
 
+                    # Derive opportunities from confluence scores
+                    opportunities = derive_momentum_opportunities(confluence_scores, limit=10)
+
+                    # Flatten perps data to top level for template compatibility
+                    perps_data = mobile_data.get('perps', {})
+
                     # Add flattened fields at top level while keeping nested for backward compatibility
                     mobile_data.update({
                         # Flatten market_overview fields to top level
@@ -993,6 +2294,17 @@ async def get_mobile_dashboard_data() -> Dict[str, Any]:
                         # Add symbols array (confluence scores)
                         "symbols": confluence_scores,
                         "top_symbols": confluence_scores,  # Alias
+                        # Add opportunities derived from confluence scores
+                        "opportunities": opportunities,
+                        # Flatten perps data to top level
+                        "funding_rate": perps_data.get("funding_rate", 0),
+                        "funding_zscore": perps_data.get("funding_zscore", 0.0),
+                        "long_pct": perps_data.get("long_pct", 50),
+                        "short_pct": perps_data.get("short_pct", 50),
+                        "ls_entropy": perps_data.get("ls_entropy", 0.5),
+                        "total_open_interest": perps_data.get("open_interest", 0),
+                        "cex_pct": perps_data.get("cex_pct", 90),
+                        "basis_pct": perps_data.get("basis_pct", 0.0),
                     })
 
                     return mobile_data
@@ -1026,6 +2338,12 @@ async def get_mobile_dashboard_data() -> Dict[str, Any]:
                     # Update mobile_data with deduplicated scores
                     mobile_data['confluence_scores'] = confluence_scores
 
+                # Derive opportunities from confluence scores (fallback path)
+                opportunities = derive_momentum_opportunities(confluence_scores, limit=10)
+
+                # Flatten perps data to top level for template compatibility
+                perps_data = mobile_data.get('perps', {})
+
                 mobile_data.update({
                     "market_regime": market_overview.get("market_regime", "NEUTRAL"),
                     "regime": market_overview.get("market_regime", "NEUTRAL"),
@@ -1040,6 +2358,16 @@ async def get_mobile_dashboard_data() -> Dict[str, Any]:
                     "losers": top_movers.get("losers", []),
                     "symbols": confluence_scores,
                     "top_symbols": confluence_scores,
+                    "opportunities": opportunities,
+                    # Flatten perps data to top level
+                    "funding_rate": perps_data.get("funding_rate", 0),
+                    "funding_zscore": perps_data.get("funding_zscore", 0.0),
+                    "long_pct": perps_data.get("long_pct", 50),
+                    "short_pct": perps_data.get("short_pct", 50),
+                    "ls_entropy": perps_data.get("ls_entropy", 0.5),
+                    "total_open_interest": perps_data.get("open_interest", 0),
+                    "cex_pct": perps_data.get("cex_pct", 90),
+                    "basis_pct": perps_data.get("basis_pct", 0.0),
                 })
 
                 return mobile_data
@@ -1062,7 +2390,7 @@ async def get_mobile_dashboard_data() -> Dict[str, Any]:
             },
             "confluence_scores": [],
             "top_movers": {"gainers": [], "losers": []},
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "data_source": "error_fallback"
         }
 
@@ -1074,7 +2402,7 @@ async def get_mobile_dashboard_data() -> Dict[str, Any]:
             "status": "error",
             "error": str(e),
             "message": "Internal server error - check logs for details",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "data_source": "error"
         }
 
@@ -1097,7 +2425,7 @@ async def get_dashboard_performance() -> Dict[str, Any]:
             "api_latency": 12,
             "active_connections": 3,
             "uptime": "2h 15m",
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
         
     except Exception as e:
@@ -1108,70 +2436,80 @@ async def get_dashboard_performance() -> Dict[str, Any]:
             "api_latency": 0,
             "active_connections": 0,
             "uptime": "0h 0m",
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
 
 @router.get("/symbols")
 async def get_dashboard_symbols() -> Dict[str, Any]:
-    """Get symbols data with real confluence scores from Memcached."""
+    """Get symbols data with real confluence scores - uses same cache as /mobile-data."""
     try:
-        # First try Memcached for real-time data
-        try:
-            from pymemcache.client.base import Client
-            import json
-            
-            # Connect to Memcached
-            mc_client = Client(('127.0.0.1', 11211))
-            
-            # Get symbols from Memcached
-            symbols_data = mc_client.get(b'virtuoso:symbols')
-            mc_client.close()
-            
-            if symbols_data:
-                try:
-                    data = json.loads(symbols_data.decode('utf-8'))
-                    # TYPE SAFETY: Ensure data is a dict
-                    if isinstance(data, dict):
-                        logger.info(f"Retrieved {len(data.get('symbols', []))} symbols from Memcached")
-                        return data
-                    else:
-                        logger.warning(f"Symbols data is not a dict: {type(data)}")
-                except (json.JSONDecodeError, AttributeError) as e:
-                    logger.warning(f"Failed to parse symbols_data: {e}")
-            
-            logger.warning("No symbols in Memcached, checking integration service")
-        except Exception as mc_error:
-            logger.warning(f"Memcached not available: {mc_error}")
-        
-        # Fallback to integration service
-        local_integration = get_dashboard_integration()
-        if local_integration:
-            symbols_data = await local_integration.get_symbols_data()
-            return symbols_data
-        
-        # Last resort: do not return mock data
-        logger.warning("No symbols available from Memcached or integration service")
+        # Use the same cache adapter as /mobile-data for consistency
+        if web_cache:
+            try:
+                mobile_data = await web_cache.get_mobile_data()
+                if mobile_data and mobile_data.get('data_source') != 'fallback':
+                    confluence_scores = mobile_data.get('confluence_scores', [])
+
+                    # Deduplicate and sort
+                    if confluence_scores:
+                        seen_symbols = {}
+                        for score_data in confluence_scores:
+                            symbol = score_data.get('symbol')
+                            current_score = score_data.get('score', 0)
+                            if symbol not in seen_symbols or current_score > seen_symbols[symbol].get('score', 0):
+                                seen_symbols[symbol] = score_data
+                        confluence_scores = sorted(
+                            seen_symbols.values(),
+                            key=lambda x: x.get('score', 0),
+                            reverse=True
+                        )
+
+                    logger.info(f"✅ Symbols endpoint: {len(confluence_scores)} confluence scores from shared cache")
+                    return {
+                        "status": "success",
+                        "symbols": confluence_scores,
+                        "timestamp": datetime.now(timezone.utc).isoformat()
+                    }
+            except Exception as e:
+                logger.warning(f"Shared cache error in symbols endpoint: {e}")
+
+        # Fallback: Use direct cache adapter
+        if USE_DIRECT_CACHE:
+            try:
+                mobile_data = await direct_cache.get_mobile_data()
+                confluence_scores = mobile_data.get('confluence_scores', [])
+                logger.info(f"✅ Symbols endpoint: {len(confluence_scores)} scores from direct cache")
+                return {
+                    "status": "success",
+                    "symbols": confluence_scores,
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }
+            except Exception as e:
+                logger.warning(f"Direct cache error: {e}")
+
+        # Last resort: empty response
+        logger.warning("No symbols available from cache adapters")
         return {
             "status": "unavailable",
             "symbols": [],
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "message": "No live symbol data available"
         }
-        
+
     except Exception as e:
         logger.error(f"Error getting dashboard symbols: {e}")
         return {
             "status": "error",
             "symbols": [],
             "error": str(e),
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
 
 # HTML Dashboard Routes
 @router.get("/login")
 async def login_page():
     """Serve the mobile login screen"""
-    return FileResponse(TEMPLATE_DIR / "login_mobile.html")
+    return FileResponse(TEMPLATE_DIR / "archive" / "login_mobile.html")
 
 @router.get("/favicon.svg")
 async def favicon():
@@ -1180,28 +2518,23 @@ async def favicon():
 
 @router.get("/mobile")
 async def mobile_dashboard_page():
-    """Serve the mobile dashboard with all integrated components"""
-    return FileResponse(TEMPLATE_DIR / "dashboard_mobile_v1.html")
+    """Serve the mobile dashboard with all integrated components.
 
-@router.get("/")
-async def dashboard_page():
-    """Serve the main v10 Signal Confluence Matrix dashboard"""
-    return FileResponse(TEMPLATE_DIR / "dashboard_v10.html")
+    Navigation flow:
+    - Alpha Pulse cards link to: /api/dashboard/confluence-analysis-page?symbol=X
+    - confluence-analysis-page Back button returns here
+    """
+    return FileResponse(TEMPLATE_DIR / "dashboards" / "dashboard_mobile_v3.html")
 
 @router.get("/v1")
 async def dashboard_v1_page():
     """Serve the original dashboard HTML page"""
-    return FileResponse(TEMPLATE_DIR / "dashboard.html")
-
-@router.get("/beta-analysis")
-async def beta_analysis_page():
-    """Serve the Beta Analysis dashboard"""
-    return FileResponse(TEMPLATE_DIR / "dashboard_beta_analysis.html")
+    return FileResponse(TEMPLATE_DIR / "archive" / "dashboard.html")
 
 @router.get("/market-analysis")
 async def market_analysis_page():
     """Serve the Market Analysis dashboard"""
-    return FileResponse(TEMPLATE_DIR / "dashboard_market_analysis.html")
+    return FileResponse(TEMPLATE_DIR / "archive" / "dashboard_market_analysis.html")
 
 @router.get("/api/bybit-direct/top-symbols")
 async def get_bybit_direct_symbols():
@@ -1417,7 +2750,7 @@ async def get_market_movers() -> Dict[str, Any]:
                                 "positive_percentage": round((positive_count / total_symbols * 100) if total_symbols > 0 else 0, 1),
                                 "negative_percentage": round((negative_count / total_symbols * 100) if total_symbols > 0 else 0, 1)
                             },
-                            "timestamp": datetime.utcnow().isoformat(),
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
                             "source": "bybit_direct"
                         }
                         
@@ -1481,7 +2814,7 @@ async def get_beta_analysis_data() -> Dict[str, Any]:
             "market_beta": 1.15,  # Overall market beta
             "btc_dominance": 54.2,
             "analysis_timeframe": "30d",
-            "last_update": datetime.utcnow().isoformat(),
+            "last_update": datetime.now(timezone.utc).isoformat(),
             "status": "success"
         }
         
@@ -1491,7 +2824,7 @@ async def get_beta_analysis_data() -> Dict[str, Any]:
             "status": "error",
             "error": str(e),
             "beta_analysis": [],
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
 
 @router.get("/correlation-matrix")
@@ -1536,7 +2869,7 @@ async def get_correlation_matrix() -> Dict[str, Any]:
             "symbols": symbols,
             "correlation_matrix": correlations,
             "timeframe": "unavailable",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "status": "partial",
             "data_source": "fallback_null_values",
             "message": "Real correlation data temporarily unavailable"
@@ -1547,7 +2880,7 @@ async def get_correlation_matrix() -> Dict[str, Any]:
         return {
             "status": "error",
             "error": str(e),
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
 
 @router.get("/market-analysis-summary")
@@ -1583,7 +2916,7 @@ async def get_market_analysis_summary() -> Dict[str, Any]:
                 "volatility_index": 45.2,
                 "liquidation_volume": "$287M"
             },
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "status": "success"
         }
         
@@ -1592,7 +2925,7 @@ async def get_market_analysis_summary() -> Dict[str, Any]:
         return {
             "status": "error",
             "error": str(e),
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
 
 @router.get("/beta-charts/time-series")
@@ -1604,7 +2937,7 @@ async def get_beta_time_series() -> Dict[str, Any]:
         from datetime import datetime, timedelta
         
         symbols = ["ETHUSDT", "SOLUSDT", "XRPUSDT", "ADAUSDT", "DOTUSDT"]
-        end_date = datetime.utcnow()
+        end_date = datetime.now(timezone.utc)
         
         # Use real beta calculations if available
         if CORRELATION_SERVICE_AVAILABLE:
@@ -1648,7 +2981,7 @@ async def get_beta_time_series() -> Dict[str, Any]:
         return {
             "chart_data": series_data,
             "period": "7d",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "status": "partial",
             "data_source": "fallback_null_values",
             "message": "Real beta data temporarily unavailable"
@@ -1699,7 +3032,7 @@ async def get_correlation_heatmap() -> Dict[str, Any]:
             "symbols": symbols,
             "min_correlation": 0.0,
             "max_correlation": 1.0,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "status": "partial",
             "data_source": "fallback_null_values",
             "message": "Real correlation data temporarily unavailable"
@@ -1756,7 +3089,7 @@ async def get_performance_chart() -> Dict[str, Any]:
                 "low_risk_high_return": [d for d in scatter_data if d['beta'] <= avg_beta and d['performance'] > avg_performance],
                 "low_risk_low_return": [d for d in scatter_data if d['beta'] <= avg_beta and d['performance'] <= avg_performance]
             },
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "status": "success"
         }
         
@@ -1789,7 +3122,7 @@ async def get_risk_distribution() -> Dict[str, Any]:
             "sector_allocation": sector_allocation,
             "total_assets": 15,
             "avg_portfolio_beta": 1.28,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "status": "success"
         }
         
@@ -1823,7 +3156,7 @@ async def get_all_beta_charts() -> Dict[str, Any]:
                 "total_assets": risk_dist.get("total_assets", 15),
                 "performance_quadrants": performance.get("quadrants", {})
             },
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "status": "success"
         }
         
@@ -1915,7 +3248,7 @@ async def get_mobile_beta_dashboard() -> Dict[str, Any]:
                     item["symbol"] for item in charts.get("summary", {}).get("performance_quadrants", {}).get("high_risk_low_return", [])
                 ]
             },
-            "last_update": datetime.utcnow().isoformat(),
+            "last_update": datetime.now(timezone.utc).isoformat(),
             "status": "success"
         }
         
@@ -1926,7 +3259,7 @@ async def get_mobile_beta_dashboard() -> Dict[str, Any]:
         return {
             "status": "error",
             "error": str(e),
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
 
 
@@ -2080,4 +3413,577 @@ async def market_health_check() -> Dict[str, Any]:
             "service": "Direct Market Data",
             "error": str(e),
             "timestamp": int(time.time())
+        }
+
+
+# =============================================================================
+# BETA CHART API - Cached Bybit Performance Data
+# =============================================================================
+
+# Meme coin symbol mapping (Bybit uses 1000X prefixes for low-priced tokens)
+BYBIT_SYMBOL_MAP = {
+    'PEPE': '1000PEPEUSDT',
+    'SHIB': '1000SHIBUSDT',
+    'FLOKI': '1000FLOKIUSDT',
+    'BONK': '1000BONKUSDT',
+    'LUNC': '1000LUNCUSDT',
+    'SATS': '1000SATSUSDT',
+    'RATS': '1000RATSUSDT',
+    'BTT': '1000000BTTUSDT',
+    'BABYDOGE': '1000000BABYDOGEUSDT',
+}
+
+# Cache key and TTL
+BETA_CHART_CACHE_KEY = b'virtuoso:beta_chart'
+BETA_CHART_CACHE_TTL = 120  # 2 minutes
+
+
+def normalize_symbol(symbol: str) -> str:
+    """Convert Bybit symbol to normalized base asset name."""
+    # Remove USDT suffix
+    base = symbol.replace('USDT', '')
+    # Handle 1000000X prefixes (BTT, BABYDOGE)
+    if base.startswith('1000000'):
+        return base[7:]
+    # Handle 1000X prefixes (PEPE, SHIB, etc.)
+    if base.startswith('1000'):
+        return base[4:]
+    return base
+
+
+async def fetch_bybit_klines(session: aiohttp.ClientSession, symbol: str, interval: str = "60", limit: int = 12) -> List[Dict]:
+    """Fetch kline data from Bybit for a single symbol."""
+    url = f"https://api.bybit.com/v5/market/kline?category=linear&symbol={symbol}&interval={interval}&limit={limit}"
+    try:
+        async with session.get(url, timeout=10) as response:
+            if response.status == 200:
+                data = await response.json()
+                if data.get('retCode') == 0 and 'result' in data:
+                    candles = []
+                    for c in data['result']['list']:
+                        candles.append({
+                            'timestamp': int(c[0]),
+                            'open': float(c[1]),
+                            'high': float(c[2]),
+                            'low': float(c[3]),
+                            'close': float(c[4]),
+                            'volume': float(c[5])
+                        })
+                    # Bybit returns newest first, reverse for chronological order
+                    return list(reversed(candles))
+    except Exception as e:
+        logger.debug(f"Error fetching klines for {symbol}: {e}")
+    return []
+
+
+async def fetch_beta_chart_data(timeframe_hours: int = 4) -> Dict[str, Any]:
+    """
+    Fetch and compute rebased returns for top 25 symbols.
+
+    Args:
+        timeframe_hours: Number of hours of historical data (1, 4, 8, 12, 24)
+
+    Returns:
+        Dict with chart_data, overview, and metadata
+    """
+    async with aiohttp.ClientSession() as session:
+        # Step 1: Fetch all tickers
+        tickers_url = "https://api.bybit.com/v5/market/tickers?category=linear"
+        async with session.get(tickers_url, timeout=10) as response:
+            if response.status != 200:
+                raise Exception("Failed to fetch Bybit tickers")
+
+            data = await response.json()
+            if data.get('retCode') != 0:
+                raise Exception(f"Bybit API error: {data.get('retMsg')}")
+
+            tickers = data['result']['list']
+
+        # Step 2: Filter and sort USDT perpetuals by volume
+        usdt_tickers = []
+        for t in tickers:
+            symbol = t['symbol']
+            if symbol.endswith('USDT') and 'PERP' not in symbol:
+                try:
+                    turnover = float(t.get('turnover24h', 0))
+                    price = float(t.get('lastPrice', 0))
+                    change_24h = float(t.get('price24hPcnt', 0)) * 100
+
+                    usdt_tickers.append({
+                        'symbol': symbol,
+                        'normalized': normalize_symbol(symbol),
+                        'price': price,
+                        'turnover_24h': turnover,
+                        'change_24h': change_24h
+                    })
+                except (ValueError, KeyError):
+                    continue
+
+        # Sort by turnover (volume)
+        usdt_tickers.sort(key=lambda x: x['turnover_24h'], reverse=True)
+
+        # Step 3: Select top 25 symbols (always include BTC first)
+        top_symbols = []
+        btc_added = False
+
+        for t in usdt_tickers:
+            if t['normalized'] == 'BTC':
+                if not btc_added:
+                    top_symbols.insert(0, t)
+                    btc_added = True
+            elif len(top_symbols) < 25:
+                top_symbols.append(t)
+
+            if len(top_symbols) >= 25:
+                break
+
+        # Step 4: Fetch historical klines for each symbol
+        # For short timeframes, use smaller intervals to get more data points
+        if timeframe_hours < 1:
+            # Sub-hour timeframes: use 5-minute candles
+            interval = "5"    # 5-minute candles
+            timeframe_minutes = int(timeframe_hours * 60)
+            limit = max(3, timeframe_minutes // 5)  # e.g., 15min = 3 candles, 30min = 6 candles
+        elif timeframe_hours == 1:
+            interval = "15"   # 15-minute candles
+            limit = 4         # 4 × 15min = 1 hour
+        elif timeframe_hours <= 4:
+            interval = "30"   # 30-minute candles
+            limit = timeframe_hours * 2
+        else:
+            interval = "60"   # 1-hour candles
+            limit = timeframe_hours
+
+        historical_data = {}
+
+        for ticker in top_symbols:
+            symbol = ticker['symbol']
+            normalized = ticker['normalized']
+
+            # Check if we need to map to a different symbol (meme coins)
+            fetch_symbol = BYBIT_SYMBOL_MAP.get(normalized, symbol)
+
+            candles = await fetch_bybit_klines(session, fetch_symbol, interval, limit)
+
+            if candles:
+                historical_data[normalized] = candles
+
+            # Small delay to avoid rate limiting
+            await asyncio.sleep(0.05)
+
+        # Step 5: Calculate rebased returns (all start at 0%)
+        chart_data = {}
+        performance_summary = []
+
+        for symbol, candles in historical_data.items():
+            if len(candles) < 2:
+                continue
+
+            initial_price = candles[0]['close']
+            if initial_price == 0:
+                continue
+
+            rebased = []
+            for c in candles:
+                pct_change = ((c['close'] - initial_price) / initial_price) * 100
+                rebased.append({
+                    'timestamp': c['timestamp'],
+                    'value': round(pct_change, 4)
+                })
+
+            chart_data[symbol] = rebased
+
+            # Final performance for sorting
+            final_change = rebased[-1]['value'] if rebased else 0
+            performance_summary.append({
+                'symbol': symbol,
+                'change': round(final_change, 2)
+            })
+
+        # Sort by performance for legend ordering
+        performance_summary.sort(key=lambda x: x['change'], reverse=True)
+
+        # Calculate overview stats
+        btc_change = chart_data.get('BTC', [{}])[-1].get('value', 0) if 'BTC' in chart_data else 0
+        outperformers = len([p for p in performance_summary if p['change'] > 1.0])
+        underperformers = len([p for p in performance_summary if p['change'] < -3.0])
+
+        return {
+            'chart_data': chart_data,
+            'performance_order': [p['symbol'] for p in performance_summary],
+            'performance_summary': performance_summary,
+            'overview': {
+                'btc_change': round(btc_change, 2),
+                'symbols_count': len(chart_data),
+                'outperformers': outperformers,
+                'underperformers': underperformers,
+                'timeframe_hours': timeframe_hours
+            },
+            'generated_at': datetime.now(timezone.utc).isoformat(),
+            'cache_ttl_seconds': BETA_CHART_CACHE_TTL
+        }
+
+
+@router.get("/beta-chart")
+async def get_beta_chart_data(timeframe: float = 4) -> Dict[str, Any]:
+    """
+    Get pre-computed beta chart data with caching.
+
+    Data is primarily populated by the trading service's cache warmer.
+    Web service reads from cache and falls back to generating on cache miss.
+
+    Args:
+        timeframe: Hours of historical data (0.25=15min, 0.5=30min, 1, 4, 8, 12, 24). Default: 4
+
+    Returns:
+        Pre-computed rebased returns for top 25 symbols by volume.
+        Data is cached for 2 minutes to reduce API calls to Bybit.
+    """
+    # Validate timeframe (0.25=15min, 0.5=30min, 1=1h, etc.)
+    valid_timeframes = [0.25, 0.5, 1, 4, 8, 12, 24]
+    if timeframe not in valid_timeframes:
+        timeframe = 4
+
+    cache_key = f'virtuoso:beta_chart:{timeframe}h'.encode()
+
+    try:
+        # Try to get from cache (populated by trading service cache warmer)
+        from pymemcache.client.base import Client
+        mc_client = Client(('127.0.0.1', 11211))
+
+        cached_data = mc_client.get(cache_key)
+        if cached_data:
+            try:
+                data = json.loads(cached_data.decode('utf-8'))
+                data['from_cache'] = True
+                mc_client.close()
+                logger.debug(f"Beta chart data served from cache ({timeframe}h)")
+                return data
+            except (json.JSONDecodeError, AttributeError):
+                pass
+
+        mc_client.close()
+    except Exception as e:
+        logger.debug(f"Cache read error: {e}")
+
+    # Cache miss - generate fresh data using shared service module
+    logger.info(f"Cache miss for beta chart ({timeframe}h) - generating fresh data...")
+
+    try:
+        # Use the shared beta chart service (same code as trading service uses)
+        from src.core.chart.beta_chart_service import generate_beta_chart_data
+        data = await generate_beta_chart_data(timeframe)
+        data['from_cache'] = False
+        data['generated_by'] = 'web_service_fallback'
+
+        # Store in cache for next request
+        try:
+            from pymemcache.client.base import Client
+            mc_client = Client(('127.0.0.1', 11211))
+            mc_client.set(cache_key, json.dumps(data).encode('utf-8'), expire=BETA_CHART_CACHE_TTL)
+            mc_client.close()
+            logger.info(f"Beta chart data cached by web service ({timeframe}h, TTL={BETA_CHART_CACHE_TTL}s)")
+        except Exception as e:
+            logger.warning(f"Failed to cache beta chart data: {e}")
+
+        return data
+
+    except Exception as e:
+        logger.error(f"Error generating beta chart data: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch chart data: {str(e)}")
+
+
+# ============================================================================
+# TRADE-READY SIGNALS ENDPOINT
+# ============================================================================
+
+# In-memory storage for trade signals (for tracking status)
+_trade_signals_store: Dict[str, Dict[str, Any]] = {}
+_trade_signals_history: List[Dict[str, Any]] = []
+MAX_SIGNAL_HISTORY = 100
+
+# Default risk parameters
+DEFAULT_STOP_PERCENTAGE = 3.5  # 3.5% stop loss
+DEFAULT_RR_RATIO = 2.0  # 2:1 risk/reward
+SIGNAL_EXPIRY_HOURS = 24  # Signals expire after 24 hours
+
+
+def _calculate_trade_levels(
+    entry_price: float,
+    direction: str,
+    stop_percentage: float = DEFAULT_STOP_PERCENTAGE,
+    rr_ratio: float = DEFAULT_RR_RATIO
+) -> Dict[str, Any]:
+    """Calculate SL/TP levels for a trade signal."""
+    stop_pct = stop_percentage / 100.0
+
+    if direction.upper() in ['LONG', 'BUY', 'BULLISH']:
+        stop_loss = entry_price * (1 - stop_pct)
+        risk_per_unit = entry_price - stop_loss
+        take_profit = entry_price + (risk_per_unit * rr_ratio)
+        direction_normalized = 'LONG'
+    else:
+        stop_loss = entry_price * (1 + stop_pct)
+        risk_per_unit = stop_loss - entry_price
+        take_profit = entry_price - (risk_per_unit * rr_ratio)
+        direction_normalized = 'SHORT'
+
+    return {
+        'entry_price': round(entry_price, 6),
+        'stop_loss': round(stop_loss, 6),
+        'take_profit': round(take_profit, 6),
+        'stop_percentage': stop_percentage,
+        'risk_reward_ratio': rr_ratio,
+        'direction': direction_normalized
+    }
+
+
+def _determine_signal_direction(signal_data: Dict[str, Any]) -> str:
+    """Determine if signal is LONG or SHORT based on confluence score and sentiment."""
+    score = signal_data.get('confluence_score', signal_data.get('score', 50))
+    sentiment = signal_data.get('sentiment', '').upper()
+    signal_type = signal_data.get('signal_type', '').upper()
+
+    # Explicit signal type takes priority
+    if signal_type in ['BUY', 'LONG']:
+        return 'LONG'
+    if signal_type in ['SELL', 'SHORT']:
+        return 'SHORT'
+
+    # Check sentiment
+    if sentiment == 'BULLISH':
+        return 'LONG'
+    if sentiment == 'BEARISH':
+        return 'SHORT'
+
+    # Fall back to score
+    if score >= 60:
+        return 'LONG'
+    elif score <= 40:
+        return 'SHORT'
+
+    return 'NEUTRAL'
+
+
+def _check_signal_status(
+    signal: Dict[str, Any],
+    current_price: float
+) -> Dict[str, Any]:
+    """Check if signal has hit TP, SL, or expired."""
+    direction = signal.get('direction', 'LONG')
+    entry = signal.get('entry_price', 0)
+    sl = signal.get('stop_loss', 0)
+    tp = signal.get('take_profit', 0)
+    created_at = signal.get('created_at', time.time())
+
+    # Check expiry
+    age_hours = (time.time() - created_at) / 3600
+    if age_hours > SIGNAL_EXPIRY_HOURS:
+        return {'status': 'EXPIRED', 'exit_reason': 'timeout'}
+
+    # Check TP/SL hit
+    if direction == 'LONG':
+        if current_price >= tp:
+            return {'status': 'HIT_TP', 'exit_reason': 'take_profit', 'exit_price': tp}
+        if current_price <= sl:
+            return {'status': 'HIT_SL', 'exit_reason': 'stop_loss', 'exit_price': sl}
+    else:  # SHORT
+        if current_price <= tp:
+            return {'status': 'HIT_TP', 'exit_reason': 'take_profit', 'exit_price': tp}
+        if current_price >= sl:
+            return {'status': 'HIT_SL', 'exit_reason': 'stop_loss', 'exit_price': sl}
+
+    # Calculate current P&L
+    if direction == 'LONG':
+        pnl_pct = ((current_price - entry) / entry) * 100
+    else:
+        pnl_pct = ((entry - current_price) / entry) * 100
+
+    return {
+        'status': 'ACTIVE',
+        'current_pnl_pct': round(pnl_pct, 2),
+        'time_remaining_hours': round(SIGNAL_EXPIRY_HOURS - age_hours, 1)
+    }
+
+
+@router.get(
+    "/trade-signals",
+    summary="Get Trade-Ready Signals",
+    description="""
+    Retrieve actionable trading signals with entry/exit levels.
+
+    Each signal includes:
+    - Entry price (current market price when signal generated)
+    - Stop loss price (calculated from risk parameters)
+    - Take profit price (calculated from risk/reward ratio)
+    - Risk/reward ratio
+    - Signal status (ACTIVE, HIT_TP, HIT_SL, EXPIRED)
+    - Time remaining before expiry
+
+    Only shows signals with clear directional bias (LONG or SHORT).
+    NEUTRAL signals are filtered out.
+    """,
+    tags=["dashboard", "signals", "trading"]
+)
+async def get_trade_ready_signals() -> Dict[str, Any]:
+    """Get trade-ready signals with entry/SL/TP levels."""
+    global _trade_signals_store, _trade_signals_history
+
+    try:
+        # Get base signals from existing endpoint logic
+        signals_data = []
+        confluence_scores = []
+
+        # Try to get signals from web cache
+        if web_cache:
+            try:
+                mobile_data = await web_cache.get_mobile_data()
+                if mobile_data and mobile_data.get('data_source') != 'fallback':
+                    confluence_scores = mobile_data.get('confluence_scores', [])
+                    logger.debug(f"Trade signals: got {len(confluence_scores)} from web cache")
+            except Exception as e:
+                logger.warning(f"Failed to get signals from web cache: {e}")
+
+        # Fallback to direct_cache (same pattern as other endpoints)
+        if not confluence_scores and USE_DIRECT_CACHE:
+            try:
+                mobile_data = await direct_cache.get_mobile_data()
+                if mobile_data and mobile_data.get('confluence_scores'):
+                    confluence_scores = mobile_data['confluence_scores']
+                    logger.debug(f"Trade signals: got {len(confluence_scores)} from direct cache")
+            except Exception as e:
+                logger.warning(f"Failed to get signals from direct cache: {e}")
+
+        # Fallback to integration service
+        if not confluence_scores:
+            integration = get_dashboard_integration()
+            if integration:
+                try:
+                    raw_signals = await integration.get_signals_data()
+                    if raw_signals:
+                        confluence_scores = raw_signals
+                        logger.debug(f"Trade signals: got {len(confluence_scores)} from integration")
+                except Exception as e:
+                    logger.warning(f"Failed to get signals from integration: {e}")
+
+        # Convert confluence_scores to signals_data format with price
+        signals_data = [s for s in confluence_scores if s.get('symbol') and s.get('price', 0) > 0]
+        logger.info(f"Trade signals: processing {len(signals_data)} signals with valid prices")
+
+        # Process signals into trade-ready format
+        trade_signals = []
+        current_time = time.time()
+
+        for signal in signals_data:
+            symbol = signal.get('symbol', '')
+            if not symbol:
+                continue
+
+            # Determine direction
+            direction = _determine_signal_direction(signal)
+            if direction == 'NEUTRAL':
+                continue  # Skip neutral signals
+
+            # Get current price
+            current_price = float(signal.get('price', 0))
+            if current_price <= 0:
+                continue
+
+            # Check if we already have this signal tracked
+            signal_key = f"{symbol}_{direction}"
+            existing_signal = _trade_signals_store.get(signal_key)
+
+            if existing_signal:
+                # Update status of existing signal
+                status_info = _check_signal_status(existing_signal, current_price)
+                existing_signal.update(status_info)
+                existing_signal['current_price'] = current_price
+
+                # If signal closed, move to history
+                if status_info['status'] in ['HIT_TP', 'HIT_SL', 'EXPIRED']:
+                    existing_signal['closed_at'] = current_time
+                    _trade_signals_history.append(existing_signal.copy())
+                    if len(_trade_signals_history) > MAX_SIGNAL_HISTORY:
+                        _trade_signals_history = _trade_signals_history[-MAX_SIGNAL_HISTORY:]
+                    del _trade_signals_store[signal_key]
+                else:
+                    trade_signals.append(existing_signal)
+            else:
+                # Create new trade signal
+                confluence_score = float(signal.get('confluence_score', signal.get('score', 50)))
+
+                # Only create signals with strong enough conviction
+                if (direction == 'LONG' and confluence_score < 55) or \
+                   (direction == 'SHORT' and confluence_score > 45):
+                    continue
+
+                trade_levels = _calculate_trade_levels(current_price, direction)
+
+                new_signal = {
+                    'id': f"{symbol}_{int(current_time)}",
+                    'symbol': symbol,
+                    'direction': direction,
+                    'confluence_score': round(confluence_score, 1),
+                    'sentiment': signal.get('sentiment', 'NEUTRAL'),
+                    **trade_levels,
+                    'current_price': current_price,
+                    'change_24h': round(float(signal.get('change_24h', 0)), 2),
+                    'volume_24h': signal.get('volume_24h', 0),
+                    'created_at': current_time,
+                    'status': 'ACTIVE',
+                    'time_remaining_hours': SIGNAL_EXPIRY_HOURS,
+                    'current_pnl_pct': 0.0,
+                    'components': signal.get('components', {})
+                }
+
+                _trade_signals_store[signal_key] = new_signal
+                trade_signals.append(new_signal)
+
+        # Sort by confluence score (strongest signals first)
+        trade_signals.sort(key=lambda x: x.get('confluence_score', 0), reverse=True)
+
+        # Calculate summary stats
+        long_signals = [s for s in trade_signals if s['direction'] == 'LONG']
+        short_signals = [s for s in trade_signals if s['direction'] == 'SHORT']
+
+        # Recent history stats
+        recent_history = [h for h in _trade_signals_history
+                         if current_time - h.get('closed_at', 0) < 86400]  # Last 24h
+        wins = len([h for h in recent_history if h.get('status') == 'HIT_TP'])
+        losses = len([h for h in recent_history if h.get('status') == 'HIT_SL'])
+        win_rate = (wins / (wins + losses) * 100) if (wins + losses) > 0 else 0
+
+        return {
+            'status': 'success',
+            'signals': trade_signals,
+            'summary': {
+                'total_active': len(trade_signals),
+                'long_signals': len(long_signals),
+                'short_signals': len(short_signals),
+                'avg_confluence': round(
+                    sum(s['confluence_score'] for s in trade_signals) / len(trade_signals), 1
+                ) if trade_signals else 0
+            },
+            'performance_24h': {
+                'wins': wins,
+                'losses': losses,
+                'expired': len([h for h in recent_history if h.get('status') == 'EXPIRED']),
+                'win_rate': round(win_rate, 1)
+            },
+            'config': {
+                'stop_percentage': DEFAULT_STOP_PERCENTAGE,
+                'risk_reward_ratio': DEFAULT_RR_RATIO,
+                'expiry_hours': SIGNAL_EXPIRY_HOURS
+            },
+            'timestamp': datetime.now(timezone.utc).isoformat()
+        }
+
+    except Exception as e:
+        logger.error(f"Error getting trade-ready signals: {e}")
+        return {
+            'status': 'error',
+            'error': str(e),
+            'signals': [],
+            'summary': {'total_active': 0, 'long_signals': 0, 'short_signals': 0},
+            'timestamp': datetime.now(timezone.utc).isoformat()
         }

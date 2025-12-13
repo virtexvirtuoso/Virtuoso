@@ -1,0 +1,272 @@
+<!--
+    PERPETUALS PULSE ENHANCED CARD - Phase 2 Integration
+
+    This template preserves the existing 3-metric row + OI/Volume layout
+    and adds new Phase 2 signal data below in a compact, non-intrusive way.
+
+    INTEGRATION INSTRUCTIONS:
+    1. Replace the existing <template v-else-if="item.i === 'perpsPulse'"> block
+    2. Update Vue data structure to include new Phase 2 fields (see below)
+    3. No CSS changes needed - uses existing variables
+
+    NEW DATA STRUCTURE (add to perpsPulse object):
+    perpsPulse: {
+        // Existing fields (preserve these)
+        fundingRate: '0.000%',
+        fundingSentiment: 'NEUTRAL',
+        longPct: 50,
+        shortPct: 50,
+        lsLabel: 'BALANCED',
+        basisStatus: 'NEUTRAL',
+        basisPct: '+0.00%',
+        openInterest: '$0B',
+        volume: '$0B',
+        cexPct: 90,
+        exchangeCount: 8,
+
+        // NEW Phase 2 fields
+        fundingZScore: 0.0,           // -3 to +3 range
+        lsEntropy: 0.5,               // 0-1 range (0.7+ is healthy)
+        signalCount: 0,               // Total active signals
+        signalSummary: {
+            bullish: 0,
+            bearish: 0,
+            total: 0
+        },
+        signals: [                    // Array of active signals
+            {
+                signal_type: 'funding_divergence',
+                direction: 'bullish',
+                strength: 'moderate',
+                confidence: 0.72,
+                description: 'Funding rate negative while price rising'
+            }
+        ]
+    }
+-->
+
+<template v-else-if="item.i === 'perpsPulse'">
+    <div class="widget-header">
+        <div class="widget-title">
+            <i data-lucide="bar-chart-3"></i>
+            Perpetuals Pulse
+        </div>
+        <div style="display: flex; gap: 6px; align-items: center;">
+            <!-- Signal Summary Badge (NEW) -->
+            <span v-if="perpsPulse.signalCount > 0"
+                  :class="['signal-badge', perpsPulse.signalSummary.bearish > perpsPulse.signalSummary.bullish ? 'bearish' : 'bullish']"
+                  :title="perpsPulse.signalSummary.bullish + ' bullish, ' + perpsPulse.signalSummary.bearish + ' bearish signals'">
+                {{ perpsPulse.signalCount }}
+                <i :data-lucide="perpsPulse.signalSummary.bearish > perpsPulse.signalSummary.bullish ? 'trending-down' : 'trending-up'"
+                   style="width: 10px; height: 10px; margin-left: 2px;"></i>
+            </span>
+            <span class="cex-badge">{{ perpsPulse.exchangeCount }} CEX/DEX</span>
+        </div>
+    </div>
+    <div class="widget-body">
+        <!-- Row 1: Funding + L/S + Basis (PRESERVED EXACTLY) -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 10px;">
+            <!-- Funding Rate -->
+            <div style="background: rgba(0,0,0,0.2); padding: 8px; border-radius: 6px; text-align: center;">
+                <div style="font-size: 9px; color: var(--text-secondary); text-transform: uppercase;">Funding</div>
+                <div style="font-size: 14px; font-weight: 700; color: var(--text-primary);">{{ perpsPulse.fundingRate }}</div>
+                <div style="font-size: 9px; color: var(--text-secondary);">{{ perpsPulse.fundingSentiment }}</div>
+            </div>
+            <!-- Long/Short -->
+            <div style="background: rgba(0,0,0,0.2); padding: 8px; border-radius: 6px; text-align: center;">
+                <div style="font-size: 9px; color: var(--text-secondary); text-transform: uppercase;">Long / Short</div>
+                <div style="display: flex; justify-content: center; gap: 3px; align-items: baseline;">
+                    <span style="font-size: 13px; font-weight: 700; color: var(--accent-positive);">{{ perpsPulse.longPct }}%</span>
+                    <span style="color: var(--text-secondary); font-size: 10px;">/</span>
+                    <span style="font-size: 13px; font-weight: 700; color: var(--accent-negative);">{{ perpsPulse.shortPct }}%</span>
+                </div>
+                <div style="font-size: 9px; color: var(--text-secondary);">{{ perpsPulse.lsLabel }}</div>
+            </div>
+            <!-- Basis -->
+            <div style="background: rgba(0,0,0,0.2); padding: 8px; border-radius: 6px; text-align: center;">
+                <div style="font-size: 9px; color: var(--text-secondary); text-transform: uppercase;">Basis</div>
+                <div style="font-size: 9px; font-weight: 600; padding: 2px 4px; border-radius: 3px; background: rgba(255, 191, 0, 0.15); color: var(--text-primary); display: inline-block;">{{ perpsPulse.basisStatus }}</div>
+                <div style="font-size: 9px; color: var(--text-secondary); margin-top: 2px;">{{ perpsPulse.basisPct }}</div>
+            </div>
+        </div>
+
+        <!-- Row 2: OI + Volume + CEX/DEX (PRESERVED EXACTLY) -->
+        <div style="background: rgba(0,0,0,0.15); padding: 10px; border-radius: 8px; margin-bottom: 8px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                <div>
+                    <div style="font-size: 9px; color: var(--text-secondary); text-transform: uppercase;">Open Interest</div>
+                    <div style="font-size: 16px; font-weight: 700; color: var(--text-primary);">{{ perpsPulse.openInterest }}</div>
+                </div>
+                <div style="text-align: right;">
+                    <div style="font-size: 9px; color: var(--text-secondary); text-transform: uppercase;">24H Volume</div>
+                    <div style="font-size: 14px; font-weight: 600; color: var(--text-secondary);">{{ perpsPulse.volume }}</div>
+                </div>
+            </div>
+            <!-- CEX/DEX Bar -->
+            <div style="margin-top: 6px;">
+                <div style="font-size: 9px; color: var(--text-secondary); margin-bottom: 3px; text-transform: uppercase;">CEX vs DEX</div>
+                <div style="height: 16px; border-radius: 4px; overflow: hidden; display: flex; background: rgba(0,0,0,0.3);">
+                    <div :style="{ width: perpsPulse.cexPct + '%' }" style="background: linear-gradient(180deg, #ffa500 0%, #e67b00 100%); height: 100%; display: flex; align-items: center; justify-content: center; transition: width 0.5s ease;">
+                        <span style="font-size: 9px; font-weight: 700; color: white;">CEX {{ perpsPulse.cexPct }}%</span>
+                    </div>
+                    <div style="background: linear-gradient(180deg, #8b5cf6 0%, #7244e8 100%); height: 100%; display: flex; align-items: center; justify-content: center; transition: width 0.5s ease; flex: 1;">
+                        <span style="font-size: 9px; font-weight: 700; color: white;">DEX</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Row 3: Advanced Metrics (NEW - Compact micro-metrics) -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 8px;">
+            <!-- Funding Z-Score -->
+            <div style="background: rgba(0,0,0,0.1); padding: 6px 8px; border-radius: 4px; display: flex; align-items: center; justify-content: space-between;">
+                <div style="font-size: 9px; color: var(--text-secondary); text-transform: uppercase;">Funding σ</div>
+                <div :style="{ color: perpsPulse.fundingZScore > 0 ? 'var(--accent-negative)' : perpsPulse.fundingZScore < 0 ? 'var(--accent-positive)' : 'var(--text-secondary)' }"
+                     style="font-size: 12px; font-weight: 700;">
+                    {{ perpsPulse.fundingZScore > 0 ? '+' : '' }}{{ perpsPulse.fundingZScore.toFixed(2) }}σ
+                </div>
+            </div>
+            <!-- L/S Entropy (Health Indicator) -->
+            <div style="background: rgba(0,0,0,0.1); padding: 6px 8px; border-radius: 4px; display: flex; align-items: center; justify-content: space-between;">
+                <div style="font-size: 9px; color: var(--text-secondary); text-transform: uppercase;">L/S Health</div>
+                <div :style="{ color: perpsPulse.lsEntropy >= 0.7 ? 'var(--accent-positive)' : perpsPulse.lsEntropy < 0.4 ? 'var(--accent-negative)' : 'var(--text-secondary)' }"
+                     style="font-size: 12px; font-weight: 700;">
+                    {{ (perpsPulse.lsEntropy * 100).toFixed(0) }}%
+                </div>
+            </div>
+        </div>
+
+        <!-- Row 4: Active Signals (NEW - Only shows if signals exist) -->
+        <div v-if="perpsPulse.signalCount > 0" style="background: rgba(0,0,0,0.1); padding: 8px; border-radius: 6px;">
+            <div style="font-size: 9px; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 6px; display: flex; align-items: center; gap: 4px;">
+                <i data-lucide="activity" style="width: 10px; height: 10px;"></i>
+                Active Signals
+            </div>
+            <div style="display: flex; flex-wrap: wrap; gap: 4px;">
+                <div v-for="signal in perpsPulse.signals"
+                     :key="signal.signal_type"
+                     :class="['signal-pill', signal.direction, signal.strength]"
+                     :title="signal.description + ' (confidence: ' + (signal.confidence * 100).toFixed(0) + '%)'">
+                    <span class="signal-icon">
+                        <i :data-lucide="getSignalIcon(signal.signal_type)" style="width: 9px; height: 9px;"></i>
+                    </span>
+                    <span class="signal-label">{{ formatSignalType(signal.signal_type) }}</span>
+                    <span class="signal-strength">{{ signal.strength.charAt(0).toUpperCase() }}</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</template>
+
+<style>
+/* Signal Badge in Header */
+.signal-badge {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 3px 6px;
+    border-radius: 4px;
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    transition: all 0.2s ease;
+}
+
+.signal-badge.bullish {
+    background: rgba(0, 214, 143, 0.15);
+    color: var(--accent-positive);
+    border: 1px solid rgba(0, 214, 143, 0.3);
+}
+
+.signal-badge.bearish {
+    background: rgba(255, 82, 82, 0.15);
+    color: var(--accent-negative);
+    border: 1px solid rgba(255, 82, 82, 0.3);
+}
+
+/* Signal Pills */
+.signal-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 6px;
+    border-radius: 4px;
+    font-size: 9px;
+    font-weight: 600;
+    cursor: help;
+    transition: all 0.2s ease;
+    border: 1px solid transparent;
+}
+
+.signal-pill:hover {
+    transform: translateY(-1px);
+    filter: brightness(1.2);
+}
+
+/* Signal Direction Colors */
+.signal-pill.bullish {
+    background: rgba(0, 214, 143, 0.12);
+    color: var(--accent-positive);
+    border-color: rgba(0, 214, 143, 0.2);
+}
+
+.signal-pill.bearish {
+    background: rgba(255, 82, 82, 0.12);
+    color: var(--accent-negative);
+    border-color: rgba(255, 82, 82, 0.2);
+}
+
+/* Signal Strength Intensity */
+.signal-pill.extreme {
+    font-weight: 700;
+    border-width: 1.5px;
+}
+
+.signal-pill.strong {
+    opacity: 0.95;
+}
+
+.signal-pill.moderate {
+    opacity: 0.85;
+}
+
+.signal-pill.weak {
+    opacity: 0.7;
+}
+
+.signal-icon {
+    display: inline-flex;
+    align-items: center;
+}
+
+.signal-label {
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.signal-strength {
+    font-size: 8px;
+    opacity: 0.7;
+    margin-left: 2px;
+}
+</style>
+
+<script>
+// Helper methods to add to your Vue instance methods:
+methods: {
+    // ... existing methods ...
+
+    getSignalIcon(signalType) {
+        const iconMap = {
+            'funding_divergence': 'git-branch',
+            'ls_extreme': 'scale',
+            'liquidation_risk': 'alert-triangle',
+            'momentum': 'trending-up'
+        };
+        return iconMap[signalType] || 'activity';
+    },
+
+    formatSignalType(signalType) {
+        return signalType.replace(/_/g, ' ');
+    }
+}
+</script>

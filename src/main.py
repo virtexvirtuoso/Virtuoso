@@ -3056,41 +3056,36 @@ async def frontend():
 
 @app.get("/dashboard")
 async def dashboard_ui():
-    """Serve the main v10 Signal Confluence Matrix dashboard"""
+    """Serve the original dashboard (archived)"""
     # Try multiple path options to handle different runtime contexts
-    template_path = TEMPLATE_DIR / "dashboard_v10.html"
+    template_path = TEMPLATE_DIR / "archive" / "dashboard.html"
     if not template_path.exists():
         # Try alternative path
-        template_path = TEMPLATE_DIR_ALT / "dashboard_v10.html"
+        template_path = TEMPLATE_DIR_ALT / "archive" / "dashboard.html"
     if not template_path.exists():
         # Try direct path from src
-        template_path = Path(__file__).parent / "dashboard" / "templates" / "dashboard_v10.html"
+        template_path = Path(__file__).parent / "dashboard" / "templates" / "archive" / "dashboard.html"
     return FileResponse(template_path)
 
 @app.get("/dashboard/v1")
 async def dashboard_v1_ui():
     """Serve the original dashboard"""
-    template_path = TEMPLATE_DIR / "dashboard.html"
+    template_path = TEMPLATE_DIR / "archive" / "dashboard.html"
     if not template_path.exists():
-        template_path = TEMPLATE_DIR_ALT / "dashboard.html"
+        template_path = TEMPLATE_DIR_ALT / "archive" / "dashboard.html"
     if not template_path.exists():
-        template_path = Path(__file__).parent / "dashboard" / "templates" / "dashboard.html"
+        template_path = Path(__file__).parent / "dashboard" / "templates" / "archive" / "dashboard.html"
     return FileResponse(template_path)
 
 @app.get("/mobile")
 async def mobile_dashboard_ui():
     """Serve the mobile-optimized dashboard (clean URL)"""
-    template_path = TEMPLATE_DIR / "dashboard_mobile_v1.html"
+    template_path = TEMPLATE_DIR / "archive" / "dashboard_mobile_v1.html"
     if not template_path.exists():
-        template_path = TEMPLATE_DIR_ALT / "dashboard_mobile_v1.html"
+        template_path = TEMPLATE_DIR_ALT / "archive" / "dashboard_mobile_v1.html"
     if not template_path.exists():
-        template_path = Path(__file__).parent / "dashboard" / "templates" / "dashboard_mobile_v1.html"
+        template_path = Path(__file__).parent / "dashboard" / "templates" / "archive" / "dashboard_mobile_v1.html"
     return FileResponse(template_path)
-
-@app.get("/beta-analysis")
-async def beta_analysis_ui():
-    """Serve the Beta Analysis dashboard"""
-    return FileResponse(TEMPLATE_DIR / "dashboard_beta_analysis.html")
 
 @app.get("/market-analysis")
 async def market_analysis_ui():
@@ -3129,12 +3124,12 @@ async def market_analysis_ui():
     except Exception as e:
         logger.error(f"Error serving market analysis page: {e}")
         # Fallback to static file if interactive report fails
-        return FileResponse(TEMPLATE_DIR / "dashboard_market_analysis.html")
+        return FileResponse(TEMPLATE_DIR / "archive" / "dashboard_market_analysis.html")
 
 @app.get("/learn")
 async def educational_guide():
     """Serve the educational guide for crypto beginners"""
-    return FileResponse(TEMPLATE_DIR / "educational_guide.html")
+    return FileResponse(TEMPLATE_DIR / "docs" / "educational_guide.html")
 
 @app.get("/market-analysis/data")
 async def market_analysis_data():

@@ -1,0 +1,892 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Virtuoso Signals - Predictive Trading Intelligence</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=Inter:wght@300;400;500;600;700&display=swap');
+
+        :root {
+            /* Virtuoso Brand Colors */
+            --neon-amber: #fbbf24;
+            --neon-cyan: #06B6D4;
+            --neon-red: #ff0066;
+
+            /* Dark Mode */
+            --dark-bg-primary: #0a0a0a;
+            --dark-bg-secondary: #111111;
+            --dark-bg-tertiary: #1a1a1a;
+            --dark-border: #222222;
+            --dark-text-primary: #e0e0e0;
+            --dark-text-secondary: #9ca3af;
+            --dark-text-tertiary: #6b7280;
+
+            /* Semantic */
+            --success: #10b981;
+            --error: #ef4444;
+            --warning: #f59e0b;
+            --info: #3b82f6;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--dark-bg-primary);
+            color: var(--dark-text-primary);
+            margin: 0;
+            padding: 0;
+            line-height: 1.6;
+        }
+
+        .font-mono {
+            font-family: 'IBM Plex Mono', monospace;
+        }
+
+        /* Widget Container */
+        .signals-widget {
+            max-width: 600px;
+            margin: 0 auto;
+            background: var(--dark-bg-secondary);
+            border: 1px solid var(--dark-border);
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+        }
+
+        /* Header */
+        .widget-header {
+            background: linear-gradient(135deg, var(--dark-bg-tertiary) 0%, var(--dark-bg-secondary) 100%);
+            border-bottom: 1px solid var(--dark-border);
+            padding: 16px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .widget-title {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .widget-logo {
+            width: 32px;
+            height: 32px;
+            background: var(--dark-bg-primary);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid var(--neon-amber);
+            box-shadow: 0 0 12px rgba(251, 191, 36, 0.2);
+        }
+
+        .widget-logo svg {
+            width: 20px;
+            height: 20px;
+        }
+
+        .widget-title h1 {
+            font-size: 1.125rem;
+            font-weight: 600;
+            margin: 0;
+            color: var(--dark-text-primary);
+        }
+
+        .widget-title span {
+            color: var(--neon-amber);
+            text-shadow: 0 0 8px rgba(251, 191, 36, 0.4);
+        }
+
+        .header-controls {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .live-indicator {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.75rem;
+            color: var(--success);
+            font-weight: 500;
+        }
+
+        .live-dot {
+            width: 8px;
+            height: 8px;
+            background: var(--success);
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }
+            50% { opacity: 0.8; box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+        }
+
+        /* Timeframe Tabs */
+        .timeframe-tabs {
+            display: flex;
+            gap: 0;
+            background: var(--dark-bg-primary);
+            border-radius: 8px;
+            padding: 4px;
+        }
+
+        .timeframe-tab {
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            color: var(--dark-text-tertiary);
+            background: transparent;
+            border: none;
+            font-family: 'IBM Plex Mono', monospace;
+        }
+
+        .timeframe-tab:hover {
+            color: var(--dark-text-secondary);
+        }
+
+        .timeframe-tab.active {
+            background: var(--neon-cyan);
+            color: var(--dark-bg-primary);
+        }
+
+        /* Refresh Button */
+        .refresh-btn {
+            background: transparent;
+            border: 1px solid var(--dark-border);
+            border-radius: 6px;
+            padding: 6px 12px;
+            color: var(--dark-text-secondary);
+            cursor: pointer;
+            font-size: 0.75rem;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s ease;
+        }
+
+        .refresh-btn:hover {
+            border-color: var(--neon-amber);
+            color: var(--neon-amber);
+        }
+
+        .refresh-btn.loading i {
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Stats Bar */
+        .stats-bar {
+            display: flex;
+            justify-content: space-around;
+            padding: 12px 20px;
+            background: var(--dark-bg-tertiary);
+            border-bottom: 1px solid var(--dark-border);
+        }
+
+        .stat-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .stat-label {
+            font-size: 0.65rem;
+            color: var(--dark-text-tertiary);
+            font-family: 'IBM Plex Mono', monospace;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .stat-value {
+            font-size: 1.1rem;
+            font-weight: 700;
+            font-family: 'IBM Plex Mono', monospace;
+            color: var(--neon-cyan);
+        }
+
+        /* Filter Pills */
+        .filter-pills {
+            display: flex;
+            gap: 8px;
+            padding: 12px 20px;
+            overflow-x: auto;
+            border-bottom: 1px solid var(--dark-border);
+            scrollbar-width: none;
+        }
+
+        .filter-pills::-webkit-scrollbar {
+            display: none;
+        }
+
+        .filter-pill {
+            flex-shrink: 0;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            background: var(--dark-bg-primary);
+            border: 1px solid var(--dark-border);
+            color: var(--dark-text-secondary);
+            font-family: 'IBM Plex Mono', monospace;
+        }
+
+        .filter-pill:hover {
+            border-color: var(--neon-cyan);
+            color: var(--neon-cyan);
+        }
+
+        .filter-pill.active {
+            background: var(--neon-cyan);
+            border-color: var(--neon-cyan);
+            color: var(--dark-bg-primary);
+        }
+
+        /* Signals Feed */
+        .signals-feed {
+            max-height: 500px;
+            overflow-y: auto;
+            scrollbar-width: thin;
+            scrollbar-color: var(--dark-border) transparent;
+        }
+
+        .signals-feed::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .signals-feed::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .signals-feed::-webkit-scrollbar-thumb {
+            background: var(--dark-border);
+            border-radius: 3px;
+        }
+
+        .signals-feed::-webkit-scrollbar-thumb:hover {
+            background: var(--neon-amber);
+        }
+
+        /* Signal Item Card */
+        .signal-item {
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--dark-border);
+            transition: all 0.2s ease;
+            cursor: pointer;
+        }
+
+        .signal-item:hover {
+            background: var(--dark-bg-tertiary);
+            border-left: 3px solid var(--neon-cyan);
+            padding-left: 17px;
+        }
+
+        .signal-item:last-child {
+            border-bottom: none;
+        }
+
+        .signal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+
+        .signal-symbol {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: var(--neon-cyan);
+        }
+
+        .signal-direction {
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-family: 'IBM Plex Mono', monospace;
+            font-weight: 700;
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .signal-direction.long {
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--success);
+            border: 1px solid var(--success);
+        }
+
+        .signal-direction.short {
+            background: rgba(239, 68, 68, 0.15);
+            color: var(--error);
+            border: 1px solid var(--error);
+        }
+
+        .signal-metrics {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 10px;
+            font-size: 0.85rem;
+            color: var(--dark-text-secondary);
+            font-family: 'IBM Plex Mono', monospace;
+        }
+
+        .signal-metrics span {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .signal-details {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            font-size: 0.8rem;
+            color: var(--dark-text-tertiary);
+            padding-left: 12px;
+            border-left: 2px solid var(--dark-border);
+        }
+
+        .signal-detail {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-family: 'IBM Plex Mono', monospace;
+        }
+
+        .signal-detail i {
+            width: 14px;
+            color: var(--neon-amber);
+            font-size: 0.75rem;
+        }
+
+        .signal-confidence {
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid var(--dark-border);
+            font-size: 0.75rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .signal-confidence.high {
+            color: var(--success);
+        }
+
+        .signal-confidence.medium {
+            color: var(--warning);
+        }
+
+        .signal-confidence.low {
+            color: var(--dark-text-tertiary);
+        }
+
+        /* Footer */
+        .widget-footer {
+            background: var(--dark-bg-tertiary);
+            border-top: 1px solid var(--dark-border);
+            padding: 12px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 0.75rem;
+        }
+
+        .footer-stats {
+            color: var(--dark-text-tertiary);
+            font-family: 'IBM Plex Mono', monospace;
+        }
+
+        .cached-badge {
+            background: var(--dark-bg-primary);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.65rem;
+            margin-left: 8px;
+            color: var(--neon-cyan);
+        }
+
+        .footer-brand {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            color: var(--dark-text-secondary);
+        }
+
+        .footer-brand span {
+            color: var(--neon-amber);
+        }
+
+        /* Loading State */
+        .loading {
+            padding: 40px;
+            text-align: center;
+            color: var(--dark-text-secondary);
+        }
+
+        .loading-spinner {
+            width: 32px;
+            height: 32px;
+            border: 3px solid var(--dark-border);
+            border-top-color: var(--neon-cyan);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 16px;
+        }
+
+        /* Error State */
+        .error-state {
+            padding: 40px;
+            text-align: center;
+            color: var(--error);
+        }
+
+        .error-state i {
+            font-size: 2rem;
+            margin-bottom: 12px;
+        }
+
+        /* Empty State */
+        .empty-state {
+            padding: 40px;
+            text-align: center;
+            color: var(--dark-text-secondary);
+        }
+
+        .empty-state i {
+            font-size: 2rem;
+            margin-bottom: 12px;
+            color: var(--dark-text-tertiary);
+        }
+    </style>
+</head>
+<body>
+    <div style="padding: 20px;">
+        <!-- Main Widget -->
+        <div class="signals-widget" id="signalsWidget">
+            <!-- Header -->
+            <div class="widget-header">
+                <div class="widget-title">
+                    <div class="widget-logo">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"></polyline>
+                            <polyline points="16 7 22 7 22 13"></polyline>
+                        </svg>
+                    </div>
+                    <h1><span>Virtuoso</span> Signals</h1>
+                </div>
+                <div class="header-controls">
+                    <div class="timeframe-tabs">
+                        <button class="timeframe-tab" data-timeframe="1" onclick="setTimeframe('1')">1H</button>
+                        <button class="timeframe-tab active" data-timeframe="4" onclick="setTimeframe('4')">4H</button>
+                    </div>
+                    <button class="refresh-btn" id="refreshBtn" onclick="refreshSignals()">
+                        <i class="fas fa-sync-alt"></i>
+                        Refresh
+                    </button>
+                    <div class="live-indicator">
+                        <div class="live-dot"></div>
+                        LIVE
+                    </div>
+                </div>
+            </div>
+
+            <!-- Stats Bar -->
+            <div class="stats-bar" id="statsBar">
+                <div class="stat-item">
+                    <span class="stat-label">Active</span>
+                    <span class="stat-value" id="activeCount">-</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">High Stability</span>
+                    <span class="stat-value" id="stableCount">-</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">BTC Price</span>
+                    <span class="stat-value" id="btcPrice">-</span>
+                </div>
+            </div>
+
+            <!-- Filter Pills -->
+            <div class="filter-pills" id="filterPills">
+                <div class="filter-pill active" data-filter="all">All Signals</div>
+                <div class="filter-pill" data-filter="long">Long Only</div>
+                <div class="filter-pill" data-filter="short">Short Only</div>
+                <div class="filter-pill" data-filter="high-stability">High Stability</div>
+                <div class="filter-pill" data-filter="divergence">Divergence Active</div>
+            </div>
+
+            <!-- Signals Feed -->
+            <div class="signals-feed" id="signalsFeed">
+                <div class="loading">
+                    <div class="loading-spinner"></div>
+                    <div>Loading predictive signals...</div>
+                </div>
+            </div>
+
+            <!-- Footer -->
+            <div class="widget-footer">
+                <div class="footer-stats" id="footerStats">
+                    Updated just now
+                </div>
+                <div class="footer-brand">
+                    Powered by <span>Virtuoso</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ============================================================
+        // CONFIGURATION
+        // ============================================================
+
+        const SIGNALS_CACHE_KEY = 'virtuoso_signals_widget_cache';
+        const SIGNALS_REFRESH_INTERVAL = 300000; // 5 minutes
+        const MIN_STABILITY = 50;
+
+        // State
+        let allSignals = [];
+        let currentFilter = 'all';
+        let currentTimeframe = '4';
+        let lastUpdate = null;
+        let isCached = false;
+        let refreshTimer = null;
+
+        // ============================================================
+        // CACHING SERVICE
+        // ============================================================
+
+        function getSignalsFromCache() {
+            try {
+                const cached = localStorage.getItem(SIGNALS_CACHE_KEY);
+                if (cached) {
+                    const { signals, timestamp, timeframe } = JSON.parse(cached);
+                    // Check if cache is valid and matches current timeframe
+                    if (Date.now() - timestamp < SIGNALS_REFRESH_INTERVAL && timeframe === currentTimeframe) {
+                        return signals;
+                    }
+                }
+            } catch (e) {
+                console.warn('Failed to read signals cache:', e);
+            }
+            return null;
+        }
+
+        function saveSignalsToCache(signals) {
+            try {
+                localStorage.setItem(SIGNALS_CACHE_KEY, JSON.stringify({
+                    signals: signals,
+                    timestamp: Date.now(),
+                    timeframe: currentTimeframe
+                }));
+            } catch (e) {
+                console.warn('Failed to save signals cache:', e);
+            }
+        }
+
+        // ============================================================
+        // RENDERING FUNCTIONS
+        // ============================================================
+
+        function renderSignalCard(signal) {
+            // Determine direction
+            const hasSignal = signal.divergence?.signal_active;
+            const direction = signal.divergence?.direction || 'none';
+            const directionClass = hasSignal ? direction : '';
+            const directionText = hasSignal ? direction.toUpperCase() : 'NO SIGNAL';
+
+            // Format values
+            const beta = signal.beta?.toFixed(2) || 'N/A';
+            const stability = signal.stability?.stability_score?.toFixed(0) || 'N/A';
+            const lag = signal.lead_lag?.optimal_lag_minutes || 0;
+            const correlation = signal.lead_lag?.correlation?.toFixed(2) || 'N/A';
+            const zScore = signal.divergence?.z_score?.toFixed(2) || 'N/A';
+            const volatility = signal.volatility?.expected_increase_pct?.toFixed(1) || 'N/A';
+
+            // Confidence level
+            const confidence = signal.divergence?.confidence || 'low';
+            const confidenceIcons = {
+                'high': '⚡',
+                'medium': '⭐',
+                'low': '○'
+            };
+            const confidenceText = {
+                'high': 'High confidence signal',
+                'medium': 'Moderate confidence',
+                'low': 'Low confidence'
+            };
+
+            return `
+                <div class="signal-item" data-symbol="${signal.symbol}" data-direction="${direction}" data-stability="${stability}">
+                    <div class="signal-header">
+                        <div class="signal-symbol">${signal.symbol}</div>
+                        <div class="signal-direction ${directionClass}">${directionText}</div>
+                    </div>
+                    <div class="signal-metrics">
+                        <span><i class="fas fa-chart-line"></i> Beta: ${beta}</span>
+                        <span><i class="fas fa-shield-alt"></i> Stability: ${stability}/100</span>
+                    </div>
+                    <div class="signal-details">
+                        <div class="signal-detail">
+                            <i class="fas fa-clock"></i>
+                            <span>Lead-lag: ${lag} min</span>
+                        </div>
+                        <div class="signal-detail">
+                            <i class="fas fa-link"></i>
+                            <span>Correlation: ${correlation}</span>
+                        </div>
+                        <div class="signal-detail">
+                            <i class="fas fa-chart-bar"></i>
+                            <span>Z-score: ${zScore}</span>
+                        </div>
+                        <div class="signal-detail">
+                            <i class="fas fa-bolt"></i>
+                            <span>Vol: ${volatility}%</span>
+                        </div>
+                    </div>
+                    ${hasSignal ? `
+                        <div class="signal-confidence ${confidence}">
+                            ${confidenceIcons[confidence]} ${confidenceText[confidence]}
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+        }
+
+        function renderSignalsFeed() {
+            const feed = document.getElementById('signalsFeed');
+
+            let filteredSignals = allSignals;
+
+            // Apply filters
+            if (currentFilter === 'long') {
+                filteredSignals = allSignals.filter(s => s.divergence?.signal_active && s.divergence?.direction === 'long');
+            } else if (currentFilter === 'short') {
+                filteredSignals = allSignals.filter(s => s.divergence?.signal_active && s.divergence?.direction === 'short');
+            } else if (currentFilter === 'high-stability') {
+                filteredSignals = allSignals.filter(s => s.stability?.stability_score >= 70);
+            } else if (currentFilter === 'divergence') {
+                filteredSignals = allSignals.filter(s => s.divergence?.signal_active);
+            }
+
+            // Sort by stability (best first)
+            filteredSignals.sort((a, b) =>
+                (b.stability?.stability_score || 0) - (a.stability?.stability_score || 0)
+            );
+
+            if (filteredSignals.length === 0) {
+                feed.innerHTML = `
+                    <div class="empty-state">
+                        <i class="fas fa-chart-line"></i>
+                        <div>No signals at current filters</div>
+                        <div style="font-size: 0.85rem; margin-top: 8px; color: var(--dark-text-tertiary);">
+                            Try adjusting your filter selection
+                        </div>
+                    </div>
+                `;
+                return;
+            }
+
+            feed.innerHTML = filteredSignals.map(renderSignalCard).join('');
+        }
+
+        function updateStats() {
+            if (!allSignals.length) return;
+
+            // Count active signals
+            const activeSignals = allSignals.filter(s => s.divergence?.signal_active).length;
+            const highStability = allSignals.filter(s => s.stability?.stability_score >= 70).length;
+
+            // Get BTC price (from first signal's data or API response)
+            const btcPrice = window.btcPriceCache || '-';
+
+            document.getElementById('activeCount').textContent = activeSignals;
+            document.getElementById('stableCount').textContent = highStability;
+            document.getElementById('btcPrice').textContent = typeof btcPrice === 'number'
+                ? '$' + btcPrice.toLocaleString(undefined, {maximumFractionDigits: 0})
+                : btcPrice;
+        }
+
+        function updateFooterStats() {
+            const stats = document.getElementById('footerStats');
+            if (lastUpdate) {
+                const now = Date.now();
+                const diff = Math.floor((now - lastUpdate) / 1000);
+
+                let timeStr;
+                if (diff < 60) timeStr = 'just now';
+                else if (diff < 3600) timeStr = `${Math.floor(diff / 60)}m ago`;
+                else timeStr = `${Math.floor(diff / 3600)}h ago`;
+
+                const cachedBadge = isCached ? '<span class="cached-badge">CACHED</span>' : '';
+                stats.innerHTML = `Updated ${timeStr} • ${allSignals.length} signals${cachedBadge}`;
+            }
+        }
+
+        // ============================================================
+        // INTERACTION HANDLERS
+        // ============================================================
+
+        function setFilter(filter) {
+            currentFilter = filter;
+
+            // Update pill states
+            document.querySelectorAll('.filter-pill').forEach(pill => {
+                pill.classList.toggle('active', pill.dataset.filter === filter);
+            });
+
+            renderSignalsFeed();
+        }
+
+        function setTimeframe(timeframe) {
+            currentTimeframe = timeframe;
+
+            // Update tab states
+            document.querySelectorAll('.timeframe-tab').forEach(tab => {
+                tab.classList.toggle('active', tab.dataset.timeframe === timeframe);
+            });
+
+            // Reload data for new timeframe
+            loadSignals();
+        }
+
+        // ============================================================
+        // DATA LOADING SERVICE
+        // ============================================================
+
+        async function loadSignals() {
+            const btn = document.getElementById('refreshBtn');
+            const feed = document.getElementById('signalsFeed');
+
+            // 1. INSTANT: Show cached signals immediately
+            const cached = getSignalsFromCache();
+            if (cached && cached.length > 0) {
+                allSignals = cached;
+                isCached = true;
+                lastUpdate = Date.now();
+                updateStats();
+                renderSignalsFeed();
+                updateFooterStats();
+            } else {
+                // First visit - show loading state
+                feed.innerHTML = `
+                    <div class="loading">
+                        <div class="loading-spinner"></div>
+                        <div>Loading predictive signals...</div>
+                    </div>
+                `;
+            }
+
+            // 2. BACKGROUND: Fetch fresh signals
+            btn.classList.add('loading');
+            try {
+                const response = await fetch(
+                    `/api/bitcoin-beta/predictive-signals?timeframe=${currentTimeframe}&min_stability=${MIN_STABILITY}`
+                );
+
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+                const data = await response.json();
+
+                if (data.status === 'success' && data.results && data.results.length > 0) {
+                    allSignals = data.results;
+                    isCached = false;
+                    lastUpdate = Date.now();
+
+                    // Store BTC price
+                    if (data.btc_price) {
+                        window.btcPriceCache = data.btc_price;
+                    }
+
+                    // Save to cache
+                    saveSignalsToCache(allSignals);
+
+                    // Update display
+                    updateStats();
+                    renderSignalsFeed();
+                    updateFooterStats();
+                } else {
+                    throw new Error('No signals data available');
+                }
+
+            } catch (error) {
+                console.error('Error loading signals:', error);
+
+                // Only show error if no cached data
+                if (!cached || cached.length === 0) {
+                    feed.innerHTML = `
+                        <div class="error-state">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            <div>Failed to load signals</div>
+                            <div style="font-size: 0.85rem; margin-top: 8px; color: var(--dark-text-tertiary);">
+                                ${error.message}
+                            </div>
+                        </div>
+                    `;
+                }
+            } finally {
+                btn.classList.remove('loading');
+            }
+        }
+
+        function refreshSignals() {
+            // Clear cache to force fresh fetch
+            localStorage.removeItem(SIGNALS_CACHE_KEY);
+            loadSignals();
+        }
+
+        function startSignalsRefresh() {
+            // Clear any existing timer
+            if (refreshTimer) clearInterval(refreshTimer);
+            // Refresh signals every 5 minutes
+            refreshTimer = setInterval(() => loadSignals(), SIGNALS_REFRESH_INTERVAL);
+        }
+
+        // ============================================================
+        // EVENT LISTENERS
+        // ============================================================
+
+        // Filter pill clicks
+        document.querySelectorAll('.filter-pill').forEach(pill => {
+            pill.addEventListener('click', () => setFilter(pill.dataset.filter));
+        });
+
+        // ============================================================
+        // INITIALIZATION
+        // ============================================================
+
+        document.addEventListener('DOMContentLoaded', () => {
+            // Load signals (instant from cache, then background refresh)
+            loadSignals();
+
+            // Start background refresh timer
+            startSignalsRefresh();
+
+            // Update "time ago" every 30 seconds
+            setInterval(updateFooterStats, 30000);
+        });
+    </script>
+</body>
+</html>

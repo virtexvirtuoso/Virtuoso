@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bitcoin Lead/Lag Prediction | Virtuoso Trading</title>
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <script src="/static/js/lucide.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --neon-amber: #fbbf24;
+            --neon-cyan: #06B6D4;
+            --dark-bg-primary: #0a0a0a;
+            --dark-bg-secondary: #111111;
+            --dark-bg-card: #1a1a1a;
+            --dark-border: #222222;
+            --dark-text-primary: #f5f5f5;
+            --dark-text-secondary: #a8a8a8;
+            --dark-text-muted: #7a7a7a;
+            --accent-positive: #00d68f;
+            --accent-negative: #ff5252;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--dark-bg-primary);
+            color: var(--dark-text-primary);
+            padding: 20px;
+            min-height: 100vh;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding: 30px;
+            background: var(--dark-bg-secondary);
+            border-radius: 12px;
+            border: 1px solid var(--dark-border);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, transparent, var(--neon-amber), transparent);
+            animation: shimmer 3s infinite;
+        }
+
+        @keyframes shimmer {
+            0%, 100% { opacity: 0.3; }
+            50% { opacity: 1; }
+        }
+
+        .header h1 {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            font-weight: 700;
+        }
+
+        .header h1 .bitcoin-icon {
+            color: var(--neon-amber);
+            text-shadow: 0 0 20px rgba(251, 191, 36, 0.5);
+        }
+
+        .header .subtitle {
+            color: var(--dark-text-secondary);
+            font-size: 1.1em;
+            margin-bottom: 15px;
+        }
+
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            background: rgba(0, 214, 143, 0.1);
+            border: 1px solid var(--accent-positive);
+            border-radius: 20px;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.85em;
+            color: var(--accent-positive);
+        }
+
+        .status-badge.collecting {
+            background: rgba(251, 191, 36, 0.1);
+            border-color: var(--neon-amber);
+            color: var(--neon-amber);
+        }
+
+        .pulse-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--accent-positive);
+            animation: pulse 2s infinite;
+        }
+
+        .pulse-dot.collecting { background: var(--neon-amber); }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(1.2); }
+        }
+
+        .dashboard {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 20px;
+        }
+
+        .card {
+            background: var(--dark-bg-card);
+            border: 1px solid var(--dark-border);
+            border-radius: 12px;
+            padding: 20px;
+            transition: all 0.3s ease;
+        }
+
+        .card:hover {
+            border-color: var(--neon-amber);
+            box-shadow: 0 0 30px rgba(251, 191, 36, 0.1);
+        }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid var(--dark-border);
+        }
+
+        .card-icon { color: var(--neon-amber); }
+
+        .card-title {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 1.2em;
+            font-weight: 600;
+        }
+
+        .progress-label {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            font-size: 0.9em;
+            color: var(--dark-text-secondary);
+        }
+
+        .progress-bar-container {
+            height: 12px;
+            background: rgba(0, 0, 0, 0.4);
+            border-radius: 6px;
+            overflow: hidden;
+            border: 1px solid var(--dark-border);
+            margin-bottom: 20px;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, var(--neon-amber), #ffdd57);
+            border-radius: 6px;
+            transition: width 0.5s ease;
+            box-shadow: 0 0 20px rgba(251, 191, 36, 0.5);
+        }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .metric-box {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            border: 1px solid var(--dark-border);
+        }
+
+        .metric-label {
+            font-size: 0.75em;
+            color: var(--dark-text-muted);
+            text-transform: uppercase;
+            margin-bottom: 8px;
+        }
+
+        .metric-value {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 1.8em;
+            font-weight: 700;
+        }
+
+        .metric-value.positive { color: var(--accent-positive); }
+        .metric-value.amber { color: var(--neon-amber); }
+
+        .predictions-list {
+            max-height: 500px;
+            overflow-y: auto;
+        }
+
+        .prediction-item {
+            background: rgba(0, 0, 0, 0.2);
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            border: 1px solid var(--dark-border);
+        }
+
+        .prediction-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 12px;
+        }
+
+        .prediction-symbol {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 1.1em;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .direction-icon { color: var(--accent-positive); }
+        .direction-icon.short { color: var(--accent-negative); }
+
+        .confidence-badge {
+            background: rgba(251, 191, 36, 0.2);
+            color: var(--neon-amber);
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.85em;
+        }
+
+        .confidence-bar-container {
+            height: 6px;
+            background: rgba(0, 0, 0, 0.4);
+            border-radius: 3px;
+            overflow: hidden;
+            margin-bottom: 10px;
+        }
+
+        .confidence-bar {
+            height: 100%;
+            background: linear-gradient(90deg, var(--neon-amber), #ffdd57);
+            box-shadow: 0 0 10px rgba(251, 191, 36, 0.6);
+        }
+
+        .prediction-details {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+            font-size: 0.85em;
+        }
+
+        .detail-label {
+            color: var(--dark-text-muted);
+            font-size: 0.75em;
+            margin-bottom: 4px;
+        }
+
+        .detail-value {
+            font-family: 'IBM Plex Mono', monospace;
+            color: var(--dark-text-secondary);
+            font-weight: 600;
+        }
+
+        .chart-container {
+            width: 100%;
+            height: 300px;
+            margin-top: 20px;
+        }
+
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: rgba(0, 0, 0, 0.2); }
+        ::-webkit-scrollbar-thumb { background: var(--dark-border); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--neon-amber); }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1><span class="bitcoin-icon">₿</span> Bitcoin Lead/Lag Prediction</h1>
+        <p class="subtitle">Predict altcoin movements 30-120 seconds ahead using Bitcoin price signals</p>
+        <div id="statusBadge" class="status-badge collecting">
+            <span class="pulse-dot collecting"></span>
+            Initializing...
+        </div>
+    </div>
+
+    <div class="dashboard">
+        <div class="card">
+            <div class="card-header">
+                <i data-lucide="activity" class="card-icon"></i>
+                <span class="card-title">System Status</span>
+            </div>
+
+            <div class="progress-label">
+                <span>BTC Price Collection</span>
+                <span id="progressText">0 / 60</span>
+            </div>
+            <div class="progress-bar-container">
+                <div class="progress-bar" id="progressBar" style="width: 0%"></div>
+            </div>
+
+            <div class="metrics-grid">
+                <div class="metric-box">
+                    <div class="metric-label">Active Signals</div>
+                    <div class="metric-value positive" id="activeSignals">-</div>
+                </div>
+                <div class="metric-box">
+                    <div class="metric-label">Avg Confidence</div>
+                    <div class="metric-value amber" id="avgConfidence">-</div>
+                </div>
+                <div class="metric-box">
+                    <div class="metric-label">Total Symbols</div>
+                    <div class="metric-value" id="totalSymbols">-</div>
+                </div>
+            </div>
+
+            <div class="chart-container" id="confidenceChart"></div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <i data-lucide="trending-up" class="card-icon"></i>
+                <span class="card-title">Active Predictions</span>
+            </div>
+            <div class="predictions-list" id="predictionsList">
+                <p style="text-align: center; color: var(--dark-text-muted);">Loading...</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function loadStatus() {
+            const res = await fetch('/api/bitcoin-prediction/status');
+            const data = await res.json();
+            const pct = Math.min((data.btc_history_length / data.min_required) * 100, 100);
+            document.getElementById('progressBar').style.width = pct + '%';
+            document.getElementById('progressText').textContent = `${data.btc_history_length} / ${data.min_required}`;
+            
+            const badge = document.getElementById('statusBadge');
+            badge.className = data.ready ? 'status-badge' : 'status-badge collecting';
+            badge.innerHTML = data.ready ? 
+                '<span class="pulse-dot"></span>System Ready' :
+                '<span class="pulse-dot collecting"></span>Collecting Data (' + Math.round(pct) + '%)';
+        }
+
+        async function loadPredictions() {
+            const res = await fetch('/api/bitcoin-prediction/analyze/all');
+            const data = await res.json();
+
+            const list = document.getElementById('predictionsList');
+
+            // Handle error case (insufficient BTC history)
+            if (data.error) {
+                document.getElementById('activeSignals').textContent = '0';
+                document.getElementById('avgConfidence').textContent = '0%';
+                document.getElementById('totalSymbols').textContent = '-';
+
+                list.innerHTML = `
+                    <div style="text-align: center; padding: 30px 20px; background: rgba(251, 191, 36, 0.05); border-radius: 12px; border: 1px solid rgba(251, 191, 36, 0.2);">
+                        <i data-lucide="database" style="width: 48px; height: 48px; color: #fbbf24; margin-bottom: 16px;"></i>
+                        <h3 style="color: #fbbf24; margin: 0 0 8px 0; font-size: 18px;">Collecting Bitcoin Price Data</h3>
+                        <p style="color: var(--dark-text-muted); margin: 0 0 12px 0; font-size: 14px;">${data.error}</p>
+                        <div style="background: rgba(0,0,0,0.3); border-radius: 8px; padding: 12px; margin-top: 16px;">
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                                <span style="color: var(--dark-text-muted); font-size: 13px;">Progress</span>
+                                <span style="color: #fbbf24; font-size: 13px; font-weight: 600;">${data.btc_history_length} / ${data.min_required}</span>
+                            </div>
+                            <div style="background: rgba(0,0,0,0.4); border-radius: 4px; height: 8px; overflow: hidden;">
+                                <div style="background: linear-gradient(90deg, #fbbf24, #f59e0b); height: 100%; width: ${(data.btc_history_length / data.min_required * 100).toFixed(1)}%; transition: width 1s ease;"></div>
+                            </div>
+                            <p style="color: var(--dark-text-muted); font-size: 12px; margin: 12px 0 0 0;">
+                                Predictions will become available in ~${data.min_required - data.btc_history_length} minutes
+                            </p>
+                        </div>
+                    </div>
+                `;
+                lucide.createIcons();
+                return;
+            }
+
+            document.getElementById('activeSignals').textContent = data.summary.active_signals;
+            document.getElementById('avgConfidence').textContent = (data.summary.avg_confidence * 100).toFixed(0) + '%';
+            document.getElementById('totalSymbols').textContent = data.summary.total_symbols;
+
+            // Separate active and inactive predictions
+            const activePredictions = data.predictions.filter(p => p.active);
+            const inactivePredictions = data.predictions.filter(p => !p.active);
+
+            // Show active predictions first, then monitoring status
+            let html = '';
+
+            if (activePredictions.length > 0) {
+                html += activePredictions.slice(0, 10).map(p => `
+                    <div class="prediction-item">
+                        <div class="prediction-header">
+                            <div class="prediction-symbol">
+                                <i data-lucide="${p.direction === 'long' ? 'trending-up' : 'trending-down'}" class="direction-icon ${p.direction === 'short' ? 'short' : ''}"></i>
+                                ${p.symbol.replace('USDT', '')}
+                            </div>
+                            <div class="confidence-badge">${(p.confidence * 100).toFixed(0)}% confidence</div>
+                        </div>
+                        <div class="confidence-bar-container">
+                            <div class="confidence-bar" style="width: ${p.confidence * 100}%"></div>
+                        </div>
+                        <div class="prediction-details">
+                            <div><div class="detail-label">Expected Move</div><div class="detail-value">${p.expected_move_pct?.toFixed(2) || 'N/A'}%</div></div>
+                            <div><div class="detail-label">Lag Time</div><div class="detail-value">${p.lag_minutes || 'N/A'}s</div></div>
+                            <div><div class="detail-label">Beta</div><div class="detail-value">${p.beta?.toFixed(2) || 'N/A'}</div></div>
+                            <div><div class="detail-label">Stability</div><div class="detail-value">${p.stability_score?.toFixed(0) || 'N/A'}</div></div>
+                        </div>
+                    </div>
+                `).join('');
+            }
+
+            // Show monitoring status when no active predictions
+            if (activePredictions.length === 0) {
+                html += `
+                    <div style="text-align: center; padding: 30px 20px; background: rgba(251, 191, 36, 0.05); border-radius: 12px; border: 1px solid rgba(251, 191, 36, 0.2); margin-bottom: 24px;">
+                        <i data-lucide="activity" style="width: 48px; height: 48px; color: #fbbf24; margin-bottom: 16px;"></i>
+                        <h3 style="color: #fbbf24; margin: 0 0 8px 0; font-size: 18px;">Monitoring ${data.summary.total_symbols} Symbols</h3>
+                        <p style="color: var(--dark-text-muted); margin: 0; font-size: 14px;">Waiting for Bitcoin to make a significant move (>0.5%) with detectable altcoin lag patterns</p>
+                    </div>
+                `;
+
+                // Show first 10 monitored symbols with their status
+                html += inactivePredictions.slice(0, 10).map(p => `
+                    <div class="prediction-item" style="opacity: 0.6; background: rgba(255,255,255,0.02);">
+                        <div class="prediction-header">
+                            <div class="prediction-symbol">
+                                <i data-lucide="clock" style="width: 18px; height: 18px; color: #6b7280;"></i>
+                                ${p.symbol.replace('USDT', '')}
+                            </div>
+                            <div style="font-size: 12px; color: #6b7280;">Monitoring</div>
+                        </div>
+                        <div style="padding: 12px 0; color: var(--dark-text-muted); font-size: 13px;">
+                            ${p.reason || 'Waiting for tradeable signal conditions'}
+                        </div>
+                    </div>
+                `).join('');
+            }
+
+            list.innerHTML = html;
+            lucide.createIcons();
+
+            updateChart(data.predictions.filter(p => p.active));
+        }
+
+        function updateChart(predictions) {
+            if (predictions.length === 0) return;
+            const bins = [0,0,0,0,0];
+            predictions.forEach(p => bins[Math.min(Math.floor(p.confidence * 5), 4)]++);
+
+            Plotly.newPlot('confidenceChart', [{
+                x: ['0-20%', '20-40%', '40-60%', '60-80%', '80-100%'],
+                y: bins,
+                type: 'bar',
+                marker: { color: 'rgba(251, 191, 36, 0.8)' }
+            }], {
+                title: 'Confidence Distribution',
+                paper_bgcolor: 'rgba(0,0,0,0)',
+                plot_bgcolor: 'rgba(0,0,0,0.2)',
+                font: { color: '#a8a8a8' },
+                xaxis: { gridcolor: '#222' },
+                yaxis: { gridcolor: '#222' },
+                margin: { t: 40, r: 20, b: 40, l: 40 }
+            }, { displayModeBar: false, responsive: true });
+        }
+
+        lucide.createIcons();
+        loadStatus();
+        loadPredictions();
+        setInterval(() => { loadStatus(); loadPredictions(); }, 10000);
+    </script>
+</body>
+</html>

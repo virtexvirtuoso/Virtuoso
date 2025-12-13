@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alpha Score Visualization Showcase - Virtuoso</title>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --neon-amber: #fbbf24;
+            --dark-bg: #0a0a0a;
+            --dark-border: #222222;
+            --bull-green: #4ade80;
+            --bear-red: #f87171;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: var(--dark-bg);
+            color: var(--neon-amber);
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 14px;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid var(--dark-border);
+        }
+        .header h1 { font-size: 24px; margin-bottom: 10px; }
+        .header p { color: #888; font-size: 12px; }
+        .showcase-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 25px;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .design-card {
+            background: #111;
+            border: 1px solid var(--dark-border);
+            border-radius: 8px;
+            padding: 20px;
+        }
+        .design-card.recommended {
+            border-color: var(--neon-amber);
+            box-shadow: 0 0 20px rgba(251, 191, 36, 0.1);
+        }
+        .design-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        .design-header h2 {
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .badge {
+            font-size: 10px;
+            background: var(--neon-amber);
+            color: #000;
+            padding: 2px 8px;
+            border-radius: 3px;
+        }
+        .badge.green { background: var(--bull-green); }
+        .score-display {
+            font-size: 12px;
+            color: #888;
+        }
+        .viz-container {
+            background: #0a0a0a;
+            padding: 20px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+            font-size: 18px;
+            letter-spacing: 1px;
+            line-height: 1.4;
+            overflow-x: auto;
+        }
+        .viz-container .label {
+            font-size: 11px;
+            color: #666;
+            margin-top: 8px;
+        }
+        .viz-container .annotation {
+            color: var(--bull-green);
+            font-size: 16px;
+        }
+        .viz-container .stats {
+            font-size: 13px;
+            color: #888;
+            margin-top: 5px;
+        }
+        .viz-container .stats .bull { color: var(--bull-green); }
+        .viz-container .stats .bear { color: var(--bear-red); }
+        .description {
+            font-size: 12px;
+            color: #888;
+            line-height: 1.5;
+        }
+        .description strong { color: var(--neon-amber); }
+        .features {
+            display: flex;
+            gap: 15px;
+            margin-top: 10px;
+            flex-wrap: wrap;
+        }
+        .feature {
+            font-size: 11px;
+            padding: 4px 8px;
+            background: #1a1a1a;
+            border-radius: 4px;
+            color: #aaa;
+        }
+        .feature.active {
+            background: rgba(251, 191, 36, 0.2);
+            color: var(--neon-amber);
+        }
+        .vote-section {
+            margin-top: 30px;
+            text-align: center;
+            padding: 20px;
+            border-top: 1px solid var(--dark-border);
+        }
+        .vote-btn {
+            background: transparent;
+            border: 1px solid var(--neon-amber);
+            color: var(--neon-amber);
+            padding: 12px 24px;
+            margin: 5px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 14px;
+            border-radius: 4px;
+            transition: all 0.2s;
+        }
+        .vote-btn:hover {
+            background: var(--neon-amber);
+            color: #000;
+        }
+        .legend {
+            margin-top: 30px;
+            padding: 15px;
+            background: #111;
+            border-radius: 8px;
+            font-size: 11px;
+        }
+        .legend h3 {
+            font-size: 12px;
+            margin-bottom: 10px;
+        }
+        .legend-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 10px;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .legend-char {
+            font-size: 16px;
+            width: 20px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>ALPHA SCORE VISUALIZATIONS</h1>
+        <p>Advanced data visualization options for the Alpha Analysis page</p>
+    </div>
+
+    <div class="showcase-grid">
+        <!-- Design 1: Zone-Density -->
+        <div class="design-card">
+            <div class="design-header">
+                <h2>Design 1: Zone-Density Sparkline</h2>
+                <span class="score-display">Info Density: 12/25</span>
+            </div>
+            <div class="viz-container">
+                <div>▁▂▃▄▄▅▆▇▆▅▄▄▅▆▆▅▄▃▄▅▆▇██▇</div>
+                <div class="label">░▒▓ BEAR │ ▁▂▃▄ NEUTRAL │ ▅▆▇█ BULL</div>
+            </div>
+            <div class="description">
+                <strong>Texture = Zone.</strong> Sparse characters feel bearish, dense blocks feel bullish.
+                Your peripheral vision reads bullish/bearish zones instantly without conscious processing.
+            </div>
+            <div class="features">
+                <span class="feature active">Zone Context</span>
+                <span class="feature active">Value Height</span>
+                <span class="feature">Momentum</span>
+                <span class="feature">Patterns</span>
+            </div>
+        </div>
+
+        <!-- Design 2: Momentum-First -->
+        <div class="design-card">
+            <div class="design-header">
+                <h2>Design 2: Momentum-First (Delta)</h2>
+                <span class="score-display">Info Density: 16/25</span>
+            </div>
+            <div class="viz-container">
+                <div>Δ: ▼▼△△△▲▲▲▽▽▽△△▲▽▽▽▽△△▲▲▲▲▽</div>
+                <div class="stats">Range: <span class="bear">45</span>→<span class="bull">75</span> │ Net: <span class="bull">+30</span> │ NOW: 72 <span class="bull">▲</span></div>
+            </div>
+            <div class="description">
+                <strong>Shows CHANGE, not position.</strong> Traders care about direction and velocity.
+                Pattern <code>▲▲▲▲</code> = clear uptrend. <code>▽▽▽▽</code> = reversal developing. No mental slope calculation needed.
+            </div>
+            <div class="features">
+                <span class="feature">Zone Context</span>
+                <span class="feature active">Value Height</span>
+                <span class="feature active">Momentum</span>
+                <span class="feature active">Trend Direction</span>
+            </div>
+        </div>
+
+        <!-- Design 3: Pattern-Annotated -->
+        <div class="design-card">
+            <div class="design-header">
+                <h2>Design 3: Pattern-Annotated</h2>
+                <span class="score-display">Info Density: 17/25</span>
+            </div>
+            <div class="viz-container">
+                <div class="annotation">         ∩        M              ⚡</div>
+                <div>▁▂▃▄▄▅▆▇▇▆▅▄▅▆▇▆▅▄▃▄▅▆▇██▇</div>
+                <div class="label">└───────┴────────┴──────────┘</div>
+                <div class="label">  rally   double-top  breakout</div>
+            </div>
+            <div class="description">
+                <strong>Auto-detects chart patterns.</strong> Annotations show peaks (∩), double-tops (M),
+                breakouts (⚡). Technical analysis is done FOR you — no pattern recognition needed.
+            </div>
+            <div class="features">
+                <span class="feature active">Zone Context</span>
+                <span class="feature active">Value Height</span>
+                <span class="feature active">Patterns</span>
+                <span class="feature active">Trend Direction</span>
+            </div>
+        </div>
+
+        <!-- Design 4: Multi-Layer Ultimate -->
+        <div class="design-card recommended">
+            <div class="design-header">
+                <h2>Design 4: Multi-Layer Ultimate <span class="badge green">RECOMMENDED</span></h2>
+                <span class="score-display">Info Density: 25/25</span>
+            </div>
+            <div class="viz-container">
+                <div class="annotation">     ∩        M              ⚡!</div>
+                <div>▁▂▃▄▅▆▇█▇▆▄▅▆▇▆▅▄▃▄▅▆▇██▇</div>
+                <div class="stats">[<span class="bear">45</span>→<span class="bull">75</span> Δ<span class="bull">+30</span> σ8] <span class="bull">BULL</span> ↗↗↗↗</div>
+            </div>
+            <div class="description">
+                <strong>7 dimensions in 3 lines:</strong> value, zone, patterns, range, net change, volatility, and momentum regime.
+                This is MORE information than professional charting software shows in the same space.
+            </div>
+            <div class="features">
+                <span class="feature active">Zone Context</span>
+                <span class="feature active">Value Height</span>
+                <span class="feature active">Momentum</span>
+                <span class="feature active">Patterns</span>
+                <span class="feature active">Statistics</span>
+                <span class="feature active">Volatility</span>
+                <span class="feature active">Regime</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Legend -->
+    <div class="legend">
+        <h3>SYMBOL REFERENCE</h3>
+        <div class="legend-grid">
+            <div class="legend-item"><span class="legend-char">∩</span> Local Peak</div>
+            <div class="legend-item"><span class="legend-char">∪</span> Local Trough</div>
+            <div class="legend-item"><span class="legend-char">M</span> Double Top</div>
+            <div class="legend-item"><span class="legend-char">W</span> Double Bottom</div>
+            <div class="legend-item"><span class="legend-char">⚡</span> Breakout</div>
+            <div class="legend-item"><span class="legend-char">!</span> Extreme (>75 or <25)</div>
+            <div class="legend-item"><span class="legend-char">▲</span> Strong Up</div>
+            <div class="legend-item"><span class="legend-char">△</span> Moderate Up</div>
+            <div class="legend-item"><span class="legend-char">▽</span> Moderate Down</div>
+            <div class="legend-item"><span class="legend-char">▼</span> Strong Down</div>
+            <div class="legend-item"><span class="legend-char">↗</span> Uptrend Momentum</div>
+            <div class="legend-item"><span class="legend-char">↘</span> Downtrend Momentum</div>
+        </div>
+    </div>
+
+    <div class="vote-section">
+        <p style="margin-bottom: 15px;">Which visualization style should we implement?</p>
+        <button class="vote-btn" onclick="selectDesign(1)">1: Zone-Density</button>
+        <button class="vote-btn" onclick="selectDesign(2)">2: Momentum-First</button>
+        <button class="vote-btn" onclick="selectDesign(3)">3: Pattern-Annotated</button>
+        <button class="vote-btn" onclick="selectDesign(4)">4: Multi-Layer</button>
+    </div>
+
+    <script>
+        function selectDesign(num) {
+            const names = ['', 'Zone-Density', 'Momentum-First', 'Pattern-Annotated', 'Multi-Layer Ultimate'];
+            alert(`You selected Design ${num}: ${names[num]}\n\nTell Claude to implement this!`);
+        }
+    </script>
+</body>
+</html>

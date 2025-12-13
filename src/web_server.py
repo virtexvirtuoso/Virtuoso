@@ -177,6 +177,64 @@ async def startup_event():
             print(f"⚠️ Liquidation collector initialization failed: {e}")
             app.state.liquidation_collector = None
 
+        # Initialize signal generator for Bitcoin prediction API endpoints
+        print("Initializing signal generator for Bitcoin prediction...")
+        try:
+            from src.signal_generation.signal_generator import SignalGenerator
+            from src.core.service_registry import register_service
+
+            # Initialize signal generator with alert_manager if available
+            signal_generator = SignalGenerator(
+                config_manager.config,
+                alert_manager if 'alert_manager' in locals() else None
+            )
+
+            # Register in service registry for bitcoin_prediction API
+            register_service('signal_generator', signal_generator)
+            register_service('config_manager', config_manager)
+
+            app.state.signal_generator = signal_generator
+            print("✅ Signal generator initialized for Bitcoin prediction API")
+
+            # Start background task to collect BTC prices for the prediction system
+            async def collect_btc_prices():
+                """Background task to periodically fetch and update BTC prices"""
+                await asyncio.sleep(10)  # Wait for exchange manager to fully initialize
+
+                while True:
+                    try:
+                        # Get BTC ticker data from exchange manager
+                        if exchange_manager and hasattr(exchange_manager, 'exchanges'):
+                            bybit_exchange = exchange_manager.exchanges.get('bybit')
+                            if bybit_exchange:
+                                ticker = await bybit_exchange.fetch_ticker('BTC/USDT')
+                                if ticker and 'last' in ticker:
+                                    btc_price = ticker['last']
+                                    signal_generator.update_btc_price(btc_price)
+                                    print(f"✅ Web server updated BTC price: ${btc_price:,.2f} (history: {len(signal_generator.btc_price_history)})")
+                            else:
+                                # Try to get primary exchange as fallback
+                                primary_exchange = await exchange_manager.get_primary_exchange()
+                                if primary_exchange:
+                                    ticker = await primary_exchange.fetch_ticker('BTC/USDT')
+                                    if ticker and 'last' in ticker:
+                                        btc_price = ticker['last']
+                                        signal_generator.update_btc_price(btc_price)
+                                        print(f"✅ Web server updated BTC price from primary exchange: ${btc_price:,.2f} (history: {len(signal_generator.btc_price_history)})")
+                    except Exception as e:
+                        print(f"⚠️ BTC price collection error (will retry): {e}")
+
+                    # Update every 60 seconds (aligns with 1-minute candles)
+                    await asyncio.sleep(60)
+
+            # Start the background task
+            asyncio.create_task(collect_btc_prices())
+            print("✅ BTC price collection background task started")
+
+        except Exception as e:
+            print(f"⚠️ Signal generator initialization failed: {e}")
+            app.state.signal_generator = None
+
         # Store in app state for API routes to use
         app.state.config_manager = config_manager
         app.state.exchange_manager = exchange_manager
@@ -206,13 +264,14 @@ api_routes_loaded = False
 def init_standalone_api_routes(app: FastAPI):
     """Initialize API routes for standalone web server, excluding exchange manager dependencies."""
     try:
-        from src.api.routes import signals, market, trading, dashboard, alpha, liquidation, correlation, bitcoin_beta, manipulation, top_symbols, whale_activity, sentiment, admin, core_api, alerts, cache_metrics, interactive_reports, news, analytics, bitcoin_prediction
+        from src.api.routes import signals, signal_performance, market, trading, dashboard, alpha, liquidation, correlation, bitcoin_beta, manipulation, top_symbols, whale_activity, sentiment, admin, core_api, alerts, cache_metrics, interactive_reports, news, analytics, bitcoin_prediction, risk, health
 
         api_prefix = "/api"
 
         # Include non-exchange-dependent routes
         route_configs = [
             (signals.router, f"{api_prefix}/signals", ["signals"]),
+            (signal_performance.router, f"{api_prefix}/signals", ["signal_performance"]),
             (market.router, f"{api_prefix}/market", ["market"]),
             (dashboard.router, f"{api_prefix}/dashboard", ["dashboard"]),
             (alpha.router, f"{api_prefix}/alpha", ["alpha"]),
@@ -230,8 +289,17 @@ def init_standalone_api_routes(app: FastAPI):
             (cache_metrics.router, f"{api_prefix}/cache", ["cache"]),
             (interactive_reports.router, f"{api_prefix}/reports", ["reports"]),
             (news.router, f"{api_prefix}/news", ["news"]),
-            (analytics.router, f"{api_prefix}/analytics", ["analytics"])
+            (analytics.router, f"{api_prefix}/analytics", ["analytics"]),
+            (risk.router, "", ["risk"]),  # No prefix - router already has /api/risk prefix
+            (health.router, f"{api_prefix}/health", ["health"])
         ]
+
+        # Add MTF ranking routes
+        try:
+            from src.api.routes import mtf_ranking
+            route_configs.append((mtf_ranking.router, "", ["mtf_ranking"]))  # No prefix - router has /api/altcoins
+        except ImportError as e:
+            print(f"⚠️  MTF ranking routes not available: {e}")
 
         # Register routes that don't require exchange manager
         successful_routes = []
@@ -429,7 +497,7 @@ if exports_dir.exists():
 @app.get("/")
 async def serve_desktop_dashboard():
     """Serve desktop dashboard"""
-    template_path = project_root / "src" / "dashboard" / "templates" / "dashboard.html"
+    template_path = project_root / "src" / "dashboard" / "templates" / "archive" / "dashboard.html"
     if template_path.exists():
         return FileResponse(str(template_path))
     return {"message": "Desktop dashboard not found"}
@@ -437,15 +505,15 @@ async def serve_desktop_dashboard():
 @app.get("/mobile")
 async def serve_mobile_dashboard():
     """Serve mobile dashboard (v3 with Lightweight Charts and cached beta-chart API)"""
-    template_path = project_root / "src" / "dashboard" / "templates" / "dashboard_mobile_v3.html"
+    template_path = project_root / "src" / "dashboard" / "templates" / "dashboards" / "dashboard_mobile_v3.html"
     if template_path.exists():
         return FileResponse(str(template_path))
     return {"message": "Mobile dashboard not found"}
 
 @app.get("/desktop")
 async def serve_new_desktop_dashboard():
-    """Serve new desktop dashboard with sidebar navigation and widget layout"""
-    template_path = project_root / "src" / "dashboard" / "templates" / "dashboard_desktop.html"
+    """Serve desktop dashboard v2 with vue-grid-layout (VGL)"""
+    template_path = project_root / "src" / "dashboard" / "templates" / "dashboards" / "dashboard_desktop_v2.html"
     if template_path.exists():
         return FileResponse(str(template_path))
     return {"message": "Desktop dashboard not found"}
@@ -453,7 +521,7 @@ async def serve_new_desktop_dashboard():
 @app.get("/desktop-v2")
 async def serve_desktop_v2_dashboard():
     """Serve desktop dashboard v2 with vue-grid-layout (VGL)"""
-    template_path = project_root / "src" / "dashboard" / "templates" / "dashboard_desktop_v2.html"
+    template_path = project_root / "src" / "dashboard" / "templates" / "dashboards" / "dashboard_desktop_v2.html"
     if template_path.exists():
         return FileResponse(str(template_path))
     return {"message": "Desktop v2 dashboard not found"}
@@ -461,7 +529,7 @@ async def serve_desktop_v2_dashboard():
 @app.get("/desktop-v3")
 async def serve_desktop_v3_dashboard():
     """Serve desktop dashboard v3 with aggr.trade integration"""
-    template_path = project_root / "src" / "dashboard" / "templates" / "dashboard_desktop_v3.html"
+    template_path = project_root / "src" / "dashboard" / "templates" / "archive" / "dashboard_desktop_v3.html"
     if template_path.exists():
         return FileResponse(str(template_path))
     return {"message": "Desktop v3 dashboard not found"}
@@ -469,7 +537,7 @@ async def serve_desktop_v3_dashboard():
 @app.get("/chart-comparison")
 async def serve_chart_comparison():
     """Serve chart library comparison demo with live correlation data"""
-    template_path = project_root / "src" / "dashboard" / "templates" / "chart_library_comparison.html"
+    template_path = project_root / "src" / "dashboard" / "templates" / "demos" / "chart_library_comparison.html"
     if template_path.exists():
         return FileResponse(str(template_path))
     return {"message": "Chart comparison page not found"}
@@ -487,7 +555,7 @@ async def serve_chart_comparison():
 @app.get("/beta")
 async def serve_beta_dashboard():
     """Serve beta dashboard (v3 with Bybit Performance Tracker)"""
-    template_path = project_root / "src" / "dashboard" / "templates" / "dashboard_mobile_v3.html"
+    template_path = project_root / "src" / "dashboard" / "templates" / "dashboards" / "dashboard_mobile_v3.html"
     if template_path.exists():
         return FileResponse(str(template_path))
     return {"message": "Beta dashboard not found"}
@@ -495,7 +563,7 @@ async def serve_beta_dashboard():
 @app.get("/chart-comparison")
 async def serve_chart_comparison():
     """Chart library comparison page (Plotly vs Lightweight Charts vs ApexCharts vs Chart.js)"""
-    template_path = project_root / "src" / "dashboard" / "templates" / "chart_comparison.html"
+    template_path = project_root / "src" / "dashboard" / "templates" / "demos" / "chart_comparison.html"
     if template_path.exists():
         return FileResponse(str(template_path))
     return {"message": "Chart comparison page not found"}
@@ -503,7 +571,7 @@ async def serve_chart_comparison():
 @app.get("/debug-mobile")
 async def serve_debug_mobile():
     """Serve mobile debug page"""
-    template_path = project_root / "src" / "dashboard" / "templates" / "debug_mobile.html"
+    template_path = project_root / "src" / "dashboard" / "templates" / "archive" / "debug_mobile.html"
     if template_path.exists():
         return FileResponse(str(template_path))
     return {"message": "Debug page not found"}
@@ -555,7 +623,7 @@ async def websocket_endpoint(websocket: WebSocket):
 @app.get("/links")
 async def virtuoso_links():
     """Serve the Virtuoso linktree-style page"""
-    template_path = project_root / "src" / "dashboard" / "templates" / "virtuoso_links.html"
+    template_path = project_root / "src" / "dashboard" / "templates" / "archive" / "virtuoso_links.html"
     if template_path.exists():
         return FileResponse(str(template_path))
     return {"message": "Links page not found"}
@@ -563,7 +631,7 @@ async def virtuoso_links():
 @app.get("/paper-trading")
 async def serve_paper_trading():
     """Serve paper trading dashboard"""
-    template_path = project_root / "src" / "dashboard" / "templates" / "paper_trading.html"
+    template_path = project_root / "src" / "dashboard" / "templates" / "archive" / "paper_trading.html"
     if template_path.exists():
         return FileResponse(str(template_path))
     return {"message": "Paper trading dashboard not found"}
@@ -571,15 +639,23 @@ async def serve_paper_trading():
 @app.get("/education")
 async def serve_education():
     """Serve Virtuoso education page - How Virtuoso Works"""
-    template_path = project_root / "src" / "dashboard" / "templates" / "educational_guide.html"
+    template_path = project_root / "src" / "dashboard" / "templates" / "docs" / "educational_guide.html"
     if template_path.exists():
         return FileResponse(str(template_path))
     return {"message": "Education page not found"}
 
+@app.get("/mtf-showdown")
+async def serve_mtf_showdown():
+    """Serve MTF Altcoin Showdown dashboard"""
+    template_path = project_root / "src" / "dashboard" / "templates" / "competition" / "mtf_ranking_showdown.html"
+    if template_path.exists():
+        return FileResponse(str(template_path))
+    return {"message": "MTF Showdown dashboard not found"}
+
 @app.get("/cache-metrics")
 async def serve_cache_metrics_dashboard():
     """Serve cache metrics dashboard"""
-    template_path = project_root / "src" / "dashboard" / "templates" / "cache_metrics_dashboard.html"
+    template_path = project_root / "src" / "dashboard" / "templates" / "monitoring" / "cache_metrics_dashboard.html"
     if template_path.exists():
         return FileResponse(str(template_path))
     return {"message": "Cache metrics dashboard not found"}
@@ -587,15 +663,61 @@ async def serve_cache_metrics_dashboard():
 @app.get("/confluence")
 async def serve_confluence_dashboard():
     """Serve confluence score visualization (REST API version)"""
-    template_path = project_root / "src" / "dashboard" / "templates" / "wired_prototype.html"
+    template_path = project_root / "src" / "dashboard" / "templates" / "standalone" / "wired_prototype.html"
     if template_path.exists():
         return FileResponse(str(template_path))
     return {"message": "Confluence dashboard not found"}
 
+@app.get("/health-dashboard")
+async def serve_health_dashboard():
+    """Serve comprehensive system and signal health dashboard"""
+    template_path = project_root / "src" / "dashboard" / "templates" / "standalone" / "health_dashboard.html"
+    if template_path.exists():
+        return FileResponse(str(template_path))
+    return {"message": "Health dashboard not found"}
+
+@app.get("/friday-night-fights")
+async def serve_friday_night_fights():
+    """Serve Friday Night Fights - 12 Widget Fighters Battle with LIVE data"""
+    template_path = project_root / "ai-competition" / "friday_night_fights.html"
+    if template_path.exists():
+        return FileResponse(str(template_path))
+    return {"message": "Friday Night Fights not found"}
+
+@app.get("/sunday-showdown-live")
+async def serve_sunday_showdown_live():
+    """Serve Sunday Showdown Live - Original 12 Widget Tournament with LIVE data"""
+    template_path = project_root / "ai-competition" / "sunday_showdown_live.html"
+    if template_path.exists():
+        return FileResponse(str(template_path))
+    return {"message": "Sunday Showdown Live not found"}
+
+@app.get("/sunday-showdown")
+async def redirect_sunday_showdown():
+    """Redirect old Sunday Showdown route to Sunday Showdown Live"""
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/sunday-showdown-live", status_code=301)
+
+@app.get("/sunday-showdown-tournament")
+async def serve_sunday_showdown_tournament():
+    """Serve Sunday Showdown Tournament - Interactive voting/scoring interface"""
+    template_path = project_root / "ai-competition" / "sunday_showdown_tournament.html"
+    if template_path.exists():
+        return FileResponse(str(template_path))
+    return {"message": "Sunday Showdown Tournament not found"}
+
+@app.get("/ai-competition/widgets/{widget_name}")
+async def serve_competition_widget(widget_name: str):
+    """Serve individual competition widget HTML files"""
+    widget_path = project_root / "ai-competition" / "widgets" / widget_name
+    if widget_path.exists() and widget_name.endswith('.html'):
+        return FileResponse(str(widget_path))
+    return {"message": f"Widget {widget_name} not found"}
+
 @app.get("/confluence-live")
 async def serve_confluence_realtime():
     """Serve confluence score visualization (WebSocket real-time version)"""
-    template_path = project_root / "src" / "dashboard" / "templates" / "wired_realtime.html"
+    template_path = project_root / "src" / "dashboard" / "templates" / "archive" / "wired_realtime.html"
     if template_path.exists():
         return FileResponse(str(template_path))
     return {"message": "Confluence real-time dashboard not found"}
@@ -603,7 +725,7 @@ async def serve_confluence_realtime():
 @app.get("/arena")
 async def serve_bull_bear_arena():
     """Serve Bull/Bear Arena - visual market sentiment battle visualization"""
-    template_path = project_root / "src" / "dashboard" / "templates" / "bull_bear_arena.html"
+    template_path = project_root / "src" / "dashboard" / "templates" / "competition" / "bull_bear_arena.html"
     if template_path.exists():
         return FileResponse(str(template_path))
     return {"message": "Bull/Bear Arena not found"}
@@ -611,7 +733,7 @@ async def serve_bull_bear_arena():
 @app.get("/news-widget")
 async def serve_news_widget():
     """Serve Virtuoso News Widget - standalone crypto news ticker"""
-    template_path = project_root / "src" / "dashboard" / "templates" / "news_widget.html"
+    template_path = project_root / "src" / "dashboard" / "templates" / "widgets" / "news_widget.html"
     if template_path.exists():
         return FileResponse(str(template_path))
     return {"message": "News widget not found"}
@@ -619,7 +741,7 @@ async def serve_news_widget():
 @app.get("/news-ticker")
 async def serve_news_ticker_dongle():
     """Serve Virtuoso News Ticker Dongle - compact embeddable news ticker"""
-    template_path = project_root / "src" / "dashboard" / "templates" / "news_ticker_dongle.html"
+    template_path = project_root / "src" / "dashboard" / "templates" / "widgets" / "news_ticker_dongle.html"
     if template_path.exists():
         return FileResponse(str(template_path))
     return {"message": "News ticker dongle not found"}
@@ -627,15 +749,23 @@ async def serve_news_ticker_dongle():
 @app.get("/beta-chart")
 async def serve_beta_analysis():
     """Serve Bitcoin Beta Analysis - standalone performance visualization"""
-    template_path = project_root / "src" / "dashboard" / "templates" / "bitcoin_beta_standalone.html"
+    template_path = project_root / "src" / "dashboard" / "templates" / "standalone" / "bitcoin_beta_standalone.html"
     if template_path.exists():
         return FileResponse(str(template_path))
     return {"message": "Beta Analysis dashboard not found"}
 
+@app.get("/btc-prediction")
+async def serve_btc_prediction():
+    """Serve Bitcoin Lead/Lag Prediction - standalone predictive analytics page"""
+    template_path = project_root / "src" / "dashboard" / "templates" / "standalone" / "bitcoin_prediction_standalone.html"
+    if template_path.exists():
+        return FileResponse(str(template_path))
+    return {"message": "Bitcoin Prediction page not found"}
+
 @app.get("/api/docs")
 async def serve_api_docs():
     """Serve branded API documentation page"""
-    template_path = project_root / "src" / "dashboard" / "templates" / "api_docs_branded.html"
+    template_path = project_root / "src" / "dashboard" / "templates" / "docs" / "api_docs_branded.html"
     if template_path.exists():
         return FileResponse(str(template_path))
     return {"message": "API docs not found"}
@@ -934,7 +1064,7 @@ async def get_cache_metrics():
 @app.get("/service-health")
 async def serve_service_health():
     """Serve service health page"""
-    template_path = project_root / "src" / "dashboard" / "templates" / "service_health.html"
+    template_path = project_root / "src" / "dashboard" / "templates" / "monitoring" / "service_health.html"
     if template_path.exists():
         return FileResponse(str(template_path))
     return {"message": "Service health page not found"}
@@ -942,7 +1072,7 @@ async def serve_service_health():
 @app.get("/system-monitoring")
 async def serve_system_monitoring():
     """Serve system monitoring page"""
-    template_path = project_root / "src" / "dashboard" / "templates" / "system_monitoring.html"
+    template_path = project_root / "src" / "dashboard" / "templates" / "monitoring" / "system_monitoring.html"
     if template_path.exists():
         return FileResponse(str(template_path))
     return {"message": "System monitoring page not found"}

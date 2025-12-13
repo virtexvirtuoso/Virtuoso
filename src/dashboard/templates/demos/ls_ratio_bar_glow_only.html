@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>L/S Ratio - Bar Glow Only</title>
+    <style>
+        :root {
+            --accent-positive: #00d68f;
+            --accent-negative: #ff5252;
+            --text-primary: #e0e0e0;
+            --text-secondary: #9ca3af;
+        }
+
+        body {
+            background: #0a0a0a;
+            color: var(--text-primary);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            padding: 40px;
+            display: flex;
+            flex-direction: column;
+            gap: 30px;
+        }
+
+        .demo-header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .demo-header h1 {
+            color: #fbbf24;
+            margin-bottom: 10px;
+        }
+
+        .demo-header p {
+            color: var(--text-secondary);
+            font-size: 14px;
+        }
+
+        .test-controls {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+            margin-bottom: 30px;
+        }
+
+        .test-btn {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: var(--text-primary);
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.2s ease;
+        }
+
+        .test-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: rgba(255, 255, 255, 0.2);
+        }
+
+        .demo-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .demo-card {
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 20px;
+        }
+
+        .demo-card h3 {
+            font-size: 12px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+
+        /* ===================================
+           L/S RATIO COMPONENT - BAR GLOW ONLY
+           =================================== */
+
+        .ls-ratio-container {
+            background: rgba(0, 0, 0, 0.2);
+            padding: 12px;
+            border-radius: 8px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .ls-ratio-header {
+            font-size: 9px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            text-align: center;
+            margin-bottom: 8px;
+        }
+
+        .ls-ratio-percentages {
+            display: flex;
+            justify-content: center;
+            gap: 6px;
+            align-items: baseline;
+            margin-bottom: 10px;
+            position: relative;
+            z-index: 2;
+        }
+
+        .ls-ratio-percentages .long-pct {
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--accent-positive);
+        }
+
+        .ls-ratio-percentages .divider {
+            color: var(--text-secondary);
+            font-size: 10px;
+        }
+
+        .ls-ratio-percentages .short-pct {
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--accent-negative);
+        }
+
+        /* Animated Bar Container */
+        .ls-ratio-bar-container {
+            position: relative;
+            height: 20px;
+            margin-bottom: 8px;
+            border-radius: 4px;
+            overflow: hidden;
+            background: rgba(0, 0, 0, 0.3);
+        }
+
+        .ls-ratio-bar {
+            position: absolute;
+            height: 100%;
+            display: flex;
+            width: 100%;
+        }
+
+        /* Long Side (Green) */
+        .ls-ratio-bar .long-side {
+            background: linear-gradient(90deg, var(--accent-positive) 0%, rgba(0, 214, 143, 0.7) 100%);
+            transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            /* No glow by default */
+        }
+
+        /* Short Side (Red) */
+        .ls-ratio-bar .short-side {
+            background: linear-gradient(90deg, rgba(255, 82, 82, 0.7) 0%, var(--accent-negative) 100%);
+            transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex: 1;
+            position: relative;
+            /* No glow by default */
+        }
+
+        .side-label {
+            font-size: 9px;
+            font-weight: 700;
+            color: white;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+            opacity: 0.8;
+        }
+
+        /* ===================================
+           BAR-ONLY GLOW ANIMATIONS
+           =================================== */
+
+        /* Green bar glow (long side dominance) */
+        @keyframes bar-glow-green {
+            0%, 100% {
+                box-shadow:
+                    0 0 10px rgba(0, 214, 143, 0.4),
+                    0 0 20px rgba(0, 214, 143, 0.3);
+            }
+            50% {
+                box-shadow:
+                    0 0 20px rgba(0, 214, 143, 0.7),
+                    0 0 35px rgba(0, 214, 143, 0.5),
+                    0 0 50px rgba(0, 214, 143, 0.3);
+            }
+        }
+
+        @keyframes bar-glow-green-intense {
+            0%, 100% {
+                box-shadow:
+                    0 0 15px rgba(0, 214, 143, 0.6),
+                    0 0 30px rgba(0, 214, 143, 0.4),
+                    0 0 45px rgba(0, 214, 143, 0.2);
+            }
+            50% {
+                box-shadow:
+                    0 0 30px rgba(0, 214, 143, 0.9),
+                    0 0 50px rgba(0, 214, 143, 0.6),
+                    0 0 70px rgba(0, 214, 143, 0.4),
+                    0 0 90px rgba(0, 214, 143, 0.2);
+            }
+        }
+
+        /* Red bar glow (short side dominance) */
+        @keyframes bar-glow-red {
+            0%, 100% {
+                box-shadow:
+                    0 0 10px rgba(255, 82, 82, 0.4),
+                    0 0 20px rgba(255, 82, 82, 0.3);
+            }
+            50% {
+                box-shadow:
+                    0 0 20px rgba(255, 82, 82, 0.7),
+                    0 0 35px rgba(255, 82, 82, 0.5),
+                    0 0 50px rgba(255, 82, 82, 0.3);
+            }
+        }
+
+        @keyframes bar-glow-red-intense {
+            0%, 100% {
+                box-shadow:
+                    0 0 15px rgba(255, 82, 82, 0.6),
+                    0 0 30px rgba(255, 82, 82, 0.4),
+                    0 0 45px rgba(255, 82, 82, 0.2);
+            }
+            50% {
+                box-shadow:
+                    0 0 30px rgba(255, 82, 82, 0.9),
+                    0 0 50px rgba(255, 82, 82, 0.6),
+                    0 0 70px rgba(255, 82, 82, 0.4),
+                    0 0 90px rgba(255, 82, 82, 0.2);
+            }
+        }
+
+        /* Gradient wave for extreme states */
+        @keyframes pressure-wave {
+            0% {
+                background-position: 0% 50%;
+            }
+            100% {
+                background-position: 200% 50%;
+            }
+        }
+
+        /* ===================================
+           STATE CLASSES - BAR GLOW ONLY
+           =================================== */
+
+        /* Balanced (45-55%) - No glow */
+        .ls-ratio-container.balanced .long-side,
+        .ls-ratio-container.balanced .short-side {
+            /* Clean static appearance */
+        }
+
+        /* Moderate Long (55-65%) - Subtle bar glow */
+        .ls-ratio-container.moderate-long .long-side {
+            box-shadow: 0 0 12px rgba(0, 214, 143, 0.3);
+        }
+
+        /* Moderate Short (55-65%) - Subtle bar glow */
+        .ls-ratio-container.moderate-short .short-side {
+            box-shadow: 0 0 12px rgba(255, 82, 82, 0.3);
+        }
+
+        /* High Long (65-70%) - Medium pulsing bar glow + gradient */
+        .ls-ratio-container.high-long .long-side {
+            animation: bar-glow-green 2s ease-in-out infinite;
+            background: linear-gradient(270deg,
+                var(--accent-positive) 0%,
+                rgba(0, 214, 143, 0.9) 33%,
+                rgba(0, 214, 143, 0.7) 66%,
+                var(--accent-positive) 100%);
+            background-size: 200% 100%;
+            animation: bar-glow-green 2s ease-in-out infinite,
+                       pressure-wave 2s linear infinite;
+        }
+
+        /* High Short (65-70%) - Medium pulsing bar glow + gradient */
+        .ls-ratio-container.high-short .short-side {
+            animation: bar-glow-red 2s ease-in-out infinite;
+            background: linear-gradient(90deg,
+                var(--accent-negative) 0%,
+                rgba(255, 82, 82, 0.9) 33%,
+                rgba(255, 82, 82, 0.7) 66%,
+                var(--accent-negative) 100%);
+            background-size: 200% 100%;
+            animation: bar-glow-red 2s ease-in-out infinite,
+                       pressure-wave 2s linear infinite;
+        }
+
+        /* Extreme Long (>70%) - Intense pulsing bar glow + bright gradient */
+        .ls-ratio-container.extreme-long .long-side {
+            background: linear-gradient(270deg,
+                var(--accent-positive) 0%,
+                #00ffaa 25%,
+                var(--accent-positive) 50%,
+                #00ffaa 75%,
+                var(--accent-positive) 100%);
+            background-size: 300% 100%;
+            animation: bar-glow-green-intense 1.5s ease-in-out infinite,
+                       pressure-wave 1.5s linear infinite;
+        }
+
+        /* Extreme Short (>70%) - Intense pulsing bar glow + bright gradient */
+        .ls-ratio-container.extreme-short .short-side {
+            background: linear-gradient(90deg,
+                var(--accent-negative) 0%,
+                #ff7070 25%,
+                var(--accent-negative) 50%,
+                #ff7070 75%,
+                var(--accent-negative) 100%);
+            background-size: 300% 100%;
+            animation: bar-glow-red-intense 1.5s ease-in-out infinite,
+                       pressure-wave 1.5s linear infinite;
+        }
+
+        /* Label styling */
+        .ls-ratio-label {
+            font-size: 9px;
+            color: var(--text-secondary);
+            text-align: center;
+        }
+
+        .ls-ratio-label.extreme-warning {
+            color: var(--accent-positive);
+            font-weight: 600;
+        }
+
+        .ls-ratio-label.extreme-warning.short {
+            color: var(--accent-negative);
+        }
+    </style>
+</head>
+<body>
+    <div class="demo-header">
+        <h1>✨ L/S Ratio - Bar Glow Only</h1>
+        <p>Only the dominant bar side glows (container stays clean)</p>
+        <p style="font-size: 12px; margin-top: 5px; color: #666;">
+            Glow intensity increases with positioning extremity
+        </p>
+    </div>
+
+    <div class="test-controls">
+        <button class="test-btn" onclick="setState('balanced')">⚖️ Balanced (50/50)</button>
+        <button class="test-btn" onclick="setState('moderateLong')">📈 Moderate Long (60/40)</button>
+        <button class="test-btn" onclick="setState('moderateShort')">📉 Moderate Short (40/60)</button>
+        <button class="test-btn" onclick="setState('highLong')">🟢 High Long (68/32)</button>
+        <button class="test-btn" onclick="setState('highShort')">🔴 High Short (32/68)</button>
+        <button class="test-btn" onclick="setState('extremeLong')">💚 Extreme Long (75/25)</button>
+        <button class="test-btn" onclick="setState('extremeShort')">❤️ Extreme Short (25/75)</button>
+        <button class="test-btn" onclick="setState('current')">📊 Current Live (62.4/37.6)</button>
+    </div>
+
+    <div class="demo-grid">
+        <!-- Balanced -->
+        <div class="demo-card">
+            <h3>Balanced (50/50) - No Glow</h3>
+            <div class="ls-ratio-container balanced">
+                <div class="ls-ratio-header">Long / Short</div>
+                <div class="ls-ratio-percentages">
+                    <span class="long-pct">50.0%</span>
+                    <span class="divider">/</span>
+                    <span class="short-pct">50.0%</span>
+                </div>
+                <div class="ls-ratio-bar-container">
+                    <div class="ls-ratio-bar">
+                        <div class="long-side" style="width: 50%">
+                            <span class="side-label">LONG</span>
+                        </div>
+                        <div class="short-side">
+                            <span class="side-label">SHORT</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="ls-ratio-label">BALANCED</div>
+            </div>
+        </div>
+
+        <!-- Moderate Long -->
+        <div class="demo-card">
+            <h3>Moderate Long (60/40) - Subtle Glow</h3>
+            <div class="ls-ratio-container moderate-long">
+                <div class="ls-ratio-header">Long / Short</div>
+                <div class="ls-ratio-percentages">
+                    <span class="long-pct">60.0%</span>
+                    <span class="divider">/</span>
+                    <span class="short-pct">40.0%</span>
+                </div>
+                <div class="ls-ratio-bar-container">
+                    <div class="ls-ratio-bar">
+                        <div class="long-side" style="width: 60%">
+                            <span class="side-label">LONG</span>
+                        </div>
+                        <div class="short-side">
+                            <span class="side-label">SHORT</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="ls-ratio-label">MODERATE LONG</div>
+            </div>
+        </div>
+
+        <!-- High Long -->
+        <div class="demo-card">
+            <h3>High Long (68/32) - Pulsing Glow</h3>
+            <div class="ls-ratio-container high-long">
+                <div class="ls-ratio-header">Long / Short</div>
+                <div class="ls-ratio-percentages">
+                    <span class="long-pct">68.0%</span>
+                    <span class="divider">/</span>
+                    <span class="short-pct">32.0%</span>
+                </div>
+                <div class="ls-ratio-bar-container">
+                    <div class="ls-ratio-bar">
+                        <div class="long-side" style="width: 68%">
+                            <span class="side-label">LONG</span>
+                        </div>
+                        <div class="short-side">
+                            <span class="side-label">SHORT</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="ls-ratio-label">HIGH LONG</div>
+            </div>
+        </div>
+
+        <!-- Extreme Long -->
+        <div class="demo-card">
+            <h3>Extreme Long (75/25) - Intense Glow</h3>
+            <div class="ls-ratio-container extreme-long">
+                <div class="ls-ratio-header">Long / Short</div>
+                <div class="ls-ratio-percentages">
+                    <span class="long-pct">75.0%</span>
+                    <span class="divider">/</span>
+                    <span class="short-pct">25.0%</span>
+                </div>
+                <div class="ls-ratio-bar-container">
+                    <div class="ls-ratio-bar">
+                        <div class="long-side" style="width: 75%">
+                            <span class="side-label">LONG</span>
+                        </div>
+                        <div class="short-side">
+                            <span class="side-label">SHORT</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="ls-ratio-label extreme-warning">⚠️ EXTREME LONG</div>
+            </div>
+        </div>
+
+        <!-- High Short -->
+        <div class="demo-card">
+            <h3>High Short (32/68) - Red Pulsing Glow</h3>
+            <div class="ls-ratio-container high-short">
+                <div class="ls-ratio-header">Long / Short</div>
+                <div class="ls-ratio-percentages">
+                    <span class="long-pct">32.0%</span>
+                    <span class="divider">/</span>
+                    <span class="short-pct">68.0%</span>
+                </div>
+                <div class="ls-ratio-bar-container">
+                    <div class="ls-ratio-bar">
+                        <div class="long-side" style="width: 32%">
+                            <span class="side-label">LONG</span>
+                        </div>
+                        <div class="short-side">
+                            <span class="side-label">SHORT</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="ls-ratio-label">HIGH SHORT</div>
+            </div>
+        </div>
+
+        <!-- Extreme Short -->
+        <div class="demo-card">
+            <h3>Extreme Short (25/75) - Red Intense Glow</h3>
+            <div class="ls-ratio-container extreme-short">
+                <div class="ls-ratio-header">Long / Short</div>
+                <div class="ls-ratio-percentages">
+                    <span class="long-pct">25.0%</span>
+                    <span class="divider">/</span>
+                    <span class="short-pct">75.0%</span>
+                </div>
+                <div class="ls-ratio-bar-container">
+                    <div class="ls-ratio-bar">
+                        <div class="long-side" style="width: 25%">
+                            <span class="side-label">LONG</span>
+                        </div>
+                        <div class="short-side">
+                            <span class="side-label">SHORT</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="ls-ratio-label extreme-warning short">⚠️ EXTREME SHORT</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="interactive-demo" style="max-width: 400px; margin: 40px auto; padding: 30px; background: rgba(0,0,0,0.3); border-radius: 12px; border: 1px solid rgba(255,255,255,0.1);">
+        <h3 style="text-align: center; color: #fbbf24; margin-bottom: 20px; font-size: 14px; text-transform: uppercase;">Interactive Demo</h3>
+        <div class="ls-ratio-container" id="interactive-card">
+            <div class="ls-ratio-header">Long / Short</div>
+            <div class="ls-ratio-percentages">
+                <span class="long-pct" id="long-pct">62.4%</span>
+                <span class="divider">/</span>
+                <span class="short-pct" id="short-pct">37.6%</span>
+            </div>
+            <div class="ls-ratio-bar-container" id="bar-container">
+                <div class="ls-ratio-bar">
+                    <div class="long-side" id="long-bar" style="width: 62.4%">
+                        <span class="side-label">LONG</span>
+                    </div>
+                    <div class="short-side">
+                        <span class="side-label">SHORT</span>
+                    </div>
+                </div>
+            </div>
+            <div class="ls-ratio-label" id="label">MODERATE LONG</div>
+        </div>
+        <div style="margin-top: 20px; padding: 15px; background: rgba(0,0,0,0.2); border-radius: 6px; font-size: 11px; color: var(--text-secondary); line-height: 1.6;">
+            <strong style="color: var(--text-primary);">Notice:</strong> Only the green LONG bar glows. The container and short side remain clean. Glow intensity increases from moderate → high → extreme.
+        </div>
+    </div>
+
+    <script>
+        const states = {
+            balanced: { long: 50.0, short: 50.0, label: 'BALANCED', class: 'balanced', labelClass: '' },
+            moderateLong: { long: 60.0, short: 40.0, label: 'MODERATE LONG', class: 'moderate-long', labelClass: '' },
+            moderateShort: { long: 40.0, short: 60.0, label: 'MODERATE SHORT', class: 'moderate-short', labelClass: '' },
+            highLong: { long: 68.0, short: 32.0, label: 'HIGH LONG', class: 'high-long', labelClass: '' },
+            highShort: { long: 32.0, short: 68.0, label: 'HIGH SHORT', class: 'high-short', labelClass: '' },
+            extremeLong: { long: 75.0, short: 25.0, label: '⚠️ EXTREME LONG', class: 'extreme-long', labelClass: 'extreme-warning' },
+            extremeShort: { long: 25.0, short: 75.0, label: '⚠️ EXTREME SHORT', class: 'extreme-short', labelClass: 'extreme-warning short' },
+            current: { long: 62.4, short: 37.6, label: 'MODERATE LONG', class: 'moderate-long', labelClass: '' }
+        };
+
+        function setState(stateName) {
+            const state = states[stateName];
+            const card = document.getElementById('interactive-card');
+            const longPct = document.getElementById('long-pct');
+            const shortPct = document.getElementById('short-pct');
+            const longBar = document.getElementById('long-bar');
+            const label = document.getElementById('label');
+
+            // Update percentages
+            longPct.textContent = state.long.toFixed(1) + '%';
+            shortPct.textContent = state.short.toFixed(1) + '%';
+
+            // Update bar width
+            longBar.style.width = state.long + '%';
+
+            // Update label
+            label.textContent = state.label;
+
+            // Update classes
+            card.className = 'ls-ratio-container ' + state.class;
+            label.className = 'ls-ratio-label ' + state.labelClass;
+        }
+
+        // Initialize with current state
+        setState('current');
+    </script>
+</body>
+</html>

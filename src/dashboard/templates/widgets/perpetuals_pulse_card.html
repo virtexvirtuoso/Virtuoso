@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Perpetuals Pulse Dashboard Card</title>
+
+    <!-- Plotly.js -->
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+
+    <style>
+        :root {
+            --neon-amber: #fbbf24;
+            --neon-cyan: #06B6D4;
+            --neon-red: #ff0066;
+
+            --bg-primary: #0a0a0a;
+            --bg-secondary: #111111;
+            --bg-panel: #161616;
+            --bg-card: #1a1a1a;
+
+            --border-light: #222222;
+            --text-primary: #f5f5f5;
+            --text-secondary: #a8a8a8;
+            --text-muted: #7a7a7a;
+
+            --accent-positive: #00d68f;
+            --accent-negative: #ff5252;
+            --accent-warning: #ffb800;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            padding: 20px;
+        }
+
+        .dashboard-container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-light);
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 20px;
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--border-light);
+        }
+
+        .card-title {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--neon-amber);
+            font-family: 'IBM Plex Mono', monospace;
+            letter-spacing: 0.5px;
+        }
+
+        .card-meta {
+            display: flex;
+            gap: 16px;
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        .meta-item {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+        }
+
+        .meta-label {
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+            margin-bottom: 2px;
+        }
+
+        .meta-value {
+            font-size: 14px;
+            font-weight: 600;
+            font-family: 'IBM Plex Mono', monospace;
+        }
+
+        .meta-value.positive { color: var(--accent-positive); }
+        .meta-value.negative { color: var(--accent-negative); }
+        .meta-value.neutral { color: var(--text-secondary); }
+
+        .charts-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+        }
+
+        .chart-container {
+            background: var(--bg-panel);
+            border: 1px solid var(--border-light);
+            border-radius: 8px;
+            padding: 16px;
+            min-height: 320px;
+        }
+
+        .chart-container.full-width {
+            grid-column: 1 / -1;
+        }
+
+        .loading-spinner {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 300px;
+            color: var(--text-muted);
+            font-size: 14px;
+        }
+
+        .spinner {
+            border: 3px solid var(--border-light);
+            border-top: 3px solid var(--neon-amber);
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin-right: 12px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .error-message {
+            background: rgba(255, 82, 82, 0.1);
+            border: 1px solid var(--accent-negative);
+            border-radius: 8px;
+            padding: 16px;
+            color: var(--accent-negative);
+            text-align: center;
+        }
+
+        .refresh-button {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-light);
+            color: var(--text-primary);
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            font-family: 'IBM Plex Mono', monospace;
+            transition: all 0.2s ease;
+        }
+
+        .refresh-button:hover {
+            background: var(--bg-panel);
+            border-color: var(--neon-amber);
+            box-shadow: 0 0 12px rgba(251, 191, 36, 0.2);
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            font-family: 'IBM Plex Mono', monospace;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .status-badge.live {
+            background: rgba(0, 214, 143, 0.15);
+            color: var(--accent-positive);
+            border: 1px solid var(--accent-positive);
+        }
+
+        .status-badge.error {
+            background: rgba(255, 82, 82, 0.15);
+            color: var(--accent-negative);
+            border: 1px solid var(--accent-negative);
+        }
+
+        @media (max-width: 1024px) {
+            .charts-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="dashboard-container">
+        <div class="card">
+            <div class="card-header">
+                <div>
+                    <h1 class="card-title">PERPETUALS PULSE</h1>
+                </div>
+                <div class="card-meta">
+                    <div class="meta-item">
+                        <span class="meta-label">Funding Rate</span>
+                        <span class="meta-value" id="funding-rate">--</span>
+                    </div>
+                    <div class="meta-item">
+                        <span class="meta-label">Long %</span>
+                        <span class="meta-value" id="long-pct">--</span>
+                    </div>
+                    <div class="meta-item">
+                        <span class="meta-label">Signals</span>
+                        <span class="meta-value neutral" id="signal-count">--</span>
+                    </div>
+                    <div class="meta-item">
+                        <span class="meta-label">Quality</span>
+                        <span class="meta-value neutral" id="data-quality">--</span>
+                    </div>
+                    <button class="refresh-button" onclick="refreshCharts()">↻ Refresh</button>
+                </div>
+            </div>
+
+            <div id="status-container" style="margin-bottom: 16px;">
+                <span class="status-badge live" id="status-badge">LIVE</span>
+                <span style="color: var(--text-muted); font-size: 12px; margin-left: 12px;" id="last-update">
+                    Last update: --
+                </span>
+            </div>
+
+            <div id="charts-container">
+                <div class="loading-spinner">
+                    <div class="spinner"></div>
+                    <span>Loading charts...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Configuration
+        const API_BASE_URL = '/api/dashboard';
+        const REFRESH_INTERVAL = 60000; // 1 minute
+        let refreshTimer = null;
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            loadCharts();
+            startAutoRefresh();
+        });
+
+        async function loadCharts() {
+            const container = document.getElementById('charts-container');
+
+            try {
+                // Show loading state
+                container.innerHTML = `
+                    <div class="loading-spinner">
+                        <div class="spinner"></div>
+                        <span>Loading charts...</span>
+                    </div>
+                `;
+
+                // Fetch all charts
+                const response = await fetch(`${API_BASE_URL}/perpetuals-charts/all?lookback_hours=4`);
+                const data = await response.json();
+
+                if (data.status === 'error') {
+                    throw new Error(data.error || 'Failed to load charts');
+                }
+
+                // Update metadata
+                updateMetadata(data.data_summary);
+                updateStatus('live', data.timestamp);
+
+                // Render charts
+                renderCharts(data.charts);
+
+            } catch (error) {
+                console.error('Error loading charts:', error);
+                container.innerHTML = `
+                    <div class="error-message">
+                        <strong>Error Loading Charts</strong><br>
+                        ${error.message}
+                    </div>
+                `;
+                updateStatus('error');
+            }
+        }
+
+        function renderCharts(charts) {
+            const container = document.getElementById('charts-container');
+
+            // Create grid layout
+            const grid = document.createElement('div');
+            grid.className = 'charts-grid';
+
+            // Chart order and configuration
+            const chartConfig = [
+                { key: 'funding_microtrend', fullWidth: true },
+                { key: 'long_short_gauge', fullWidth: false },
+                { key: 'signal_strength', fullWidth: false },
+                { key: 'market_state', fullWidth: true }
+            ];
+
+            // Render each chart
+            chartConfig.forEach(config => {
+                const chartHtml = charts[config.key];
+                if (chartHtml) {
+                    const chartDiv = document.createElement('div');
+                    chartDiv.className = `chart-container ${config.fullWidth ? 'full-width' : ''}`;
+                    chartDiv.innerHTML = chartHtml;
+                    grid.appendChild(chartDiv);
+                }
+            });
+
+            container.innerHTML = '';
+            container.appendChild(grid);
+        }
+
+        function updateMetadata(summary) {
+            // Funding rate
+            const fundingRate = (summary.funding_rate * 100).toFixed(4);
+            const fundingEl = document.getElementById('funding-rate');
+            fundingEl.textContent = fundingRate + '%';
+            fundingEl.className = 'meta-value ' + (summary.funding_rate > 0 ? 'positive' :
+                                                    summary.funding_rate < 0 ? 'negative' : 'neutral');
+
+            // Long percentage
+            const longPct = summary.long_pct.toFixed(1);
+            const longEl = document.getElementById('long-pct');
+            longEl.textContent = longPct + '%';
+            longEl.className = 'meta-value ' + (summary.long_pct > 65 ? 'negative' :
+                                                 summary.long_pct < 35 ? 'positive' : 'neutral');
+
+            // Signal count
+            document.getElementById('signal-count').textContent = summary.signal_count;
+
+            // Data quality
+            const quality = (summary.data_quality * 100).toFixed(0);
+            const qualityEl = document.getElementById('data-quality');
+            qualityEl.textContent = quality + '%';
+            qualityEl.className = 'meta-value ' + (summary.data_quality >= 0.7 ? 'positive' :
+                                                    summary.data_quality >= 0.5 ? 'neutral' : 'negative');
+        }
+
+        function updateStatus(status, timestamp = null) {
+            const badge = document.getElementById('status-badge');
+            const updateText = document.getElementById('last-update');
+
+            if (status === 'live') {
+                badge.className = 'status-badge live';
+                badge.textContent = 'LIVE';
+
+                if (timestamp) {
+                    const date = new Date(timestamp);
+                    updateText.textContent = `Last update: ${date.toLocaleTimeString()}`;
+                }
+            } else if (status === 'error') {
+                badge.className = 'status-badge error';
+                badge.textContent = 'ERROR';
+                updateText.textContent = 'Failed to load data';
+            }
+        }
+
+        function refreshCharts() {
+            loadCharts();
+        }
+
+        function startAutoRefresh() {
+            if (refreshTimer) {
+                clearInterval(refreshTimer);
+            }
+
+            refreshTimer = setInterval(() => {
+                console.log('Auto-refreshing charts...');
+                loadCharts();
+            }, REFRESH_INTERVAL);
+        }
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            if (refreshTimer) {
+                clearInterval(refreshTimer);
+            }
+        });
+    </script>
+</body>
+</html>

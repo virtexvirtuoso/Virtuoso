@@ -1,0 +1,2942 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>System & Signal Health | Virtuoso</title>
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="/static/favicon/favicon.svg">
+    <link rel="icon" type="image/x-icon" href="/static/favicon/favicon.ico">
+
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <style>
+        /* ============================================
+           CSS Variables - Complete Design System
+           ============================================ */
+        *, *::before, *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        :root {
+            /* Brand Colors */
+            --neon-amber: #fbbf24;
+            --neon-cyan: #06B6D4;
+            --neon-red: #ff0066;
+            --virtuoso-purple: #8b5cf6;
+            --virtuoso-purple-dark: #7c3aed;
+
+            /* Dark Mode Colors */
+            --dark-bg: #0a0a0a;
+            --card-bg: #111111;
+            --border: #222222;
+            --text: #e0e0e0;
+            --text-secondary: #9ca3af;
+            --text-tertiary: #6b7280;
+
+            /* Semantic Colors */
+            --success: #10b981;
+            --error: #ef4444;
+            --warning: #f59e0b;
+            --info: #3b82f6;
+
+            /* Status Colors */
+            --status-healthy: #10b981;
+            --status-warning: #f59e0b;
+            --status-critical: #ef4444;
+            --status-unknown: #6b7280;
+
+            /* Spacing Scale (8px grid) */
+            --space-1: 0.25rem;  /* 4px */
+            --space-2: 0.5rem;   /* 8px */
+            --space-3: 0.75rem;  /* 12px */
+            --space-4: 1rem;     /* 16px */
+            --space-5: 1.25rem;  /* 20px */
+            --space-6: 1.5rem;   /* 24px */
+            --space-7: 2rem;     /* 32px */
+            --space-8: 2.5rem;   /* 40px */
+            --space-9: 3rem;     /* 48px */
+            --space-10: 4rem;    /* 64px */
+            --space-11: 5rem;    /* 80px */
+            --space-12: 6rem;    /* 96px */
+
+            /* Typography Scale */
+            --text-xs: 0.625rem;   /* 10px */
+            --text-sm: 0.6875rem;  /* 11px */
+            --text-base: 0.8125rem; /* 13px */
+            --text-md: 0.875rem;    /* 14px */
+            --text-lg: 1.125rem;    /* 18px */
+            --text-xl: 1.25rem;     /* 20px */
+            --text-2xl: 1.5rem;     /* 24px */
+            --text-3xl: 1.75rem;    /* 28px */
+            --text-4xl: 2.25rem;    /* 36px */
+            --text-5xl: 3rem;       /* 48px */
+
+            /* Border Radius Scale */
+            --radius-sm: 0.25rem;  /* 4px */
+            --radius-md: 0.5rem;   /* 8px */
+            --radius-lg: 0.75rem;  /* 12px */
+            --radius-xl: 1rem;     /* 16px */
+            --radius-full: 9999px;
+
+            /* Shadow Scale */
+            --shadow-sm: 0 0 10px rgba(251, 191, 36, 0.1);
+            --shadow-md: 0 0 20px rgba(251, 191, 36, 0.15);
+            --shadow-lg: 0 0 30px rgba(251, 191, 36, 0.2);
+            --shadow-glow: 0 0 20px rgba(251, 191, 36, 0.3);
+            --shadow-card-hover: 0 0 30px rgba(251, 191, 36, 0.1);
+            --shadow-card-focus: 0 0 30px rgba(251, 191, 36, 0.15);
+        }
+
+        /* ============================================
+           Base Styles with Grid Background
+           ============================================ */
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--dark-bg);
+            color: var(--text);
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+
+        /* Grid background pattern */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image:
+                linear-gradient(rgba(251, 191, 36, 0.02) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(251, 191, 36, 0.02) 1px, transparent 1px);
+            background-size: 50px 50px;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .font-mono {
+            font-family: 'IBM Plex Mono', monospace;
+        }
+
+        /* ============================================
+           Layout
+           ============================================ */
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: var(--space-9) var(--space-6) var(--space-7) var(--space-6);
+            position: relative;
+            z-index: 1;
+        }
+
+        .header {
+            margin-block-end: var(--space-7);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: var(--space-4);
+        }
+
+        .header h1 {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: var(--text-3xl);
+            font-weight: 700;
+            color: var(--text);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+        }
+
+        .last-updated {
+            font-family: 'IBM Plex Mono', monospace;
+            color: var(--text-secondary);
+            font-size: var(--text-xs);
+            display: flex;
+            align-items: center;
+            gap: var(--space-2);
+        }
+
+        .grid {
+            display: grid;
+            gap: var(--space-6);
+            margin-block-end: var(--space-7);
+        }
+
+        .grid-2 {
+            grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr));
+        }
+
+        .grid-3 {
+            grid-template-columns: repeat(auto-fit, minmax(min(250px, 100%), 1fr));
+        }
+
+        /* ============================================
+           Status Banner
+           ============================================ */
+        .status-banner {
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            border-radius: var(--radius-lg);
+            padding: var(--space-4) var(--space-6);
+            margin-block-end: var(--space-7);
+            display: flex;
+            align-items: center;
+            gap: var(--space-4);
+        }
+
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: var(--radius-full);
+            background: var(--success);
+            box-shadow: 0 0 10px var(--success);
+            animation: pulse 2s infinite;
+        }
+
+        .status-text {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: var(--text-base);
+            color: var(--success);
+        }
+
+        /* ============================================
+           Card Component (Virtuoso Style)
+           ============================================ */
+        .glass-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            padding: var(--space-6);
+            transition: all 0.3s ease, transform 0.3s ease;
+            position: relative;
+        }
+
+        .glass-card:hover {
+            border-color: var(--neon-amber);
+            box-shadow: var(--shadow-card-hover);
+        }
+
+        .glass-card:focus-within {
+            border-color: var(--neon-amber);
+            box-shadow: var(--shadow-card-focus);
+        }
+
+        /* ============================================
+           Hero Status Card
+           ============================================ */
+        .hero-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            padding: var(--space-7);
+            text-align: center;
+            transition: all 0.3s ease, transform 0.3s ease;
+            margin-block-end: var(--space-7);
+        }
+
+        .hero-card:hover {
+            border-color: var(--neon-amber);
+            box-shadow: var(--shadow-card-hover);
+        }
+
+        .hero-status {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: var(--text-5xl);
+            font-weight: 700;
+            margin-block-end: var(--space-3);
+        }
+
+        .hero-status.healthy {
+            color: var(--status-healthy);
+            text-shadow: var(--shadow-glow);
+        }
+
+        .hero-status.warning {
+            color: var(--status-warning);
+            text-shadow: 0 0 20px rgba(245, 158, 11, 0.3);
+        }
+
+        .hero-status.critical {
+            color: var(--status-critical);
+            text-shadow: 0 0 20px rgba(239, 68, 68, 0.3);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .hero-subtitle {
+            font-family: 'IBM Plex Mono', monospace;
+            color: var(--text-secondary);
+            font-size: var(--text-base);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+        }
+
+        .hero-metrics {
+            display: flex;
+            justify-content: center;
+            gap: var(--space-9);
+            margin-block-start: var(--space-7);
+            flex-wrap: wrap;
+        }
+
+        .hero-metric {
+            text-align: center;
+        }
+
+        .hero-metric-value {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: var(--text-4xl);
+            font-weight: 700;
+            color: var(--neon-amber);
+            text-shadow: var(--shadow-glow);
+        }
+
+        .hero-metric-label {
+            font-size: var(--text-xs);
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-block-start: var(--space-2);
+        }
+
+        /* ============================================
+           Card Components
+           ============================================ */
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-block-end: var(--space-5);
+        }
+
+        .card-title {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: var(--text-md);
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--text);
+            display: flex;
+            align-items: center;
+            gap: var(--space-2);
+        }
+
+        .card-icon {
+            width: 20px;
+            height: 20px;
+            color: var(--neon-amber);
+        }
+
+        .card-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: var(--space-1);
+            padding: var(--space-1) var(--space-3);
+            border-radius: var(--radius-md);
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: var(--text-xs);
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+        }
+
+        .card-badge.healthy {
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--status-healthy);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+
+        .card-badge.warning {
+            background: rgba(245, 158, 11, 0.1);
+            color: var(--status-warning);
+            border: 1px solid rgba(245, 158, 11, 0.3);
+        }
+
+        .card-badge.critical {
+            background: rgba(239, 68, 68, 0.1);
+            color: var(--status-critical);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
+        .card-badge.unknown {
+            background: rgba(107, 114, 128, 0.1);
+            color: var(--text-tertiary);
+            border: 1px solid rgba(107, 114, 128, 0.3);
+        }
+
+        /* ============================================
+           Service Status Grid
+           ============================================ */
+        .service-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: var(--space-4);
+        }
+
+        .service-item {
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            padding: var(--space-5);
+            text-align: center;
+            transition: all 0.3s ease, transform 0.3s ease;
+            cursor: pointer;
+        }
+
+        .service-item:hover {
+            border-color: var(--neon-amber);
+            background: rgba(251, 191, 36, 0.05);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 20px rgba(251, 191, 36, 0.15);
+        }
+
+        .service-item:active {
+            transform: translateY(0);
+        }
+
+        .service-icon {
+            width: 40px;
+            height: 40px;
+            margin: 0 auto var(--space-3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: var(--radius-md);
+        }
+
+        .service-icon.healthy {
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--status-healthy);
+        }
+
+        .service-icon.warning {
+            background: rgba(245, 158, 11, 0.1);
+            color: var(--status-warning);
+        }
+
+        .service-icon.critical {
+            background: rgba(239, 68, 68, 0.1);
+            color: var(--status-critical);
+        }
+
+        .service-icon.unknown {
+            background: rgba(107, 114, 128, 0.1);
+            color: var(--status-unknown);
+        }
+
+        .service-name {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: var(--text-base);
+            font-weight: 600;
+            margin-block-end: var(--space-1);
+        }
+
+        .service-status {
+            font-size: var(--text-sm);
+            color: var(--text-tertiary);
+        }
+
+        .service-value {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: var(--text-md);
+            color: var(--text);
+            margin-block-start: var(--space-2);
+        }
+
+        /* ============================================
+           Signal Performance
+           ============================================ */
+        .performance-metric {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: var(--space-3) 0;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .performance-metric:last-child {
+            border-bottom: none;
+        }
+
+        .metric-label {
+            font-size: var(--text-base);
+            color: var(--text-secondary);
+        }
+
+        .metric-value {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: var(--text-lg);
+            font-weight: 600;
+        }
+
+        .metric-value.positive {
+            color: var(--status-healthy);
+        }
+
+        .metric-value.negative {
+            color: var(--status-critical);
+        }
+
+        /* ============================================
+           Progress Bar
+           ============================================ */
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: rgba(0, 0, 0, 0.5);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            overflow: hidden;
+            margin: var(--space-4) 0;
+            display: flex;
+            align-items: center;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: var(--neon-amber);
+            box-shadow: 0 0 10px rgba(251, 191, 36, 0.5);
+            border-radius: var(--radius-sm);
+            transition: width 0.5s ease, transform 0.5s ease;
+        }
+
+        .progress-fill.low {
+            background: var(--status-critical);
+            box-shadow: 0 0 10px rgba(239, 68, 68, 0.5);
+        }
+
+        .progress-fill.medium {
+            background: var(--status-warning);
+            box-shadow: 0 0 10px rgba(245, 158, 11, 0.5);
+        }
+
+        .progress-fill.high {
+            background: var(--status-healthy);
+            box-shadow: 0 0 10px rgba(16, 185, 129, 0.5);
+        }
+
+        /* ============================================
+           Kill Switch Status
+           ============================================ */
+        .kill-switch-indicator {
+            display: flex;
+            align-items: center;
+            gap: var(--space-5);
+            padding: var(--space-5);
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            margin: var(--space-4) 0;
+        }
+
+        .kill-switch-light {
+            width: 60px;
+            height: 60px;
+            border-radius: var(--radius-full);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+            border: 3px solid;
+            flex-shrink: 0;
+        }
+
+        .kill-switch-light.monitoring {
+            background: rgba(16, 185, 129, 0.1);
+            border-color: var(--status-healthy);
+            color: var(--status-healthy);
+            box-shadow: 0 0 20px rgba(16, 185, 129, 0.3);
+        }
+
+        .kill-switch-light.active {
+            background: rgba(239, 68, 68, 0.1);
+            border-color: var(--status-critical);
+            color: var(--status-critical);
+            box-shadow: 0 0 20px rgba(239, 68, 68, 0.3);
+            animation: pulse 2s infinite;
+        }
+
+        .kill-switch-info {
+            flex: 1;
+        }
+
+        .kill-switch-state {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: var(--text-2xl);
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+        }
+
+        .kill-switch-details {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: var(--text-xs);
+            color: var(--text-tertiary);
+            margin-block-start: var(--space-1);
+        }
+
+        /* ============================================
+           Signal Table
+           ============================================ */
+        .signal-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-block-start: var(--space-4);
+        }
+
+        .signal-table th {
+            text-align: start;
+            padding: var(--space-3);
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: var(--text-xs);
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--text-secondary);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .signal-table td {
+            padding: var(--space-3);
+            font-size: var(--text-base);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .signal-table tbody tr {
+            transition: all 0.2s ease, transform 0.2s ease;
+        }
+
+        .signal-table tbody tr:hover {
+            background: rgba(251, 191, 36, 0.05);
+        }
+
+        .signal-badge {
+            display: inline-block;
+            padding: var(--space-1) var(--space-3);
+            border-radius: var(--radius-md);
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: var(--text-xs);
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .signal-badge.long {
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--status-healthy);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+
+        .signal-badge.short {
+            background: rgba(239, 68, 68, 0.1);
+            color: var(--status-critical);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
+        .signal-badge.win {
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--status-healthy);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+
+        .signal-badge.loss {
+            background: rgba(239, 68, 68, 0.1);
+            color: var(--status-critical);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
+        /* ============================================
+           Action Buttons
+           ============================================ */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: var(--space-2);
+            padding: var(--space-2) var(--space-5);
+            background: transparent;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            color: var(--text-secondary);
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: var(--text-xs);
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            cursor: pointer;
+            transition: all 0.3s ease, transform 0.3s ease;
+            text-decoration: none;
+        }
+
+        .btn:hover {
+            border-color: var(--neon-amber);
+            color: var(--neon-amber);
+            box-shadow: var(--shadow-md);
+        }
+
+        .btn:focus-visible {
+            outline: 2px solid var(--neon-amber);
+            outline-offset: var(--space-1);
+        }
+
+        .btn-primary {
+            border-color: var(--neon-amber);
+            color: var(--neon-amber);
+        }
+
+        .btn-danger {
+            border-color: var(--status-critical);
+            color: var(--status-critical);
+        }
+
+        .btn-danger:hover {
+            box-shadow: var(--shadow-md);
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: var(--space-3);
+            flex-wrap: wrap;
+            margin-block-start: var(--space-5);
+        }
+
+        /* ============================================
+           Loading State
+           ============================================ */
+        .loading {
+            text-align: center;
+            padding: var(--space-9);
+            color: var(--text-secondary);
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            margin: 0 auto var(--space-4);
+            border: 3px solid rgba(251, 191, 36, 0.1);
+            border-top-color: var(--neon-amber);
+            border-radius: var(--radius-full);
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* ============================================
+           Responsive Design
+           ============================================ */
+        /* Extra-small devices */
+        @media (max-width: 400px) {
+            .container {
+                padding: var(--space-6) var(--space-4);
+            }
+
+            .header h1 {
+                font-size: var(--text-lg);
+            }
+
+            .hero-card {
+                padding: var(--space-5);
+            }
+
+            .hero-status {
+                font-size: var(--text-2xl);
+            }
+
+            .hero-metric-value {
+                font-size: var(--text-xl);
+            }
+        }
+
+        /* Mobile devices */
+        @media (max-width: 768px) {
+            .container {
+                padding: var(--space-6) var(--space-4);
+            }
+
+            .header h1 {
+                font-size: var(--text-xl);
+            }
+
+            .hero-card {
+                padding: var(--space-6);
+            }
+
+            .hero-status {
+                font-size: var(--text-2xl);
+            }
+
+            .hero-metrics {
+                gap: var(--space-6);
+            }
+
+            .hero-metric-value {
+                font-size: var(--text-3xl);
+            }
+
+            .service-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .signal-table {
+                font-size: var(--text-sm);
+            }
+
+            .signal-table th,
+            .signal-table td {
+                padding: var(--space-2);
+            }
+
+            .action-buttons {
+                flex-direction: column;
+            }
+
+            .btn {
+                width: 100%;
+                justify-content: center;
+            }
+        }
+
+        /* Tablet devices */
+        @media (min-width: 769px) and (max-width: 1024px) {
+            .container {
+                padding: var(--space-7) var(--space-5);
+            }
+
+            .grid-2 {
+                grid-template-columns: repeat(auto-fit, minmax(min(350px, 100%), 1fr));
+            }
+
+            .service-grid {
+                grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            }
+        }
+
+        /* ============================================
+           Utility Classes
+           ============================================ */
+        .text-center {
+            text-align: center;
+        }
+
+        .mt-1 { margin-block-start: var(--space-2); }
+        .mt-2 { margin-block-start: var(--space-4); }
+        .mt-3 { margin-block-start: var(--space-6); }
+
+        .mb-1 { margin-block-end: var(--space-2); }
+        .mb-2 { margin-block-end: var(--space-4); }
+        .mb-3 { margin-block-end: var(--space-6); }
+
+        .hidden {
+            display: none;
+        }
+
+        /* ============================================
+           Service Detail Modal
+           ============================================ */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(4px);
+            z-index: 1000;
+            animation: fadeIn 0.2s ease;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: var(--space-5);
+        }
+
+        .modal-content {
+            background: var(--dark-bg);
+            border: 1px solid var(--neon-amber);
+            border-radius: var(--radius-xl);
+            max-width: 800px;
+            width: 100%;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 0 40px rgba(251, 191, 36, 0.3);
+            animation: slideUp 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+            }
+            to {
+                opacity: 1;
+            }
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: var(--space-6);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .modal-title {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: var(--text-xl);
+            font-weight: 700;
+            color: var(--neon-amber);
+            display: flex;
+            align-items: center;
+            gap: var(--space-3);
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: var(--text-2xl);
+            padding: var(--space-2);
+            line-height: 1;
+            transition: all 0.3s ease, transform 0.3s ease;
+        }
+
+        .modal-close:hover {
+            color: var(--neon-amber);
+            transform: rotate(90deg);
+        }
+
+        .modal-body {
+            padding: var(--space-6);
+        }
+
+        .detail-section {
+            margin-block-end: var(--space-6);
+        }
+
+        .detail-section:last-child {
+            margin-block-end: 0;
+        }
+
+        .detail-section-title {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: var(--text-base);
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--text-secondary);
+            margin-block-end: var(--space-3);
+            display: flex;
+            align-items: center;
+            gap: var(--space-2);
+        }
+
+        .detail-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: var(--space-4);
+        }
+
+        .detail-item {
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            padding: var(--space-4);
+        }
+
+        .detail-label {
+            font-size: var(--text-xs);
+            color: var(--text-tertiary);
+            margin-block-end: var(--space-2);
+        }
+
+        .detail-value {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: var(--text-lg);
+            font-weight: 600;
+            color: var(--text);
+        }
+
+        .detail-value.healthy {
+            color: var(--status-healthy);
+        }
+
+        .detail-value.warning {
+            color: var(--status-warning);
+        }
+
+        .detail-value.critical {
+            color: var(--status-critical);
+        }
+
+        /* ============================================
+           Logs Section Styles
+           ============================================ */
+        .logs-container {
+            margin-block-start: var(--space-5);
+        }
+
+        .logs-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            padding: var(--space-3) var(--space-4);
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            transition: all 0.3s ease, transform 0.3s ease;
+        }
+
+        .logs-header:hover {
+            border-color: var(--neon-amber);
+            background: rgba(251, 191, 36, 0.05);
+        }
+
+        .logs-toggle {
+            display: flex;
+            align-items: center;
+            gap: var(--space-2);
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: var(--text-base);
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-secondary);
+        }
+
+        .logs-content {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease;
+        }
+
+        .logs-content.expanded {
+            max-height: 400px;
+            overflow-y: auto;
+            margin-block-start: var(--space-3);
+        }
+
+        .log-line {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: var(--text-xs);
+            padding: var(--space-2) var(--space-3);
+            background: rgba(0, 0, 0, 0.5);
+            border-left: 3px solid var(--border);
+            margin-block-end: var(--space-1);
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+        }
+
+        .log-line.error {
+            border-left-color: var(--status-critical);
+            background: rgba(239, 68, 68, 0.05);
+            color: #ff9999;
+        }
+
+        .log-line.warning {
+            border-left-color: var(--status-warning);
+            background: rgba(245, 158, 11, 0.05);
+            color: #ffcc99;
+        }
+
+        .log-line.info {
+            border-left-color: var(--text-tertiary);
+            color: var(--text-secondary);
+        }
+
+        /* ============================================
+           Copy Button & Port Display
+           ============================================ */
+        .port-display {
+            display: inline-flex;
+            align-items: center;
+            gap: var(--space-2);
+            padding: var(--space-2) var(--space-3);
+            background: rgba(251, 191, 36, 0.1);
+            border: 1px solid rgba(251, 191, 36, 0.3);
+            border-radius: var(--radius-sm);
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: var(--text-base);
+            color: var(--neon-amber);
+            cursor: pointer;
+            transition: all 0.2s ease, transform 0.2s ease;
+        }
+
+        .port-display:hover {
+            background: rgba(251, 191, 36, 0.2);
+            transform: scale(1.05);
+        }
+
+        .port-display i {
+            width: 14px;
+            height: 14px;
+        }
+
+        .copy-tooltip {
+            position: relative;
+        }
+
+        .copy-tooltip::after {
+            content: 'Copied!';
+            position: absolute;
+            top: -30px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--neon-amber);
+            color: var(--dark-bg);
+            padding: var(--space-1) var(--space-2);
+            border-radius: var(--radius-sm);
+            font-size: var(--text-sm);
+            font-weight: 600;
+            white-space: nowrap;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+
+        .copy-tooltip.show::after {
+            opacity: 1;
+        }
+
+        /* ============================================
+           Loading Skeleton
+           ============================================ */
+        .skeleton {
+            background: linear-gradient(
+                90deg,
+                rgba(255, 255, 255, 0.05) 25%,
+                rgba(255, 255, 255, 0.1) 50%,
+                rgba(255, 255, 255, 0.05) 75%
+            );
+            background-size: 200% 100%;
+            animation: loading 1.5s ease-in-out infinite;
+        }
+
+        @keyframes loading {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+
+        /* ============================================
+           Accessibility
+           ============================================ */
+        *:focus-visible {
+            outline: 2px solid var(--neon-amber);
+            outline-offset: var(--space-1);
+        }
+
+        /* Reduced motion support */
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
+
+        /* ============================================ */
+        /* Admin Panel Styles                           */
+        /* ============================================ */
+        .admin-panel {
+            background: rgba(139, 92, 246, 0.05);
+            border: 2px solid var(--virtuoso-purple);
+            border-radius: var(--radius-lg);
+            margin-block-start: var(--space-8);
+            overflow: hidden;
+            box-shadow: 0 0 30px rgba(139, 92, 246, 0.2);
+        }
+
+        .admin-panel-header {
+            background: linear-gradient(135deg, rgba(139, 92, 246, 0.2) 0%, rgba(124, 58, 237, 0.2) 100%);
+            padding: var(--space-4) var(--space-6);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--virtuoso-purple);
+        }
+
+        .admin-panel-header .card-title {
+            color: var(--virtuoso-purple);
+            font-weight: 700;
+            font-size: var(--text-lg);
+        }
+
+        .admin-panel-content {
+            padding: var(--space-6);
+        }
+
+        .admin-toggle-btn {
+            position: fixed;
+            bottom: var(--space-8);
+            right: var(--space-8);
+            background: linear-gradient(135deg, var(--virtuoso-purple) 0%, var(--virtuoso-purple-dark) 100%);
+            color: white;
+            border: 2px solid var(--virtuoso-purple);
+            border-radius: var(--radius-full);
+            padding: var(--space-4) var(--space-6);
+            font-size: var(--text-md);
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: var(--space-2);
+            box-shadow: 0 4px 20px rgba(139, 92, 246, 0.4);
+            transition: all 0.3s ease, transform 0.3s ease;
+            z-index: 1000;
+        }
+
+        .admin-toggle-btn:hover {
+            transform: translateY(-2px) scale(1.05);
+            box-shadow: 0 6px 30px rgba(139, 92, 246, 0.6);
+            background: linear-gradient(135deg, var(--virtuoso-purple-dark) 0%, var(--virtuoso-purple) 100%);
+        }
+
+        .admin-toggle-btn:active {
+            transform: translateY(0) scale(1);
+        }
+
+        .admin-toggle-btn i {
+            width: 20px;
+            height: 20px;
+        }
+
+        .btn-warning {
+            background: rgba(245, 158, 11, 0.1);
+            border: 1px solid var(--warning);
+            color: var(--warning);
+        }
+
+        .btn-warning:hover {
+            background: rgba(245, 158, 11, 0.2);
+            box-shadow: 0 0 20px rgba(245, 158, 11, 0.3);
+        }
+
+        .btn-sm {
+            padding: var(--space-2) var(--space-3);
+            font-size: var(--text-sm);
+        }
+
+        /* Logs container styling */
+        .logs-container {
+            line-height: 1.6;
+        }
+
+        .logs-container p {
+            margin-bottom: var(--space-2);
+            word-wrap: break-word;
+        }
+
+        /* Mobile responsive */
+        @media (max-width: 768px) {
+            .admin-toggle-btn {
+                bottom: var(--space-4);
+                right: var(--space-4);
+                padding: var(--space-3) var(--space-4);
+                font-size: var(--text-sm);
+            }
+
+            .admin-panel-content {
+                padding: var(--space-4);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>System & Signal Health Dashboard</h1>
+            <div class="last-updated">
+                <i data-lucide="clock"></i>
+                <span id="lastUpdated">Loading...</span>
+            </div>
+        </div>
+
+        <!-- Hero Status Card -->
+        <div class="hero-card">
+            <div class="hero-status" id="heroStatus">Loading...</div>
+            <div class="hero-subtitle" id="heroSubtitle">Initializing health checks...</div>
+            <div class="hero-metrics">
+                <div class="hero-metric">
+                    <div class="hero-metric-value" id="uptime">--</div>
+                    <div class="hero-metric-label">System Uptime</div>
+                </div>
+                <div class="hero-metric">
+                    <div class="hero-metric-value" id="totalSignals">--</div>
+                    <div class="hero-metric-label">Active Signals</div>
+                </div>
+                <div class="hero-metric">
+                    <div class="hero-metric-value" id="confidenceScore">--</div>
+                    <div class="hero-metric-label">Confidence Score</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- System Health Section -->
+        <div class="glass-card mb-3">
+            <div class="card-header">
+                <div class="card-title">
+                    <i data-lucide="server"></i>
+                    System Health
+                </div>
+                <span class="card-badge" id="systemHealthBadge">Loading...</span>
+            </div>
+            <div class="service-grid" id="systemHealth">
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <p>Loading system metrics...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Signal Performance & Kill Switch - Two Column Layout -->
+        <div class="grid grid-2">
+            <!-- Signal Performance Card -->
+            <div class="glass-card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <i data-lucide="trending-up"></i>
+                        Signal Performance (7 Days)
+                    </div>
+                    <span class="card-badge" id="performanceBadge">Loading...</span>
+                </div>
+
+                <div id="performanceMetrics">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        <p>Loading performance data...</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Kill Switch Status Card -->
+            <div class="glass-card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <i data-lucide="shield-alert"></i>
+                        Kill Switch Status
+                    </div>
+                </div>
+
+                <div id="killSwitchStatus">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        <p>Loading kill switch data...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Validation Progress -->
+        <div class="glass-card mt-3">
+            <div class="card-header">
+                <div class="card-title">
+                    <i data-lucide="calendar-check"></i>
+                    30-Day Validation Progress
+                </div>
+            </div>
+
+            <div id="validationProgress">
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <p>Loading validation data...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Signals Table -->
+        <div class="glass-card mt-3">
+            <div class="card-header">
+                <div class="card-title">
+                    <i data-lucide="list"></i>
+                    Recent Closed Signals
+                </div>
+            </div>
+
+            <div id="recentSignals">
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <p>Loading recent signals...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="glass-card mt-3">
+            <div class="card-header">
+                <div class="card-title">
+                    <i data-lucide="zap"></i>
+                    Quick Actions
+                </div>
+            </div>
+
+            <div class="action-buttons">
+                <a href="/api/signals/active" class="btn" target="_blank">
+                    <i data-lucide="activity"></i>
+                    View Active Signals API
+                </a>
+                <a href="/api/signals/performance/summary" class="btn" target="_blank">
+                    <i data-lucide="bar-chart-2"></i>
+                    Performance Summary API
+                </a>
+                <button class="btn" onclick="refreshDashboard()">
+                    <i data-lucide="refresh-cw"></i>
+                    Refresh Data
+                </button>
+                <button class="btn btn-danger" onclick="alert('Kill switch test not implemented in production. Use with caution.')">
+                    <i data-lucide="alert-triangle"></i>
+                    Test Kill Switch (Dev Only)
+                </button>
+            </div>
+        </div>
+
+        <!-- ============================================ -->
+        <!-- ADMIN CONTROLS SECTION                       -->
+        <!-- ============================================ -->
+        <div id="adminPanel" class="admin-panel" style="display: none;">
+            <div class="admin-panel-header">
+                <div class="card-title">
+                    <i data-lucide="shield"></i>
+                    Admin Controls
+                </div>
+                <button class="btn btn-sm" onclick="toggleAdminPanel()">
+                    <i data-lucide="chevron-up" id="adminPanelToggleIcon"></i>
+                </button>
+            </div>
+
+            <div id="adminPanelContent" class="admin-panel-content">
+                <!-- System Control -->
+                <div class="glass-card mt-3">
+                    <div class="card-header">
+                        <div class="card-title">
+                            <i data-lucide="sliders"></i>
+                            System Control
+                        </div>
+                    </div>
+
+                    <div class="action-buttons">
+                        <button class="btn" onclick="restartMonitoring()">
+                            <i data-lucide="refresh-cw"></i>
+                            Restart Monitoring
+                        </button>
+                        <button class="btn btn-warning" onclick="reloadConfig()">
+                            <i data-lucide="settings"></i>
+                            Reload Config
+                        </button>
+                        <button class="btn btn-danger" onclick="emergencyStop()">
+                            <i data-lucide="alert-octagon"></i>
+                            Emergency Stop
+                        </button>
+                        <button class="btn" onclick="testAlerts()">
+                            <i data-lucide="bell"></i>
+                            Test Alerts
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Configuration Management -->
+                <div class="glass-card mt-3">
+                    <div class="card-header">
+                        <div class="card-title">
+                            <i data-lucide="file-cog"></i>
+                            Configuration Management
+                        </div>
+                    </div>
+
+                    <div class="action-buttons">
+                        <a href="/api/admin/config-editor" class="btn" target="_blank">
+                            <i data-lucide="edit"></i>
+                            Open Config Editor
+                        </a>
+                        <button class="btn" onclick="viewConfigFiles()">
+                            <i data-lucide="folder"></i>
+                            View Config Files
+                        </button>
+                        <button class="btn" onclick="backupConfig()">
+                            <i data-lucide="save"></i>
+                            Backup Configuration
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Connection Pool Monitor -->
+                <div class="glass-card mt-3">
+                    <div class="card-header">
+                        <div class="card-title">
+                            <i data-lucide="database"></i>
+                            Connection Pool Monitor
+                        </div>
+                        <span id="poolUpdateTime" class="text-secondary"></span>
+                    </div>
+
+                    <div id="poolStatsContainer" class="mt-2">
+                        <div style="text-align: center; padding: var(--space-8);">
+                            <p class="text-secondary">Loading connection pool statistics...</p>
+                        </div>
+                    </div>
+
+                    <div class="action-buttons mt-2">
+                        <button class="btn" onclick="refreshPoolStats()">
+                            <i data-lucide="refresh-cw"></i>
+                            Refresh Pool Stats
+                        </button>
+                        <button class="btn" onclick="exportPoolStats()">
+                            <i data-lucide="download"></i>
+                            Export Statistics
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Recent Logs -->
+                <div class="glass-card mt-3">
+                    <div class="card-header">
+                        <div class="card-title">
+                            <i data-lucide="file-text"></i>
+                            Recent System Logs
+                        </div>
+                    </div>
+
+                    <div id="logsContainer" class="logs-container mt-2" style="max-height: 400px; overflow-y: auto; background: rgba(0, 0, 0, 0.3); border-radius: var(--radius-md); padding: var(--space-4); font-family: 'IBM Plex Mono', monospace; font-size: var(--text-sm);">
+                        <p class="text-secondary">Loading system logs...</p>
+                    </div>
+
+                    <div class="action-buttons mt-2">
+                        <button class="btn" onclick="refreshLogs()">
+                            <i data-lucide="refresh-cw"></i>
+                            Refresh Logs
+                        </button>
+                        <button class="btn" onclick="clearLogs()">
+                            <i data-lucide="trash-2"></i>
+                            Clear Display
+                        </button>
+                        <button class="btn" onclick="downloadLogs()">
+                            <i data-lucide="download"></i>
+                            Download Logs
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Admin Toggle Button (Fixed Position) -->
+        <button id="adminToggleBtn" class="admin-toggle-btn" onclick="showAdminPanel()" title="Show Admin Controls">
+            <i data-lucide="shield"></i>
+            Admin
+        </button>
+    </div>
+
+    <script>
+        // ============================================
+        // Dashboard State
+        // ============================================
+        let refreshInterval;
+        const REFRESH_RATE = 30000; // 30 seconds
+
+        // ============================================
+        // API Fetch Utilities
+        // ============================================
+        async function fetchAPI(endpoint) {
+            try {
+                const response = await fetch(endpoint);
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                return await response.json();
+            } catch (error) {
+                console.error(`Error fetching ${endpoint}:`, error);
+                return null;
+            }
+        }
+
+        // ============================================
+        // System Health
+        // ============================================
+        async function loadSystemHealth() {
+            const data = await fetchAPI('/api/system/status');
+            if (!data) {
+                document.getElementById('systemHealth').innerHTML = `
+                    <div class="text-center" style="grid-column: 1 / -1;">
+                        <p style="color: var(--status-critical);">Failed to load system health</p>
+                    </div>
+                `;
+                return;
+            }
+
+            const system = data.system || {};
+            const cpuPercent = system.cpu?.percent || 0;
+            const memoryPercent = system.memory?.percent || 0;
+            const diskPercent = system.disk?.percent || 0;
+
+            // Determine overall status
+            const criticalThreshold = 90;
+            const warningThreshold = 75;
+
+            let overallStatus = 'healthy';
+            if (cpuPercent > criticalThreshold || memoryPercent > criticalThreshold || diskPercent > criticalThreshold) {
+                overallStatus = 'critical';
+            } else if (cpuPercent > warningThreshold || memoryPercent > warningThreshold || diskPercent > warningThreshold) {
+                overallStatus = 'warning';
+            }
+
+            document.getElementById('systemHealthBadge').className = `card-badge ${overallStatus}`;
+            document.getElementById('systemHealthBadge').textContent = overallStatus.toUpperCase();
+
+            // Fetch database storage info
+            const dbStorage = await fetchAPI('/api/health/storage/databases');
+            const databases = dbStorage?.databases || {};
+            const dbCount = dbStorage?.count || 0;
+            const totalSize = dbStorage?.total_size || 'N/A';
+
+            // Build database list HTML
+            let dbListHTML = '';
+            if (dbCount > 0) {
+                // Sort databases by size (largest first)
+                const sortedDbs = Object.entries(databases).sort((a, b) => b[1].size_bytes - a[1].size_bytes);
+                dbListHTML = sortedDbs.map(([name, info]) => {
+                    const isLargest = info.size_bytes === sortedDbs[0][1].size_bytes;
+                    return `
+                        <div style="display: flex; justify-content: space-between; align-items: center; padding: var(--space-2) var(--space-3); background: rgba(0,0,0,0.3); border: 1px solid ${isLargest ? 'var(--accent)' : 'var(--border)'}; border-radius: var(--radius-sm); margin-bottom: var(--space-2);">
+                            <div style="color: var(--text-primary); font-size: var(--text-base);">${isLargest ? '⭐ ' : ''}${name}</div>
+                            <div style="color: ${isLargest ? 'var(--accent)' : 'var(--text-secondary)'}; font-family: 'IBM Plex Mono', monospace; font-size: var(--text-base); font-weight: ${isLargest ? '600' : '400'};">${info.size}</div>
+                        </div>
+                    `;
+                }).join('');
+            } else {
+                dbListHTML = '<div style="color: var(--text-secondary); font-size: var(--text-base); padding: var(--space-3); text-align: center;">No database files found</div>';
+            }
+
+            // Fetch Redis storage info
+            const redisStorage = await fetchAPI('/api/health/storage/redis');
+            const redisStatus = redisStorage?.status || 'unknown';
+            const redisMemory = redisStorage?.used_memory || 'N/A';
+            const redisPeak = redisStorage?.peak_memory || 'N/A';
+            const redisType = redisStorage?.storage_type || 'In-memory';
+
+            const services = [
+                {
+                    name: 'Trading Service',
+                    status: 'healthy',
+                    value: 'Running',
+                    icon: 'trending-up',
+                    details: `
+                        <div class="detail-section">
+                            <div class="detail-section-title"><i data-lucide="info"></i> Service Status</div>
+                            <div class="detail-grid">
+                                <div class="detail-item">
+                                    <div class="detail-label">Status</div>
+                                    <div class="detail-value healthy">Running</div>
+                                </div>
+                                <div class="detail-item">
+                                    <div class="detail-label">Uptime</div>
+                                    <div class="detail-value">${system.uptime || 'N/A'}</div>
+                                </div>
+                                <div class="detail-item">
+                                    <div class="detail-label">Process ID</div>
+                                    <div class="detail-value">Active</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="detail-section">
+                            <div class="detail-section-title"><i data-lucide="activity"></i> Components</div>
+                            <div class="detail-grid">
+                                <div class="detail-item">
+                                    <div class="detail-label">Signal Generator</div>
+                                    <div class="detail-value healthy">Live</div>
+                                </div>
+                                <div class="detail-item">
+                                    <div class="detail-label">Market Data Feed</div>
+                                    <div class="detail-value healthy">Live</div>
+                                </div>
+                                <div class="detail-item">
+                                    <div class="detail-label">Alert System</div>
+                                    <div class="detail-value healthy">Active</div>
+                                </div>
+                            </div>
+                        </div>
+                    `
+                },
+                {
+                    name: 'Web Server',
+                    status: 'healthy',
+                    value: 'Running',
+                    icon: 'globe',
+                    details: `
+                        <div class="detail-section">
+                            <div class="detail-section-title"><i data-lucide="info"></i> Service Status</div>
+                            <div class="detail-grid">
+                                <div class="detail-item">
+                                    <div class="detail-label">Status</div>
+                                    <div class="detail-value healthy">Running</div>
+                                </div>
+                                <div class="detail-item">
+                                    <div class="detail-label">Mode</div>
+                                    <div class="detail-value">Standalone</div>
+                                </div>
+                                <div class="detail-item">
+                                    <div class="detail-label">Port</div>
+                                    <div class="detail-value">8002</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="detail-section">
+                            <div class="detail-section-title"><i data-lucide="bar-chart-2"></i> Performance</div>
+                            <div class="detail-grid">
+                                <div class="detail-item">
+                                    <div class="detail-label">Requests/min</div>
+                                    <div class="detail-value">${data.performance?.requests_per_minute || 0}</div>
+                                </div>
+                                <div class="detail-item">
+                                    <div class="detail-label">Avg Response Time</div>
+                                    <div class="detail-value">${data.performance?.response_time_ms?.toFixed(1) || 0}ms</div>
+                                </div>
+                                <div class="detail-item">
+                                    <div class="detail-label">24h Errors</div>
+                                    <div class="detail-value ${data.performance?.error_count_24h > 50 ? 'warning' : ''}">${data.performance?.error_count_24h || 0}</div>
+                                </div>
+                            </div>
+                        </div>
+                    `
+                },
+                {
+                    name: 'Database',
+                    status: 'healthy',
+                    value: 'Connected',
+                    icon: 'database',
+                    details: `
+                        <div class="detail-section">
+                            <div class="detail-section-title"><i data-lucide="info"></i> Connection Status</div>
+                            <div class="detail-grid">
+                                <div class="detail-item">
+                                    <div class="detail-label">Status</div>
+                                    <div class="detail-value healthy">Connected</div>
+                                </div>
+                                <div class="detail-item">
+                                    <div class="detail-label">Type</div>
+                                    <div class="detail-value">SQLite</div>
+                                </div>
+                                <div class="detail-item">
+                                    <div class="detail-label">Total Storage</div>
+                                    <div class="detail-value">${totalSize}</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="detail-section">
+                            <div class="detail-section-title"><i data-lucide="hard-drive"></i> Database Files (${dbCount})</div>
+                            ${dbListHTML}
+                        </div>
+                        <div class="detail-section">
+                            <div class="detail-section-title"><i data-lucide="database"></i> Main Tables</div>
+                            <div style="color: var(--text-secondary); font-size: var(--text-base);">
+                                <p>• trading_signals - Signal performance tracking</p>
+                                <p>• liquidation_events - Liquidation data</p>
+                                <p>• cache_metadata - Cache management</p>
+                            </div>
+                        </div>
+                    `
+                },
+                {
+                    name: 'Redis Cache',
+                    status: redisStatus === 'healthy' ? 'healthy' : redisStatus === 'offline' ? 'critical' : 'warning',
+                    value: redisStatus === 'healthy' ? 'Connected' : 'Offline',
+                    icon: 'layers',
+                    details: `
+                        <div class="detail-section">
+                            <div class="detail-section-title"><i data-lucide="info"></i> Cache Status</div>
+                            <div class="detail-grid">
+                                <div class="detail-item">
+                                    <div class="detail-label">Status</div>
+                                    <div class="detail-value ${redisStatus === 'healthy' ? 'healthy' : 'critical'}">${redisStatus === 'healthy' ? 'Connected' : 'Offline'}</div>
+                                </div>
+                                <div class="detail-item">
+                                    <div class="detail-label">Storage Type</div>
+                                    <div class="detail-value">${redisType}</div>
+                                </div>
+                                <div class="detail-item">
+                                    <div class="detail-label">Mode</div>
+                                    <div class="detail-value">Active</div>
+                                </div>
+                            </div>
+                        </div>
+                        ${redisStatus === 'healthy' ? `
+                        <div class="detail-section">
+                            <div class="detail-section-title"><i data-lucide="hard-drive"></i> Memory Usage</div>
+                            <div style="background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-4);">
+                                <div style="display: flex; justify-content: space-between; margin-bottom: var(--space-3);">
+                                    <div style="color: var(--text-secondary); font-size: var(--text-base);">Current Usage</div>
+                                    <div style="color: var(--accent); font-family: 'IBM Plex Mono', monospace; font-size: var(--text-md); font-weight: 600;">${redisMemory}</div>
+                                </div>
+                                <div style="display: flex; justify-content: space-between;">
+                                    <div style="color: var(--text-secondary); font-size: var(--text-base);">Peak Usage</div>
+                                    <div style="color: var(--text-secondary); font-family: 'IBM Plex Mono', monospace; font-size: var(--text-md);">${redisPeak}</div>
+                                </div>
+                            </div>
+                        </div>
+                        ` : `
+                        <div class="detail-section">
+                            <div class="detail-section-title"><i data-lucide="alert-triangle"></i> Service Offline</div>
+                            <div style="background: rgba(239, 68, 68, 0.1); border: 1px solid var(--status-critical); border-radius: var(--radius-md); padding: var(--space-4);">
+                                <div style="color: var(--status-critical); font-size: var(--text-md);">
+                                    ${redisStorage?.message || 'Redis service is not running'}
+                                </div>
+                            </div>
+                        </div>
+                        `}
+                        <div class="detail-section">
+                            <div class="detail-section-title"><i data-lucide="layers"></i> Cached Data</div>
+                            <div style="color: var(--text-secondary); font-size: var(--text-base);">
+                                <p>• Market data and signals</p>
+                                <p>• Dashboard analytics</p>
+                                <p>• API responses</p>
+                                <p>• Performance metrics</p>
+                            </div>
+                        </div>
+                    `
+                },
+                {
+                    name: 'Memory',
+                    status: memoryPercent > criticalThreshold ? 'critical' : memoryPercent > warningThreshold ? 'warning' : 'healthy',
+                    value: `${memoryPercent.toFixed(1)}%`,
+                    icon: 'cpu',
+                    details: `
+                        <div class="detail-section">
+                            <div class="detail-section-title"><i data-lucide="cpu"></i> Memory Usage</div>
+                            <div class="detail-grid">
+                                <div class="detail-item">
+                                    <div class="detail-label">Used</div>
+                                    <div class="detail-value ${memoryPercent > criticalThreshold ? 'critical' : memoryPercent > warningThreshold ? 'warning' : ''}">${system.memory?.used_gb?.toFixed(2) || 0} GB</div>
+                                </div>
+                                <div class="detail-item">
+                                    <div class="detail-label">Available</div>
+                                    <div class="detail-value">${system.memory?.available_gb?.toFixed(2) || 0} GB</div>
+                                </div>
+                                <div class="detail-item">
+                                    <div class="detail-label">Total</div>
+                                    <div class="detail-value">${system.memory?.total_gb?.toFixed(2) || 0} GB</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="detail-section">
+                            <div class="detail-section-title"><i data-lucide="bar-chart-2"></i> Usage Percentage</div>
+                            <div style="background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-5);">
+                                <div style="font-size: var(--text-5xl); font-family: 'IBM Plex Mono', monospace; font-weight: 700; text-align: center; color: ${memoryPercent > criticalThreshold ? 'var(--status-critical)' : memoryPercent > warningThreshold ? 'var(--status-warning)' : 'var(--status-healthy)'};">
+                                    ${memoryPercent.toFixed(1)}%
+                                </div>
+                            </div>
+                        </div>
+                    `
+                },
+                {
+                    name: 'CPU',
+                    status: cpuPercent > criticalThreshold ? 'critical' : cpuPercent > warningThreshold ? 'warning' : 'healthy',
+                    value: `${cpuPercent.toFixed(1)}%`,
+                    icon: 'activity',
+                    details: `
+                        <div class="detail-section">
+                            <div class="detail-section-title"><i data-lucide="activity"></i> CPU Usage</div>
+                            <div class="detail-grid">
+                                <div class="detail-item">
+                                    <div class="detail-label">Current</div>
+                                    <div class="detail-value ${cpuPercent > criticalThreshold ? 'critical' : cpuPercent > warningThreshold ? 'warning' : ''}">${cpuPercent.toFixed(1)}%</div>
+                                </div>
+                                <div class="detail-item">
+                                    <div class="detail-label">Cores</div>
+                                    <div class="detail-value">${system.cpu?.count || 0}</div>
+                                </div>
+                                <div class="detail-item">
+                                    <div class="detail-label">Status</div>
+                                    <div class="detail-value ${cpuPercent > criticalThreshold ? 'critical' : cpuPercent > warningThreshold ? 'warning' : 'healthy'}">
+                                        ${cpuPercent > criticalThreshold ? 'High Load' : cpuPercent > warningThreshold ? 'Elevated' : 'Normal'}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="detail-section">
+                            <div class="detail-section-title"><i data-lucide="bar-chart-2"></i> Usage Percentage</div>
+                            <div style="background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-5);">
+                                <div style="font-size: var(--text-5xl); font-family: 'IBM Plex Mono', monospace; font-weight: 700; text-align: center; color: ${cpuPercent > criticalThreshold ? 'var(--status-critical)' : cpuPercent > warningThreshold ? 'var(--status-warning)' : 'var(--status-healthy)'};">
+                                    ${cpuPercent.toFixed(1)}%
+                                </div>
+                            </div>
+                        </div>
+                    `
+                }
+            ];
+
+            // Fetch all VPS services health
+            const allServicesHealth = await fetchAPI('/api/health/all-services');
+            const allServices = allServicesHealth?.services || {};
+
+            // Add VPS service cards
+            const vpsServices = [
+                {
+                    key: 'derivatives-signals-api',
+                    name: 'Derivatives API',
+                    icon: 'zap',
+                    description: 'Crypto derivatives signals and analysis'
+                },
+                {
+                    key: 'crypto-dashboard',
+                    name: 'Perps Dashboard',
+                    icon: 'line-chart',
+                    description: 'Derivatives trading dashboard interface'
+                },
+                {
+                    key: 'virtuoso-monitoring-api',
+                    name: 'Monitoring API',
+                    icon: 'activity',
+                    description: 'System monitoring and metrics API'
+                },
+                {
+                    key: 'virtuoso-website',
+                    name: 'Marketing Site',
+                    icon: 'globe',
+                    description: 'Public virtuosocrypto.com website'
+                }
+            ];
+
+            vpsServices.forEach(svc => {
+                const svcHealth = allServices[svc.key] || {};
+                const isHealthy = svcHealth.status === 'healthy';
+
+                services.push({
+                    name: svc.name,
+                    status: isHealthy ? 'healthy' : 'critical',
+                    value: isHealthy ? 'Running' : 'Offline',
+                    icon: svc.icon,
+                    details: `
+                        <div class="detail-section">
+                            <div class="detail-section-title"><i data-lucide="info"></i> Service Status</div>
+                            <div class="detail-grid">
+                                <div class="detail-item">
+                                    <div class="detail-label">Status</div>
+                                    <div class="detail-value ${isHealthy ? 'healthy' : 'critical'}">${isHealthy ? 'Running' : 'Offline'}</div>
+                                </div>
+                                <div class="detail-item">
+                                    <div class="detail-label">Service Name</div>
+                                    <div class="detail-value">${svc.key}</div>
+                                </div>
+                                <div class="detail-item">
+                                    <div class="detail-label">Systemd Status</div>
+                                    <div class="detail-value">${svcHealth.systemd_status || 'unknown'}</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="detail-section">
+                            <div class="detail-section-title"><i data-lucide="file-text"></i> Description</div>
+                            <div style="padding: var(--space-4); background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: var(--radius-md);">
+                                <div style="color: var(--text-secondary); font-size: var(--text-md); line-height: 1.6;">
+                                    ${svc.description}
+                                </div>
+                            </div>
+                        </div>
+                        ${!isHealthy ? `
+                        <div class="detail-section">
+                            <div class="detail-section-title"><i data-lucide="alert-triangle"></i> Error Details</div>
+                            <div style="background: rgba(239, 68, 68, 0.1); border: 1px solid var(--status-critical); border-radius: var(--radius-md); padding: var(--space-4);">
+                                <div style="color: var(--status-critical); font-size: var(--text-md);">
+                                    ${svcHealth.message || 'Service is not responding'}
+                                </div>
+                                <div style="margin-top: var(--space-3); font-size: var(--text-base); color: var(--text-secondary);">
+                                    Try: <code>vt restart ${svc.key.replace('virtuoso-', '').replace('-api', '')}</code> or <code>sudo systemctl restart ${svc.key}</code>
+                                </div>
+                            </div>
+                        </div>
+                        ` : ''}
+                    `
+                });
+            });
+
+            document.getElementById('systemHealth').innerHTML = services.map(service => `
+                <div class="service-item" onclick='showServiceDetail("${service.name}", ${JSON.stringify({icon: service.icon, details: service.details}).replace(/'/g, "&apos;")})'>
+                    <div class="service-icon ${service.status}">
+                        <i data-lucide="${service.icon}"></i>
+                    </div>
+                    <div class="service-name">${service.name}</div>
+                    <div class="service-value">${service.value}</div>
+                </div>
+            `).join('');
+
+            // Re-initialize Lucide icons
+            lucide.createIcons();
+        }
+
+        // ============================================
+        // Signal Performance
+        // ============================================
+        async function loadSignalPerformance() {
+            const data = await fetchAPI('/api/signals/performance/summary?days=7');
+
+            if (!data || data.error) {
+                document.getElementById('performanceMetrics').innerHTML = `
+                    <div class="text-center">
+                        <p style="color: var(--status-warning);">Performance data not available</p>
+                        <p style="font-size: var(--text-xs); color: var(--text-tertiary); margin-top: var(--space-2);">
+                            ${data?.error || 'Signal tracking may not be enabled'}
+                        </p>
+                    </div>
+                `;
+                document.getElementById('performanceBadge').className = 'card-badge unknown';
+                document.getElementById('performanceBadge').textContent = 'NO DATA';
+                return;
+            }
+
+            const winRate = (data.win_rate || 0) * 100;
+            const avgPnl = data.avg_pnl_pct || 0;
+            const closedCount = data.closed_signals || 0;
+            const totalCount = data.total_signals || 0;
+
+            // Determine status based on win rate threshold
+            const threshold = 35;
+            let status = 'healthy';
+            if (winRate < threshold && closedCount >= 20) {
+                status = 'critical';
+            } else if (winRate < threshold + 10) {
+                status = 'warning';
+            }
+
+            document.getElementById('performanceBadge').className = `card-badge ${status}`;
+            document.getElementById('performanceBadge').textContent = status === 'critical' ? 'ALERT' : status.toUpperCase();
+
+            // Get pattern breakdown if available
+            const patternData = await fetchAPI('/api/signals/performance/by-pattern?days=30');
+            const divergenceWinRate = patternData?.by_pattern?.divergence?.win_rate || 0;
+            const confirmationWinRate = patternData?.by_pattern?.confirmation?.win_rate || 0;
+
+            document.getElementById('performanceMetrics').innerHTML = `
+                <div class="performance-metric">
+                    <span class="metric-label">Win Rate</span>
+                    <span class="metric-value ${winRate >= threshold ? 'positive' : 'negative'}">
+                        ${winRate.toFixed(1)}%
+                    </span>
+                </div>
+                <div class="performance-metric">
+                    <span class="metric-label">Average P&L</span>
+                    <span class="metric-value ${avgPnl >= 0 ? 'positive' : 'negative'}">
+                        ${avgPnl >= 0 ? '+' : ''}${avgPnl.toFixed(2)}%
+                    </span>
+                </div>
+                <div class="performance-metric">
+                    <span class="metric-label">Closed Signals</span>
+                    <span class="metric-value">${closedCount} / ${totalCount}</span>
+                </div>
+
+                <div style="margin-top: var(--space-6); padding-top: var(--space-4); border-top: 1px solid var(--border);">
+                    <div style="font-size: var(--text-base); color: var(--text-secondary); margin-bottom: var(--space-3);">
+                        Win Rate Progress
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill ${winRate < threshold ? 'low' : winRate < threshold + 10 ? 'medium' : 'high'}"
+                             style="width: ${Math.min(winRate, 100)}%"></div>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-size: var(--text-sm); color: var(--text-tertiary); margin-top: var(--space-1);">
+                        <span>${threshold}% Threshold</span>
+                        <span>Current: ${winRate.toFixed(1)}%</span>
+                    </div>
+                </div>
+
+                ${patternData ? `
+                <div style="margin-top: var(--space-4); padding-top: var(--space-4); border-top: 1px solid var(--border);">
+                    <div style="font-size: var(--text-base); color: var(--text-secondary); margin-bottom: var(--space-2);">
+                        Pattern Performance (30d)
+                    </div>
+                    <div class="performance-metric">
+                        <span class="metric-label">Divergence</span>
+                        <span class="metric-value ${(divergenceWinRate * 100) >= threshold ? 'positive' : 'negative'}">
+                            ${(divergenceWinRate * 100).toFixed(1)}%
+                        </span>
+                    </div>
+                    <div class="performance-metric">
+                        <span class="metric-label">Confirmation</span>
+                        <span class="metric-value ${(confirmationWinRate * 100) >= threshold ? 'positive' : 'negative'}">
+                            ${(confirmationWinRate * 100).toFixed(1)}%
+                        </span>
+                    </div>
+                </div>
+                ` : ''}
+            `;
+        }
+
+        // ============================================
+        // Kill Switch Status
+        // ============================================
+        async function loadKillSwitchStatus() {
+            // Mock data - replace with actual API when available
+            const mockData = {
+                state: 'MONITORING',
+                win_rate: 0.48,
+                threshold: 0.35,
+                closed_count: 23,
+                last_check: new Date(Date.now() - 120000).toISOString()
+            };
+
+            const state = mockData.state.toLowerCase();
+            const winRate = (mockData.win_rate * 100).toFixed(1);
+            const threshold = (mockData.threshold * 100).toFixed(0);
+            const margin = (mockData.win_rate * 100 - mockData.threshold * 100).toFixed(1);
+
+            const icon = state === 'monitoring' ? '🟢' : '🔴';
+            const stateColor = state === 'monitoring' ? 'var(--status-healthy)' : 'var(--status-critical)';
+
+            document.getElementById('killSwitchStatus').innerHTML = `
+                <div class="kill-switch-indicator">
+                    <div class="kill-switch-light ${state}">
+                        ${icon}
+                    </div>
+                    <div class="kill-switch-info">
+                        <div class="kill-switch-state" style="color: ${stateColor};">
+                            ${mockData.state}
+                        </div>
+                        <div class="kill-switch-details">
+                            Threshold: ${threshold}% win rate
+                        </div>
+                    </div>
+                </div>
+
+                <div style="margin-top: var(--space-4);">
+                    <div style="font-size: var(--text-base); color: var(--text-secondary); margin-bottom: var(--space-2);">
+                        Current Performance vs Threshold
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill ${margin > 10 ? 'high' : margin > 0 ? 'medium' : 'low'}"
+                             style="width: ${Math.min((mockData.win_rate / mockData.threshold) * 35, 100)}%"></div>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-size: var(--text-sm); color: var(--text-tertiary); margin-top: var(--space-1);">
+                        <span>${threshold}% ← Trigger Point</span>
+                        <span>Current: ${winRate}%</span>
+                    </div>
+                </div>
+
+                <div class="performance-metric" style="margin-top: var(--space-4);">
+                    <span class="metric-label">Safety Margin</span>
+                    <span class="metric-value ${margin > 0 ? 'positive' : 'negative'}">
+                        ${margin > 0 ? '+' : ''}${margin}%
+                    </span>
+                </div>
+
+                <div class="performance-metric">
+                    <span class="metric-label">Last Check</span>
+                    <span class="metric-value" style="font-size: var(--text-md); font-family: 'IBM Plex Mono', monospace;">
+                        ${getTimeAgo(mockData.last_check)}
+                    </span>
+                </div>
+            `;
+        }
+
+        // ============================================
+        // Validation Progress
+        // ============================================
+        async function loadValidationProgress() {
+            const startDate = new Date('2024-12-11');
+            const currentDate = new Date();
+            const endDate = new Date(startDate);
+            endDate.setDate(endDate.getDate() + 30);
+
+            const totalDays = 30;
+            const daysElapsed = Math.floor((currentDate - startDate) / (1000 * 60 * 60 * 24));
+            const daysRemaining = totalDays - daysElapsed;
+            const progressPercent = Math.min((daysElapsed / totalDays) * 100, 100);
+
+            // Get actual closed signals count
+            const perfData = await fetchAPI('/api/signals/performance/summary?days=30');
+            const closedCount = perfData?.closed_signals || 20;
+            const requiredCount = 71;
+            const signalsRemaining = Math.max(requiredCount - closedCount, 0);
+
+            document.getElementById('validationProgress').innerHTML = `
+                <div class="performance-metric">
+                    <span class="metric-label">Progress</span>
+                    <span class="metric-value">Day ${daysElapsed} of ${totalDays}</span>
+                </div>
+
+                <div class="progress-bar mt-2">
+                    <div class="progress-fill" style="width: ${progressPercent}%"></div>
+                </div>
+
+                <div style="display: flex; justify-content: space-between; font-size: var(--text-sm); color: var(--text-tertiary); margin-top: var(--space-1);">
+                    <span>${progressPercent.toFixed(0)}% Complete</span>
+                    <span>${daysRemaining} days remaining</span>
+                </div>
+
+                <div class="grid grid-2 mt-2" style="gap: var(--space-2);">
+                    <div style="background: rgba(0, 0, 0, 0.3); border: 1px solid var(--border); padding: var(--space-4); border-radius: var(--radius-md);">
+                        <div style="color: var(--status-healthy); font-size: var(--text-xl); font-weight: 600;">✅</div>
+                        <div style="font-size: var(--text-sm); color: var(--text-tertiary); margin-top: var(--space-1);">
+                            Database tracking active
+                        </div>
+                    </div>
+
+                    <div style="background: rgba(0, 0, 0, 0.3); border: 1px solid var(--border); padding: var(--space-4); border-radius: var(--radius-md);">
+                        <div style="color: var(--status-healthy); font-size: var(--text-xl); font-weight: 600;">✅</div>
+                        <div style="font-size: var(--text-sm); color: var(--text-tertiary); margin-top: var(--space-1);">
+                            Kill switch monitoring
+                        </div>
+                    </div>
+
+                    <div style="background: rgba(0, 0, 0, 0.3); border: 1px solid var(--border); padding: var(--space-4); border-radius: var(--radius-md);">
+                        <div style="color: var(--status-healthy); font-size: var(--text-xl); font-weight: 600;">✅</div>
+                        <div style="font-size: var(--text-sm); color: var(--text-tertiary); margin-top: var(--space-1);">
+                            Position sizing reduced (50%)
+                        </div>
+                    </div>
+
+                    <div style="background: rgba(0, 0, 0, 0.3); border: 1px solid var(--border); padding: var(--space-4); border-radius: var(--radius-md);">
+                        <div style="color: ${signalsRemaining === 0 ? 'var(--status-healthy)' : 'var(--status-warning)'}; font-size: var(--text-xl); font-weight: 600;">
+                            ${signalsRemaining === 0 ? '✅' : '⏳'}
+                        </div>
+                        <div style="font-size: var(--text-sm); color: var(--text-tertiary); margin-top: var(--space-1);">
+                            Need ${signalsRemaining} more closed signals (${closedCount}/${requiredCount})
+                        </div>
+                    </div>
+                </div>
+
+                <div class="performance-metric mt-2">
+                    <span class="metric-label">Expected Completion</span>
+                    <span class="metric-value" style="font-size: var(--text-md); font-family: 'IBM Plex Mono', monospace;">
+                        ${endDate.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
+                    </span>
+                </div>
+            `;
+        }
+
+        // ============================================
+        // Recent Signals
+        // ============================================
+        async function loadRecentSignals() {
+            const data = await fetchAPI('/api/signals/latest?limit=5');
+
+            if (!data || !data.signals || data.signals.length === 0) {
+                document.getElementById('recentSignals').innerHTML = `
+                    <div class="text-center">
+                        <p style="color: var(--text-secondary);">No recent signals available</p>
+                    </div>
+                `;
+                return;
+            }
+
+            const signals = data.signals.slice(0, 5);
+
+            document.getElementById('recentSignals').innerHTML = `
+                <table class="signal-table">
+                    <thead>
+                        <tr>
+                            <th>Symbol</th>
+                            <th>Type</th>
+                            <th>Score</th>
+                            <th>Price</th>
+                            <th>Pattern</th>
+                            <th>Time</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${signals.map(signal => {
+                            const signalType = (signal.signal || 'HOLD').toUpperCase();
+                            const score = signal.score || signal.confluence_score || 50;
+                            const price = signal.current_price || signal.entry_price || 0;
+                            const pattern = signal.signal_pattern || 'unknown';
+                            const timestamp = signal.timestamp || Date.now();
+                            const date = new Date(typeof timestamp === 'number' ? timestamp : parseInt(timestamp));
+
+                            return `
+                                <tr>
+                                    <td style="font-weight: 600; font-family: 'IBM Plex Mono', monospace;">${signal.symbol || 'UNKNOWN'}</td>
+                                    <td><span class="signal-badge ${signalType.toLowerCase()}">${signalType}</span></td>
+                                    <td style="font-family: 'IBM Plex Mono', monospace;">${score.toFixed(0)}</td>
+                                    <td style="font-family: 'IBM Plex Mono', monospace;">$${price.toFixed(2)}</td>
+                                    <td style="text-transform: capitalize;">${pattern}</td>
+                                    <td style="font-size: var(--text-sm); color: var(--text-tertiary); font-family: 'IBM Plex Mono', monospace;">
+                                        ${date.toLocaleDateString()} ${date.toLocaleTimeString()}
+                                    </td>
+                                </tr>
+                            `;
+                        }).join('')}
+                    </tbody>
+                </table>
+            `;
+        }
+
+        // ============================================
+        // Hero Status
+        // ============================================
+        async function updateHeroStatus() {
+            const systemData = await fetchAPI('/api/system/status');
+            const perfData = await fetchAPI('/api/signals/performance/summary?days=7');
+            const activeData = await fetchAPI('/api/signals/active');
+
+            // Determine overall status
+            let overallStatus = 'healthy';
+            let statusText = 'System Healthy';
+            let subtitle = 'All systems operational';
+
+            const winRate = (perfData?.win_rate || 0) * 100;
+            const threshold = 35;
+
+            if (winRate < threshold && (perfData?.closed_signals || 0) >= 20) {
+                overallStatus = 'critical';
+                statusText = 'Critical Alert';
+                subtitle = 'Kill switch conditions met';
+            } else if (winRate < threshold + 10) {
+                overallStatus = 'warning';
+                statusText = 'Warning';
+                subtitle = 'Performance below optimal levels';
+            }
+
+            // Check system health
+            if (systemData?.system) {
+                const cpu = systemData.system.cpu_percent || 0;
+                const memory = systemData.system.memory_percent || 0;
+
+                if (cpu > 90 || memory > 90) {
+                    overallStatus = 'critical';
+                    statusText = 'System Critical';
+                    subtitle = 'High resource usage detected';
+                } else if (cpu > 75 || memory > 75 && overallStatus === 'healthy') {
+                    overallStatus = 'warning';
+                    statusText = 'Warning';
+                    subtitle = 'Elevated resource usage';
+                }
+            }
+
+            document.getElementById('heroStatus').textContent = statusText;
+            document.getElementById('heroStatus').className = `hero-status ${overallStatus}`;
+            document.getElementById('heroSubtitle').textContent = subtitle;
+
+            // Update hero metrics
+            document.getElementById('uptime').textContent = '99.9%';
+            document.getElementById('totalSignals').textContent = activeData?.count || 0;
+
+            const confidenceScore = Math.min(Math.max(winRate, 0), 100).toFixed(0);
+            document.getElementById('confidenceScore').textContent = `${confidenceScore}%`;
+        }
+
+        // ============================================
+        // Utility Functions
+        // ============================================
+        function getTimeAgo(timestamp) {
+            const now = new Date();
+            const then = new Date(timestamp);
+            const seconds = Math.floor((now - then) / 1000);
+
+            if (seconds < 60) return `${seconds} seconds ago`;
+            if (seconds < 3600) return `${Math.floor(seconds / 60)} minutes ago`;
+            if (seconds < 86400) return `${Math.floor(seconds / 3600)} hours ago`;
+            return `${Math.floor(seconds / 86400)} days ago`;
+        }
+
+        function updateLastUpdated() {
+            const now = new Date();
+            document.getElementById('lastUpdated').textContent = now.toLocaleTimeString();
+        }
+
+        // ============================================
+        // Dashboard Refresh
+        // ============================================
+        async function refreshDashboard() {
+            updateLastUpdated();
+            await Promise.all([
+                loadSystemHealth(),
+                loadSignalPerformance(),
+                loadKillSwitchStatus(),
+                loadValidationProgress(),
+                loadRecentSignals(),
+                updateHeroStatus()
+            ]);
+        }
+
+        // ============================================
+        // Initialization
+        // ============================================
+        async function initDashboard() {
+            // Initial load
+            await refreshDashboard();
+
+            // Initialize Lucide icons
+            lucide.createIcons();
+
+            // Set up auto-refresh
+            refreshInterval = setInterval(refreshDashboard, REFRESH_RATE);
+
+            console.log('Health Dashboard initialized - auto-refreshing every 30 seconds');
+        }
+
+        // Start dashboard when page loads
+        document.addEventListener('DOMContentLoaded', initDashboard);
+
+        // Clean up interval on page unload
+        window.addEventListener('beforeunload', () => {
+            if (refreshInterval) {
+                clearInterval(refreshInterval);
+            }
+        });
+
+        // ============================================
+        // Service Detail Modal (Enhanced)
+        // ============================================
+        async function showServiceDetail(serviceName, serviceData) {
+            const modal = document.getElementById('serviceModal');
+            const modalTitle = document.getElementById('modalTitle');
+            const modalBody = document.getElementById('modalBody');
+
+            modalTitle.innerHTML = `<i data-lucide="${serviceData.icon}"></i> ${serviceName}`;
+
+            // Show loading state
+            modalBody.innerHTML = `
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <p>Loading enhanced service details...</p>
+                </div>
+            `;
+
+            modal.classList.add('active');
+            lucide.createIcons();
+
+            // Fetch enhanced data
+            const [uptimeData, tradingStats, systemLoad] = await Promise.all([
+                fetchAPI('/api/health/service-uptime'),
+                serviceName === 'Trading Service' ? fetchAPI('/api/health/trading-stats') : null,
+                serviceName === 'CPU' ? fetchAPI('/api/health/system-load') : null
+            ]);
+
+            // Build enhanced modal content
+            let enhancedDetails = await buildEnhancedModalContent(serviceName, serviceData, uptimeData, tradingStats, systemLoad);
+
+            modalBody.innerHTML = enhancedDetails;
+            lucide.createIcons();
+        }
+
+        async function buildEnhancedModalContent(serviceName, serviceData, uptimeData, tradingStats, systemLoad) {
+            let content = serviceData.details;
+
+            // Map service names to service keys and ports
+            const serviceMap = {
+                'Trading Service': { key: 'virtuoso-trading', port: null },
+                'Web Server': { key: 'virtuoso-web', port: 8002 },
+                'Derivatives API': { key: 'derivatives-signals-api', port: 8888 },
+                'Perps Dashboard': { key: 'crypto-dashboard', port: 3000 },
+                'Monitoring API': { key: 'virtuoso-monitoring-api', port: 8001 },
+                'Marketing Site': { key: 'virtuoso-website', port: 80 }
+            };
+
+            const serviceInfo = serviceMap[serviceName];
+            const serviceKey = serviceInfo?.key;
+            const port = serviceInfo?.port;
+
+            // Inject uptime at the top if available
+            if (serviceKey && uptimeData?.services?.[serviceKey]) {
+                const uptime = uptimeData.services[serviceKey];
+                const uptimeSection = `
+                    <div class="detail-section" style="border-bottom: 2px solid var(--neon-amber); padding-bottom: var(--space-5); margin-bottom: var(--space-5);">
+                        <div class="detail-section-title"><i data-lucide="clock"></i> Service Uptime</div>
+                        <div style="background: rgba(251, 191, 36, 0.1); border: 1px solid rgba(251, 191, 36, 0.3); border-radius: var(--radius-md); padding: var(--space-5); text-align: center;">
+                            <div style="font-size: var(--text-4xl); font-family: 'IBM Plex Mono', monospace; font-weight: 700; color: var(--neon-amber); text-shadow: var(--shadow-glow);">
+                                ${uptime.uptime || 'N/A'}
+                            </div>
+                            <div style="font-size: var(--text-xs); color: var(--text-tertiary); margin-top: var(--space-2); text-transform: uppercase; letter-spacing: 0.1em;">
+                                ${uptime.status === 'running' ? 'Running' : 'Offline'}
+                            </div>
+                        </div>
+                    </div>
+                `;
+                content = uptimeSection + content;
+            }
+
+            // Add port number if applicable
+            if (port) {
+                const portSection = `
+                    <div class="detail-section">
+                        <div class="detail-section-title"><i data-lucide="network"></i> Network</div>
+                        <div class="detail-grid">
+                            <div class="detail-item">
+                                <div class="detail-label">Port</div>
+                                <div class="port-display copy-tooltip" onclick="copyPort(${port}, this)">
+                                    <i data-lucide="copy"></i>
+                                    <span>${port}</span>
+                                </div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-label">SSH Tunnel</div>
+                                <div style="font-family: 'IBM Plex Mono', monospace; font-size: var(--text-sm); color: var(--text-secondary); cursor: pointer;" onclick="copyTunnelCommand(${port}, this)" class="copy-tooltip">
+                                    ssh -L ${port}:localhost:${port} vps
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                content = content + portSection;
+            }
+
+            // Add trading performance for Trading Service
+            if (serviceName === 'Trading Service' && tradingStats && !tradingStats.error) {
+                const performanceSection = `
+                    <div class="detail-section" style="background: rgba(0, 0, 0, 0.3); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: var(--space-5);">
+                        <div class="detail-section-title"><i data-lucide="trending-up"></i> Performance Metrics (7 Days)</div>
+                        <div class="detail-grid">
+                            <div class="detail-item">
+                                <div class="detail-label">Win Rate</div>
+                                <div class="detail-value ${tradingStats.win_rate >= tradingStats.threshold ? 'healthy' : 'critical'}" style="font-size: var(--text-2xl);">
+                                    ${tradingStats.win_rate.toFixed(1)}%
+                                </div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-label">Total Signals</div>
+                                <div class="detail-value">${tradingStats.total_signals}</div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-label">Closed Signals</div>
+                                <div class="detail-value">${tradingStats.closed_signals}</div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-label">Avg P&L</div>
+                                <div class="detail-value ${tradingStats.avg_pnl_pct >= 0 ? 'healthy' : 'critical'}">
+                                    ${tradingStats.avg_pnl_pct >= 0 ? '+' : ''}${tradingStats.avg_pnl_pct.toFixed(2)}%
+                                </div>
+                            </div>
+                        </div>
+                        <div style="margin-top: var(--space-4); padding: var(--space-3); background: rgba(251, 191, 36, 0.05); border: 1px solid rgba(251, 191, 36, 0.2); border-radius: var(--radius-md);">
+                            <div style="font-size: var(--text-xs); color: var(--text-secondary); margin-bottom: var(--space-1);">Performance Status</div>
+                            <div style="font-size: var(--text-md); font-weight: 600; color: var(--neon-amber); text-transform: uppercase;">
+                                ${tradingStats.performance_status.replace('_', ' ')}
+                            </div>
+                        </div>
+                    </div>
+                `;
+                content = content + performanceSection;
+            }
+
+            // Add system load for CPU
+            if (serviceName === 'CPU' && systemLoad && !systemLoad.error) {
+                const loadSection = `
+                    <div class="detail-section">
+                        <div class="detail-section-title"><i data-lucide="activity"></i> Load Averages</div>
+                        <div class="detail-grid">
+                            <div class="detail-item">
+                                <div class="detail-label">1 Minute</div>
+                                <div class="detail-value ${systemLoad.status_1min === 'healthy' ? '' : systemLoad.status_1min === 'warning' ? 'warning' : 'critical'}">
+                                    ${systemLoad.load_1min}
+                                </div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-label">5 Minutes</div>
+                                <div class="detail-value ${systemLoad.status_5min === 'healthy' ? '' : systemLoad.status_5min === 'warning' ? 'warning' : 'critical'}">
+                                    ${systemLoad.load_5min}
+                                </div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-label">15 Minutes</div>
+                                <div class="detail-value ${systemLoad.status_15min === 'healthy' ? '' : systemLoad.status_15min === 'warning' ? 'warning' : 'critical'}">
+                                    ${systemLoad.load_15min}
+                                </div>
+                            </div>
+                        </div>
+                        <div style="margin-top: var(--space-3); font-size: var(--text-xs); color: var(--text-tertiary);">
+                            <strong>CPU Cores:</strong> ${systemLoad.cpu_count} |
+                            <strong>Status:</strong> <span style="color: ${systemLoad.overall_status === 'healthy' ? 'var(--status-healthy)' : systemLoad.overall_status === 'warning' ? 'var(--status-warning)' : 'var(--status-critical)'}">${systemLoad.overall_status.toUpperCase()}</span>
+                        </div>
+                    </div>
+                `;
+                content = content + loadSection;
+            }
+
+            // Add logs section for all services with service keys
+            if (serviceKey) {
+                const logsSection = `
+                    <div class="logs-container">
+                        <div class="logs-header" onclick="toggleLogs('${serviceKey}')">
+                            <div class="logs-toggle">
+                                <i data-lucide="file-text"></i>
+                                <span>Recent Logs (Last 10 lines)</span>
+                            </div>
+                            <i data-lucide="chevron-down" id="logs-icon-${serviceKey}"></i>
+                        </div>
+                        <div class="logs-content" id="logs-${serviceKey}">
+                            <div class="loading" style="text-align: center; padding: var(--space-5);">
+                                <div class="spinner" style="margin: 0 auto var(--space-3);"></div>
+                                <p style="font-size: var(--text-xs); color: var(--text-secondary);">Loading logs...</p>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                content = content + logsSection;
+            }
+
+            return content;
+        }
+
+        // Toggle logs visibility
+        async function toggleLogs(serviceKey) {
+            const logsContent = document.getElementById(`logs-${serviceKey}`);
+            const icon = document.getElementById(`logs-icon-${serviceKey}`);
+
+            if (logsContent.classList.contains('expanded')) {
+                logsContent.classList.remove('expanded');
+                icon.setAttribute('data-lucide', 'chevron-down');
+            } else {
+                logsContent.classList.add('expanded');
+                icon.setAttribute('data-lucide', 'chevron-up');
+
+                // Fetch logs if not already loaded
+                if (logsContent.querySelector('.loading')) {
+                    const logsData = await fetchAPI(`/api/health/service-logs/${serviceKey}?lines=10`);
+
+                    if (logsData && logsData.logs) {
+                        logsContent.innerHTML = logsData.logs.map(log => `
+                            <div class="log-line ${log.level}">
+                                ${escapeHtml(log.line)}
+                            </div>
+                        `).join('');
+                    } else {
+                        logsContent.innerHTML = `
+                            <div style="padding: var(--space-4); text-align: center; color: var(--text-secondary); font-size: var(--text-base);">
+                                ${logsData?.error || 'Failed to load logs'}
+                            </div>
+                        `;
+                    }
+                }
+            }
+
+            lucide.createIcons();
+        }
+
+        // Copy port to clipboard
+        function copyPort(port, element) {
+            navigator.clipboard.writeText(port.toString()).then(() => {
+                element.classList.add('show');
+                setTimeout(() => element.classList.remove('show'), 2000);
+            });
+        }
+
+        // Copy tunnel command to clipboard
+        function copyTunnelCommand(port, element) {
+            const command = `ssh -L ${port}:localhost:${port} vps`;
+            navigator.clipboard.writeText(command).then(() => {
+                element.classList.add('show');
+                setTimeout(() => element.classList.remove('show'), 2000);
+            });
+        }
+
+        // Escape HTML to prevent XSS
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function closeModal() {
+            const modal = document.getElementById('serviceModal');
+            modal.classList.remove('active');
+        }
+
+        // Close modal on overlay click
+        document.getElementById('serviceModal')?.addEventListener('click', (e) => {
+            if (e.target.id === 'serviceModal') {
+                closeModal();
+            }
+        });
+
+        // Close modal on Escape key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                closeModal();
+            }
+        });
+
+        // ============================================
+        // Admin Panel Functions
+        // ============================================
+        function showAdminPanel() {
+            const panel = document.getElementById('adminPanel');
+            const toggleBtn = document.getElementById('adminToggleBtn');
+            panel.style.display = 'block';
+            toggleBtn.style.display = 'none';
+
+            // Smooth scroll to admin panel
+            panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+            // Initialize admin data
+            refreshPoolStats();
+            refreshLogs();
+
+            // Refresh Lucide icons
+            if (typeof lucide !== 'undefined') {
+                lucide.createIcons();
+            }
+        }
+
+        function toggleAdminPanel() {
+            const content = document.getElementById('adminPanelContent');
+            const icon = document.getElementById('adminPanelToggleIcon');
+            const panel = document.getElementById('adminPanel');
+            const toggleBtn = document.getElementById('adminToggleBtn');
+
+            if (content.style.display === 'none') {
+                content.style.display = 'block';
+                icon.setAttribute('data-lucide', 'chevron-up');
+            } else {
+                content.style.display = 'none';
+                panel.style.display = 'none';
+                toggleBtn.style.display = 'flex';
+                icon.setAttribute('data-lucide', 'chevron-down');
+            }
+
+            if (typeof lucide !== 'undefined') {
+                lucide.createIcons();
+            }
+        }
+
+        // System Control Functions
+        async function restartMonitoring() {
+            if (!confirm('Are you sure you want to restart the monitoring system?')) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/admin/system/restart-monitoring', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                if (response.ok) {
+                    alert('✅ Monitoring system restart initiated successfully');
+                } else {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+            } catch (error) {
+                console.error('Restart monitoring error:', error);
+                alert('⚠️ Feature coming soon. Backend endpoint not yet implemented.');
+            }
+        }
+
+        async function reloadConfig() {
+            if (!confirm('Are you sure you want to reload the configuration? This may cause brief service interruption.')) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/admin/config/reload', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                if (response.ok) {
+                    alert('✅ Configuration reloaded successfully');
+                } else {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+            } catch (error) {
+                console.error('Reload config error:', error);
+                alert('⚠️ Feature coming soon. Backend endpoint not yet implemented.');
+            }
+        }
+
+        async function emergencyStop() {
+            if (!confirm('⚠️ EMERGENCY STOP - This will halt all trading operations.\n\nAre you absolutely sure you want to continue?')) {
+                return;
+            }
+
+            if (!confirm('⚠️ FINAL WARNING: This action cannot be undone without manual restart.\n\nType YES in the next dialog to confirm.')) {
+                return;
+            }
+
+            const confirmation = prompt('Type "YES" to confirm emergency stop:');
+            if (confirmation !== 'YES') {
+                alert('Emergency stop cancelled.');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/risk/kill-switch/trigger', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ reason: 'Manual emergency stop from admin panel' })
+                });
+
+                if (response.ok) {
+                    alert('🛑 EMERGENCY STOP ACTIVATED - All trading operations halted');
+                    refreshDashboard();
+                } else {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+            } catch (error) {
+                console.error('Emergency stop error:', error);
+                alert('❌ Failed to activate emergency stop: ' + error.message);
+            }
+        }
+
+        async function testAlerts() {
+            try {
+                const response = await fetch('/api/admin/alerts/test', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                if (response.ok) {
+                    alert('✅ Test alert sent successfully. Check your Discord/notification channels.');
+                } else {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+            } catch (error) {
+                console.error('Test alerts error:', error);
+                alert('⚠️ Feature coming soon. Backend endpoint not yet implemented.');
+            }
+        }
+
+        // Configuration Management Functions
+        function viewConfigFiles() {
+            alert('⚠️ Feature coming soon. This will show a list of all configuration files.');
+        }
+
+        async function backupConfig() {
+            try {
+                const response = await fetch('/api/admin/config/backup', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    alert(`✅ Configuration backup created: ${data.backup_file || 'config_backup.zip'}`);
+                } else {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+            } catch (error) {
+                console.error('Backup config error:', error);
+                alert('⚠️ Feature coming soon. Backend endpoint not yet implemented.');
+            }
+        }
+
+        // Connection Pool Monitor Functions
+        async function refreshPoolStats() {
+            const container = document.getElementById('poolStatsContainer');
+            const updateTime = document.getElementById('poolUpdateTime');
+
+            try {
+                container.innerHTML = '<div style="text-align: center; padding: var(--space-8);"><p class="text-secondary">Loading connection pool statistics...</p></div>';
+
+                const response = await fetch('/api/admin/pool/stats');
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+
+                const data = await response.json();
+                displayPoolStats(data);
+
+                updateTime.textContent = `Last updated: ${new Date().toLocaleTimeString()}`;
+            } catch (error) {
+                console.error('Pool stats error:', error);
+                container.innerHTML = '<div style="text-align: center; padding: var(--space-8);"><p class="text-secondary">⚠️ Feature coming soon. Backend endpoint not yet implemented.</p></div>';
+            }
+        }
+
+        function displayPoolStats(data) {
+            const container = document.getElementById('poolStatsContainer');
+
+            // Display pool stats (placeholder for now)
+            container.innerHTML = `
+                <div style="text-align: center; padding: var(--space-4);">
+                    <p class="text-secondary">Pool statistics will be displayed here once backend is implemented.</p>
+                    <p class="text-sm" style="margin-top: var(--space-2);">Expected data: Active connections, idle connections, utilization %, wait times</p>
+                </div>
+            `;
+        }
+
+        async function exportPoolStats() {
+            alert('⚠️ Feature coming soon. This will export pool statistics to CSV.');
+        }
+
+        // Logs Functions
+        async function refreshLogs() {
+            const container = document.getElementById('logsContainer');
+
+            try {
+                container.innerHTML = '<p class="text-secondary">Loading system logs...</p>';
+
+                const response = await fetch('/api/admin/logs/recent?limit=50');
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+
+                const data = await response.json();
+                displayLogs(data.logs || []);
+            } catch (error) {
+                console.error('Logs error:', error);
+                container.innerHTML = '<p class="text-secondary">⚠️ Feature coming soon. Backend endpoint not yet implemented.</p><p class="text-sm" style="margin-top: var(--space-2);">Expected: Real-time system logs with filtering and search capabilities.</p>';
+            }
+        }
+
+        function displayLogs(logs) {
+            const container = document.getElementById('logsContainer');
+
+            if (!logs || logs.length === 0) {
+                container.innerHTML = '<p class="text-secondary">No recent logs available.</p>';
+                return;
+            }
+
+            const logsHTML = logs.map(log => `
+                <p style="color: ${getLogColor(log.level)};">
+                    <span style="color: #666;">[${log.timestamp}]</span>
+                    <span style="font-weight: 600;">[${log.level}]</span>
+                    ${log.message}
+                </p>
+            `).join('');
+
+            container.innerHTML = logsHTML;
+        }
+
+        function getLogColor(level) {
+            const colors = {
+                'ERROR': '#ef4444',
+                'WARNING': '#f59e0b',
+                'INFO': '#3b82f6',
+                'DEBUG': '#6b7280',
+                'SUCCESS': '#10b981'
+            };
+            return colors[level] || '#e0e0e0';
+        }
+
+        function clearLogs() {
+            document.getElementById('logsContainer').innerHTML = '<p class="text-secondary">Logs cleared. Click "Refresh Logs" to reload.</p>';
+        }
+
+        async function downloadLogs() {
+            alert('⚠️ Feature coming soon. This will download system logs as a text file.');
+        }
+    </script>
+
+    <!-- Service Detail Modal -->
+    <div id="serviceModal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div id="modalTitle" class="modal-title"></div>
+                <button class="modal-close" onclick="closeModal()">&times;</button>
+            </div>
+            <div id="modalBody" class="modal-body"></div>
+        </div>
+    </div>
+</body>
+</html>

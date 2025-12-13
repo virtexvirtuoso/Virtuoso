@@ -12,7 +12,7 @@ import yaml
 import hashlib
 import secrets
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import os
 import aiofiles
@@ -74,7 +74,7 @@ def verify_admin_password(password: str) -> bool:
 def create_admin_session() -> AdminSession:
     """Create new admin session."""
     token = generate_session_token()
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     expires_at = now + timedelta(hours=SESSION_TIMEOUT_HOURS)
     
     session = AdminSession(
@@ -98,7 +98,7 @@ def verify_session(token: str) -> bool:
         return False
     
     session_data = active_sessions[token]
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     
     # Check if session expired
     if now > session_data["expires_at"]:
@@ -127,7 +127,7 @@ async def admin_login(password: str = Form(...)):
         
         session = create_admin_session()
         
-        logger.info(f"Admin login successful at {datetime.utcnow()}")
+        logger.info(f"Admin login successful at {datetime.now(timezone.utc)}")
         
         return {
             "status": "success",
@@ -257,7 +257,7 @@ async def update_config_file(
             "status": "success",
             "message": f"Configuration file {filename} updated successfully",
             "backup_created": backup_path.name,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
     
     except HTTPException:
@@ -331,7 +331,7 @@ async def restore_config_backup(
             "status": "success",
             "message": f"Configuration restored from {backup_filename}",
             "current_backup": current_backup.name if original_path.exists() else None,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
     
     except HTTPException:
@@ -351,23 +351,23 @@ async def get_system_status(session_token: str = Depends(get_current_session)):
             "monitoring": {
                 "status": "active",
                 "uptime": "2h 15m",
-                "last_scan": datetime.utcnow().isoformat()
+                "last_scan": datetime.now(timezone.utc).isoformat()
             },
             "websocket": {
                 "status": "connected",
                 "connections": 3,
-                "last_message": datetime.utcnow().isoformat()
+                "last_message": datetime.now(timezone.utc).isoformat()
             },
             "exchanges": {
                 "bybit": {
                     "status": "connected",
                     "api_status": "ok",
-                    "last_update": datetime.utcnow().isoformat()
+                    "last_update": datetime.now(timezone.utc).isoformat()
                 }
             },
             "alerts": {
                 "enabled": True,
-                "last_alert": datetime.utcnow().isoformat(),
+                "last_alert": datetime.now(timezone.utc).isoformat(),
                 "total_today": 15
             }
         }
@@ -388,13 +388,13 @@ async def get_recent_logs(
         # For now, return mock data
         mock_logs = [
             {
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "level": "INFO",
                 "module": "monitoring",
                 "message": "System monitoring active"
             },
             {
-                "timestamp": (datetime.utcnow() - timedelta(minutes=1)).isoformat(),
+                "timestamp": (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat(),
                 "level": "DEBUG",
                 "module": "websocket",
                 "message": "WebSocket message received"
@@ -415,22 +415,22 @@ async def get_recent_logs(
 @router.get("/dashboard")
 async def admin_dashboard_page():
     """Serve the admin dashboard HTML page."""
-    return FileResponse(TEMPLATE_DIR / "admin_dashboard.html")
+    return FileResponse(TEMPLATE_DIR / "admin" / "admin_dashboard.html")
 
 @router.get("/dashboard/v2")
 async def admin_dashboard_v2_page():
     """Serve the admin dashboard v2 HTML page."""
-    return FileResponse(TEMPLATE_DIR / "admin_dashboard_v2.html")
+    return FileResponse(TEMPLATE_DIR / "admin" / "admin_dashboard_v2.html")
 
 @router.get("/login")
 async def admin_login_page():
     """Serve the admin login page."""
-    return FileResponse(TEMPLATE_DIR / "admin_login.html")
+    return FileResponse(TEMPLATE_DIR / "admin" / "admin_login.html")
 
 @router.get("/config-editor")
 async def admin_config_editor_page():
     """Serve the optimized config editor page."""
-    return FileResponse(TEMPLATE_DIR / "admin_config_editor_optimized.html")
+    return FileResponse(TEMPLATE_DIR / "admin" / "admin_config_editor_optimized.html")
 
 @router.get("/monitoring/live-metrics")
 async def get_admin_monitoring_metrics():
@@ -505,7 +505,7 @@ async def get_bandwidth_history(limit: int = 60):
         return {
             "history": history,
             "summary": summary,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
         
     except Exception as e:

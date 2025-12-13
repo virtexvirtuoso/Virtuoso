@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<!--
+    Alpha Analysis Page - Terminal-style confluence analysis display
+
+    NAMING TRANSITION: "Confluence Analysis" → "Alpha Analysis"
+    - Legacy endpoint names use "confluence" (e.g., confluence-analysis-page, confluence-analysis/{symbol})
+    - User-facing branding now uses "Alpha Analysis" / "Alpha Score"
+    - Do not rename endpoints to avoid breaking existing links
+
+    Navigation flow:
+    - Linked from: /api/dashboard/mobile (Alpha Pulse cards in dashboard_mobile_v3.html)
+    - Back button returns to: /api/dashboard/mobile
+    - Data fetched from: /api/dashboard/confluence-analysis/{symbol}
+-->
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Alpha Analysis - Virtuoso</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --neon-amber: #fbbf24;
+            --neon-amber-dim: #b38600;
+            --dark-bg: #0a0a0a;
+            --dark-bg-secondary: #111111;
+            --dark-border: #222222;
+            --text-primary: #e0e0e0;
+            --text-secondary: #9ca3af;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: var(--dark-bg);
+            color: var(--neon-amber);
+            font-family: 'IBM Plex Mono', 'SF Mono', monospace;
+            /* Dynamic font size: 10px on mobile, scales up to 13px on desktop */
+            font-size: clamp(10px, 2.5vw, 13px);
+            line-height: 1.5;
+            min-height: 100vh;
+        }
+
+        /* Header */
+        .header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 50px;
+            background: var(--dark-bg-secondary);
+            border-bottom: 1px solid var(--dark-border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 16px;
+            z-index: 1000;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .brand-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            filter: drop-shadow(0 0 6px rgba(251, 191, 36, 0.6));
+            position: relative;
+            top: -1px;
+        }
+
+        .brand-icon svg {
+            display: block;
+            vertical-align: middle;
+        }
+
+        .brand-logo {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--neon-amber);
+            text-shadow: 0 0 10px rgba(251, 191, 36, 0.5);
+            letter-spacing: -0.5px;
+        }
+
+        .brand-divider {
+            color: var(--dark-border);
+            font-weight: 300;
+        }
+
+        .brand-title {
+            font-size: 14px;
+            color: var(--neon-amber);
+            font-weight: 500;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .btn {
+            background: transparent;
+            color: var(--neon-amber);
+            border: 1px solid var(--dark-border);
+            padding: 6px 12px;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 12px;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            border-radius: 4px;
+            transition: all 0.2s;
+        }
+
+        .btn:hover {
+            border-color: var(--neon-amber);
+            box-shadow: 0 0 10px rgba(251, 191, 36, 0.2);
+        }
+
+        .btn-primary {
+            background: var(--neon-amber);
+            color: var(--dark-bg);
+            border-color: var(--neon-amber);
+        }
+
+        .btn-primary:hover {
+            box-shadow: 0 0 15px rgba(251, 191, 36, 0.4);
+        }
+
+        /* Main Content */
+        .main {
+            padding: 66px 16px 20px 16px;
+        }
+
+        .terminal-container {
+            max-width: 600px;
+            margin: 0 auto;
+            white-space: pre-wrap;
+            word-break: break-word;
+            overflow-x: hidden;
+        }
+
+        #analysis-content {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .loading {
+            text-align: left;
+            margin-top: 20px;
+        }
+
+        .terminal-line {
+            opacity: 0;
+            animation: fadeIn 0.1s forwards;
+        }
+
+        @keyframes fadeIn {
+            to { opacity: 1; }
+        }
+
+        .cursor {
+            display: inline-block;
+            width: 8px;
+            height: 14px;
+            background: var(--neon-amber);
+            animation: blink 0.8s infinite;
+            vertical-align: middle;
+            margin-left: 2px;
+        }
+
+        @keyframes blink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0; }
+        }
+
+        .terminal-prompt {
+            color: #22c55e;
+        }
+
+        .terminal-command {
+            color: var(--neon-amber);
+        }
+
+        .terminal-output {
+            color: var(--text-secondary);
+        }
+
+        .terminal-success {
+            color: #22c55e;
+        }
+
+        .terminal-warning {
+            color: #f59e0b;
+        }
+
+        .terminal-info {
+            color: #3b82f6;
+        }
+
+        .terminal-brand {
+            color: var(--neon-amber);
+            font-weight: 600;
+            text-shadow: 0 0 10px rgba(251, 191, 36, 0.5);
+        }
+
+        .progress-bar {
+            display: inline-block;
+            width: 200px;
+            height: 12px;
+            background: var(--dark-border);
+            border-radius: 2px;
+            overflow: hidden;
+            margin-left: 10px;
+            vertical-align: middle;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--neon-amber), #f59e0b);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        .spinner {
+            display: inline-block;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        .error {
+            color: #ef4444;
+            text-align: center;
+            margin-top: 50px;
+        }
+
+        /* Footer */
+        .footer {
+            text-align: center;
+            padding: 20px;
+            color: var(--text-secondary);
+            font-size: 11px;
+            border-top: 1px solid var(--dark-border);
+            margin-top: 30px;
+        }
+
+        .footer a {
+            color: var(--neon-amber);
+            text-decoration: none;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .header {
+                height: 44px;
+                padding: 0 10px;
+            }
+
+            .brand-logo {
+                font-size: clamp(14px, 4vw, 18px);
+            }
+
+            .brand-title {
+                display: none;
+            }
+
+            .brand-divider {
+                display: none;
+            }
+
+            .main {
+                padding: 56px 10px 16px 10px;
+            }
+
+            .terminal-container {
+                max-width: 100%;
+            }
+
+            .btn {
+                font-size: clamp(10px, 2.5vw, 12px);
+                padding: 5px 10px;
+            }
+        }
+
+        @media (max-width: 400px) {
+            .main {
+                padding: 52px 6px 12px 6px;
+            }
+
+            .btn {
+                padding: 4px 8px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="brand">
+            <span class="brand-icon">
+                <svg width="22" height="22" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M2 38L14 26L22 34L38 14" stroke="#fbbf24" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M28 14H38V24" stroke="#fbbf24" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+            </span>
+            <span class="brand-logo">VIRTUOSO</span>
+            <span class="brand-divider">|</span>
+            <span class="brand-title" id="header-symbol">Alpha Analysis</span>
+        </div>
+        <div class="header-actions">
+            <a href="/api/dashboard/mobile" class="btn">Back</a>
+            <button onclick="downloadAnalysis()" class="btn btn-primary">Download</button>
+        </div>
+    </header>
+
+    <main class="main">
+        <div class="terminal-container">
+            <div id="analysis-content" class="loading">Loading analysis...</div>
+        </div>
+        <div class="footer">
+            <span id="timestamp"></span> | <a href="/">virtuosocrypto.com</a>
+        </div>
+    </main>
+
+    <script>
+        let currentAnalysis = '';
+        let currentSymbol = '';
+        let isFirstLoad = true;
+
+        // Terminal animation sequence
+        const getTerminalSequence = (symbol) => [
+            { type: 'output', text: '', delay: 0 },
+            { type: 'brand', text: '  ◈ VIRTUOSO ALPHA INTELLIGENCE', delay: 50 },
+            { type: 'output', text: '', delay: 100 },
+            { type: 'warning', text: `  ► Scanning ${symbol}...`, delay: 150 },
+            { type: 'output', text: '', delay: 200 },
+            { type: 'success', text: '    ✓ Market data locked', delay: 120 },
+            { type: 'success', text: '    ✓ 6 dimensions analyzed', delay: 100 },
+            { type: 'success', text: '    ✓ Alpha signals extracted', delay: 120 },
+            { type: 'output', text: '', delay: 150 },
+            { type: 'brand', text: '  ◈ RENDERING REPORT', delay: 100 },
+            { type: 'output', text: '', delay: 250 },
+        ];
+
+        async function typeTerminalLine(container, line, index) {
+            return new Promise(resolve => {
+                setTimeout(() => {
+                    const div = document.createElement('div');
+                    div.className = 'terminal-line';
+                    div.style.animationDelay = '0s';
+
+                    if (line.type === 'prompt') {
+                        div.innerHTML = `<span class="terminal-prompt">${line.text}</span>`;
+                    } else if (line.type === 'command') {
+                        div.innerHTML = `<span class="terminal-command">${line.text}</span><span class="cursor"></span>`;
+                    } else if (line.type === 'success') {
+                        div.innerHTML = `<span class="terminal-success">${line.text}</span>`;
+                    } else if (line.type === 'warning') {
+                        div.innerHTML = `<span class="terminal-warning">${line.text}</span>`;
+                    } else if (line.type === 'info') {
+                        div.innerHTML = `<span class="terminal-info">${line.text}</span>`;
+                    } else if (line.type === 'brand') {
+                        div.innerHTML = `<span class="terminal-brand">${line.text}</span>`;
+                    } else {
+                        div.innerHTML = `<span class="terminal-output">${line.text}</span>`;
+                    }
+
+                    container.appendChild(div);
+
+                    // Remove cursor from previous command line
+                    const cursors = container.querySelectorAll('.cursor');
+                    if (cursors.length > 1) {
+                        cursors[0].remove();
+                    }
+
+                    // Scroll to bottom
+                    container.scrollTop = container.scrollHeight;
+
+                    resolve();
+                }, line.delay);
+            });
+        }
+
+        async function runTerminalAnimation(symbol) {
+            const container = document.getElementById('analysis-content');
+            container.innerHTML = '';
+            container.classList.add('loading');
+
+            const sequence = getTerminalSequence(symbol);
+
+            for (let i = 0; i < sequence.length; i++) {
+                await typeTerminalLine(container, sequence[i], i);
+            }
+
+            // Small pause before showing actual content
+            await new Promise(r => setTimeout(r, 400));
+        }
+
+        async function loadAnalysis() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const symbol = urlParams.get('symbol') || 'BTCUSDT';
+            currentSymbol = symbol;
+
+            const container = document.getElementById('analysis-content');
+
+            try {
+                // Only show animation on first load
+                if (isFirstLoad) {
+                    await runTerminalAnimation(symbol);
+                    isFirstLoad = false;
+                }
+
+                const response = await fetch(`/api/dashboard/confluence-analysis/${symbol}`);
+                const data = await response.json();
+
+                if (data.error) {
+                    container.innerHTML = `<div class="error">Error loading analysis: ${data.error}</div>`;
+                    return;
+                }
+
+                currentAnalysis = data.analysis || `Detailed analysis for ${symbol} coming soon!`;
+
+                // Remove ANSI color codes
+                const cleanAnalysis = currentAnalysis.replace(/\x1b\[[0-9;]*m/g, '');
+
+                // Fade transition to actual content
+                container.style.opacity = '0';
+                setTimeout(() => {
+                    container.textContent = cleanAnalysis;
+                    container.classList.remove('loading');
+                    container.style.opacity = '1';
+                    container.style.transition = 'opacity 0.3s ease';
+                }, 200);
+
+                // Update timestamp
+                const now = new Date();
+                document.getElementById('timestamp').textContent =
+                    `Updated: ${now.toLocaleTimeString()} ${now.toLocaleDateString()}`;
+
+                // Update header with symbol name
+                document.getElementById('header-symbol').textContent = symbol;
+
+            } catch (error) {
+                container.innerHTML = `<div class="error">Failed to load analysis: ${error.message}</div>`;
+            }
+        }
+
+        function downloadAnalysis() {
+            if (!currentAnalysis) return;
+
+            const blob = new Blob([currentAnalysis], { type: 'text/plain' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `alpha_analysis_${currentSymbol}_${new Date().toISOString().slice(0,10)}.txt`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+        }
+
+        // Auto-refresh every 60 seconds (without animation)
+        setInterval(loadAnalysis, 60000);
+
+        // Load on page load
+        loadAnalysis();
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                window.location.href = '/api/dashboard/mobile';
+            } else if (e.key === 'd' && (e.ctrlKey || e.metaKey)) {
+                e.preventDefault();
+                downloadAnalysis();
+            }
+        });
+    </script>
+</body>
+</html>

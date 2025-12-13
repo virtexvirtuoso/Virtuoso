@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Virtuoso News Ticker</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+        :root {
+            /* Virtuoso Brand Colors - matching mobile v3 */
+            --neon-amber: #fbbf24;
+            --neon-cyan: #06B6D4;
+            --accent-positive: #4CAF50;
+            --accent-negative: #ff5252;
+
+            /* Dark Mode */
+            --bg-primary: #0a0a0a;
+            --bg-secondary: #111111;
+            --bg-tertiary: #1a1a1a;
+            --border-color: #222222;
+            --text-primary: #e0e0e0;
+            --text-secondary: #9ca3af;
+            --text-tertiary: #6b7280;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            gap: 40px;
+        }
+
+        /* ============================================
+           NEWS TICKER DONGLE - Compact Embeddable Widget
+           Based on mobile v3 news ticker patterns
+           ============================================ */
+
+        .news-ticker-dongle {
+            width: 100%;
+            max-width: 800px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        /* Collapsed Mode (default) - Single line ticker */
+        .news-ticker-dongle.collapsed {
+            border-radius: 24px;
+        }
+
+        .news-ticker-dongle.collapsed .dongle-header {
+            padding: 8px 16px;
+        }
+
+        .news-ticker-dongle.collapsed .dongle-content {
+            max-height: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+
+        .news-ticker-dongle.collapsed .expand-icon {
+            transform: rotate(0deg);
+        }
+
+        /* Header */
+        .dongle-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 16px;
+            background: linear-gradient(135deg, var(--bg-tertiary) 0%, var(--bg-secondary) 100%);
+            border-bottom: 1px solid var(--border-color);
+            cursor: pointer;
+            transition: padding 0.3s ease;
+        }
+
+        .dongle-header:hover {
+            background: var(--bg-tertiary);
+        }
+
+        .dongle-logo {
+            width: 24px;
+            height: 24px;
+            flex-shrink: 0;
+        }
+
+        .dongle-logo svg {
+            width: 100%;
+            height: 100%;
+        }
+
+        .dongle-title {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-primary);
+            white-space: nowrap;
+        }
+
+        .dongle-title span {
+            color: var(--neon-amber);
+        }
+
+        /* Ticker Track - Horizontal Scroll */
+        .ticker-track-wrapper {
+            flex: 1;
+            overflow: hidden;
+            margin: 0 12px;
+        }
+
+        .ticker-track {
+            display: inline-flex;
+            animation: ticker-scroll 60s linear infinite;
+            white-space: nowrap;
+        }
+
+        .ticker-track:hover {
+            animation-play-state: paused;
+        }
+
+        @keyframes ticker-scroll {
+            0% { transform: translateX(0); }
+            100% { transform: translateX(-50%); }
+        }
+
+        .ticker-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 0 16px;
+            font-size: 12px;
+            color: var(--text-primary);
+        }
+
+        .ticker-item a {
+            color: var(--text-primary);
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+
+        .ticker-item a:hover {
+            color: var(--neon-amber);
+        }
+
+        .ticker-source {
+            color: var(--neon-cyan);
+            font-weight: 600;
+            font-size: 11px;
+        }
+
+        .ticker-time {
+            color: var(--text-tertiary);
+            font-size: 10px;
+        }
+
+        .ticker-separator {
+            color: var(--neon-amber);
+            opacity: 0.5;
+        }
+
+        /* Header Controls */
+        .dongle-controls {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-left: auto;
+        }
+
+        .live-badge {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 10px;
+            font-weight: 600;
+            color: var(--accent-positive);
+        }
+
+        .live-dot {
+            width: 6px;
+            height: 6px;
+            background: var(--accent-positive);
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .expand-btn {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            padding: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: color 0.2s, transform 0.3s;
+        }
+
+        .expand-btn:hover {
+            color: var(--neon-amber);
+        }
+
+        .expand-icon {
+            width: 16px;
+            height: 16px;
+            transition: transform 0.3s ease;
+            transform: rotate(180deg);
+        }
+
+        /* Expanded Content */
+        .dongle-content {
+            max-height: 400px;
+            overflow-y: auto;
+            transition: max-height 0.3s ease, padding 0.3s ease;
+            padding: 0;
+        }
+
+        .dongle-content.expanded {
+            padding: 8px 0;
+        }
+
+        /* News List Items */
+        .news-list-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            padding: 10px 16px;
+            cursor: pointer;
+            transition: background 0.2s;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .news-list-item:last-child {
+            border-bottom: none;
+        }
+
+        .news-list-item:hover {
+            background: var(--bg-tertiary);
+        }
+
+        .news-source-badge {
+            flex-shrink: 0;
+            width: 32px;
+            height: 32px;
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            font-weight: 700;
+            color: var(--neon-cyan);
+        }
+
+        .news-list-content {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .news-list-title {
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-primary);
+            line-height: 1.4;
+            margin-bottom: 4px;
+        }
+
+        .news-list-meta {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 11px;
+            color: var(--text-tertiary);
+        }
+
+        .news-list-source {
+            color: var(--neon-cyan);
+            font-weight: 600;
+        }
+
+        /* Scrollbar */
+        .dongle-content::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        .dongle-content::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .dongle-content::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 2px;
+        }
+
+        .dongle-content::-webkit-scrollbar-thumb:hover {
+            background: var(--neon-amber);
+        }
+
+        /* Footer */
+        .dongle-footer {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 16px;
+            background: var(--bg-tertiary);
+            border-top: 1px solid var(--border-color);
+            font-size: 10px;
+            color: var(--text-tertiary);
+        }
+
+        .dongle-footer a {
+            color: var(--neon-amber);
+            text-decoration: none;
+        }
+
+        /* Loading State */
+        .loading-text {
+            color: var(--text-secondary);
+            font-size: 12px;
+            padding: 0 16px;
+        }
+
+        /* Demo Section */
+        .demo-section {
+            text-align: center;
+            color: var(--text-secondary);
+            font-size: 12px;
+        }
+
+        .demo-section h3 {
+            color: var(--text-primary);
+            font-size: 14px;
+            margin-bottom: 8px;
+        }
+
+        /* Source Colors */
+        .source-decrypt { color: #06B6D4 !important; }
+        .source-theblock { color: #3b82f6 !important; }
+        .source-cointelegraph { color: #22c55e !important; }
+        .source-watcherguru { color: #10b981 !important; }
+        .source-cryptopotato { color: #f59e0b !important; }
+        .source-cryptoslate { color: #8b5cf6 !important; }
+        .source-cryptonews { color: #ef4444 !important; }
+        .source-smartliquidity { color: #ec4899 !important; }
+    </style>
+</head>
+<body>
+    <!-- Demo: Collapsed Ticker Dongle -->
+    <div class="demo-section">
+        <h3>Collapsed Mode (Click to expand)</h3>
+    </div>
+
+    <div class="news-ticker-dongle collapsed" id="dongle1">
+        <div class="dongle-header" onclick="toggleDongle('dongle1')">
+            <div class="dongle-logo">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"></polyline>
+                    <polyline points="16 7 22 7 22 13"></polyline>
+                </svg>
+            </div>
+            <span class="dongle-title"><span>Virtuoso</span> News</span>
+
+            <div class="ticker-track-wrapper">
+                <div class="ticker-track" id="tickerTrack1">
+                    <span class="loading-text">Loading news...</span>
+                </div>
+            </div>
+
+            <div class="dongle-controls">
+                <div class="live-badge">
+                    <div class="live-dot"></div>
+                    LIVE
+                </div>
+                <button class="expand-btn">
+                    <svg class="expand-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+        <div class="dongle-content" id="dongleContent1">
+            <!-- News list items populated by JavaScript -->
+        </div>
+
+        <div class="dongle-footer" id="dongleFooter1" style="display: none;">
+            <span id="footerStats1">Loading...</span>
+            <span>Powered by <a href="/mobile">Virtuoso</a></span>
+        </div>
+    </div>
+
+    <!-- Demo: Expanded Dongle -->
+    <div class="demo-section">
+        <h3>Expanded Mode</h3>
+    </div>
+
+    <div class="news-ticker-dongle" id="dongle2">
+        <div class="dongle-header" onclick="toggleDongle('dongle2')">
+            <div class="dongle-logo">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"></polyline>
+                    <polyline points="16 7 22 7 22 13"></polyline>
+                </svg>
+            </div>
+            <span class="dongle-title"><span>Virtuoso</span> News</span>
+
+            <div class="ticker-track-wrapper">
+                <div class="ticker-track" id="tickerTrack2">
+                    <span class="loading-text">Loading news...</span>
+                </div>
+            </div>
+
+            <div class="dongle-controls">
+                <div class="live-badge">
+                    <div class="live-dot"></div>
+                    LIVE
+                </div>
+                <button class="expand-btn">
+                    <svg class="expand-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+        <div class="dongle-content expanded" id="dongleContent2">
+            <!-- News list items populated by JavaScript -->
+        </div>
+
+        <div class="dongle-footer" id="dongleFooter2">
+            <span id="footerStats2">Loading...</span>
+            <span>Powered by <a href="/mobile">Virtuoso</a></span>
+        </div>
+    </div>
+
+    <script>
+        // ============================================
+        // NEWS TICKER DONGLE
+        // Same service patterns as dashboard_mobile_v3.html
+        // ============================================
+
+        // Configuration
+        const NEWS_CACHE_KEY = 'virtuoso_news_dongle_cache';
+        const NEWS_REFRESH_INTERVAL = 300000; // 5 minutes
+        const MAX_NEWS_ITEMS = 25;
+
+        // State
+        let allNews = [];
+        let refreshTimer = null;
+
+        // Source colors for styling
+        const sourceColors = {
+            'Decrypt': 'source-decrypt',
+            'The Block': 'source-theblock',
+            'Cointelegraph': 'source-cointelegraph',
+            'WatcherGuru': 'source-watcherguru',
+            'CryptoPotato': 'source-cryptopotato',
+            'CryptoSlate': 'source-cryptoslate',
+            'CryptoNews': 'source-cryptonews',
+            'SmartLiquidity': 'source-smartliquidity'
+        };
+
+        // ============================================
+        // TIME FORMATTING - Fixed for seconds timestamps
+        // ============================================
+
+        function getTimeAgo(timestamp) {
+            // API returns timestamp in SECONDS, not milliseconds
+            const now = Math.floor(Date.now() / 1000);
+            const diff = now - timestamp;
+
+            if (diff < 0) return 'just now'; // Future timestamp protection
+            if (diff < 60) return 'just now';
+            if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+            if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+            return `${Math.floor(diff / 86400)}d ago`;
+        }
+
+        // ============================================
+        // CACHING SERVICE
+        // ============================================
+
+        function getNewsFromCache() {
+            try {
+                const cached = localStorage.getItem(NEWS_CACHE_KEY);
+                if (cached) {
+                    const { news, timestamp } = JSON.parse(cached);
+                    if (Date.now() - timestamp < NEWS_REFRESH_INTERVAL) {
+                        return news;
+                    }
+                }
+            } catch (e) {
+                console.warn('Cache read failed:', e);
+            }
+            return null;
+        }
+
+        function saveNewsToCache(news) {
+            try {
+                localStorage.setItem(NEWS_CACHE_KEY, JSON.stringify({
+                    news: news,
+                    timestamp: Date.now()
+                }));
+            } catch (e) {
+                console.warn('Cache save failed:', e);
+            }
+        }
+
+        // ============================================
+        // RENDERING
+        // ============================================
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function renderTicker(trackId, news) {
+            const track = document.getElementById(trackId);
+            if (!track || news.length === 0) {
+                track.innerHTML = '<span class="loading-text">No news available</span>';
+                return;
+            }
+
+            const items = news.slice(0, 15).map(item => {
+                const sourceClass = sourceColors[item.source] || '';
+                const timeAgo = item.timestamp ? getTimeAgo(item.timestamp) : '';
+                const url = item.link || item.url || '#';
+                const title = (item.title || '').substring(0, 80);
+
+                return `
+                    <span class="ticker-item">
+                        <span class="ticker-source ${sourceClass}">${item.source}</span>
+                        <a href="${url}" target="_blank">${escapeHtml(title)}</a>
+                        <span class="ticker-time">${timeAgo}</span>
+                    </span>
+                    <span class="ticker-separator">●</span>
+                `;
+            }).join('');
+
+            // Duplicate for seamless loop
+            track.innerHTML = items + items;
+
+            // Adjust animation speed
+            setTimeout(() => {
+                const contentWidth = track.scrollWidth / 2;
+                const speed = Math.max(40, contentWidth / 40);
+                track.style.animationDuration = `${speed}s`;
+            }, 100);
+        }
+
+        function renderNewsList(contentId, news) {
+            const content = document.getElementById(contentId);
+            if (!content) return;
+
+            if (news.length === 0) {
+                content.innerHTML = '<div class="loading-text" style="padding: 20px; text-align: center;">No news available</div>';
+                return;
+            }
+
+            content.innerHTML = news.slice(0, MAX_NEWS_ITEMS).map(item => {
+                const sourceClass = sourceColors[item.source] || '';
+                const initials = (item.source || 'N').substring(0, 2).toUpperCase();
+                const timeAgo = item.timestamp ? getTimeAgo(item.timestamp) : '';
+                const url = item.link || item.url || '#';
+
+                return `
+                    <div class="news-list-item" onclick="window.open('${url}', '_blank')">
+                        <div class="news-source-badge ${sourceClass}">${initials}</div>
+                        <div class="news-list-content">
+                            <div class="news-list-title">${escapeHtml(item.title || '')}</div>
+                            <div class="news-list-meta">
+                                <span class="news-list-source ${sourceClass}">${item.source}</span>
+                                <span>•</span>
+                                <span>${timeAgo}</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function updateFooter(footerId, newsCount) {
+            const footer = document.getElementById(footerId);
+            if (footer) {
+                footer.textContent = `Updated just now • ${newsCount} items`;
+            }
+        }
+
+        function updateAllDongles() {
+            // Update both demo dongles
+            ['1', '2'].forEach(id => {
+                renderTicker(`tickerTrack${id}`, allNews);
+                renderNewsList(`dongleContent${id}`, allNews);
+                updateFooter(`footerStats${id}`, allNews.length);
+            });
+        }
+
+        // ============================================
+        // TOGGLE EXPAND/COLLAPSE
+        // ============================================
+
+        function toggleDongle(dongleId) {
+            const dongle = document.getElementById(dongleId);
+            const content = dongle.querySelector('.dongle-content');
+            const footer = dongle.querySelector('.dongle-footer');
+
+            dongle.classList.toggle('collapsed');
+
+            if (dongle.classList.contains('collapsed')) {
+                content.classList.remove('expanded');
+                footer.style.display = 'none';
+            } else {
+                content.classList.add('expanded');
+                footer.style.display = 'flex';
+            }
+        }
+
+        // ============================================
+        // NEWS LOADING SERVICE
+        // ============================================
+
+        async function loadNews() {
+            // 1. INSTANT: Show cached news immediately
+            const cached = getNewsFromCache();
+            if (cached && cached.length > 0) {
+                allNews = cached;
+                updateAllDongles();
+            }
+
+            // 2. BACKGROUND: Fetch fresh news
+            try {
+                const response = await fetch('/api/dashboard/news?limit=' + MAX_NEWS_ITEMS);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+                const data = await response.json();
+
+                if (data.news && data.news.length > 0) {
+                    allNews = data.news;
+                    saveNewsToCache(allNews);
+                    updateAllDongles();
+                }
+            } catch (error) {
+                console.error('Error loading news:', error);
+                if (!cached || cached.length === 0) {
+                    ['1', '2'].forEach(id => {
+                        const track = document.getElementById(`tickerTrack${id}`);
+                        if (track) track.innerHTML = '<span class="loading-text">Unable to load news</span>';
+                    });
+                }
+            }
+        }
+
+        function startNewsRefresh() {
+            if (refreshTimer) clearInterval(refreshTimer);
+            refreshTimer = setInterval(loadNews, NEWS_REFRESH_INTERVAL);
+        }
+
+        // ============================================
+        // INITIALIZATION
+        // ============================================
+
+        document.addEventListener('DOMContentLoaded', () => {
+            loadNews();
+            startNewsRefresh();
+        });
+    </script>
+</body>
+</html>
