@@ -5853,13 +5853,17 @@
             if (filter !== 'all') {
                 // Signal filter should match 'signal', 'high_confluence', and 'confluence' types
                 if (filter === 'signal') {
-                    filteredAlerts = alerts.filter(a =>
-                        a.type === 'signal' ||
-                        a.type === 'high_confluence' ||
-                        a.type === 'confluence'  // Include confluence alerts - these are LONG/SHORT trading signals
-                    );
+                    filteredAlerts = alerts.filter(a => {
+                        const alertType = a.alert_type || a.details?.type || '';
+                        return alertType === 'signal' ||
+                               alertType === 'high_confluence' ||
+                               alertType === 'confluence';  // Include confluence alerts - these are LONG/SHORT trading signals
+                    });
                 } else {
-                    filteredAlerts = alerts.filter(a => a.type === filter);
+                    filteredAlerts = alerts.filter(a => {
+                        const alertType = a.alert_type || a.details?.type || '';
+                        return alertType === filter;
+                    });
                 }
             }
 
@@ -6692,7 +6696,7 @@
             const message = alert.message || '';
             const details = alert.details || {};
             const level = alert.level || 'warning';
-            const alertType = alert.type || '';
+            const alertType = alert.alert_type || alert.details?.type || '';
 
             // Parse timestamp
             let alertDate;
