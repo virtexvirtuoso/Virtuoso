@@ -754,7 +754,7 @@ async def get_recent_alerts(limit: int = 50) -> List[Dict[str, Any]]:
                     for alert in db_alerts:
                         formatted_alert = {
                             'id': alert.get('alert_id', str(alert.get('id', ''))),
-                            'type': alert.get('alert_type', 'system'),
+                            'alert_type': alert.get('alert_type', 'system'),
                             'level': alert.get('severity', 'info').lower(),
                             'symbol': alert.get('symbol', 'SYSTEM'),
                             'message': alert.get('message', alert.get('title', '')),
