@@ -2719,6 +2719,215 @@
             letter-spacing: 0.3px;
         }
 
+        /* Liquidation Heatmap Styles */
+        .liquidation-heatmap-panel {
+            grid-column: 1 / -1;
+        }
+
+        .liq-heatmap-controls {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+        }
+
+        .liq-heatmap-symbol-selector {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .liq-heatmap-symbol-selector label {
+            font-size: 12px;
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+
+        .liq-heatmap-symbol-selector select {
+            padding: 6px 12px;
+            background: var(--bg-card);
+            border: 1px solid var(--border-light);
+            border-radius: 6px;
+            color: var(--text-primary);
+            font-size: 12px;
+            font-family: 'IBM Plex Mono', monospace;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .liq-heatmap-symbol-selector select:hover {
+            border-color: var(--border-glow);
+        }
+
+        .liq-heatmap-symbol-selector select:focus {
+            outline: none;
+            border-color: var(--neon-amber);
+        }
+
+        .liq-heatmap-timeframe-selector {
+            display: flex;
+            gap: 4px;
+        }
+
+        .liq-heatmap-tf-btn {
+            padding: 6px 12px;
+            background: var(--bg-card);
+            border: 1px solid var(--border-light);
+            border-radius: 6px;
+            color: var(--text-secondary);
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .liq-heatmap-tf-btn:hover {
+            background: var(--bg-panel);
+            border-color: var(--border-glow);
+            color: var(--text-primary);
+        }
+
+        .liq-heatmap-tf-btn.active {
+            background: rgba(251, 191, 36, 0.2);
+            border-color: var(--neon-amber);
+            color: var(--neon-amber);
+        }
+
+        .liq-heatmap-stats {
+            display: flex;
+            gap: 24px;
+            margin-left: auto;
+        }
+
+        .liq-heatmap-stat {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+        }
+
+        .liq-heatmap-stat-label {
+            font-size: 10px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .liq-heatmap-stat-value {
+            font-size: 14px;
+            font-weight: 600;
+            font-family: 'IBM Plex Mono', monospace;
+        }
+
+        .liq-heatmap-stat-value.long {
+            color: var(--accent-positive);
+        }
+
+        .liq-heatmap-stat-value.short {
+            color: var(--accent-negative);
+        }
+
+        .liq-heatmap-container {
+            background: var(--bg-card);
+            border: 1px solid var(--border-light);
+            border-radius: 8px;
+            padding: 8px;
+            position: relative;
+        }
+
+        .liq-heatmap-legend {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-top: 16px;
+            padding: 12px 16px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 8px;
+        }
+
+        .liq-heatmap-legend-left {
+            display: flex;
+            align-items: center;
+            gap: 24px;
+        }
+
+        .liq-heatmap-legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .liq-heatmap-legend-color {
+            width: 16px;
+            height: 16px;
+            border-radius: 3px;
+        }
+
+        .liq-heatmap-legend-color.long-liq {
+            background: linear-gradient(180deg, #22c55e 0%, #16a34a 100%);
+        }
+
+        .liq-heatmap-legend-color.short-liq {
+            background: linear-gradient(180deg, #ef4444 0%, #dc2626 100%);
+        }
+
+        .liq-heatmap-legend-text {
+            font-size: 11px;
+            color: var(--text-secondary);
+        }
+
+        .liq-heatmap-legend-gradient {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            width: 200px;
+        }
+
+        .liq-heatmap-legend-gradient-bar {
+            height: 12px;
+            border-radius: 6px;
+            background: linear-gradient(to right,
+                rgba(251, 191, 36, 0.1) 0%,
+                rgba(251, 191, 36, 0.3) 25%,
+                rgba(251, 191, 36, 0.5) 50%,
+                rgba(251, 191, 36, 0.7) 75%,
+                rgba(251, 191, 36, 1) 100%
+            );
+        }
+
+        .liq-heatmap-legend-gradient-labels {
+            display: flex;
+            justify-content: space-between;
+            font-size: 9px;
+            color: var(--text-muted);
+        }
+
+        .liq-heatmap-current-price-indicator {
+            position: absolute;
+            left: 60px;
+            right: 80px;
+            height: 2px;
+            background: var(--neon-cyan);
+            box-shadow: 0 0 8px var(--neon-cyan);
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        .liq-heatmap-current-price-label {
+            position: absolute;
+            right: -75px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: var(--neon-cyan);
+            color: #000;
+            font-size: 10px;
+            font-weight: 600;
+            font-family: 'IBM Plex Mono', monospace;
+            padding: 2px 6px;
+            border-radius: 3px;
+            white-space: nowrap;
+        }
+
         /* Responsive */
         @media (max-width: 1200px) {
             .correlation-main-grid {
@@ -5123,6 +5332,88 @@
                             </div>
                         </div>
                     </div>
+
+                    <!-- Liquidation Heatmap Panel - COMMENTED OUT (standalone version at /liquidation-heatmap)
+                    <div class="analytics-panel full-width liquidation-heatmap-panel">
+                        <div class="analytics-panel-header">
+                            <div class="analytics-panel-title">
+                                <i data-lucide="flame"></i>
+                                Liquidation Heatmap
+                            </div>
+                            <div style="display: flex; gap: 8px; align-items: center;">
+                                <span class="analytics-panel-badge beta">DEMO</span>
+                            </div>
+                        </div>
+                        <div class="analytics-panel-body">
+                            <div class="liq-heatmap-controls">
+                                <div class="liq-heatmap-symbol-selector">
+                                    <label>Symbol:</label>
+                                    <select v-model="liqHeatmapSelectedSymbol" @change="loadLiquidationHeatmap()">
+                                        <option v-for="sym in liqHeatmapSymbols" :key="sym" :value="sym">
+                                            {{ sym.replace('USDT', '') }}
+                                        </option>
+                                    </select>
+                                </div>
+                                <div class="liq-heatmap-timeframe-selector">
+                                    <button
+                                        v-for="tf in liqHeatmapTimeframes"
+                                        :key="tf.value"
+                                        @click="liqHeatmapTimeframe = tf.value; loadLiquidationHeatmap()"
+                                        :class="{ active: liqHeatmapTimeframe === tf.value }"
+                                        class="liq-heatmap-tf-btn">
+                                        {{ tf.label }}
+                                    </button>
+                                </div>
+                                <div class="liq-heatmap-stats">
+                                    <div class="liq-heatmap-stat">
+                                        <div class="liq-heatmap-stat-label">Long Liquidations</div>
+                                        <div class="liq-heatmap-stat-value long">
+                                            ${{ formatNumber(liqHeatmapData.longLiquidations) }}
+                                        </div>
+                                    </div>
+                                    <div class="liq-heatmap-stat">
+                                        <div class="liq-heatmap-stat-label">Short Liquidations</div>
+                                        <div class="liq-heatmap-stat-value short">
+                                            ${{ formatNumber(liqHeatmapData.shortLiquidations) }}
+                                        </div>
+                                    </div>
+                                    <div class="liq-heatmap-stat">
+                                        <div class="liq-heatmap-stat-label">Current Price</div>
+                                        <div class="liq-heatmap-stat-value" style="color: var(--neon-cyan);">
+                                            ${{ liqHeatmapData.currentPrice.toLocaleString() }}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div v-if="liqHeatmapLoading" class="analytics-loading" style="height: 400px; display: flex; align-items: center; justify-content: center;">
+                                <i data-lucide="loader-2" style="width: 24px; height: 24px; animation: spin 1s linear infinite;"></i>
+                                <span style="margin-left: 12px;">Loading liquidation heatmap...</span>
+                            </div>
+                            <div v-else class="liq-heatmap-container">
+                                <div id="liquidationHeatmap" style="width: 100%; height: 400px;"></div>
+                            </div>
+                            <div class="liq-heatmap-legend">
+                                <div class="liq-heatmap-legend-left">
+                                    <div class="liq-heatmap-legend-item">
+                                        <div class="liq-heatmap-legend-color long-liq"></div>
+                                        <div class="liq-heatmap-legend-text">Long Liquidation Zones (price drop triggers)</div>
+                                    </div>
+                                    <div class="liq-heatmap-legend-item">
+                                        <div class="liq-heatmap-legend-color short-liq"></div>
+                                        <div class="liq-heatmap-legend-text">Short Liquidation Zones (price rise triggers)</div>
+                                    </div>
+                                </div>
+                                <div class="liq-heatmap-legend-gradient">
+                                    <div class="liq-heatmap-legend-gradient-bar"></div>
+                                    <div class="liq-heatmap-legend-gradient-labels">
+                                        <span>Low Volume</span>
+                                        <span>High Volume</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    END Liquidation Heatmap Panel -->
                 </div>
             </div>
 
@@ -5621,6 +5912,26 @@
                         averageCorrelation: 0,
                         strongestPairs: [],
                         weakestPairs: []
+                    },
+                    // Liquidation Heatmap
+                    liqHeatmapSymbols: ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'BNBUSDT'],
+                    liqHeatmapSelectedSymbol: 'BTCUSDT',
+                    liqHeatmapTimeframes: [
+                        { label: '1H', value: '1h' },
+                        { label: '4H', value: '4h' },
+                        { label: '12H', value: '12h' },
+                        { label: '24H', value: '24h' }
+                    ],
+                    liqHeatmapTimeframe: '4h',
+                    liqHeatmapLoading: false,
+                    liqHeatmapData: {
+                        currentPrice: 0,
+                        priceRange: { min: 0, max: 0 },
+                        longLiquidations: 0,
+                        shortLiquidations: 0,
+                        heatmapData: [],
+                        priceLevels: [],
+                        timeLabels: []
                     },
                     // Position Calculator
                     calculatorMode: 'advanced', // 'simple' or 'advanced'
@@ -6398,15 +6709,32 @@
                         // API returns array directly OR {alerts: [...]}
                         const allAlerts = Array.isArray(data) ? data : (data.alerts || []);
 
-                        this.recentAlerts = allAlerts.slice(0, 20).map(alert => ({
-                            id: alert.id,
-                            type: alert.alert_type || alert.details?.type || 'signal',
-                            icon: this.getAlertIcon(alert.alert_type || alert.details?.type),
-                            title: alert.message || alert.title || 'Alert',
-                            subtitle: (alert.symbol || '').replace('USDT', ''),
-                            value: alert.details?.confluence_score ? Math.round(alert.details.confluence_score) + '%' : '',
-                            time: this.formatTime((alert.unix_timestamp || alert.timestamp) * 1000)
-                        }));
+                        this.recentAlerts = allAlerts.slice(0, 20).map(alert => {
+                            // Monitor field mapping fallbacks to detect API inconsistencies
+                            if (!alert.alert_type && alert.details?.type) {
+                                console.warn('[ALERT-FIELD] Desktop v2: Using fallback details.type instead of alert_type', {
+                                    id: alert.id,
+                                    symbol: alert.symbol,
+                                    type_used: alert.details?.type
+                                });
+                            } else if (!alert.alert_type && !alert.details?.type) {
+                                console.error('[ALERT-FIELD] Desktop v2: Missing all type fields!', {
+                                    id: alert.id,
+                                    symbol: alert.symbol,
+                                    message: alert.message
+                                });
+                            }
+
+                            return {
+                                id: alert.id,
+                                type: alert.alert_type || alert.details?.type || 'signal',
+                                icon: this.getAlertIcon(alert.alert_type || alert.details?.type),
+                                title: alert.message || alert.title || 'Alert',
+                                subtitle: (alert.symbol || '').replace('USDT', ''),
+                                value: alert.details?.confluence_score ? Math.round(alert.details.confluence_score) + '%' : '',
+                                time: this.formatTime((alert.unix_timestamp || alert.timestamp) * 1000)
+                            };
+                        });
 
                         // Re-init Lucide icons
                         this.$nextTick(() => {
@@ -6675,6 +7003,7 @@
                         this.loadSignalAnalytics(),
                         this.loadLiquidationAnalytics(),
                         this.loadCorrelationData()
+                        // this.loadLiquidationHeatmap()  // Commented out - standalone version at /liquidation-heatmap
                     ]);
                 },
                 async loadRegimeAnalytics() {
@@ -7138,6 +7467,345 @@
                     if (typeof lucide !== 'undefined') {
                         lucide.createIcons();
                     }
+                },
+                // Liquidation Heatmap Methods
+                async loadLiquidationHeatmap() {
+                    this.liqHeatmapLoading = true;
+
+                    try {
+                        // Generate demo data (will be replaced with real API call later)
+                        const demoData = this.generateLiquidationHeatmapData();
+                        this.liqHeatmapData = demoData;
+
+                        // Wait for DOM update then render
+                        this.$nextTick(() => {
+                            this.$nextTick(() => {
+                                this.renderLiquidationHeatmap();
+                                this.liqHeatmapLoading = false;
+                            });
+                        });
+                    } catch (error) {
+                        console.error('Error loading liquidation heatmap:', error);
+                        this.liqHeatmapLoading = false;
+                    }
+                },
+                generateLiquidationHeatmapData() {
+                    // Demo data generator - simulates CoinGlass-style liquidation heatmap
+                    const symbol = this.liqHeatmapSelectedSymbol;
+                    const timeframe = this.liqHeatmapTimeframe;
+
+                    // Base prices for different symbols
+                    const basePrices = {
+                        'BTCUSDT': 104500,
+                        'ETHUSDT': 3950,
+                        'SOLUSDT': 225,
+                        'XRPUSDT': 2.45,
+                        'BNBUSDT': 720
+                    };
+
+                    const currentPrice = basePrices[symbol] || 50000;
+                    const priceRange = currentPrice * 0.10; // 10% range
+
+                    // Generate price levels (Y-axis)
+                    const numPriceLevels = 40;
+                    const priceLevels = [];
+                    const priceStep = (priceRange * 2) / numPriceLevels;
+
+                    for (let i = 0; i < numPriceLevels; i++) {
+                        const price = currentPrice - priceRange + (i * priceStep);
+                        priceLevels.push(price);
+                    }
+
+                    // Generate time buckets based on timeframe
+                    const timeframeBuckets = {
+                        '1h': 12,   // 5-min intervals
+                        '4h': 16,   // 15-min intervals
+                        '12h': 24,  // 30-min intervals
+                        '24h': 24   // 1-hour intervals
+                    };
+
+                    const numTimeBuckets = timeframeBuckets[timeframe] || 24;
+                    const timeLabels = [];
+                    const now = new Date();
+
+                    for (let i = numTimeBuckets - 1; i >= 0; i--) {
+                        const date = new Date(now);
+                        if (timeframe === '1h') {
+                            date.setMinutes(date.getMinutes() - (i * 5));
+                            timeLabels.push(date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }));
+                        } else if (timeframe === '4h') {
+                            date.setMinutes(date.getMinutes() - (i * 15));
+                            timeLabels.push(date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }));
+                        } else {
+                            date.setHours(date.getHours() - i);
+                            timeLabels.push(date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }));
+                        }
+                    }
+
+                    // Generate heatmap data
+                    // Format: [timeIndex, priceIndex, value, type]
+                    // type: 'long' (below current price) or 'short' (above current price)
+                    const heatmapData = [];
+                    let totalLongLiq = 0;
+                    let totalShortLiq = 0;
+
+                    // Find current price index
+                    const currentPriceIndex = priceLevels.findIndex(p => p >= currentPrice);
+
+                    for (let t = 0; t < numTimeBuckets; t++) {
+                        for (let p = 0; p < numPriceLevels; p++) {
+                            // Calculate distance from current price
+                            const distanceFromCurrent = Math.abs(p - currentPriceIndex);
+                            const isAbovePrice = priceLevels[p] > currentPrice;
+
+                            // Generate realistic liquidation clusters
+                            // More liquidations near common leverage levels (2%, 5%, 10% from current)
+                            const leverageLevels = [0.02, 0.05, 0.08, 0.10, 0.15, 0.20]; // Distance percentages
+                            const priceDistance = Math.abs(priceLevels[p] - currentPrice) / currentPrice;
+
+                            let baseIntensity = 0;
+
+                            // Check if price is near a leverage liquidation level
+                            for (const level of leverageLevels) {
+                                if (Math.abs(priceDistance - level) < 0.01) {
+                                    // Higher leverage = more liquidations
+                                    const leverageMultiplier = 1 / level; // e.g., 2% = 50x leverage
+                                    baseIntensity = Math.max(baseIntensity, Math.min(1, leverageMultiplier * 0.05 + Math.random() * 0.3));
+                                }
+                            }
+
+                            // Add some random noise for realism
+                            if (baseIntensity > 0) {
+                                baseIntensity += (Math.random() - 0.5) * 0.2;
+                            } else if (Math.random() < 0.1) {
+                                // Occasional random small liquidations
+                                baseIntensity = Math.random() * 0.15;
+                            }
+
+                            // Time decay - more recent = more certain
+                            const timeDecay = 0.5 + (t / numTimeBuckets) * 0.5;
+                            const value = Math.max(0, Math.min(1, baseIntensity * timeDecay));
+
+                            if (value > 0.05) {
+                                // Estimate USD value for stats
+                                const usdValue = value * 5000000; // Scale factor
+
+                                if (isAbovePrice) {
+                                    // Short liquidations (above current price)
+                                    heatmapData.push([t, p, value, 'short']);
+                                    totalShortLiq += usdValue;
+                                } else {
+                                    // Long liquidations (below current price)
+                                    heatmapData.push([t, p, value, 'long']);
+                                    totalLongLiq += usdValue;
+                                }
+                            }
+                        }
+                    }
+
+                    return {
+                        currentPrice: currentPrice,
+                        priceRange: {
+                            min: currentPrice - priceRange,
+                            max: currentPrice + priceRange
+                        },
+                        longLiquidations: Math.round(totalLongLiq),
+                        shortLiquidations: Math.round(totalShortLiq),
+                        heatmapData: heatmapData,
+                        priceLevels: priceLevels,
+                        timeLabels: timeLabels,
+                        currentPriceIndex: currentPriceIndex
+                    };
+                },
+                renderLiquidationHeatmap() {
+                    const { heatmapData, priceLevels, timeLabels, currentPrice, currentPriceIndex } = this.liqHeatmapData;
+
+                    if (!heatmapData || heatmapData.length === 0) {
+                        console.warn('No liquidation heatmap data to render');
+                        return;
+                    }
+
+                    // Format price labels
+                    const priceLabels = priceLevels.map(p => {
+                        if (p >= 1000) return '$' + (p / 1000).toFixed(1) + 'K';
+                        if (p >= 1) return '$' + p.toFixed(0);
+                        return '$' + p.toFixed(4);
+                    });
+
+                    // Separate long and short data for different coloring
+                    const longData = heatmapData
+                        .filter(d => d[3] === 'long')
+                        .map(d => [d[0], d[1], -d[2]]); // Negative for green colorscale
+
+                    const shortData = heatmapData
+                        .filter(d => d[3] === 'short')
+                        .map(d => [d[0], d[1], d[2]]);
+
+                    // Combine for single series with custom coloring
+                    const combinedData = heatmapData.map(d => ({
+                        x: d[0],
+                        y: d[1],
+                        value: d[2],
+                        type: d[3],
+                        color: d[3] === 'long'
+                            ? `rgba(34, 197, 94, ${Math.min(1, d[2] + 0.1)})`  // Green for longs
+                            : `rgba(239, 68, 68, ${Math.min(1, d[2] + 0.1)})`   // Red for shorts
+                    }));
+
+                    Highcharts.chart('liquidationHeatmap', {
+                        chart: {
+                            type: 'heatmap',
+                            backgroundColor: 'transparent',
+                            height: 400,
+                            marginTop: 20,
+                            marginBottom: 80,
+                            marginLeft: 80,
+                            marginRight: 20,
+                            events: {
+                                load: function() {
+                                    // Add current price line
+                                    const chart = this;
+                                    if (currentPriceIndex !== undefined) {
+                                        chart.renderer.path([
+                                            'M', chart.plotLeft, chart.plotTop + (chart.plotHeight * (1 - currentPriceIndex / priceLevels.length)),
+                                            'L', chart.plotLeft + chart.plotWidth, chart.plotTop + (chart.plotHeight * (1 - currentPriceIndex / priceLevels.length))
+                                        ])
+                                        .attr({
+                                            'stroke-width': 2,
+                                            stroke: '#06B6D4',
+                                            'stroke-dasharray': '5,3',
+                                            zIndex: 5
+                                        })
+                                        .add();
+                                    }
+                                }
+                            }
+                        },
+                        title: {
+                            text: null
+                        },
+                        xAxis: {
+                            categories: timeLabels,
+                            labels: {
+                                rotation: -45,
+                                style: {
+                                    color: '#a8a8a8',
+                                    fontSize: '9px',
+                                    fontFamily: 'IBM Plex Mono, monospace'
+                                }
+                            },
+                            lineColor: '#222222',
+                            tickColor: '#222222',
+                            title: {
+                                text: 'Time',
+                                style: {
+                                    color: '#7a7a7a',
+                                    fontSize: '10px'
+                                }
+                            }
+                        },
+                        yAxis: {
+                            categories: priceLabels,
+                            title: {
+                                text: 'Price Level',
+                                style: {
+                                    color: '#7a7a7a',
+                                    fontSize: '10px'
+                                }
+                            },
+                            labels: {
+                                style: {
+                                    color: '#a8a8a8',
+                                    fontSize: '9px',
+                                    fontFamily: 'IBM Plex Mono, monospace'
+                                }
+                            },
+                            lineColor: '#222222',
+                            gridLineColor: '#1a1a1a',
+                            plotLines: [{
+                                value: currentPriceIndex,
+                                color: '#06B6D4',
+                                width: 2,
+                                dashStyle: 'Dash',
+                                label: {
+                                    text: 'Current: $' + currentPrice.toLocaleString(),
+                                    align: 'right',
+                                    style: {
+                                        color: '#06B6D4',
+                                        fontSize: '10px',
+                                        fontWeight: 'bold'
+                                    }
+                                },
+                                zIndex: 5
+                            }]
+                        },
+                        colorAxis: {
+                            min: 0,
+                            max: 1,
+                            stops: [
+                                [0, 'rgba(251, 191, 36, 0.1)'],
+                                [0.25, 'rgba(251, 191, 36, 0.3)'],
+                                [0.5, 'rgba(251, 191, 36, 0.5)'],
+                                [0.75, 'rgba(251, 191, 36, 0.7)'],
+                                [1, 'rgba(251, 191, 36, 1)']
+                            ],
+                            labels: {
+                                enabled: false
+                            }
+                        },
+                        legend: {
+                            enabled: false
+                        },
+                        tooltip: {
+                            backgroundColor: '#1a1a1a',
+                            borderColor: '#333333',
+                            style: {
+                                color: '#f5f5f5',
+                                fontSize: '11px'
+                            },
+                            formatter: function() {
+                                const price = priceLevels[this.point.y];
+                                const time = timeLabels[this.point.x];
+                                const type = this.point.type;
+                                const intensity = (this.point.value * 100).toFixed(0);
+                                const estValue = '$' + (this.point.value * 5).toFixed(1) + 'M';
+
+                                return `<b>${time}</b><br/>` +
+                                       `Price: $${price.toLocaleString()}<br/>` +
+                                       `Type: <span style="color: ${type === 'long' ? '#22c55e' : '#ef4444'}">${type.toUpperCase()} Liquidations</span><br/>` +
+                                       `Intensity: ${intensity}%<br/>` +
+                                       `Est. Volume: ${estValue}`;
+                            }
+                        },
+                        series: [{
+                            name: 'Liquidations',
+                            borderWidth: 0,
+                            data: combinedData,
+                            turboThreshold: 10000,
+                            dataLabels: {
+                                enabled: false
+                            }
+                        }],
+                        credits: {
+                            enabled: false
+                        },
+                        exporting: {
+                            enabled: true,
+                            buttons: {
+                                contextButton: {
+                                    menuItems: ['downloadPNG', 'downloadJPEG'],
+                                    theme: {
+                                        fill: '#1a1a1a',
+                                        states: {
+                                            hover: {
+                                                fill: '#333333'
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    });
                 }
             },
             mounted() {

@@ -3909,10 +3909,28 @@
                     }
                 }
 
-                // Note: bottom_performers comes from the full categories endpoint, not summary
-                // For now, we'll fetch it separately or show placeholder
+                // Fetch bottom performers from full categories endpoint
                 if (bottomSectors) {
-                    bottomSectors.innerHTML = '<span style="color: var(--text-secondary); font-size: 10px;">See full report</span>';
+                    // Fetch full categories data for bottom performers
+                    fetch('/api/coingecko/categories')
+                        .then(res => res.json())
+                        .then(catData => {
+                            if (catData.status === 'success' && catData.data?.bottom_performers) {
+                                const bottomPerformers = catData.data.bottom_performers;
+                                if (bottomPerformers.length > 0) {
+                                    bottomSectors.innerHTML = bottomPerformers.slice(0, 3).map(p =>
+                                        `<div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${p}</div>`
+                                    ).join('');
+                                } else {
+                                    bottomSectors.innerHTML = '<span style="color: var(--text-secondary);">--</span>';
+                                }
+                            } else {
+                                bottomSectors.innerHTML = '<span style="color: var(--text-secondary);">--</span>';
+                            }
+                        })
+                        .catch(() => {
+                            bottomSectors.innerHTML = '<span style="color: var(--text-secondary);">--</span>';
+                        });
                 }
             }
 
@@ -4464,6 +4482,15 @@
 
         // Check if alert is important (warrants notification)
         function isImportantAlert(alert) {
+            // Monitor field mapping fallbacks to detect API inconsistencies
+            if (!alert.alert_type && alert.details?.type) {
+                console.warn('[ALERT-FIELD] Using fallback: details.type instead of alert_type', alert);
+            } else if (!alert.alert_type && !alert.details?.type && alert.type) {
+                console.warn('[ALERT-FIELD] Using fallback: legacy type field instead of alert_type', alert);
+            } else if (!alert.alert_type && !alert.details?.type && !alert.type) {
+                console.error('[ALERT-FIELD] Missing all type fields!', alert);
+            }
+
             const alertType = alert.alert_type || alert.details?.type || alert.type || '';
             const details = alert.details || {};
             const message = alert.message || '';
@@ -5435,22 +5462,6 @@
                 // Update color classes
                 hudChange.classList.remove('positive', 'negative');
                 hudChange.classList.add(isPositive ? 'positive' : 'negative');
-            }
-        }
-
-            const symbolCountEl = document.getElementById('perfSymbolCount');
-            if (symbolCountEl) {
-                symbolCountEl.textContent = overview.symbols_count || 0;
-            }
-
-            const outperformersEl = document.getElementById('perfOutperformers');
-            if (outperformersEl) {
-                outperformersEl.textContent = overview.outperformers || 0;
-            }
-
-            const underperformersEl = document.getElementById('perfUnderperformers');
-            if (underperformersEl) {
-                underperformersEl.textContent = overview.underperformers || 0;
             }
         }
 
@@ -7832,6 +7843,12 @@
             const message = alert.message || '';
             const details = alert.details || {};
             const level = alert.level || 'warning';
+
+            // Monitor field mapping fallbacks (but less verbose than isImportantAlert)
+            if (!alert.alert_type && !alert.details?.type && !alert.type) {
+                console.error('[ALERT-FIELD] createAlertCard: Missing all type fields!', { symbol, message });
+            }
+
             const alertType = alert.alert_type || alert.details?.type || '';
 
             // Parse timestamp
