@@ -4530,7 +4530,10 @@
 
         // Check for new alerts and notify
         function checkForNewAlerts(alerts) {
-            if (!alerts || alerts.length === 0) return;
+            if (!alerts || alerts.length === 0) {
+                console.log('[ALERTS] checkForNewAlerts: No alerts to check');
+                return;
+            }
 
             // Count all new alerts (for badge)
             let newAlertCount = 0;
@@ -4551,10 +4554,22 @@
             // Update badge for ALL new alerts
             updateAlertBadge(newAlertCount);
 
+            // Log new alerts detection
+            if (newAlertCount > 0) {
+                console.log('[ALERTS] New alerts detected', {
+                    total_new: newAlertCount,
+                    important_new: importantNewAlerts.length,
+                    sound_enabled: alertSoundEnabled,
+                    push_enabled: pushNotificationsEnabled,
+                    tab_active: document.getElementById('alertsTab')?.classList.contains('active')
+                });
+            }
+
             // Only notify (sound + push) for IMPORTANT new alerts
             if (importantNewAlerts.length > 0 && !document.getElementById('alertsTab')?.classList.contains('active')) {
                 // Play sound once for important alerts
                 if (alertSoundEnabled) {
+                    console.log('[ALERTS] Playing alert sound for', importantNewAlerts.length, 'important alerts');
                     playAlertSound();
                 }
 
@@ -4565,8 +4580,29 @@
 
                 if (pushNotificationsEnabled && newestImportant) {
                     const symbol = newestImportant.symbol || 'Market';
-                    const alertType = newestImportant.type || 'Alert';
+
+                    // FIX: Use defensive pattern for alert type field
+                    const alertType = newestImportant.alert_type || newestImportant.details?.type || newestImportant.type || 'Alert';
+
+                    // Monitor fallback usage in notifications
+                    if (!newestImportant.alert_type) {
+                        console.warn('[ALERT-NOTIF] Push notification using fallback type field', {
+                            has_details_type: !!newestImportant.details?.type,
+                            has_legacy_type: !!newestImportant.type,
+                            symbol: symbol,
+                            resolved_type: alertType
+                        });
+                    }
+
                     const typeLabel = alertType.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+
+                    console.log('[ALERTS] Showing push notification', {
+                        symbol,
+                        type: alertType,
+                        label: typeLabel,
+                        timestamp: newestImportant.unix_timestamp
+                    });
+
                     showPushNotification(
                         `🔔 ${symbol} - ${typeLabel}`,
                         newestImportant.message || 'Important alert received',
@@ -6989,34 +7025,67 @@
         }
 
         function renderAlerts(alerts, filter) {
-            const alertsList = document.getElementById('alertsList');
+            const startTime = performance.now();
 
-            // Apply filter
-            let filteredAlerts = alerts;
-            if (filter !== 'all') {
-                // Signal filter should match 'signal', 'high_confluence', and 'confluence' types
-                if (filter === 'signal') {
-                    filteredAlerts = alerts.filter(a => {
-                        const alertType = a.alert_type || a.details?.type || '';
-                        return alertType === 'signal' ||
-                               alertType === 'high_confluence' ||
-                               alertType === 'confluence';  // Include confluence alerts - these are LONG/SHORT trading signals
+            try {
+                const alertsList = document.getElementById('alertsList');
+                if (!alertsList) {
+                    console.error('[ERROR] alertsList element not found');
+                    return;
+                }
+
+                // Apply filter
+                let filteredAlerts = alerts;
+                if (filter !== 'all') {
+                    // Signal filter should match 'signal', 'high_confluence', and 'confluence' types
+                    if (filter === 'signal') {
+                        filteredAlerts = alerts.filter(a => {
+                            const alertType = a.alert_type || a.details?.type || '';
+                            return alertType === 'signal' ||
+                                   alertType === 'high_confluence' ||
+                                   alertType === 'confluence';  // Include confluence alerts - these are LONG/SHORT trading signals
+                        });
+                    } else {
+                        filteredAlerts = alerts.filter(a => {
+                            const alertType = a.alert_type || a.details?.type || '';
+                            return alertType === filter;
+                        });
+                    }
+                }
+
+                alertsList.innerHTML = '';
+
+                if (filteredAlerts.length > 0) {
+                    let successCount = 0;
+                    let failureCount = 0;
+
+                    filteredAlerts.forEach((alert, index) => {
+                        try {
+                            alertsList.innerHTML += createAlertCard(alert);
+                            successCount++;
+                        } catch (cardError) {
+                            failureCount++;
+                            console.error('[ERROR] Failed to create alert card', {
+                                index,
+                                symbol: alert.symbol,
+                                alert_type: alert.alert_type || alert.details?.type || alert.type,
+                                error: cardError.message
+                            });
+                            // Continue rendering other alerts - don't let one bad alert break everything
+                        }
+                    });
+
+                    // Log performance and success rate
+                    const duration = performance.now() - startTime;
+                    console.log('[PERF] renderAlerts:', {
+                        total_alerts: alerts.length,
+                        filtered: filteredAlerts.length,
+                        rendered: successCount,
+                        failed: failureCount,
+                        filter: filter,
+                        duration_ms: duration.toFixed(2)
                     });
                 } else {
-                    filteredAlerts = alerts.filter(a => {
-                        const alertType = a.alert_type || a.details?.type || '';
-                        return alertType === filter;
-                    });
-                }
-            }
-
-            alertsList.innerHTML = '';
-
-            if (filteredAlerts.length > 0) {
-                filteredAlerts.forEach(alert => {
-                    alertsList.innerHTML += createAlertCard(alert);
-                });
-            } else {
                 // Special empty state for signal filter - match the Alerted card style
                 if (filter === 'signal') {
                     alertsList.innerHTML = `
@@ -7037,8 +7106,30 @@
                 }
             }
 
-            // Initialize Lucide icons for filter pills
-            setTimeout(() => { if (typeof lucide !== 'undefined') lucide.createIcons(); }, 50);
+                // Initialize Lucide icons for filter pills
+                setTimeout(() => { if (typeof lucide !== 'undefined') lucide.createIcons(); }, 50);
+
+            } catch (error) {
+                console.error('[ERROR] renderAlerts failed completely', {
+                    alert_count: alerts?.length || 0,
+                    filter,
+                    error: error.message,
+                    stack: error.stack
+                });
+
+                // Show user-friendly error UI
+                const alertsList = document.getElementById('alertsList');
+                if (alertsList) {
+                    alertsList.innerHTML = `
+                        <div style="text-align: center; padding: 24px 16px; background: var(--background-secondary); border-radius: 8px; margin: 8px 0;">
+                            <i data-lucide="alert-triangle" style="width: 32px; height: 32px; color: var(--accent-negative); margin-bottom: 12px; opacity: 0.8;"></i>
+                            <div style="font-size: 13px; color: var(--text-primary); font-weight: 500; margin-bottom: 4px;">Failed to load alerts</div>
+                            <div style="font-size: 11px; color: var(--text-secondary);">Try refreshing the page</div>
+                        </div>
+                    `;
+                    setTimeout(() => { if (typeof lucide !== 'undefined') lucide.createIcons(); }, 50);
+                }
+            }
         }
 
         function filterAlerts(filter) {
@@ -7062,11 +7153,13 @@
             const alertedSignalCount = document.getElementById('alertedSignalCount');
 
             // Filter for signal-type alerts (including confluence alerts which are trading signals)
-            const signalAlerts = alerts.filter(a =>
-                a.type === 'signal' ||
-                a.type === 'high_confluence' ||
-                a.type === 'confluence'  // Include confluence alerts - these are LONG/SHORT trading signals
-            );
+            // FIX: Use defensive pattern for alert type field
+            const signalAlerts = alerts.filter(a => {
+                const alertType = a.alert_type || a.details?.type || a.type || '';
+                return alertType === 'signal' ||
+                       alertType === 'high_confluence' ||
+                       alertType === 'confluence';  // Include confluence alerts - these are LONG/SHORT trading signals
+            });
 
             // Update count
             alertedSignalCount.textContent = signalAlerts.length;
