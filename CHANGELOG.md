@@ -7,53 +7,235 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added - Phase 1 Enhancements
-- **[MONITORING] Enhanced Multi-Tier Cache Monitoring System**
-  - Comprehensive metrics tracking for all cache tiers (L1/L2/L3)
-  - Real-time performance alerts and anomaly detection
-  - Hit/miss rate analysis with P99 latency tracking
-  - Hot/cold key identification for optimization
-  - Health score calculation with weighted factors
-  - Dashboard-ready metrics API
+*No unreleased changes at this time.*
 
-- **[TESTING] Performance Regression Testing Suite**
-  - Automated validation of 314.7x performance improvement
-  - Response time testing (P50, P95, P99 percentiles)
-  - Throughput validation (3,500+ RPS target)
-  - Concurrent load testing with 100+ simulated users
-  - Latency distribution analysis
-  - Comprehensive test reporting with pass/fail criteria
-
-- **[CACHE] Optimized Cache Warming Strategy**
-  - Market-aware warming with session-based scheduling
-  - Priority-based task queue (CRITICAL → BACKGROUND)
-  - Predictive warming based on access patterns
-  - Adaptive TTL and priority optimization
-  - Concurrent warming with batch processing
-  - Real-time warming statistics and optimization
-
-### Fixed
-- **[CACHE] Tuple Cache Unwrapping** - Fixed cache value unwrapping for technical indicators
-  - Resolved issue where cached values were returning tuples instead of expected dictionaries
-  - Improved reliability percentage formatting in dashboard displays
-  - Enhanced cache adapter to properly handle nested data structures
-
-- **[STARTUP] Component Initialization** - Improved startup reliability
-  - Added proper error handling for component initialization
-  - Enhanced logging to identify initialization issues
-  - Fixed component dependency resolution order
+## [2025.12.17] - 2025-12-17
 
 ### Added
-- **[DEBUG] Technical Indicator Debugging Tools**
-  - Created debug script for analyzing technical indicator calculations
-  - Added cache inspection utilities for troubleshooting
-  - Deployment script for indicator cache fixes
+- **[OBSERVABILITY] Comprehensive PDF Generator Monitoring** - Enhanced observability for report generation
+  - Detailed logging for template processing, chart generation, and PDF output
+  - Performance metrics tracking for each generation step
+  - Field mapping fallback monitoring to detect API inconsistencies
+  - Proactive alerting for data mapping failures
 
-### Improved
-- **[CLEANUP] Archive Management** - Systematic file organization
-  - Cleaned up archived files and backup directories
-  - Prepared codebase for roadmap implementation
-  - Reduced repository size by removing redundant backups
+### Fixed
+- **[ALERTS] Critical Alert System Improvements** - Major reliability enhancements
+  - Complete alert type field mapping standardization across dashboards
+  - Improved error handling and observability for alert processing
+  - Fixed alert type field mapping in mobile v3 and desktop-v2 dashboards
+  - Result: Consistent alert rendering across all dashboard views
+
+## [2025.12.13] - 2025-12-13
+
+### Changed
+- **[DASHBOARD] Template Reorganization** - Semantic directory structure for templates
+  - Reorganized dashboard templates into semantic subdirectories
+  - Improved template organization for better maintainability
+  - Clear separation of standalone, admin, and core dashboard templates
+
+## [2025.12.11] - 2025-12-11
+
+### Added
+- **[PREDICTION] Bitcoin Lead/Lag Prediction System** - Advanced altcoin signal generation
+  - Bitcoin-to-altcoin lead/lag relationship analysis
+  - Predictive signals for altcoin movements based on BTC price action
+  - Multi-timeframe correlation analysis
+  - Result: Enhanced alpha generation from BTC-altcoin relationships
+
+## [2025.12.03] - 2025-12-03
+
+### Added
+- **[BRANDING] Chart Watermark System** - Professional chart branding
+  - Browser-quality Virtuoso watermark added to all generated charts
+  - Consistent branding across PDF reports and web displays
+  - Result: Professional appearance for shared trading signals
+
+## [2025.11.26] - 2025-11-26
+
+### Added
+- **[WEBHOOKS] Discord Webhook Architecture Overhaul** - Dedicated alert channels
+  - Dedicated webhook for liquidation alerts
+  - Development webhook for testing alerts
+  - Comprehensive Discord webhook architecture documentation
+  - Result: Better alert organization and testing capabilities
+
+### Changed
+- **[ALERTS] Alert Threshold Adjustments** - Refined alert sensitivity
+  - Liquidation cascade alert threshold raised to $200k
+  - Centralized Discord webhook routing logic for maintainability
+  - Result: Reduced noise while maintaining signal quality
+
+## [2025.11.25] - 2025-11-25
+
+### Added
+- **[WHALE] Dedicated Whale Alert Webhook** - Enhanced whale activity tracking
+  - Dedicated Discord webhook channel for whale trade alerts
+  - Improved separation of alert types for better monitoring
+  - Result: Easier tracking of high-value market movements
+
+### Fixed
+- **[WHALE] Whale Detection Reliability Fixes** - Critical JSON and error handling
+  - Removed market_data from alert details to fix JSON serialization errors
+  - Added comprehensive error handling for trade execution detection
+  - Result: 100% alert delivery reliability for whale events
+
+### Changed
+- **[CONFIG] Whale Trade Threshold** - Alert sensitivity adjustment
+  - Whale trade threshold raised from $300k to $750k
+  - Result: Focus on truly significant whale activity
+
+## [2025.11.22] - 2025-11-22
+
+### Fixed
+- **[MOBILE] Market Display Fixes** - Mobile dashboard improvements
+  - Fixed market regime display on mobile dashboard
+  - Fixed sentiment display on mobile dashboard
+  - Result: Accurate market state visualization on mobile
+
+## [2025.11.02] - 2025-11-02
+
+### Fixed
+- **[ALERTS] Whale Manipulation Alert Color Logic** - Visual consistency
+  - Improved alert color logic with edge case handling
+  - Consistent color coding across all whale manipulation scenarios
+  - Result: Clear visual indicators for alert severity
+
+## [2025.10.31] - 2025-10-31
+
+### Fixed
+- **[DOCKER] Docker Configuration** - Functional containerization
+  - Made Docker configuration fully functional
+  - Fixed container build and runtime issues
+  - Result: Reliable containerized deployment option
+
+## [2025.10.30] - 2025-10-30
+
+### Changed
+- **[ORGANIZATION] Root Directory Cleanup** - Major repository organization
+  - Moved test files to proper directories
+  - Removed clutter from root directory
+  - Organized documentation into proper directory structure
+  - Added aggressive day trading style to comparison guide
+  - Result: Cleaner, more navigable repository structure
+
+## [2025.10.28] - 2025-10-28
+
+### Fixed
+- **[PDF] Stop Loss Calculation** - Accurate risk management in reports
+  - Calculate missing stop loss values using StopLossCalculator
+  - Ensures all PDF reports include proper risk parameters
+  - Result: Complete risk management data in all signal reports
+
+## [2025.10.27] - 2025-10-27
+
+### Fixed
+- **[CHARTS] Threshold Marker Variables** - Chart rendering fix
+  - Replaced undefined buy_pos/sell_pos with long_pos/short_pos
+  - Fixed variable reference errors in threshold marker rendering
+  - Result: Properly rendered entry/exit markers on charts
+
+## [2025.10.25] - 2025-10-25
+
+### Fixed
+- **[SIGNALS] Order Type Mapping** - Signal-to-order translation
+  - Map LONG/SHORT signal types to BUY/SELL order types
+  - Correct order type representation in trade execution
+  - Result: Proper order type handling throughout the system
+
+## [2025.10.24] - 2025-10-24
+
+### Changed
+- **[REFACTOR] Semantic Threshold Naming** - Code clarity improvement
+  - Complete buy_threshold → long_threshold semantic refactoring
+  - Consistent terminology across the codebase
+  - Result: Clearer, more maintainable code with proper trading semantics
+
+## [2025.10.23] - 2025-10-23
+
+### Added
+- **[ALERTS] Manipulation Alert Enhancements** - Quick Win improvements
+  - Enhanced manipulation alerts with additional context
+  - Improved alert formatting and information density
+  - Result: More actionable manipulation detection alerts
+
+### Fixed
+- **[LIQUIDATION] Liquidation System Activation** - Critical functionality restoration
+  - Activated dormant LiquidationDetectionEngine
+  - Fixed symbol format conversion (dict to string list)
+  - Fixed missing arguments in LiquidationDataCollector method calls
+  - Removed incorrect callback parameter from subscribe_liquidations
+  - Removed duplicate get_recent_liquidations method
+  - Made WebSocket subscription fault-tolerant
+  - Improved liquidation subscription logging accuracy
+  - Result: Fully functional real-time liquidation monitoring
+
+- **[CI] GitHub Actions Improvements** - Build reliability
+  - Created logs directory before FileHandler initialization
+  - Reorganized test files and enhanced monitoring system
+  - Result: Reliable CI/CD pipeline
+
+### Changed
+- **[CLEANUP] Massive Repository Cleanup** - 1200+ files removed
+  - Removed 968 operational scripts and configs
+  - Removed backup files, diagnostics, test images
+  - Removed generated outputs and runtime files
+  - Removed archived code, internal reports, server configs
+  - Removed personal config files
+  - Added systemd/ directory to gitignore
+  - Result: Reduced repository size by ~2MB, cleaner structure
+
+## [2025.10.16] - 2025-10-16
+
+### Fixed
+- **[LIQUIDATION] WebSocket Reliability** - Connection stability improvements
+  - Made WebSocket subscription fault-tolerant in liquidation collector
+  - Improved subscription logging accuracy
+  - Fixed multiple method call issues in liquidation system
+  - Result: Robust real-time liquidation data collection
+
+## [2025.09.22] - 2025-09-22
+
+### Fixed
+- **[PDF] Comprehensive PDF Reporting Fixes** - QA validated improvements
+  - Fixed None value handling in price structure interpretation
+  - Comprehensive PDF reporting fixes verified through QA
+  - Fixed Bybit open interest fetch implementation
+  - Result: Reliable PDF report generation
+
+## [2025.09.20] - 2025-09-20
+
+### Fixed
+- **[STABILITY] Trading System Stability Fixes** - Production reliability
+  - Deployed comprehensive trading system stability fixes
+  - Enhanced error handling across core components
+  - Result: Improved system uptime and reliability
+
+## [2025.09.19] - 2025-09-19
+
+### Fixed
+- **[PRODUCTION] Critical Production Error Fixes** - Major stability improvements
+  - Cleaned mock code from correlation.py, replaced with zero defaults
+  - Fixed syntax errors in liquidation.py and correlation.py
+  - Fixed reliability percentage display and error handling
+  - Fixed critical production errors in confluence analysis and metrics
+  - Result: Eliminated production errors in core analysis
+
+### Changed
+- **[CI] GitHub Actions Optimization** - Build performance improvements
+  - Fixed TA-Lib parallel compilation race condition
+  - Optimized workflow with caching and improved TA-Lib build
+  - Fixed pytest test discovery to exclude archive directories
+  - Result: Faster, more reliable CI builds
+
+## [2025.09.18] - 2025-09-18 (Supplemental)
+
+### Added
+- **[SECURITY] Security Hardening** - Credential protection
+  - Removed hardcoded VPS IP from all files and history
+  - Added .env.vps.example template for VPS configuration
+  - Enhanced .gitignore with comprehensive security entries
+  - Fixed GitHub Actions with proper environment variables
+  - Result: Secure, configurable deployment
 
 ## [2025.09.18] - 2025-09-18
 
