@@ -504,6 +504,7 @@ class ReportGenerator:
         
         # Retry logic with exponential backoff
         for attempt in range(self._max_retries):
+            attempt_start = time.time()
             try:
                 self._log(f"[PDF_GEN:{report_id}] Starting report generation for {symbol} (attempt {attempt + 1}/{self._max_retries})", level=logging.INFO)
                 
@@ -517,7 +518,7 @@ class ReportGenerator:
                     except OSError as e:
                         raise FileOperationError(f"Failed to create output directory: {str(e)}")
                     
-                pdf_path, json_path = self.generate_trading_report(
+                pdf_path, json_path, chart_path = self.generate_trading_report(
                     signal_data=signal_data,
                     ohlcv_data=ohlcv_data,
                     output_dir=output_path,
@@ -532,9 +533,14 @@ class ReportGenerator:
                         validated_path = self._validate_and_process_pdf(pdf_path, signal_data, report_id)
                         
                         # Calculate processing time
+                        attempt_time = time.time() - attempt_start
                         processing_time = time.time() - start_time
-                        self._log(f"[PDF_GEN:{report_id}] PDF generation completed successfully in {processing_time:.2f}s", level=logging.INFO)
-                        
+                        self._log(
+                            f"[PDF_GEN:{report_id}] ✅ PDF generation succeeded on attempt {attempt + 1}/{self._max_retries} "
+                            f"(attempt: {attempt_time:.2f}s, total: {processing_time:.2f}s)",
+                            level=logging.INFO
+                        )
+
                         # Clear the cache after successful generation
                         self._clear_downsample_cache()
                         return validated_path, json_path
@@ -553,19 +559,35 @@ class ReportGenerator:
                         return False
                         
             except ChartGenerationError as e:
-                self._log(f"[PDF_GEN:{report_id}] Chart generation error (attempt {attempt + 1}): {str(e)}", level=logging.ERROR)
+                attempt_time = time.time() - attempt_start
+                self._log(
+                    f"[PDF_GEN:{report_id}] Chart generation error (attempt {attempt + 1}/{self._max_retries}, {attempt_time:.2f}s): {str(e)}",
+                    level=logging.ERROR
+                )
                 self._track_error("chart_generation", ErrorSeverity.HIGH)
-                
+
             except TemplateError as e:
-                self._log(f"[PDF_GEN:{report_id}] Template processing error (attempt {attempt + 1}): {str(e)}", level=logging.ERROR)
+                attempt_time = time.time() - attempt_start
+                self._log(
+                    f"[PDF_GEN:{report_id}] Template processing error (attempt {attempt + 1}/{self._max_retries}, {attempt_time:.2f}s): {str(e)}",
+                    level=logging.ERROR
+                )
                 self._track_error("template_processing", ErrorSeverity.MEDIUM)
-                
+
             except FileOperationError as e:
-                self._log(f"[PDF_GEN:{report_id}] File operation error (attempt {attempt + 1}): {str(e)}", level=logging.ERROR)
+                attempt_time = time.time() - attempt_start
+                self._log(
+                    f"[PDF_GEN:{report_id}] File operation error (attempt {attempt + 1}/{self._max_retries}, {attempt_time:.2f}s): {str(e)}",
+                    level=logging.ERROR
+                )
                 self._track_error("file_operations", ErrorSeverity.HIGH)
-                
+
             except Exception as e:
-                self._log(f"[PDF_GEN:{report_id}] Unexpected error (attempt {attempt + 1}): {str(e)}", level=logging.ERROR)
+                attempt_time = time.time() - attempt_start
+                self._log(
+                    f"[PDF_GEN:{report_id}] Unexpected error (attempt {attempt + 1}/{self._max_retries}, {attempt_time:.2f}s): {str(e)}",
+                    level=logging.ERROR
+                )
                 self._log(f"[PDF_GEN:{report_id}] Traceback: {traceback.format_exc()}", level=logging.DEBUG)
                 self._track_error("unexpected", ErrorSeverity.CRITICAL)
             
@@ -577,7 +599,10 @@ class ReportGenerator:
         
         # All retries failed
         total_time = time.time() - start_time
-        self._log(f"[PDF_GEN:{report_id}] PDF generation failed after {self._max_retries} attempts in {total_time:.2f}s", level=logging.ERROR)
+        self._log(
+            f"[PDF_GEN:{report_id}] ❌ PDF generation failed after {self._max_retries} attempts in {total_time:.2f}s for {symbol}",
+            level=logging.ERROR
+        )
         
         # Clear the cache even if we had an error
         self._clear_downsample_cache()
@@ -585,11 +610,14 @@ class ReportGenerator:
 
     def _format_number(self, value: Union[int, float]) -> str:
         """
-        Format a number for display.
-        
+        Format a number for display with appropriate precision.
+
+        For crypto assets, uses higher precision to distinguish between
+        entry, stop loss, and target prices that may be close together.
+
         Args:
             value: Number to format
-            
+
         Returns:
             Formatted number string
         """
@@ -599,16 +627,19 @@ class ReportGenerator:
         if isinstance(value, int):
             return f"{value:,d}"
 
-        # For float values, use different precision based on magnitude
+        # For float values, use higher precision for small values (crypto prices)
+        # This ensures stop loss and targets are visually distinct from entry
         if abs(value) < 0.001:
             return f"{value:.6f}"
         elif abs(value) < 0.01:
             return f"{value:.5f}"
         elif abs(value) < 0.1:
-            return f"{value:.4f}"
+            return f"{value:.5f}"  # Increased from .4f to .5f
         elif abs(value) < 1:
-            return f"{value:.3f}"
+            return f"{value:.4f}"  # Increased from .3f to .4f for meme coins like DOGE
         elif abs(value) < 10:
+            return f"{value:.3f}"  # Increased from .2f to .3f
+        elif abs(value) < 100:
             return f"{value:.2f}"
         elif abs(value) < 1000:
             return f"{value:.1f}"
@@ -1116,20 +1147,22 @@ class ReportGenerator:
     ) -> Optional[str]:
         """
         Create a bar chart for component scores with professional styling.
-        
+
         Args:
             components: Dictionary of components with scores and impacts
             output_dir: Directory to save the chart
             max_components: Maximum number of components to display
-            
+
         Returns:
             Path to the saved chart file or None if chart creation failed
         """
-        self._log(f"Creating component chart with {len(components)} components")
+        chart_id = str(uuid.uuid4())[:8]
+        start_time = time.time()
+        self._log(f"[CHART:{chart_id}] Creating component chart with {len(components)} components", logging.INFO)
 
         # Validate output_dir
         if output_dir is None:
-            self._log("Component chart creation failed: output_dir is None", logging.ERROR)
+            self._log(f"[CHART:{chart_id}] Component chart creation failed: output_dir is None", logging.ERROR)
             return None
 
         try:
@@ -1304,11 +1337,13 @@ class ReportGenerator:
             plt.savefig(chart_path, dpi=120, pad_inches=0.2, facecolor=fig.get_facecolor())
             plt.close(fig)
 
-            self._log(f"Component chart saved to {chart_path}")
+            duration = time.time() - start_time
+            self._log(f"[CHART:{chart_id}] Component chart created in {duration:.2f}s: {chart_path}", logging.INFO)
             return chart_path
 
         except Exception as e:
-            self._log(f"Error creating component chart: {str(e)}", logging.ERROR)
+            duration = time.time() - start_time
+            self._log(f"[CHART:{chart_id}] Error creating component chart after {duration:.2f}s: {str(e)}", logging.ERROR)
             self._log(traceback.format_exc(), logging.DEBUG)
             return None
 
@@ -1337,10 +1372,9 @@ class ReportGenerator:
         Returns:
             Path to the saved chart file or None if chart creation failed
         """
-        self._log(
-            f"Creating candlestick chart for {symbol} using real OHLCV data",
-            logging.INFO,
-        )
+        chart_id = str(uuid.uuid4())[:8]
+        start_time = time.time()
+        self._log(f"[CHART:{chart_id}] Creating candlestick chart for {symbol}", logging.INFO)
 
         try:
             # Always save charts to reports/charts for easy access
@@ -1349,7 +1383,7 @@ class ReportGenerator:
             # Use provided output_dir for temp work if needed
             if output_dir is None:
                 output_dir = chart_dir  # Default to charts directory
-                self._log(f"Using charts directory: {output_dir}")
+                self._log(f"[CHART:{chart_id}] Using charts directory: {output_dir}", logging.DEBUG)
 
             # Create directories if they don't exist
             os.makedirs(output_dir, exist_ok=True)
@@ -1357,7 +1391,8 @@ class ReportGenerator:
 
             # Check if we have actual OHLCV data to work with
             if ohlcv_data is None or ohlcv_data.empty:
-                self._log("No OHLCV data provided, falling back to simulated chart", logging.WARNING)
+                self._log(f"[CHART-FALLBACK:{chart_id}] No OHLCV data for {symbol}, using simulated chart", logging.WARNING)
+                self._track_error("simulated_chart_fallback", ErrorSeverity.LOW)
                 return self._create_simulated_chart(
                     symbol=symbol,
                     entry_price=entry_price,
@@ -1614,13 +1649,13 @@ class ReportGenerator:
                 "title": f"{symbol} Price Chart",
                 "show_nontrading": False,
                 "returnfig": True,
-                "datetime_format": "%d %H:%M",
+                "datetime_format": "%m/%d %H:%M",  # Include month for clarity
                 "xrotation": 0,
                 "tight_layout": False,
                 "ylabel": "Price",
                 "figratio": (12, 7),
                 "scale_padding": {
-                    "left": 0.05,
+                    "left": 0.12,      # Increased for Y-axis label visibility
                     "right": 0.22,     # Reduced from 0.3 for better spacing
                     "top": 0.15,       # Reduced for tighter layout
                     "bottom": 0.15,
@@ -1733,10 +1768,18 @@ class ReportGenerator:
 
             # Safely unpack plot result with robust error handling
             fig, axes = self._safe_plot_result_unpack(plot_result)
-            
+
             # Get the main price axis (safely)
             ax1 = axes[0] if axes and len(axes) > 0 else None
-            
+
+            # CRITICAL: Resize all axes to make room for right-side annotations
+            # mplfinance creates axes that span nearly the full figure width,
+            # so we need to shrink them to leave space for Entry/Stop/Target labels
+            for ax in axes:
+                pos = ax.get_position()
+                new_width = pos.width * 0.88  # Shrink to 88% to leave 12% for labels
+                ax.set_position([pos.x0, pos.y0, new_width, pos.height])
+
             if ax1:
                 # Set y-axis limits to ensure all targets are visible
                 ax1.set_ylim(y_min, y_max)
@@ -1754,7 +1797,7 @@ class ReportGenerator:
                 ax1.xaxis.set_major_locator(date_locator)
                 
                 # Format to show consistent time format matching mplfinance config
-                time_formatter = DateFormatter('%d %H:%M')
+                time_formatter = DateFormatter('%m/%d %H:%M')
                 ax1.xaxis.set_major_formatter(time_formatter)
                 
                 # Rotate labels for better readability
@@ -1804,6 +1847,7 @@ class ReportGenerator:
                         fontsize=9,
                         color="#10b981",
                         fontweight="bold",
+                        annotation_clip=False,  # Allow annotation outside axes
                         bbox=dict(
                             facecolor=label_bg_color,
                             edgecolor="#3b82f6",
@@ -1824,6 +1868,7 @@ class ReportGenerator:
                         fontsize=9,
                         color="#ef4444",
                         fontweight="bold",
+                        annotation_clip=False,  # Allow annotation outside axes
                         bbox=dict(
                             facecolor=label_bg_color,
                             edgecolor="#ef4444",
@@ -1879,6 +1924,7 @@ class ReportGenerator:
                                 fontsize=9,
                                 color=color,
                                 fontweight="bold",
+                                annotation_clip=False,  # Allow annotation outside axes
                                 bbox=dict(
                                     facecolor=label_bg_color,
                                     edgecolor=color,
@@ -1961,11 +2007,13 @@ class ReportGenerator:
 
             plt.close(fig)
 
-            self._log(f"Real data candlestick chart saved to: {output_file}")
+            duration = time.time() - start_time
+            self._log(f"[CHART:{chart_id}] Candlestick chart for {symbol} created in {duration:.2f}s: {output_file}", logging.INFO)
             return output_file
 
         except Exception as e:
-            self._log(f"Error creating candlestick chart: {str(e)}", logging.ERROR)
+            duration = time.time() - start_time
+            self._log(f"[CHART:{chart_id}] Error creating candlestick chart for {symbol} after {duration:.2f}s: {str(e)}", logging.ERROR)
             self._log(traceback.format_exc(), logging.DEBUG)
             return None
 
@@ -2022,6 +2070,76 @@ class ReportGenerator:
                 f.write(json_content)
 
             self._log(f"JSON data exported to {json_path} and {reports_json_path}")
+
+            # Store signal to database if it's a trading signal (has signal_type)
+            if processed_data.get('signal_type') in ['LONG', 'SHORT']:
+                try:
+                    from src.database.signal_storage import store_trading_signal
+                    signal_id_from_db = store_trading_signal(
+                        signal_data=processed_data,
+                        json_path=reports_json_path
+                    )
+
+                    # Open signal tracking for performance monitoring
+                    if signal_id_from_db:
+                        try:
+                            from src.database.signal_performance import SignalPerformanceTracker
+                            from src.database.signal_tracking_helpers import (
+                                determine_signal_pattern,
+                                extract_orderflow_tags,
+                                get_divergence_type,
+                                get_validation_cohort,
+                                get_trigger_component
+                            )
+
+                            tracker = SignalPerformanceTracker("data/virtuoso.db")
+
+                            # Determine pattern classification
+                            components = processed_data.get('components', {})
+                            signal_type = processed_data.get('signal_type')
+                            pattern = determine_signal_pattern(components, signal_type)
+
+                            # Get additional tracking metadata
+                            divergence_type = get_divergence_type(components, signal_type, pattern)
+                            orderflow_tags = extract_orderflow_tags(components)
+                            trigger_component = get_trigger_component(components)
+
+                            # Get entry price (use trade_params if available, fallback to price)
+                            trade_params = processed_data.get('trade_params', {})
+                            confirmed_price = trade_params.get('entry_price') or processed_data.get('price')
+
+                            # Open the signal for tracking
+                            # Note: signal_id in database is a string like 'btcusdt_long_75p0_20251211_143022'
+                            # We need to query the database to get this signal_id
+                            from src.database.signal_storage import get_signal_by_id
+                            symbol = processed_data.get('symbol', '').upper().replace('/', '')
+                            score = processed_data.get('score', 0)
+                            timestamp_str = datetime.now().strftime('%Y%m%d_%H%M%S')
+                            score_str = f"{score:.1f}".replace('.', 'p')
+                            signal_id = f"{symbol.lower()}_{signal_type}_{score_str}_{timestamp_str}"
+
+                            success = tracker.open_signal(
+                                signal_id=signal_id,
+                                confirmed_price=confirmed_price,
+                                signal_pattern=pattern,
+                                divergence_type=divergence_type,
+                                orderflow_tags=orderflow_tags,
+                                is_validation_cohort=True,  # Current signals are validation cohort
+                                orderflow_config=get_validation_cohort(),
+                                trigger_component=trigger_component
+                            )
+
+                            if success:
+                                self._log(f"Signal tracking opened for {signal_id} with pattern {pattern}")
+                            else:
+                                self._log(f"Warning: Failed to open signal tracking for {signal_id}", logging.WARNING)
+
+                        except Exception as tracking_error:
+                            self._log(f"Warning: Could not initialize performance tracking: {tracking_error}", logging.WARNING)
+
+                except Exception as db_error:
+                    self._log(f"Warning: Could not store signal to database: {db_error}", logging.WARNING)
+
             return json_path
 
         except Exception as e:
@@ -2091,7 +2209,8 @@ class ReportGenerator:
                 # Handle objects with __dict__ but avoid circular references
                 try:
                     return self._prepare_for_json(obj.__dict__, visited.copy())
-                except Exception:
+                except Exception as e:
+                    self._log(f"[JSON_PREP] Failed to serialize object {type(obj).__name__}: {str(e)}", logging.DEBUG)
                     return f"<object:{type(obj).__name__}>"
             else:
                 return obj
@@ -2175,7 +2294,7 @@ class ReportGenerator:
         output_dir: Optional[str] = None,
         template_style: str = "horizontal",
         chart_mode: str = "light",
-    ) -> Tuple[Optional[str], Optional[str]]:
+    ) -> Tuple[Optional[str], Optional[str], Optional[str]]:
         """
         Generate a PDF trading report from the provided signal data.
 
@@ -2187,7 +2306,7 @@ class ReportGenerator:
             chart_mode: "dark" or "light" (warm amber background for charts)
 
         Returns:
-            Tuple of (pdf_path, json_path) or (None, None) if generation failed
+            Tuple of (pdf_path, json_path, chart_path) or (None, None, None) if generation failed
         """
         try:
             # For horizontal template, always use light chart mode for better readability
@@ -2230,6 +2349,8 @@ class ReportGenerator:
                 signal_type = signal_data.get("signal_type", "UNKNOWN").lower()
                 pdf_filename = f"{symbol}_{signal_type}_{timestamp_str}.pdf"
                 pdf_path = os.path.join(pdf_dir, pdf_filename)
+                # Set output_dir for downstream functions (component chart, JSON export)
+                output_dir = pdf_dir
 
             # Initialize context for template rendering
             context = {}
@@ -2254,7 +2375,8 @@ class ReportGenerator:
             # Fix reliability percentage display bug - reliability is already in 0-1 range from signal generation
             try:
                 rel_raw = float(reliability)
-            except Exception:
+            except Exception as e:
+                self._log(f"[RELIABILITY] Failed to parse reliability value '{reliability}': {str(e)}", logging.DEBUG)
                 rel_raw = 0.5
 
             # Signal generator already returns reliability in 0-1 range, so just convert to percentage
@@ -2630,7 +2752,8 @@ class ReportGenerator:
                         formatted_timestamp = timestamp_dt.strftime(
                             "%Y-%m-%d %H:%M:%S UTC"
                         )
-                    except:
+                    except Exception as e:
+                        self._log(f"[PDF_TIMESTAMP] Failed to parse ISO timestamp '{timestamp}': {str(e)}", logging.DEBUG)
                         formatted_timestamp = timestamp
                 elif isinstance(timestamp, datetime):
                     formatted_timestamp = timestamp.strftime("%Y-%m-%d %H:%M:%S UTC")
@@ -3046,18 +3169,31 @@ class ReportGenerator:
                     template_name = "trading_report_dark.html"
                 template = self.env.get_template(template_name)
 
-                # Preserve raw chart path for return values before converting to file:// for HTML
+                # Preserve raw chart path for return values before converting for HTML
                 raw_candlestick_chart_path = candlestick_chart
 
-                # Fix image paths by ensuring they are absolute and using file:// protocol
+                # Fix image paths - use web-accessible /exports/ URLs for charts in exports directory
+                # This allows HTML reports to display charts when viewed via the web server
                 if candlestick_chart:
-                    candlestick_chart = f"file://{os.path.abspath(candlestick_chart)}"
+                    abs_path = os.path.abspath(candlestick_chart)
+                    if '/exports/' in abs_path:
+                        # Use web-accessible path for exports
+                        candlestick_chart = f"/exports/{os.path.basename(abs_path)}"
+                    else:
+                        # Fallback to file:// for other locations
+                        candlestick_chart = f"file://{abs_path}"
                 if component_chart:
-                    component_chart = f"file://{os.path.abspath(component_chart)}"
+                    abs_path = os.path.abspath(component_chart)
+                    if '/exports/' in abs_path:
+                        component_chart = f"/exports/{os.path.basename(abs_path)}"
+                    else:
+                        component_chart = f"file://{abs_path}"
                 if confluence_analysis_image:
-                    confluence_analysis_image = (
-                        f"file://{os.path.abspath(confluence_analysis_image)}"
-                    )
+                    abs_path = os.path.abspath(confluence_analysis_image)
+                    if '/exports/' in abs_path:
+                        confluence_analysis_image = f"/exports/{os.path.basename(abs_path)}"
+                    else:
+                        confluence_analysis_image = f"file://{abs_path}"
                 # NOTE: confluence_visualization is already base64 data from visualizer.generate_base64_image()
                 # The template uses data:image/png;base64,{{ confluence_visualization }} so we don't convert it
 
@@ -3966,7 +4102,8 @@ class ReportGenerator:
                                         if isinstance(change, str):
                                             try:
                                                 change = float(change.replace("%", ""))
-                                            except:
+                                            except Exception as e:
+                                                self._log(f"[TOP_PERF] Failed to parse change_percent '{change}': {str(e)}", logging.DEBUG)
                                                 change = 0
                                         
                                         if change > 0:
@@ -3995,7 +4132,8 @@ class ReportGenerator:
                             if isinstance(change, str):
                                 try:
                                     change = float(change.replace("%", ""))
-                                except:
+                                except Exception as e:
+                                    self._log(f"[TOP_PERF] Failed to parse change_percent '{change}': {str(e)}", logging.DEBUG)
                                     change = 0
                             
                             if change > 0:
@@ -4244,7 +4382,8 @@ class ReportGenerator:
                         def default(self, obj):
                             try:
                                 return super().default(obj)
-                            except:
+                            except Exception as e:
+                                self._log(f"[DEBUG_ENCODER] Failed to serialize {type(obj).__name__}: {str(e)}", logging.DEBUG)
                                 return str(obj)
                     
                     self.logger.debug(
@@ -4960,8 +5099,8 @@ class ReportGenerator:
             if temp_html and os.path.exists(temp_html.name):
                 try:
                     os.remove(temp_html.name)
-                except:
-                    pass
+                except Exception as e:
+                    self._log(f"[CLEANUP] Failed to remove temp HTML file {temp_html.name}: {str(e)}", logging.DEBUG)
 
     def _format_with_commas(self, value: Union[int, float]) -> str:
         """
@@ -5388,7 +5527,7 @@ class ReportGenerator:
                 "ylabel_lower": "Volume",
                 "figratio": (12, 9),  # Match figsize ratio
                 "scale_padding": {
-                    "left": 0.05,
+                    "left": 0.12,      # Increased for Y-axis label visibility
                     "right": 0.3,
                     "top": 0.2,
                     "bottom": 0.2,
@@ -5514,10 +5653,18 @@ class ReportGenerator:
             
             # Safely unpack plot result with robust error handling
             fig, axes = self._safe_plot_result_unpack(plot_result)
-            
+
             # Get the main price axis (safely)
             ax1 = axes[0] if axes and len(axes) > 0 else None
-            
+
+            # CRITICAL: Resize all axes to make room for right-side annotations
+            # mplfinance creates axes that span nearly the full figure width,
+            # so we need to shrink them to leave space for Entry/Stop/Target labels
+            for ax in axes:
+                pos = ax.get_position()
+                new_width = pos.width * 0.88  # Shrink to 88% to leave 12% for labels
+                ax.set_position([pos.x0, pos.y0, new_width, pos.height])
+
             if ax1:
                 # Set y-axis limits to ensure all targets are visible
                 ax1.set_ylim(y_min, y_max)
@@ -5534,8 +5681,8 @@ class ReportGenerator:
                 date_locator = AutoDateLocator(maxticks=20)
                 ax1.xaxis.set_major_locator(date_locator)
                 
-                # Format to show more compact time format
-                time_formatter = DateFormatter('%d %H:%M')
+                # Format to show more compact time format with month
+                time_formatter = DateFormatter('%m/%d %H:%M')
                 ax1.xaxis.set_major_formatter(time_formatter)
                 
                 # Rotate labels for better readability
@@ -5575,24 +5722,23 @@ class ReportGenerator:
                         ax1_y_pos = getattr(position, 'y0', 0)
                         
                     if entry_pos is not None:
-
-                        
                         ax1.annotate(
-                        f"Entry: ${self._format_number(entry_price)}",
-                        xy=(1.01, entry_pos),
-                        xycoords=("axes fraction", "axes fraction"),
-                        xytext=(1.05, entry_pos),
-                        textcoords="axes fraction",
-                        fontsize=9,
-                        color="#3b82f6",
-                        fontweight="bold",
-                        bbox=dict(
-                            facecolor=label_bg_color,
-                            edgecolor="#3b82f6",
-                            boxstyle="round,pad=0.3",
-                            alpha=label_border_alpha,
-                        ),
-                    )
+                            f"Entry: ${self._format_number(entry_price)}",
+                            xy=(1.01, entry_pos),
+                            xycoords=("axes fraction", "axes fraction"),
+                            xytext=(1.05, entry_pos),
+                            textcoords="axes fraction",
+                            fontsize=9,
+                            color="#3b82f6",
+                            fontweight="bold",
+                            annotation_clip=False,  # Allow annotation outside axes
+                            bbox=dict(
+                                facecolor=label_bg_color,
+                                edgecolor="#3b82f6",
+                                boxstyle="round,pad=0.3",
+                                alpha=label_border_alpha,
+                            ),
+                        )
 
                 # Stop loss label
                 if stop_loss is not None:
@@ -5606,6 +5752,7 @@ class ReportGenerator:
                         fontsize=9,
                         color="#ef4444",
                         fontweight="bold",
+                        annotation_clip=False,  # Allow annotation outside axes
                         bbox=dict(
                             facecolor=label_bg_color,
                             edgecolor="#ef4444",
@@ -5661,6 +5808,7 @@ class ReportGenerator:
                                 fontsize=9,
                                 color=color,
                                 fontweight="bold",
+                                annotation_clip=False,  # Allow annotation outside axes
                                 bbox=dict(
                                     facecolor=label_bg_color,
                                     edgecolor=color,
