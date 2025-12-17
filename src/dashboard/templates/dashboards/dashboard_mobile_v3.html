@@ -39,7 +39,7 @@
     <meta name="apple-mobile-web-app-title" content="Virtuoso">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="application-name" content="Virtuoso">
-    <meta name="theme-color" content="#0a0a0a">
+    <meta name="theme-color" content="#000000">
     
     <!-- PWA Manifest for Android -->
     <link rel="manifest" href="/static/manifest.json">
@@ -90,10 +90,10 @@
             --neon-amber: #fbbf24;
             --neon-cyan: #06B6D4;
             --neon-red: #ff0066;
-            
-            /* Dark Backgrounds */
-            --bg-primary: #0a0a0a;
-            --bg-secondary: #111111;
+
+            /* Dark Backgrounds - OLED Optimized (True Black for 40% battery savings) */
+            --bg-primary: #000000;  /* Pure black for OLED power savings */
+            --bg-secondary: #0d0d0d;  /* Slightly lighter for contrast */
             --bg-panel: #1a1a1a;
             
             /* Borders */
@@ -165,10 +165,16 @@
             -webkit-overflow-scrolling: touch;
         }
 
-        /* Minimum 44px touch targets (Apple HIG) */
-        button, .nav-item, .tab-btn, .pressable {
+        /* Minimum 44px touch targets (Apple HIG) - Optimization #7 */
+        button, .nav-item, .tab-btn, .pressable, .tf-chip {
             min-height: 44px;
             min-width: 44px;
+        }
+
+        /* Ensure inline-styled buttons also meet minimum */
+        [onclick], [role="button"] {
+            min-height: 44px !important;
+            min-width: 44px !important;
         }
 
         /* Skeleton Loading Animation */
@@ -329,6 +335,45 @@
         @keyframes ticker-scroll {
             0% { transform: translateX(0); }
             100% { transform: translateX(-50%); }
+        }
+
+        /* Trending Coins Marquee Animation */
+        .trending-scroll-wrapper {
+            overflow: hidden;
+            position: relative;
+            mask-image: linear-gradient(to right, transparent, black 8%, black 92%, transparent);
+            -webkit-mask-image: linear-gradient(to right, transparent, black 8%, black 92%, transparent);
+        }
+
+        .trending-scroll-track {
+            display: flex;
+            gap: 8px;
+            animation: trending-scroll 20s linear infinite;
+            width: fit-content;
+        }
+
+        .trending-scroll-track:hover {
+            animation-play-state: paused;
+        }
+
+        @keyframes trending-scroll {
+            0% { transform: translateX(0); }
+            100% { transform: translateX(-50%); }
+        }
+
+        .trending-pill {
+            background: linear-gradient(135deg, rgba(251, 191, 36, 0.15) 0%, rgba(251, 191, 36, 0.05) 100%);
+            border: 1px solid rgba(251, 191, 36, 0.3);
+            padding: 6px 12px;
+            border-radius: 16px;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--neon-amber);
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            flex-shrink: 0;
         }
 
         .ticker-item {
@@ -641,6 +686,32 @@
             z-index: 9999;
             overflow: hidden; /* Prevent scrolling to other content */
             background: var(--bg-primary);
+            /* CRITICAL: Allow touch interactions for chart gestures */
+            touch-action: pan-x pan-y pinch-zoom;
+        }
+
+        /* Ensure chart container propagates touch events properly */
+        .fullscreen-chart #performanceChart {
+            touch-action: pan-x pinch-zoom;
+            position: relative;
+            will-change: transform;
+            pointer-events: auto;
+        }
+
+        /* Visual hint at top for swipe-down gesture */
+        .fullscreen-chart::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(to bottom,
+                rgba(251, 191, 36, 0.3) 0%,
+                transparent 100%
+            );
+            pointer-events: none;
+            z-index: 1;
         }
 
         .fullscreen-chart .card-header {
@@ -657,6 +728,135 @@
             display: none !important;
         }
 
+        /* Chart interaction hint (fades after 2s) */
+        .fullscreen-chart-hint {
+            position: fixed;
+            bottom: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 8px 16px;
+            background: rgba(0, 0, 0, 0.8);
+            border: 1px solid rgba(251, 191, 36, 0.3);
+            border-radius: 20px;
+            color: #fbbf24;
+            font-size: 11px;
+            font-family: 'IBM Plex Mono', monospace;
+            z-index: 10001;
+            pointer-events: none;
+            animation: hintFadeIn 0.3s ease, hintFadeOut 0.3s ease 2s forwards;
+        }
+
+        @keyframes hintFadeIn {
+            from { opacity: 0; transform: translateX(-50%) translateY(10px); }
+            to { opacity: 1; transform: translateX(-50%) translateY(0); }
+        }
+
+        @keyframes hintFadeOut {
+            from { opacity: 1; }
+            to { opacity: 0; }
+        }
+
+        /* ========================================
+           CURRENT PRICE HUD (Optimization #2)
+           Always-visible price overlay in fullscreen
+           ======================================== */
+        .price-hud {
+            position: absolute;
+            top: 16px;
+            left: 16px;
+            z-index: 1000;
+            padding: 12px 16px;
+            border-radius: 12px;
+
+            /* Glassmorphism effect */
+            background: rgba(0, 0, 0, 0.75);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(251, 191, 36, 0.2);
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+
+            /* Typography */
+            font-family: 'IBM Plex Mono', monospace;
+            color: var(--text-primary);
+
+            /* Smooth transitions */
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            opacity: 0;
+            pointer-events: none;
+
+            /* Prevent touch interference with chart */
+            touch-action: none;
+        }
+
+        /* Show HUD only in fullscreen mode */
+        .fullscreen-chart .price-hud {
+            opacity: 1;
+        }
+
+        .price-hud-symbol {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--neon-amber);
+            margin-bottom: 4px;
+            letter-spacing: 0.5px;
+        }
+
+        .price-hud-price {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 2px;
+            line-height: 1.2;
+        }
+
+        .price-hud-change {
+            font-size: 12px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .price-hud-change.positive {
+            color: var(--accent-positive);
+        }
+
+        .price-hud-change.negative {
+            color: var(--accent-negative);
+        }
+
+        /* Compact HUD in landscape for more chart space */
+        @media (orientation: landscape) {
+            .price-hud {
+                padding: 8px 12px;
+                top: 12px;
+                left: 12px;
+            }
+
+            .price-hud-symbol {
+                font-size: 10px;
+                margin-bottom: 2px;
+            }
+
+            .price-hud-price {
+                font-size: 16px;
+            }
+
+            .price-hud-change {
+                font-size: 11px;
+            }
+        }
+
+        /* Animation for price updates */
+        @keyframes priceUpdate {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+
+        .price-hud-price.updating {
+            animation: priceUpdate 0.3s ease;
+        }
+
         /* Portrait Mode (height > width) - header + compact chips */
         @media (orientation: portrait) {
             .fullscreen-chart #performanceChart {
@@ -667,9 +867,19 @@
 
         /* Landscape Mode (width > height) - header + compact chips */
         @media (orientation: landscape) {
+            /* CRITICAL: Ensure container doesn't interfere with chart touches in landscape */
+            .fullscreen-chart {
+                touch-action: pan-x pan-y pinch-zoom !important;
+                overflow: hidden !important;
+            }
+
+            /* Chart gets precise sizing and full touch priority in landscape */
             .fullscreen-chart #performanceChart {
-                height: calc(100vh - 100px) !important; /* Header (60px) + Chips (40px) */
+                height: calc(100vh - 110px) !important; /* Add 10px safety margin to prevent overflow */
                 min-height: 200px;
+                touch-action: pan-x pinch-zoom !important;
+                z-index: 5;  /* Below header controls but above background */
+                isolation: isolate;  /* Prevent touch event leakage */
             }
 
             /* Make timeframe controls more compact in landscape */
@@ -683,9 +893,28 @@
                 min-height: 36px !important;
             }
 
-            /* Single row for auto-refresh in landscape */
+            /* CRITICAL: Ensure header doesn't block chart touches in landscape */
             .fullscreen-chart .card-header {
                 padding: 8px 12px;
+                touch-action: auto;  /* Let touches pass through to chart below */
+                pointer-events: none;  /* Header itself doesn't capture touches */
+            }
+
+            /* But keep buttons and controls interactive */
+            .fullscreen-chart .card-header button,
+            .fullscreen-chart .card-header .auto-refresh-container,
+            .fullscreen-chart #timeframeSelector,
+            .fullscreen-chart #timeframeSelector button {
+                pointer-events: auto;  /* Restore button interactivity */
+                touch-action: manipulation;  /* Standard button touch behavior */
+            }
+        }
+
+        /* Short landscape screens - tighter fit */
+        @media (orientation: landscape) and (max-height: 600px) {
+            .fullscreen-chart #performanceChart {
+                height: calc(100vh - 105px) !important;  /* Tighter fit for small screens */
+                min-height: 180px;
             }
         }
 
@@ -2284,6 +2513,45 @@
                     </div>
                 </div>
 
+                <!-- Row 5: CoinGecko Global Derivatives (Cross-Exchange) -->
+                <div style="background: linear-gradient(135deg, rgba(6, 182, 212, 0.1) 0%, rgba(0,0,0,0.2) 100%); padding: 12px; border-radius: 10px; margin-bottom: 12px; border: 1px solid rgba(6, 182, 212, 0.2);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <div style="font-size: 10px; color: var(--neon-cyan); text-transform: uppercase; display: flex; align-items: center; gap: 6px;">
+                            <span>🌐</span>
+                            <span>Global Derivatives (CoinGecko)</span>
+                        </div>
+                        <div style="font-size: 9px; color: var(--text-secondary);">Cross-Exchange</div>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 10px;">
+                        <div>
+                            <div style="font-size: 10px; color: var(--text-secondary); margin-bottom: 2px;">Total Open Interest</div>
+                            <div id="globalDerivativesOI" style="font-size: 20px; font-weight: 700; color: var(--text-primary);">--</div>
+                        </div>
+                        <div style="text-align: right;">
+                            <div style="font-size: 10px; color: var(--text-secondary); margin-bottom: 2px;">Arb Opportunities</div>
+                            <div style="font-size: 20px; font-weight: 700; color: var(--neon-cyan);"><span id="arbOpportunities">0</span></div>
+                        </div>
+                    </div>
+                    <!-- OI Distribution by Exchange -->
+                    <div style="padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.05); margin-bottom: 10px;">
+                        <div style="font-size: 10px; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 8px; letter-spacing: 0.3px;">🏦 OI by Exchange</div>
+                        <div id="oiDistributionContainer" style="display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; -ms-overflow-style: none;">
+                            <div class="skeleton" style="min-width: 80px; height: 44px;"></div>
+                            <div class="skeleton" style="min-width: 80px; height: 44px;"></div>
+                            <div class="skeleton" style="min-width: 80px; height: 44px;"></div>
+                        </div>
+                    </div>
+                    <!-- Top Funding Spreads (Arb Opportunities) -->
+                    <div style="padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.05);">
+                        <div style="font-size: 10px; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 8px; letter-spacing: 0.3px;">💰 Top Funding Spreads</div>
+                        <div id="fundingSpreadsContainer" style="display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; -ms-overflow-style: none;">
+                            <div class="skeleton" style="min-width: 100px; height: 48px;"></div>
+                            <div class="skeleton" style="min-width: 100px; height: 48px;"></div>
+                            <div class="skeleton" style="min-width: 100px; height: 48px;"></div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Loading/Error State -->
                 <div id="perpsLoadingState" style="display: none; text-align: center; padding: 20px; color: var(--text-secondary);">
                     <div class="spinner" style="width: 24px; height: 24px; margin: 0 auto 8px;"></div>
@@ -2294,13 +2562,13 @@
             <!-- Winners & Losers Section -->
             <div class="mobile-card">
                 <div class="card-header">
-                    <h2 class="card-title">Top Movers - All Markets</h2>
+                    <h2 class="card-title">Top Movers</h2>
                     <span class="card-badge" style="background: rgba(255, 191, 0, 0.2); color: var(--text-primary);">
                         24H
                     </span>
                 </div>
-                
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 14px;">
                     <!-- Winners Column -->
                     <div>
                         <h4 style="font-size: 13px; font-weight: 600; color: var(--accent-positive); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px;">
@@ -2313,7 +2581,7 @@
                             <div class="skeleton-card"><div class="skeleton skeleton-avatar"></div><div style="flex:1"><div class="skeleton skeleton-text" style="margin-bottom:6px"></div><div class="skeleton skeleton-text-sm"></div></div></div>
                         </div>
                     </div>
-                    
+
                     <!-- Losers Column -->
                     <div>
                         <h4 style="font-size: 13px; font-weight: 600; color: var(--accent-negative); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px;">
@@ -2325,6 +2593,94 @@
                             <div class="skeleton-card"><div class="skeleton skeleton-avatar"></div><div style="flex:1"><div class="skeleton skeleton-text" style="margin-bottom:6px"></div><div class="skeleton skeleton-text-sm"></div></div></div>
                             <div class="skeleton-card"><div class="skeleton skeleton-avatar"></div><div style="flex:1"><div class="skeleton skeleton-text" style="margin-bottom:6px"></div><div class="skeleton skeleton-text-sm"></div></div></div>
                         </div>
+                    </div>
+                </div>
+
+                <!-- Trending Coins (Horizontal Scroll) - at bottom -->
+                <div style="padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.05);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                            <span style="font-size: 10px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.3px;">🔥 Trending on CoinGecko</span>
+                        </div>
+                        <span id="trendingUpdateTime" style="font-size: 9px; color: var(--text-secondary);">--</span>
+                    </div>
+                    <div id="trendingCoinsWrapper" class="trending-scroll-wrapper">
+                        <div id="trendingCoinsContainer" class="trending-scroll-track">
+                            <div class="skeleton" style="min-width: 70px; height: 32px;"></div>
+                            <div class="skeleton" style="min-width: 70px; height: 32px;"></div>
+                            <div class="skeleton" style="min-width: 70px; height: 32px;"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Market Intelligence (CoinGecko Extended Data) -->
+            <div class="mobile-card" id="marketIntelCard">
+                <div class="card-header">
+                    <h2 class="card-title">Market Intelligence</h2>
+                    <span class="card-badge" id="marketIntelBadge" style="background: rgba(6, 182, 212, 0.2); color: var(--neon-cyan);">
+                        LIVE
+                    </span>
+                </div>
+
+                <!-- Market Breadth Gauge -->
+                <div style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 10px; margin-bottom: 14px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <div style="font-size: 10px; color: var(--text-secondary); text-transform: uppercase;">Market Breadth</div>
+                        <div id="breadthLabel" style="font-size: 11px; font-weight: 600; color: var(--text-secondary);">--</div>
+                    </div>
+                    <!-- Breadth Bar -->
+                    <div style="position: relative; height: 24px; border-radius: 6px; overflow: hidden; background: rgba(0,0,0,0.3);">
+                        <div id="breadthBarAdvancing" style="position: absolute; left: 0; top: 0; height: 100%; background: linear-gradient(90deg, var(--accent-positive) 0%, rgba(16, 185, 129, 0.7) 100%); width: 50%; display: flex; align-items: center; justify-content: flex-end; padding-right: 6px; transition: width 0.5s ease;">
+                            <span id="breadthAdvancingPct" style="font-size: 10px; font-weight: 700; color: white;">50%</span>
+                        </div>
+                        <div id="breadthBarDeclining" style="position: absolute; right: 0; top: 0; height: 100%; background: linear-gradient(90deg, rgba(239, 68, 68, 0.7) 0%, var(--accent-negative) 100%); width: 50%; display: flex; align-items: center; justify-content: flex-start; padding-left: 6px; transition: width 0.5s ease;">
+                            <span id="breadthDecliningPct" style="font-size: 10px; font-weight: 700; color: white;">50%</span>
+                        </div>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin-top: 6px;">
+                        <div style="font-size: 10px; color: var(--accent-positive);">📈 <span id="breadthAdvancingCount">0</span> Advancing</div>
+                        <div style="font-size: 10px; color: var(--accent-negative);"><span id="breadthDecliningCount">0</span> Declining 📉</div>
+                    </div>
+                </div>
+
+                <!-- Sector Rotation Signal -->
+                <div style="background: linear-gradient(135deg, rgba(0,0,0,0.3) 0%, rgba(0,0,0,0.15) 100%); padding: 12px; border-radius: 10px; margin-bottom: 14px; border: 1px solid rgba(255,255,255,0.05);">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">
+                        <div>
+                            <div style="font-size: 10px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 4px;">Sector Rotation</div>
+                            <div id="rotationSignal" style="font-size: 13px; font-weight: 700; color: var(--text-primary); padding: 4px 10px; border-radius: 6px; background: rgba(251, 191, 36, 0.15); border: 1px solid rgba(251, 191, 36, 0.3); display: inline-block;">
+                                Loading...
+                            </div>
+                        </div>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                        <div>
+                            <div style="font-size: 9px; color: var(--accent-positive); text-transform: uppercase; margin-bottom: 4px;">📈 Top Sectors</div>
+                            <div id="topSectors" style="font-size: 11px; color: var(--text-primary); line-height: 1.5;">
+                                <div class="skeleton" style="height: 14px; margin-bottom: 4px;"></div>
+                                <div class="skeleton" style="height: 14px; width: 80%;"></div>
+                            </div>
+                        </div>
+                        <div>
+                            <div style="font-size: 9px; color: var(--accent-negative); text-transform: uppercase; margin-bottom: 4px;">📉 Bottom Sectors</div>
+                            <div id="bottomSectors" style="font-size: 11px; color: var(--text-primary); line-height: 1.5;">
+                                <div class="skeleton" style="height: 14px; margin-bottom: 4px;"></div>
+                                <div class="skeleton" style="height: 14px; width: 80%;"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Exchange Concentration -->
+                <div style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 10px;">
+                    <div style="font-size: 10px; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 6px;">Exchange Concentration</div>
+                    <div style="display: flex; align-items: baseline; gap: 4px; margin-bottom: 4px;">
+                        <span id="exchangeTop3Share" style="font-size: 20px; font-weight: 700; color: var(--text-primary);">--</span>
+                        <span style="font-size: 11px; color: var(--text-secondary);">Top 3 Share</span>
+                    </div>
+                    <div id="topExchangesList" style="font-size: 10px; color: var(--text-secondary); line-height: 1.4;">
+                        Loading...
                     </div>
                 </div>
             </div>
@@ -2757,7 +3113,16 @@
                         }
                     }
                 </style>
-                <div id="performanceChart" style="width: 100%; height: 350px;">
+                <div id="performanceChart" style="width: 100%; height: 350px; position: relative;">
+                    <!-- Current Price HUD (Optimization #2) - Shows in fullscreen only -->
+                    <div class="price-hud" id="priceHud">
+                        <div class="price-hud-symbol" id="hudSymbol">BTC</div>
+                        <div class="price-hud-price" id="hudPrice">$86,710</div>
+                        <div class="price-hud-change" id="hudChange">
+                            <span id="hudChangeValue">-2.50%</span>
+                            <span id="hudChangeArrow">↓</span>
+                        </div>
+                    </div>
                     <!-- Chart will be rendered here - skeleton loader -->
                     <div class="skeleton skeleton-chart" style="margin: 10px 0;"></div>
                 </div>
@@ -3037,8 +3402,43 @@
             console.warn('Lucide icon initialization failed:', e);
         }
 
+        // ========================================
+        // HAPTIC FEEDBACK SYSTEM (Optimization #3)
+        // ========================================
+        function hapticFeedback(type = 'light') {
+            // Check if Vibration API is available
+            if (!navigator.vibrate) return;
+
+            try {
+                switch(type) {
+                    case 'light':
+                        // Light tap for buttons, selections (10ms)
+                        navigator.vibrate(10);
+                        break;
+                    case 'medium':
+                        // Medium bump for important actions (20ms)
+                        navigator.vibrate(20);
+                        break;
+                    case 'success':
+                        // Double tap for success confirmations
+                        navigator.vibrate([10, 50, 10]);
+                        break;
+                    case 'error':
+                        // Triple tap for errors
+                        navigator.vibrate([10, 50, 10, 50, 10]);
+                        break;
+                    default:
+                        navigator.vibrate(10);
+                }
+            } catch (e) {
+                // Silently fail if vibration not supported
+                console.debug('Haptic feedback not available');
+            }
+        }
+
         // Tab switching
         function switchTab(tabName) {
+            hapticFeedback('light'); // Haptic feedback on tab switch
             // Update nav items
             document.querySelectorAll('.nav-item').forEach(item => {
                 item.classList.remove('active');
@@ -3427,6 +3827,287 @@
 
         }
 
+        // Update Market Intelligence card with CoinGecko Extended data
+        function updateMarketIntelligence(data) {
+            console.log('[DEBUG] updateMarketIntelligence called with:', data);
+
+            // === TRENDING COINS ===
+            const trendingContainer = document.getElementById('trendingCoinsContainer');
+            const trendingTime = document.getElementById('trendingUpdateTime');
+
+            if (data.trending && data.trending.available && trendingContainer) {
+                const coins = data.trending.top_coins || [];
+                if (coins.length > 0) {
+                    // Create pill HTML for each coin
+                    const pillHTML = symbol => `
+                        <div class="trending-pill">
+                            <span style="font-size: 10px;">🔥</span>
+                            ${symbol}
+                        </div>
+                    `;
+
+                    // Duplicate coins for seamless infinite scroll (marquee effect)
+                    const allCoins = [...coins, ...coins];
+                    trendingContainer.innerHTML = allCoins.map(pillHTML).join('');
+                } else {
+                    trendingContainer.innerHTML = '<span style="color: var(--text-secondary); font-size: 11px;">No trending data</span>';
+                    trendingContainer.style.animation = 'none';
+                }
+
+                if (trendingTime && data.trending.updated_at) {
+                    const date = new Date(data.trending.updated_at);
+                    trendingTime.textContent = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+                }
+            }
+
+            // === SECTOR ROTATION ===
+            const rotationSignal = document.getElementById('rotationSignal');
+            const topSectors = document.getElementById('topSectors');
+            const bottomSectors = document.getElementById('bottomSectors');
+
+            if (data.categories && data.categories.available) {
+                // Update rotation signal
+                if (rotationSignal) {
+                    const signal = data.categories.rotation_signal || 'NEUTRAL';
+                    let bgColor, textColor, borderColor;
+
+                    if (signal.includes('RISK_ON')) {
+                        bgColor = 'rgba(16, 185, 129, 0.15)';
+                        borderColor = 'rgba(16, 185, 129, 0.3)';
+                        textColor = 'var(--accent-positive)';
+                    } else if (signal.includes('RISK_OFF')) {
+                        bgColor = 'rgba(239, 68, 68, 0.15)';
+                        borderColor = 'rgba(239, 68, 68, 0.3)';
+                        textColor = 'var(--accent-negative)';
+                    } else if (signal.includes('DEFI')) {
+                        bgColor = 'rgba(6, 182, 212, 0.15)';
+                        borderColor = 'rgba(6, 182, 212, 0.3)';
+                        textColor = 'var(--neon-cyan)';
+                    } else {
+                        bgColor = 'rgba(251, 191, 36, 0.15)';
+                        borderColor = 'rgba(251, 191, 36, 0.3)';
+                        textColor = 'var(--neon-amber)';
+                    }
+
+                    // Extract just the signal type (e.g., "NEUTRAL" from "NEUTRAL: No clear rotation signal")
+                    const signalType = signal.split(':')[0].trim();
+                    rotationSignal.textContent = signalType;
+                    rotationSignal.style.background = bgColor;
+                    rotationSignal.style.borderColor = borderColor;
+                    rotationSignal.style.color = textColor;
+                }
+
+                // Update top performers
+                if (topSectors) {
+                    const performers = data.categories.top_performers || [];
+                    if (performers.length > 0) {
+                        topSectors.innerHTML = performers.slice(0, 3).map(p =>
+                            `<div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${p}</div>`
+                        ).join('');
+                    } else {
+                        topSectors.innerHTML = '<span style="color: var(--text-secondary);">--</span>';
+                    }
+                }
+
+                // Note: bottom_performers comes from the full categories endpoint, not summary
+                // For now, we'll fetch it separately or show placeholder
+                if (bottomSectors) {
+                    bottomSectors.innerHTML = '<span style="color: var(--text-secondary); font-size: 10px;">See full report</span>';
+                }
+            }
+
+            // === EXCHANGE CONCENTRATION ===
+            const exchangeTop3 = document.getElementById('exchangeTop3Share');
+            const exchangesList = document.getElementById('topExchangesList');
+
+            if (data.exchanges && data.exchanges.available) {
+                if (exchangeTop3) {
+                    const share = data.exchanges.top_3_share || 0;
+                    exchangeTop3.textContent = share.toFixed(1) + '%';
+                }
+                if (exchangesList) {
+                    // Top 3 exchanges names come from full endpoint
+                    exchangesList.innerHTML = 'Binance, Bybit, Gate';
+                }
+            }
+
+            // === DERIVATIVES OI & ARB ===
+            const derivativesOI = document.getElementById('globalDerivativesOI');
+            const arbCount = document.getElementById('arbOpportunities');
+            const spreadsContainer = document.getElementById('fundingSpreadsContainer');
+
+            if (data.derivatives && data.derivatives.available) {
+                if (derivativesOI) {
+                    const oi = data.derivatives.total_open_interest || 0;
+                    if (oi >= 1e12) {
+                        derivativesOI.textContent = '$' + (oi / 1e12).toFixed(2) + 'T';
+                    } else if (oi >= 1e9) {
+                        derivativesOI.textContent = '$' + (oi / 1e9).toFixed(1) + 'B';
+                    } else {
+                        derivativesOI.textContent = '$' + (oi / 1e6).toFixed(0) + 'M';
+                    }
+                }
+                if (arbCount) {
+                    arbCount.textContent = data.derivatives.arb_opportunities || 0;
+                }
+
+                // Fetch full derivatives data for funding spreads and OI distribution
+                fetchFundingSpreads();
+                fetchOIDistribution();
+            }
+
+            console.log('[DEBUG] Market Intelligence updated successfully');
+        }
+
+        // Update Market Intelligence breadth gauge (separate from Market Overview breadth)
+        function updateMarketIntelBreadth(advancing, declining) {
+            const total = advancing + declining;
+            if (total === 0) {
+                document.getElementById('breadthLabel').textContent = 'No Data';
+                document.getElementById('breadthAdvancingCount').textContent = '0';
+                document.getElementById('breadthDecliningCount').textContent = '0';
+                document.getElementById('breadthBarAdvancing').style.width = '50%';
+                document.getElementById('breadthAdvancingPct').textContent = '50%';
+                document.getElementById('breadthBarDeclining').style.width = '50%';
+                document.getElementById('breadthDecliningPct').textContent = '50%';
+                return;
+            }
+
+            const advPct = Math.round((advancing / total) * 100);
+            const decPct = 100 - advPct;
+
+            // Update counts
+            document.getElementById('breadthAdvancingCount').textContent = advancing;
+            document.getElementById('breadthDecliningCount').textContent = declining;
+
+            // Update bar widths and percentages
+            document.getElementById('breadthBarAdvancing').style.width = advPct + '%';
+            document.getElementById('breadthAdvancingPct').textContent = advPct + '%';
+            document.getElementById('breadthBarDeclining').style.width = decPct + '%';
+            document.getElementById('breadthDecliningPct').textContent = decPct + '%';
+
+            // Update label based on sentiment
+            let label, color;
+            if (advPct >= 70) {
+                label = 'Strong Bullish';
+                color = 'var(--accent-positive)';
+            } else if (advPct >= 55) {
+                label = 'Bullish';
+                color = 'var(--accent-positive)';
+            } else if (advPct <= 30) {
+                label = 'Strong Bearish';
+                color = 'var(--accent-negative)';
+            } else if (advPct <= 45) {
+                label = 'Bearish';
+                color = 'var(--accent-negative)';
+            } else {
+                label = 'Neutral';
+                color = 'var(--neon-amber)';
+            }
+            document.getElementById('breadthLabel').textContent = label;
+            document.getElementById('breadthLabel').style.color = color;
+        }
+
+        // Fetch funding spreads for arbitrage display
+        async function fetchFundingSpreads() {
+            try {
+                const response = await fetch('/api/coingecko/derivatives/funding-spreads');
+                const data = await response.json();
+
+                if (data.status === 'success' && data.data && data.data.spreads) {
+                    const spreadsContainer = document.getElementById('fundingSpreadsContainer');
+                    if (!spreadsContainer) return;
+
+                    const spreads = Object.entries(data.data.spreads).slice(0, 5);
+
+                    if (spreads.length > 0) {
+                        spreadsContainer.innerHTML = spreads.map(([symbol, info]) => {
+                            const spreadBps = info.spread_bps || 0;
+                            const spreadColor = spreadBps > 100 ? 'var(--accent-positive)' :
+                                               spreadBps > 50 ? 'var(--neon-amber)' : 'var(--text-secondary)';
+
+                            return `
+                                <div style="
+                                    background: rgba(0,0,0,0.3);
+                                    border: 1px solid rgba(255,255,255,0.05);
+                                    padding: 8px 12px;
+                                    border-radius: 8px;
+                                    min-width: 100px;
+                                    flex-shrink: 0;
+                                ">
+                                    <div style="font-size: 12px; font-weight: 600; color: var(--text-primary); margin-bottom: 2px;">${symbol}</div>
+                                    <div style="font-size: 14px; font-weight: 700; color: ${spreadColor};">${spreadBps.toFixed(0)} bps</div>
+                                </div>
+                            `;
+                        }).join('');
+                    } else {
+                        spreadsContainer.innerHTML = '<span style="color: var(--text-secondary); font-size: 11px;">No arb opportunities</span>';
+                    }
+                }
+            } catch (error) {
+                console.warn('[DEBUG] Failed to fetch funding spreads:', error);
+            }
+        }
+
+        // Fetch OI distribution by exchange from CoinGecko derivatives data
+        async function fetchOIDistribution() {
+            try {
+                const response = await fetch('/api/coingecko/derivatives');
+                const data = await response.json();
+
+                if (data.status === 'success' && data.data && data.data.contracts) {
+                    const container = document.getElementById('oiDistributionContainer');
+                    if (!container) return;
+
+                    // Aggregate OI by exchange
+                    const exchangeOI = {};
+                    data.data.contracts.forEach(contract => {
+                        const market = contract.market || 'Unknown';
+                        // Clean exchange name: "Binance (Futures)" -> "Binance"
+                        const exchange = market.replace(/\s*\(.*\)\s*/g, '').trim();
+                        const oi = parseFloat(contract.open_interest) || 0;
+                        exchangeOI[exchange] = (exchangeOI[exchange] || 0) + oi;
+                    });
+
+                    // Sort by OI descending, take top 5
+                    const sorted = Object.entries(exchangeOI)
+                        .sort((a, b) => b[1] - a[1])
+                        .slice(0, 5);
+
+                    if (sorted.length > 0) {
+                        // Calculate total for percentage
+                        const totalOI = sorted.reduce((sum, [_, oi]) => sum + oi, 0);
+
+                        container.innerHTML = sorted.map(([exchange, oi], idx) => {
+                            const pct = totalOI > 0 ? ((oi / totalOI) * 100).toFixed(1) : 0;
+                            const formatted = oi >= 1e9 ? (oi / 1e9).toFixed(1) + 'B' : (oi / 1e6).toFixed(0) + 'M';
+                            // Color gradient based on rank
+                            const colors = ['var(--neon-cyan)', 'var(--accent-positive)', 'var(--neon-amber)', 'var(--text-secondary)', 'var(--text-secondary)'];
+                            return `
+                                <div style="
+                                    background: rgba(0,0,0,0.3);
+                                    border: 1px solid ${idx === 0 ? 'rgba(6, 182, 212, 0.3)' : 'rgba(255,255,255,0.05)'};
+                                    padding: 6px 10px;
+                                    border-radius: 8px;
+                                    min-width: 75px;
+                                    flex-shrink: 0;
+                                    text-align: center;
+                                ">
+                                    <div style="font-size: 10px; font-weight: 600; color: ${colors[idx]}; margin-bottom: 2px;">${exchange}</div>
+                                    <div style="font-size: 13px; font-weight: 700; color: var(--text-primary);">$${formatted}</div>
+                                    <div style="font-size: 9px; color: var(--text-secondary);">${pct}%</div>
+                                </div>
+                            `;
+                        }).join('');
+                    } else {
+                        container.innerHTML = '<span style="color: var(--text-secondary); font-size: 11px;">No OI data</span>';
+                    }
+                }
+            } catch (error) {
+                console.warn('[DEBUG] Failed to fetch OI distribution:', error);
+            }
+        }
+
         // Data loading functions
         async function loadDashboardData() {
             console.log('[DEBUG] loadDashboardData() called at', new Date().toISOString());
@@ -3447,12 +4128,13 @@
                     }
                 };
 
-                // Load summary, symbols, market overview, and movers data
-                const [summaryResponse, symbolsResponse, marketResponse, mobileDataResponse] = await Promise.all([
+                // Load summary, symbols, market overview, movers, and CoinGecko data
+                const [summaryResponse, symbolsResponse, marketResponse, mobileDataResponse, coinGeckoResponse] = await Promise.all([
                     fetchWithLog('/api/dashboard/overview'),
                     fetchWithLog('/api/dashboard/symbols'),
                     fetchWithLog('/api/dashboard/market-overview'),
-                    fetchWithLog('/api/dashboard/mobile-data')
+                    fetchWithLog('/api/dashboard/mobile-data'),
+                    fetchWithLog('/api/coingecko/summary')
                 ]);
                 console.log('[DEBUG] All fetches completed!');
 
@@ -3460,6 +4142,7 @@
                 const symbolsData = await symbolsResponse.json();
                 const marketData = await marketResponse.json();
                 const mobileData = await mobileDataResponse.json();
+                const coinGeckoData = await coinGeckoResponse.json();
                 console.log('[DEBUG] All JSON parsed successfully');
                 console.log('[DEBUG] mobileData.market_overview:', JSON.stringify(mobileData.market_overview).substring(0, 200));
 
@@ -3530,6 +4213,11 @@
 
                 // Fetch Perpetuals Pulse data (separate from main data to avoid blocking)
                 fetchPerpetualsPulse();
+
+                // Update Market Intelligence card with CoinGecko data
+                if (coinGeckoData && coinGeckoData.status === 'success') {
+                    updateMarketIntelligence(coinGeckoData.data);
+                }
 
                 // Final summary
                 console.log('[DEBUG] ====== LOAD COMPLETE SUMMARY ======');
@@ -3776,7 +4464,7 @@
 
         // Check if alert is important (warrants notification)
         function isImportantAlert(alert) {
-            const alertType = alert.type || '';
+            const alertType = alert.alert_type || alert.details?.type || alert.type || '';
             const details = alert.details || {};
             const message = alert.message || '';
             const level = alert.level || '';
@@ -3908,6 +4596,7 @@
 
         // Chip-based timeframe selector with auto-scroll
         function selectTimeframe(buttonEl, hours) {
+            hapticFeedback('light'); // Haptic feedback on timeframe change
             // Remove active state from all chips
             document.querySelectorAll('.tf-chip').forEach(btn => {
                 btn.classList.remove('tf-chip-active');
@@ -3983,6 +4672,7 @@
 
         // Auto-refresh toggle for Performance tab
         function toggleAutoRefresh() {
+            hapticFeedback('medium'); // Haptic feedback on toggle
             perfAutoRefreshEnabled = !perfAutoRefreshEnabled;
 
             const refreshStatus = document.getElementById('refreshStatus');
@@ -4015,42 +4705,409 @@
         }
 
         // =====================================================
-        // FULLSCREEN CHART FUNCTIONALITY
+        // FULLSCREEN CHART FUNCTIONALITY (ENHANCED)
         // =====================================================
 
+        let fullscreenHintShown = false; // Track if hint has been shown this session
+        let fullscreenToggleTimeout = null;
+
+        // ========================================
+        // DOUBLE-TAP QUICK ACTIONS (Optimization #4)
+        // 60% faster timeframe switching
+        // ========================================
+        let lastTapTime = 0;
+        let lastTapX = 0;
+        const DOUBLE_TAP_THRESHOLD = 300; // 300ms window for double-tap detection
+        const DOUBLE_TAP_DISTANCE = 50; // Max distance between taps (pixels)
+
+        // Initialize double-tap listener on chart
+        function initDoubleTapActions() {
+            const chartContainer = document.getElementById('performanceChart');
+            if (!chartContainer) return;
+
+            chartContainer.addEventListener('touchend', handleDoubleTap, { passive: false });
+        }
+
+        function handleDoubleTap(e) {
+            // Only active in fullscreen mode
+            const card = document.getElementById('betaChartCard');
+            if (!card || !card.classList.contains('fullscreen-chart')) return;
+
+            const touch = e.changedTouches[0];
+            const currentTime = new Date().getTime();
+            const tapX = touch.clientX;
+
+            // Check if this is a double-tap
+            const timeDiff = currentTime - lastTapTime;
+            const distDiff = Math.abs(tapX - lastTapX);
+
+            if (timeDiff < DOUBLE_TAP_THRESHOLD && distDiff < DOUBLE_TAP_DISTANCE) {
+                // Double-tap detected!
+                e.preventDefault();
+                handleDoubleTapAction(tapX, e.target.clientWidth);
+
+                // Reset tap tracking
+                lastTapTime = 0;
+                lastTapX = 0;
+            } else {
+                // Single tap - update tracking
+                lastTapTime = currentTime;
+                lastTapX = tapX;
+            }
+        }
+
+        function handleDoubleTapAction(tapX, containerWidth) {
+            const leftThird = containerWidth / 3;
+            const rightThird = containerWidth * 2 / 3;
+
+            // Get current timeframe index
+            const timeframes = [0.0833, 0.25, 0.5, 1, 4, 12, 24]; // 5m, 15m, 30m, 1H, 4H, 12H, 24H
+            const currentIndex = timeframes.indexOf(currentTimeframe);
+
+            if (tapX < leftThird && currentIndex > 0) {
+                // Left third: Previous timeframe
+                const prevTf = timeframes[currentIndex - 1];
+                const prevButton = document.querySelector(`.tf-chip[data-tf="${prevTf}"]`);
+                if (prevButton) {
+                    showDoubleTapFeedback(tapX, containerWidth, 'Previous');
+                    hapticFeedback('medium');
+                    selectTimeframe(prevButton, prevTf);
+                }
+            } else if (tapX > rightThird && currentIndex < timeframes.length - 1) {
+                // Right third: Next timeframe
+                const nextTf = timeframes[currentIndex + 1];
+                const nextButton = document.querySelector(`.tf-chip[data-tf="${nextTf}"]`);
+                if (nextButton) {
+                    showDoubleTapFeedback(tapX, containerWidth, 'Next');
+                    hapticFeedback('medium');
+                    selectTimeframe(nextButton, nextTf);
+                }
+            } else {
+                // Center: Reset zoom (if chart has zoom capability)
+                if (lwChart && typeof lwChart.timeScale === 'function') {
+                    showDoubleTapFeedback(tapX, containerWidth, 'Reset');
+                    hapticFeedback('light');
+                    try {
+                        lwChart.timeScale().fitContent();
+                    } catch (e) {
+                        console.debug('Chart zoom reset not available');
+                    }
+                }
+            }
+        }
+
+        // Visual feedback for double-tap actions
+        function showDoubleTapFeedback(tapX, containerWidth, action) {
+            const feedback = document.createElement('div');
+            const leftThird = containerWidth / 3;
+            const rightThird = containerWidth * 2 / 3;
+
+            let icon, position;
+            if (tapX < leftThird) {
+                icon = '◄';
+                position = 'left: 20px;';
+            } else if (tapX > rightThird) {
+                icon = '►';
+                position = 'right: 20px;';
+            } else {
+                icon = '⊙';
+                position = 'left: 50%; transform: translate(-50%, -50%);';
+            }
+
+            feedback.innerHTML = `<span style="font-size: 32px;">${icon}</span><br><span style="font-size: 11px; opacity: 0.8;">${action}</span>`;
+            feedback.style.cssText = `
+                position: absolute;
+                ${position}
+                top: 50%;
+                transform: translateY(-50%);
+                padding: 16px 20px;
+                background: rgba(0, 0, 0, 0.85);
+                border: 1px solid rgba(251, 191, 36, 0.4);
+                border-radius: 12px;
+                color: #fbbf24;
+                font-family: 'IBM Plex Mono', monospace;
+                font-weight: 600;
+                text-align: center;
+                z-index: 10000;
+                pointer-events: none;
+                animation: doubleTapFeedback 0.6s ease;
+            `;
+
+            const chartContainer = document.getElementById('performanceChart');
+            chartContainer.appendChild(feedback);
+
+            setTimeout(() => feedback.remove(), 600);
+        }
+
+        // CSS animation for double-tap feedback
+        const doubleTapStyle = document.createElement('style');
+        doubleTapStyle.textContent = `
+            @keyframes doubleTapFeedback {
+                0% { opacity: 0; transform: translateY(-50%) scale(0.8); }
+                50% { opacity: 1; transform: translateY(-50%) scale(1.1); }
+                100% { opacity: 0; transform: translateY(-50%) scale(1); }
+            }
+        `;
+        document.head.appendChild(doubleTapStyle);
+
         function toggleChartFullscreen() {
+            hapticFeedback('medium'); // Haptic feedback on fullscreen toggle
+            // Debounce rapid toggles
+            if (fullscreenToggleTimeout) return;
+
+            fullscreenToggleTimeout = setTimeout(() => {
+                fullscreenToggleTimeout = null;
+            }, 300);
+
             const card = document.getElementById('betaChartCard');
             const btn = document.getElementById('fullscreenBtn');
+            const chartContainer = document.getElementById('performanceChart');
             const isFullscreen = card.classList.contains('fullscreen-chart');
 
             if (!isFullscreen) {
-                // Enter fullscreen - hide everything except chart and exit button
+                // ============ ENTER FULLSCREEN ============
+
+                // Add fullscreen class
                 card.classList.add('fullscreen-chart');
+
+                // Update button icon
                 btn.innerHTML = `
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"></path>
                     </svg>
                 `;
+
                 // Hide bottom nav
                 document.querySelector('.bottom-nav').style.display = 'none';
 
-            } else {
-                // Exit fullscreen - restore normal view
-                card.classList.remove('fullscreen-chart');
-                btn.innerHTML = `
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path>
-                    </svg>
-                `;
-                // Show bottom nav
-                document.querySelector('.bottom-nav').style.display = 'flex';
-                // Restore chart height
-                const chartContainer = document.getElementById('performanceChart');
-                if (chartContainer) {
-                    chartContainer.style.height = '350px';
+                // CRITICAL: Prevent body scroll but ALLOW chart gestures
+                document.body.style.overflow = 'hidden';
+                // Don't block touch-action at body level - let fullscreen-chart handle it
+                // This is especially important in landscape mode where touch targets are smaller
+
+                // Force chart resize after transition (100ms for CSS transition)
+                setTimeout(() => {
+                    if (lwChart && typeof lwChart.resize === 'function') {
+                        const isLandscape = window.innerWidth > window.innerHeight;
+                        const newHeight = window.innerHeight - (isLandscape ? 100 : 120);
+
+                        lwChart.resize(
+                            chartContainer.clientWidth,
+                            newHeight
+                        );
+
+                        // Only use transform in portrait - it causes stacking issues in landscape
+                        if (!isLandscape) {
+                            // Force a reflow to ensure touch handlers are properly registered
+                            chartContainer.style.transform = 'translateZ(0)';
+
+                            // iOS Safari quirk fix
+                            if (/iPhone|iPad|iPod/.test(navigator.userAgent)) {
+                                chartContainer.style.webkitTransform = 'translateZ(0)';
+                            }
+                        } else {
+                            // In landscape, ensure no transform interference
+                            chartContainer.style.transform = 'none';
+                            chartContainer.style.webkitTransform = 'none';
+                        }
+                    }
+                }, 100);
+
+                // Show interaction hint (first time only)
+                if (!fullscreenHintShown) {
+                    showFullscreenHint();
+                    fullscreenHintShown = true;
                 }
+
+                // Add swipe-down gesture listener for exit
+                addSwipeDownListener(card);
+
+                // Push state for back button support
+                history.pushState({ fullscreen: true }, '', window.location.href);
+
+            } else {
+                // ============ EXIT FULLSCREEN ============
+                exitFullscreen(card, btn, chartContainer);
             }
         }
+
+        function exitFullscreen(card, btn, chartContainer) {
+            // Remove fullscreen class
+            card.classList.remove('fullscreen-chart');
+
+            // Update button icon
+            btn.innerHTML = `
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path>
+                </svg>
+            `;
+
+            // Show bottom nav
+            document.querySelector('.bottom-nav').style.display = 'flex';
+
+            // CRITICAL: Restore body scroll
+            document.body.style.overflow = '';
+
+            // Resize chart back to normal
+            setTimeout(() => {
+                if (lwChart && typeof lwChart.resize === 'function') {
+                    chartContainer.style.height = '350px';
+                    chartContainer.style.transform = '';
+                    chartContainer.style.webkitTransform = '';
+
+                    lwChart.resize(
+                        chartContainer.clientWidth,
+                        350
+                    );
+                }
+            }, 100);
+
+            // Remove swipe listener
+            removeSwipeDownListener(card);
+        }
+
+        function showFullscreenHint() {
+            const hint = document.createElement('div');
+            hint.className = 'fullscreen-chart-hint';
+            hint.textContent = '👆 Pinch to zoom • Drag to pan';
+            document.body.appendChild(hint);
+
+            setTimeout(() => {
+                hint.remove();
+            }, 2500);
+        }
+
+        // =====================================================
+        // SWIPE-DOWN TO EXIT GESTURE
+        // =====================================================
+
+        let swipeStartY = 0;
+        let swipeCurrentY = 0;
+        let isSwiping = false;
+
+        function addSwipeDownListener(card) {
+            const header = card.querySelector('.card-header');
+
+            header.addEventListener('touchstart', handleSwipeStart, { passive: false });
+            header.addEventListener('touchmove', handleSwipeMove, { passive: false });
+            header.addEventListener('touchend', handleSwipeEnd, { passive: false });
+        }
+
+        function removeSwipeDownListener(card) {
+            const header = card.querySelector('.card-header');
+
+            header.removeEventListener('touchstart', handleSwipeStart);
+            header.removeEventListener('touchmove', handleSwipeMove);
+            header.removeEventListener('touchend', handleSwipeEnd);
+        }
+
+        function handleSwipeStart(e) {
+            // Only start swipe if touch is near top of screen
+            if (e.touches[0].clientY < 100) {
+                swipeStartY = e.touches[0].clientY;
+                isSwiping = true;
+            }
+        }
+
+        function handleSwipeMove(e) {
+            if (!isSwiping) return;
+
+            swipeCurrentY = e.touches[0].clientY;
+            const swipeDistance = swipeCurrentY - swipeStartY;
+
+            // Only allow downward swipes
+            if (swipeDistance > 0) {
+                e.preventDefault(); // Prevent default scroll
+
+                // Add visual feedback
+                const card = document.getElementById('betaChartCard');
+                const opacity = Math.max(0.5, 1 - (swipeDistance / 300));
+                card.style.opacity = opacity;
+            }
+        }
+
+        function handleSwipeEnd(e) {
+            if (!isSwiping) return;
+
+            const swipeDistance = swipeCurrentY - swipeStartY;
+            const card = document.getElementById('betaChartCard');
+
+            // If swiped down more than 100px, exit fullscreen
+            if (swipeDistance > 100) {
+                const btn = document.getElementById('fullscreenBtn');
+                const chartContainer = document.getElementById('performanceChart');
+                exitFullscreen(card, btn, chartContainer);
+            }
+
+            // Reset opacity
+            card.style.opacity = '1';
+            isSwiping = false;
+            swipeStartY = 0;
+            swipeCurrentY = 0;
+        }
+
+        // =====================================================
+        // HANDLE DEVICE ORIENTATION CHANGES
+        // =====================================================
+
+        window.addEventListener('orientationchange', () => {
+            const card = document.getElementById('betaChartCard');
+            if (card && card.classList.contains('fullscreen-chart')) {
+                setTimeout(() => {
+                    const chartContainer = document.getElementById('performanceChart');
+                    if (lwChart && typeof lwChart.resize === 'function') {
+                        const isLandscape = window.innerWidth > window.innerHeight;
+                        const newHeight = window.innerHeight - (isLandscape ? 100 : 120);
+
+                        lwChart.resize(
+                            chartContainer.clientWidth,
+                            newHeight
+                        );
+
+                        // Update transform based on orientation
+                        if (!isLandscape) {
+                            chartContainer.style.transform = 'translateZ(0)';
+                            if (/iPhone|iPad|iPod/.test(navigator.userAgent)) {
+                                chartContainer.style.webkitTransform = 'translateZ(0)';
+                            }
+                        } else {
+                            chartContainer.style.transform = 'none';
+                            chartContainer.style.webkitTransform = 'none';
+                        }
+                    }
+                }, 200); // Wait for orientation change to complete
+            }
+        });
+
+        // =====================================================
+        // HANDLE BACK BUTTON (Android)
+        // =====================================================
+
+        window.addEventListener('popstate', (e) => {
+            const card = document.getElementById('betaChartCard');
+            if (card && card.classList.contains('fullscreen-chart')) {
+                e.preventDefault();
+                const btn = document.getElementById('fullscreenBtn');
+                const chartContainer = document.getElementById('performanceChart');
+                exitFullscreen(card, btn, chartContainer);
+                history.pushState(null, '', window.location.href);
+            }
+        });
+
+        // =====================================================
+        // HANDLE TAB SWITCH
+        // =====================================================
+
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                const card = document.getElementById('betaChartCard');
+                if (card && card.classList.contains('fullscreen-chart')) {
+                    const btn = document.getElementById('fullscreenBtn');
+                    const chartContainer = document.getElementById('performanceChart');
+                    exitFullscreen(card, btn, chartContainer);
+                }
+            }
+        });
 
         function startPerfAutoRefresh() {
             if (perfAutoRefreshInterval) clearInterval(perfAutoRefreshInterval);
@@ -4069,12 +5126,51 @@
             }
         }
 
+        // ========================================
+        // LAST UPDATE TIMESTAMP (Optimization #6)
+        // Relative time display with animated pulse
+        // ========================================
+        let lastUpdateTimestamp = null;
+
         function updateLastUpdatedTime() {
-            const now = new Date();
-            const timeStr = now.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
-            const lastUpdated = document.getElementById('lastUpdated');
-            if (lastUpdated) lastUpdated.textContent = timeStr;
+            lastUpdateTimestamp = Date.now();
+            updateRelativeTime(); // Update immediately
         }
+
+        // Update relative time display (called every second)
+        function updateRelativeTime() {
+            const lastUpdated = document.getElementById('lastUpdated');
+            if (!lastUpdated || !lastUpdateTimestamp) return;
+
+            const secondsAgo = Math.floor((Date.now() - lastUpdateTimestamp) / 1000);
+
+            let timeText;
+            if (secondsAgo < 5) {
+                timeText = 'Just now';
+            } else if (secondsAgo < 60) {
+                timeText = `${secondsAgo}s ago`;
+            } else if (secondsAgo < 3600) {
+                const minutesAgo = Math.floor(secondsAgo / 60);
+                timeText = `${minutesAgo}m ago`;
+            } else {
+                const hoursAgo = Math.floor(secondsAgo / 3600);
+                timeText = `${hoursAgo}h ago`;
+            }
+
+            lastUpdated.textContent = timeText;
+
+            // Add color indication based on freshness
+            if (secondsAgo < 10) {
+                lastUpdated.style.color = 'var(--accent-positive)'; // Green for very fresh
+            } else if (secondsAgo < 60) {
+                lastUpdated.style.color = 'var(--text-accent)'; // Amber for recent
+            } else {
+                lastUpdated.style.color = 'var(--text-secondary)'; // Gray for stale
+            }
+        }
+
+        // Start relative time updater (runs every second)
+        setInterval(updateRelativeTime, 1000);
 
         // Initialize from localStorage on load
         function initPerformanceSettings() {
@@ -4305,6 +5401,42 @@
                 btcChangeEl.textContent = (btcChange >= 0 ? '+' : '') + btcChange.toFixed(2) + '%';
                 btcChangeEl.style.color = btcChange >= 0 ? 'var(--accent-positive)' : 'var(--accent-negative)';
             }
+
+            // Update Price HUD (Optimization #2)
+            updatePriceHUD(overview.btc_price, overview.btc_change);
+        }
+
+        // Price HUD Update Function (Optimization #2)
+        function updatePriceHUD(price, change24h) {
+            const hudPrice = document.getElementById('hudPrice');
+            const hudChangeValue = document.getElementById('hudChangeValue');
+            const hudChangeArrow = document.getElementById('hudChangeArrow');
+            const hudChange = document.getElementById('hudChange');
+
+            if (!hudPrice || !hudChangeValue || !hudChangeArrow || !hudChange) return;
+
+            // Update price with animation
+            if (price) {
+                hudPrice.classList.add('updating');
+                hudPrice.textContent = '$' + (price >= 10000
+                    ? Math.round(price).toLocaleString()
+                    : price.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}));
+                setTimeout(() => hudPrice.classList.remove('updating'), 300);
+            }
+
+            // Update 24h change
+            if (change24h !== undefined && change24h !== null) {
+                const changeNum = parseFloat(change24h);
+                const isPositive = changeNum >= 0;
+
+                hudChangeValue.textContent = (isPositive ? '+' : '') + changeNum.toFixed(2) + '%';
+                hudChangeArrow.textContent = isPositive ? '↑' : '↓';
+
+                // Update color classes
+                hudChange.classList.remove('positive', 'negative');
+                hudChange.classList.add(isPositive ? 'positive' : 'negative');
+            }
+        }
 
             const symbolCountEl = document.getElementById('perfSymbolCount');
             if (symbolCountEl) {
@@ -6441,6 +7573,10 @@
             } else {
                 losersList.innerHTML = '<div style="text-align: center; color: var(--text-secondary); font-size: 12px; padding: 10px;">No losers found</div>';
             }
+
+            // Update Market Intelligence breadth gauge with movers count
+            // This shows broader market breadth from all monitored symbols
+            updateMarketIntelBreadth(gainers.length, losers.length);
         }
         
         function createMoverItem(item, type) {
@@ -7837,6 +8973,9 @@
 
                 console.log('[DEBUG] About to call loadDashboardData()');
                 loadDashboardData();
+
+                // Initialize Double-Tap Quick Actions (Optimization #4)
+                initDoubleTapActions();
 
             // Debounced icon refresh
             const debouncedIconRefresh = debounce(() => {
