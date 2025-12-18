@@ -181,10 +181,13 @@ class UtilsCleanupMigrator:
 
 def main():
     import argparse
-    
+
+    # Default to project src directory relative to script location
+    default_src = str(Path(__file__).parent.parent.parent / 'src')
+
     parser = argparse.ArgumentParser(description='Clean up utils directory')
     parser.add_argument('--execute', action='store_true', help='Execute migration (default is dry-run)')
-    parser.add_argument('--src', default='/Users/ffv_macmini/Desktop/Virtuoso_ccxt/src', help='Source directory')
+    parser.add_argument('--src', default=default_src, help='Source directory')
     
     args = parser.parse_args()
     
