@@ -125,6 +125,14 @@ except ImportError as e:
     logger.warning(f"Bitcoin predictor not available: {e}")
     BitcoinAltcoinPredictor = None
 
+# Dual-regime signal enhancement imports
+try:
+    from src.core.analysis.dual_regime_calculator import DualRegimeCalculator
+    from src.core.schemas.dual_regime import MarketRegimeContext, SymbolRegimeContext
+except ImportError as e:
+    logger.warning(f"Dual-regime calculator not available: {e}")
+    DualRegimeCalculator = None
+
 logger = logging.getLogger(__name__)
 
 class SignalGenerator:
@@ -166,13 +174,13 @@ class SignalGenerator:
         self.confluence_weights = config.get('confluence', {}).get('weights', {}).get('components', {})
         self.logger.debug(f"Loaded confluence component weights: {self.confluence_weights}")
         
-        # Initialize indicators
-        self.technical_indicators = TechnicalIndicators(config)
-        self.volume_indicators = VolumeIndicators(config)
-        self.orderflow_indicators = OrderflowIndicators(config)
-        self.orderbook_indicators = OrderbookIndicators(config)
-        self.price_structure_indicators = PriceStructureIndicators(config)
-        self.sentiment_indicators = SentimentIndicators(config)
+        # Initialize indicators (handle missing gitignored modules gracefully)
+        self.technical_indicators = TechnicalIndicators(config) if TechnicalIndicators is not None else None
+        self.volume_indicators = VolumeIndicators(config) if VolumeIndicators is not None else None
+        self.orderflow_indicators = OrderflowIndicators(config) if OrderflowIndicators is not None else None
+        self.orderbook_indicators = OrderbookIndicators(config) if OrderbookIndicators is not None else None
+        self.price_structure_indicators = PriceStructureIndicators(config) if PriceStructureIndicators is not None else None
+        self.sentiment_indicators = SentimentIndicators(config) if SentimentIndicators is not None else None
         
         # logger.debug(f"Initialized SignalGenerator with config: {config}")  # Disabled verbose config dump
         
@@ -253,12 +261,38 @@ class SignalGenerator:
                 btc_config = config.get('bitcoin_prediction', {})
                 self.btc_min_confidence = btc_config.get('min_confidence', 0.6)
                 self.btc_boost_multiplier = btc_config.get('boost_multiplier', 10.0)
+
+                # Restore BTC price history from cache if available
+                self._restore_btc_history_from_cache()
+
                 self.logger.info("✅ Bitcoin Lead/Lag Predictor initialized for enhanced signals")
             except Exception as e:
                 self.logger.warning(f"Failed to initialize Bitcoin predictor: {e}")
                 self.btc_predictor = None
         else:
             self.logger.info("ℹ️  Bitcoin predictor not available (module not found)")
+
+        # Initialize Dual-Regime Signal Enhancement
+        self.dual_regime_calculator = None
+        self.dual_regime_enabled = False
+
+        if DualRegimeCalculator is not None:
+            try:
+                # Load configuration
+                dual_regime_config = config.get('dual_regime', {})
+                self.dual_regime_enabled = dual_regime_config.get('enabled', False)
+
+                if self.dual_regime_enabled:
+                    self.dual_regime_calculator = DualRegimeCalculator(config)
+                    self.logger.info("✅ Dual-Regime Signal Enhancement initialized")
+                else:
+                    self.logger.info("ℹ️  Dual-Regime Enhancement disabled by config")
+            except Exception as e:
+                self.logger.warning(f"Failed to initialize dual-regime calculator: {e}")
+                self.dual_regime_calculator = None
+                self.dual_regime_enabled = False
+        else:
+            self.logger.info("ℹ️  Dual-regime calculator not available (module not found)")
 
         # Verify AlertManager initialization
         if self.alert_manager and hasattr(self.alert_manager, 'discord_webhook_url') and self.alert_manager.discord_webhook_url:
@@ -327,9 +361,66 @@ class SignalGenerator:
         self._on_signal_callback = callback
         self.logger.info(f"Signal callback registered: {callback.__name__ if hasattr(callback, '__name__') else str(callback)}")
 
+    def _restore_btc_history_from_cache(self):
+        """
+        Restore BTC price history from cache (fast) or database (backup).
+        This allows the web service to recover history after restarts.
+        """
+        # Try cache first (fast)
+        try:
+            if hasattr(self, 'shared_cache') and self.shared_cache:
+                cached_history = self.shared_cache.get('bitcoin_prediction:btc_price_history')
+                if cached_history and isinstance(cached_history, list):
+                    # Restore history to deque
+                    for entry in cached_history:
+                        self.btc_price_history.append(entry)
+                    self.logger.info(f"✅ Restored {len(cached_history)} BTC prices from cache")
+                    return
+        except Exception as e:
+            self.logger.warning(f"Failed to restore from cache, trying database: {e}")
+
+        # Fallback to database (persistent backup)
+        try:
+            import sqlite3
+            import os
+
+            db_path = os.path.join(os.getcwd(), 'data', 'virtuoso.db')
+            if not os.path.exists(db_path):
+                self.logger.info("ℹ️  No BTC history in cache or database (starting fresh)")
+                return
+
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+
+            # Get last 240 prices ordered by timestamp
+            cursor.execute("""
+                SELECT price, timestamp
+                FROM btc_price_history
+                ORDER BY timestamp DESC
+                LIMIT 240
+            """)
+
+            rows = cursor.fetchall()
+            conn.close()
+
+            if rows:
+                # Reverse to get chronological order
+                for price, timestamp in reversed(rows):
+                    self.btc_price_history.append({
+                        'price': price,
+                        'timestamp': timestamp
+                    })
+                self.logger.info(f"✅ Restored {len(rows)} BTC prices from database (cache miss)")
+            else:
+                self.logger.info("ℹ️  No BTC price history found (starting fresh)")
+
+        except Exception as e:
+            self.logger.warning(f"Failed to restore BTC history from database: {e}")
+
     def update_btc_price(self, price: float, timestamp: int = None):
         """
         Update Bitcoin price history for predictive analysis.
+        Persists to cache (fast) and database (backup).
 
         Args:
             price: Current BTC price
@@ -338,10 +429,122 @@ class SignalGenerator:
         if timestamp is None:
             timestamp = int(time.time())
 
-        self.btc_price_history.append({
+        price_entry = {
             'price': price,
             'timestamp': timestamp
-        })
+        }
+
+        self.btc_price_history.append(price_entry)
+
+        # Persist to cache for fast cross-service access
+        try:
+            if hasattr(self, 'shared_cache') and self.shared_cache:
+                history_list = list(self.btc_price_history)
+                self.shared_cache.set(
+                    'bitcoin_prediction:btc_price_history',
+                    history_list,
+                    ttl=7200  # 2 hours TTL
+                )
+        except Exception as e:
+            self.logger.warning(f"Failed to cache BTC price history: {e}")
+
+        # Persist to database as backup (survives service restarts)
+        try:
+            import sqlite3
+            import os
+
+            db_path = os.path.join(os.getcwd(), 'data', 'virtuoso.db')
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+
+            # Insert or ignore (UNIQUE constraint on timestamp)
+            cursor.execute("""
+                INSERT OR IGNORE INTO btc_price_history (price, timestamp)
+                VALUES (?, ?)
+            """, (price, timestamp))
+
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            # Don't fail price updates if database fails
+            self.logger.warning(f"Failed to persist BTC price to database: {e}")
+
+    async def _get_market_regime_context(self) -> Optional[MarketRegimeContext]:
+        """
+        Fetch market-wide regime context from external regime data provider.
+
+        Returns:
+            MarketRegimeContext with Fear & Greed, funding rates, positioning, etc.
+            None if data unavailable or feature disabled
+        """
+        if not self.dual_regime_enabled or not self.dual_regime_calculator:
+            return None
+
+        try:
+            # Import external regime data provider
+            from src.core.analysis.external_regime_data import ExternalRegimeDataProvider
+
+            # Get singleton instance or create new one
+            provider = ExternalRegimeDataProvider(self.config)
+            signals = await provider.get_external_signals()
+
+            # Map external signals to MarketRegimeContext
+            market_context = MarketRegimeContext(
+                bias=signals.market_bias.upper(),  # "BULLISH", "NEUTRAL", "BEARISH"
+                fear_greed=signals.fear_greed_value,
+                long_pct=signals.long_percentage,
+                short_pct=signals.short_percentage,
+                funding_rate=signals.funding_rate,
+                btc_dominance=signals.btc_dominance,
+                confidence=signals.data_quality
+            )
+
+            return market_context
+
+        except Exception as e:
+            self.logger.warning(f"Failed to fetch market regime context: {e}")
+            return None
+
+    def _get_symbol_regime_context(
+        self,
+        market_data: Dict[str, Any],
+        regime_detection: Optional[Any] = None
+    ) -> Optional[SymbolRegimeContext]:
+        """
+        Extract symbol-specific regime context from market regime detector.
+
+        Args:
+            market_data: Market data dictionary with OHLCV, orderbook, etc.
+            regime_detection: Optional pre-computed RegimeDetection result
+
+        Returns:
+            SymbolRegimeContext with regime classification, confidence, trend direction, etc.
+            None if data unavailable or feature disabled
+        """
+        if not self.dual_regime_enabled or not self.dual_regime_calculator:
+            return None
+
+        try:
+            # If no pre-computed regime, detect it
+            if regime_detection is None:
+                from src.core.analysis.market_regime_detector import MarketRegimeDetector
+                detector = MarketRegimeDetector(self.config)
+                regime_detection = detector.detect_regime(market_data)
+
+            # Map RegimeDetection to SymbolRegimeContext
+            symbol_context = SymbolRegimeContext(
+                regime=regime_detection.regime.value,  # Enum to string
+                confidence=regime_detection.confidence,
+                trend_direction=regime_detection.trend_strength,  # Already -1 to +1
+                mtf_aligned=regime_detection.mtf_aligned,
+                volatility_percentile=regime_detection.volatility_percentile
+            )
+
+            return symbol_context
+
+        except Exception as e:
+            self.logger.warning(f"Failed to get symbol regime context: {e}")
+            return None
 
     def _get_btc_prediction_signal(self, symbol: str) -> Optional[Dict[str, Any]]:
         """
@@ -455,6 +658,278 @@ class SignalGenerator:
         except Exception as e:
             self.logger.debug(f"Could not fetch prices for {symbol}: {e}")
             return None
+
+    async def send_bitcoin_prediction_alert(
+        self,
+        symbol: str,
+        prediction: Dict[str, Any],
+        btc_move_pct: float,
+        alert_id: Optional[str] = None,
+        format_version: str = 'A'  # 'A' = original, 'B' = optimized
+    ) -> None:
+        """
+        Send Discord webhook alert for Bitcoin lead/lag prediction signal.
+
+        Args:
+            symbol: Altcoin symbol (e.g., 'ETHUSDT')
+            prediction: Prediction signal dict from _get_btc_prediction_signal
+            btc_move_pct: Recent BTC price movement percentage
+            alert_id: Optional unique alert identifier for tracking
+            format_version: 'A' for original format, 'B' for optimized format
+        """
+        if not self.alert_manager:
+            self.logger.warning("Cannot send Bitcoin prediction alert: AlertManager not initialized")
+            return
+
+        if not alert_id:
+            alert_id = f"btc_pred_{int(time.time() * 1000)}"
+
+        # Check environment variable for format override
+        env_format = os.getenv('BTC_ALERT_FORMAT', format_version).upper()
+        if env_format in ['A', 'B']:
+            format_version = env_format
+
+        try:
+            # Extract prediction data
+            direction = prediction.get('direction', 'neutral').upper()
+            confidence = prediction.get('confidence', 0) * 100  # Convert to percentage
+            expected_move_pct = prediction.get('expected_move_pct', 0)
+            lag_seconds = prediction.get('lag_minutes', 0) * 60  # Convert to seconds
+            boost_points = prediction.get('boost_points', 0)
+            stability_score = prediction.get('stability_score', 0)
+            beta = prediction.get('beta', 1.0)
+
+            from discord_webhook import DiscordEmbed, DiscordWebhook
+
+            if format_version == 'B':
+                # FORMAT B: Optimized format with visual indicators
+                embed = self._build_optimized_alert_format(
+                    symbol, direction, confidence, btc_move_pct,
+                    expected_move_pct, lag_seconds, boost_points,
+                    stability_score, beta, alert_id
+                )
+            else:
+                # FORMAT A: Original format
+                embed = self._build_original_alert_format(
+                    symbol, direction, confidence, btc_move_pct,
+                    expected_move_pct, lag_seconds, boost_points,
+                    stability_score, beta, alert_id
+                )
+
+            # Get development webhook URL
+            webhook_url = os.getenv('DEVELOPMENT_WEBHOOK_URL')
+            if not webhook_url:
+                self.logger.warning(f"[ALERT:{alert_id}] DEVELOPMENT_WEBHOOK_URL not set, skipping alert")
+                return
+
+            # Create webhook
+            webhook = DiscordWebhook(url=webhook_url, username="Virtuoso Bitcoin Prediction")
+            webhook.add_embed(embed)
+
+            # Send with retry logic
+            max_retries = 3
+            retry_delay = 2
+
+            self.logger.debug(f"[ALERT:{alert_id}] Sending Bitcoin prediction alert (Format {format_version}) for {symbol}")
+
+            for attempt in range(max_retries):
+                try:
+                    response = webhook.execute()
+
+                    if response and hasattr(response, 'status_code') and 200 <= response.status_code < 300:
+                        self.logger.info(f"[ALERT:{alert_id}] ✅ Bitcoin prediction alert (Format {format_version}) sent for {symbol}")
+                        return
+                    else:
+                        status_code = response.status_code if response and hasattr(response, 'status_code') else "N/A"
+                        self.logger.warning(f"[ALERT:{alert_id}] Failed to send alert (attempt {attempt+1}/{max_retries}): Status {status_code}")
+
+                except Exception as e:
+                    self.logger.warning(f"[ALERT:{alert_id}] Alert send attempt {attempt+1}/{max_retries} failed: {str(e)}")
+
+                # Wait before retry (except on last attempt)
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(retry_delay)
+                    retry_delay *= 2  # Exponential backoff
+
+            self.logger.error(f"[ALERT:{alert_id}] ❌ Failed to send Bitcoin prediction alert after {max_retries} attempts")
+
+        except Exception as e:
+            self.logger.error(f"[ALERT:{alert_id}] Error in send_bitcoin_prediction_alert: {str(e)}")
+            self.logger.error(traceback.format_exc())
+
+    def _build_original_alert_format(
+        self, symbol: str, direction: str, confidence: float,
+        btc_move_pct: float, expected_move_pct: float, lag_seconds: float,
+        boost_points: float, stability_score: float, beta: float, alert_id: str
+    ):
+        """Build Format A: Original alert format."""
+        from discord_webhook import DiscordEmbed
+
+        # Color based on direction
+        if direction == 'LONG':
+            color = 0x00d26a  # Green
+            arrow_emoji = "⬆️"
+        elif direction == 'SHORT':
+            color = 0xff4757  # Red
+            arrow_emoji = "⬇️"
+        else:
+            color = 0xffa502  # Orange
+            arrow_emoji = "↔️"
+
+        # Build title
+        base_symbol = symbol.replace('USDT', '').replace('USD', '')
+        title = f"₿ {base_symbol} Lead/Lag Prediction {arrow_emoji}"
+
+        # Build description with key metrics
+        description_lines = [
+            f"```",
+            f"{'─' * 40}",
+            f"  DIRECTION        {direction:>22}",
+            f"  BTC MOVE         {btc_move_pct:>21.2f}%",
+            f"  PREDICTED MOVE   {expected_move_pct:>21.2f}%",
+            f"  LAG TIME         {lag_seconds:>18.0f}s ahead",
+            f"{'─' * 40}",
+            f"```",
+            f"",
+            f"**Bitcoin moved {abs(btc_move_pct):.2f}% {('UP' if btc_move_pct > 0 else 'DOWN')}** — expecting {base_symbol} to follow in **~{lag_seconds:.0f} seconds**"
+        ]
+        description = "\n".join(description_lines)
+
+        embed = DiscordEmbed(
+            title=title,
+            description=description,
+            color=color
+        )
+
+        # Add fields in 2-column layout
+        embed.add_embed_field(name="Confidence", value=f"`{confidence:.1f}%`", inline=True)
+        embed.add_embed_field(name="Stability", value=f"`{stability_score:.1f}/100`", inline=True)
+        embed.add_embed_field(name="Beta Coefficient", value=f"`{beta:.3f}`", inline=True)
+        embed.add_embed_field(name="Score Boost", value=f"`{boost_points:+.1f} points`", inline=True)
+
+        # Add dashboard link
+        vps_host = os.getenv('VPS_HOST', 'localhost')
+        dashboard_url = f"http://{vps_host}:8002/btc-prediction"
+        embed.add_embed_field(
+            name="Dashboard",
+            value=f"[View Live Predictions]({dashboard_url})",
+            inline=False
+        )
+
+        embed.set_timestamp()
+        embed.set_footer(text=f"Format A (Original) │ ID: {alert_id[:8]}")
+
+        return embed
+
+    def _build_optimized_alert_format(
+        self, symbol: str, direction: str, confidence: float,
+        btc_move_pct: float, expected_move_pct: float, lag_seconds: float,
+        boost_points: float, stability_score: float, beta: float, alert_id: str
+    ):
+        """Build Format B: Optimized alert format with visual indicators."""
+        from discord_webhook import DiscordEmbed
+        from datetime import datetime, timezone, timedelta
+
+        # Color based on direction
+        if direction == 'LONG':
+            color = 0x00d26a  # Green
+            arrow_emoji = "⬆️"
+            direction_word = "UP"
+        elif direction == 'SHORT':
+            color = 0xff4757  # Red
+            arrow_emoji = "⬇️"
+            direction_word = "DOWN"
+        else:
+            color = 0xffa502  # Orange
+            arrow_emoji = "↔️"
+            direction_word = "NEUTRAL"
+
+        # Confidence tier classification
+        if confidence >= 90:
+            tier = "🔥 ULTRA HIGH"
+            tier_emoji = "🔥"
+        elif confidence >= 75:
+            tier = "⚡ HIGH"
+            tier_emoji = "⚡"
+        else:
+            tier = "📊 MODERATE"
+            tier_emoji = "📊"
+
+        # Visual confidence bar (10 blocks)
+        bar_percentage = confidence / 100.0
+        filled_blocks = int(bar_percentage * 10)
+        empty_blocks = 10 - filled_blocks
+        confidence_bar = "█" * filled_blocks + "░" * empty_blocks
+
+        # Urgency indicator based on lag time
+        if lag_seconds < 60:
+            urgency = "🔴 ACT NOW"
+            urgency_color = "red"
+        elif lag_seconds < 180:
+            urgency = "🟡 PREPARE"
+            urgency_color = "yellow"
+        else:
+            urgency = "🟢 MONITOR"
+            urgency_color = "green"
+
+        # Calculate expected time
+        expected_time = datetime.now(timezone.utc) + timedelta(seconds=lag_seconds)
+        time_str = expected_time.strftime("%H:%M:%S UTC")
+
+        # Build title with urgency
+        base_symbol = symbol.replace('USDT', '').replace('USD', '')
+        title = f"{tier_emoji} {base_symbol} PREDICTION {arrow_emoji} • ~{int(lag_seconds)}s Window"
+
+        # Build optimized description
+        description_lines = [
+            f"```",
+            f"{'─' * 36}",
+            f"  SIGNAL STRENGTH    {confidence_bar}  {confidence:.0f}%",
+            f"  BTC CATALYST       {btc_move_pct:+.2f}% {direction_word} ₿",
+            f"  EXPECTED MOVE      {expected_move_pct:+.2f}% {arrow_emoji}",
+            f"{'─' * 36}",
+            f"  {urgency}  •  By {time_str}",
+            f"{'─' * 36}",
+            f"```",
+        ]
+        description = "\n".join(description_lines)
+
+        embed = DiscordEmbed(
+            title=title,
+            description=description,
+            color=color
+        )
+
+        # Cleaner 3-field layout
+        embed.add_embed_field(
+            name="Signal Quality",
+            value=f"{tier} `({confidence:.1f}%)`",
+            inline=True
+        )
+        embed.add_embed_field(
+            name="Risk/Reward",
+            value=f"`{expected_move_pct:+.2f}% move • {boost_points:+.1f} boost`",
+            inline=True
+        )
+        embed.add_embed_field(
+            name="Correlation",
+            value=f"`β={beta:.3f} • {stability_score:.0f}/100 stable`",
+            inline=True
+        )
+
+        # Inline dashboard link in a single field
+        vps_host = os.getenv('VPS_HOST', 'localhost')
+        dashboard_url = f"http://{vps_host}:8002/btc-prediction"
+        embed.add_embed_field(
+            name="📊 Actions",
+            value=f"[Live Dashboard]({dashboard_url}) • [Chart](https://tradingview.com/chart/?symbol=BYBIT:{symbol})",
+            inline=False
+        )
+
+        embed.set_timestamp()
+        embed.set_footer(text=f"Format B (Optimized) │ {tier} │ ID: {alert_id[:8]}")
+
+        return embed
 
     async def generate_confluence_score(self, indicators: Dict[str, float]) -> float:
         """Generate and store confluence score from individual indicators.
@@ -887,6 +1362,74 @@ class SignalGenerator:
                     logger.info(f"  Lag: {btc_signal['lag_minutes']} minutes")
                     logger.info(f"  Beta: {btc_signal['beta']:.2f}")
 
+            # ═══════════════════════════════════════════════════════════════════
+            # DUAL-REGIME SIGNAL ENHANCEMENT (Phase 1)
+            # ═══════════════════════════════════════════════════════════════════
+            # Apply regime-based multiplier to confluence score
+            score_before_regime = confluence_score
+            dual_regime_applied = False
+            dual_regime_metadata = {}
+
+            if self.dual_regime_enabled and self.dual_regime_calculator:
+                try:
+                    # Fetch market-wide regime context
+                    market_context = await self._get_market_regime_context()
+
+                    # Get symbol-specific regime context
+                    symbol_context = self._get_symbol_regime_context(
+                        market_data=indicators,
+                        regime_detection=None  # Will detect if not provided
+                    )
+
+                    if market_context and symbol_context:
+                        # Determine signal direction from current score
+                        if confluence_score >= long_threshold:
+                            signal_type = "LONG"
+                        elif confluence_score <= short_threshold:
+                            signal_type = "SHORT"
+                        else:
+                            signal_type = "NEUTRAL"
+
+                        # Calculate regime adjustment
+                        regime_result = self.dual_regime_calculator.calculate(
+                            market_context=market_context,
+                            symbol_context=symbol_context,
+                            signal_type=signal_type
+                        )
+
+                        # Apply multiplier to confluence score
+                        confluence_score *= regime_result.final_multiplier
+                        confluence_score = float(np.clip(confluence_score, 0, 100))
+                        dual_regime_applied = True
+
+                        # Store metadata for enrichment
+                        dual_regime_metadata = {
+                            'dual_regime_active': True,
+                            'multiplier': regime_result.final_multiplier,
+                            'market_factor': regime_result.market_factor,
+                            'symbol_factor': regime_result.symbol_factor,
+                            'blending_weight': regime_result.blending_weight,
+                            'regime_type': regime_result.regime_type,
+                            'confidence': regime_result.confidence,
+                            'market_bias': market_context.bias,
+                            'symbol_regime': symbol_context.regime,
+                            'fear_greed': market_context.fear_greed,
+                            'score_before_regime': score_before_regime,
+                            'score_after_regime': confluence_score
+                        }
+
+                        logger.info(f"[DUAL REGIME] {symbol} adjusted by regime multiplier:")
+                        logger.info(f"  Score Before: {score_before_regime:.2f}")
+                        logger.info(f"  Multiplier: {regime_result.final_multiplier:.4f}x")
+                        logger.info(f"  Score After: {confluence_score:.2f}")
+                        logger.info(f"  Regime Type: {regime_result.regime_type}")
+                        logger.info(f"  Market: {market_context.bias} | Symbol: {symbol_context.regime}")
+                        logger.info(f"  Confidence: {regime_result.confidence:.2%}")
+
+                except Exception as e:
+                    logger.warning(f"Failed to apply dual-regime adjustment: {e}")
+                    # Continue without regime adjustment
+
             # Use thresholds from the self.thresholds dictionary loaded during initialization
             long_threshold = self.thresholds['long']
             short_threshold = self.thresholds['short']
@@ -1180,7 +1723,11 @@ class SignalGenerator:
                 # Add Bitcoin prediction metadata if available
                 if btc_boost_applied and btc_prediction_metadata:
                     signal_result['btc_prediction'] = btc_prediction_metadata
-                
+
+                # Add dual-regime metadata if available
+                if dual_regime_applied and dual_regime_metadata:
+                    signal_result['dual_regime'] = dual_regime_metadata
+
                 # Log detailed interpretations for debugging and analysis
                 self.logger.info(f"\n=== DETAILED MARKET INTERPRETATIONS FOR {symbol} ===")
                 for component_name, component_data in results.items():
@@ -1276,9 +1823,10 @@ class SignalGenerator:
                 self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}] Skipping alert for NEUTRAL signal on {symbol}")
                 return
                 
-            # Check if reliability is less than 100% (1.0), if so, skip alert
-            if reliability < 1.0:
-                self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}] Skipping alert for {symbol} due to reliability {reliability*100:.1f}% < 100%")
+            # Only skip alerts for signals with very low reliability (< 30%)
+            # This matches the threshold in SignalProcessor and allows most valid signals through
+            if reliability < 0.3:
+                self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}] Skipping alert for {symbol} due to low reliability {reliability*100:.1f}% < 30%")
                 return
             
             # Note: PDF generation is handled internally by AlertManager.send_confluence_alert()
