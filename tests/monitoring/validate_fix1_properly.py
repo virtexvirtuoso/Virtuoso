@@ -4,7 +4,7 @@ import asyncio
 import logging
 import sys
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import time
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
@@ -106,7 +106,7 @@ async def validate_fix1():
     logger.info(f"✓ metrics.copy() prevents reference leaks")
 
     # CHECK 4: get_recent_alerts() works
-    since = datetime.utcnow() - timedelta(hours=1)
+    since = datetime.now(timezone.utc) - timedelta(hours=1)
     recent = await detector.get_recent_alerts(since, limit=10)
 
     logger.info(f"  get_recent_alerts() returned {len(recent)} alerts")

@@ -58,7 +58,7 @@ Test files are accessing old attribute names that no longer exist:
 
 ```bash
 # Run the provided fix script
-cd /Users/ffv_macmini/desktop/virtuoso_ccxt
+cd .
 ./fix_test_threshold_attributes.sh
 
 # Verify fixes

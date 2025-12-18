@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 from typing import List, Optional
 import asyncio
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 
 from ..models.alpha import AlphaScanRequest, AlphaScanResponse, AlphaOpportunity
 from src.core.exchanges.manager import ExchangeManager
@@ -50,7 +50,7 @@ async def scan_alpha_opportunities(
         
         return AlphaScanResponse(
             opportunities=opportunities,
-            scan_timestamp=datetime.utcnow(),
+            scan_timestamp=datetime.now(timezone.utc),
             total_symbols_scanned=len(scan_request.symbols) if scan_request.symbols else 100,
             scan_duration_ms=scan_duration,
             metadata={
@@ -179,7 +179,7 @@ async def get_scan_status() -> dict:
     
     return {
         "status": "active",
-        "last_scan": datetime.utcnow().isoformat(),
+        "last_scan": datetime.now(timezone.utc).isoformat(),
         "scanner_version": "1.0.0",
         "supported_exchanges": ["binance", "bybit"],
         "supported_timeframes": ["15m", "1h", "4h", "1d"]
@@ -203,7 +203,7 @@ async def alpha_scanner_health(
         
         return {
             "status": "healthy",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "exchange_count": len(exchange_manager.exchanges),
             "available_symbols": len(test_symbols[:5]),
             "test_symbols": test_symbols[:5]
@@ -212,6 +212,6 @@ async def alpha_scanner_health(
     except Exception as e:
         return {
             "status": "unhealthy",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "error": str(e)
         } 

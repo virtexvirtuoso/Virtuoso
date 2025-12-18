@@ -3,7 +3,7 @@ Merged validation module
 Merged from: core/validation/models.py and validation/core/models.py
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Dict, Any, List, Optional, Union
 import dataclasses
@@ -46,7 +46,7 @@ class ValidationMetrics:
         if not success:
             self.failed_validations += 1
         self.avg_validation_time = (self.avg_validation_time * (self.total_validations - 1) + duration) / self.total_validations
-        self.last_validation = datetime.utcnow()
+        self.last_validation = datetime.now(timezone.utc)
 
 @dataclasses.dataclass
 class ValidationResult:
@@ -113,7 +113,7 @@ def record_validation(self, duration: float, success: bool) -> None:
     if not success:
         self.failed_validations += 1
     self.avg_validation_time = (self.avg_validation_time * (self.total_validations - 1) + duration) / self.total_validations
-    self.last_validation = datetime.utcnow()
+    self.last_validation = datetime.now(timezone.utc)
 
 @property
 def rule_name(self) -> str:

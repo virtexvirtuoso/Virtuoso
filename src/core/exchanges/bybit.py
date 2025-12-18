@@ -142,25 +142,26 @@ class BybitExchange(BaseExchange):
     # Add reverse mapping
     _reverse_timeframe_map = {v: k for k, v in TIMEFRAME_MAP.items()}
     
-    # Add rate limit constants
+    # Rate limits tuned for Bybit's actual limits (10 req/sec burst allowed)
+    # Previous: 1 req/sec was too conservative, causing 60-90s startup delays
     RATE_LIMITS = {
         'category': {
-            'linear': {'requests': 120, 'per_second': 1},  # Category-level limit
-            'spot': {'requests': 120, 'per_second': 1}
+            'linear': {'requests': 120, 'per_second': 10},  # Was 1 - major bottleneck
+            'spot': {'requests': 120, 'per_second': 10}
         },
         'endpoints': {
-            'kline': {'requests': 120, 'per_second': 1},
-            'orderbook': {'requests': 60, 'per_second': 1},
-            'trades': {'requests': 60, 'per_second': 1},
-            'ticker': {'requests': 60, 'per_second': 1},
-            'market_data': {'requests': 120, 'per_second': 1},  # Composite limit
-            'long_short_ratio': {'requests': 60, 'per_second': 1},  # New endpoint
-            'risk_limits': {'requests': 60, 'per_second': 1},  # New endpoint
-            # Add endpoint aliases to fix KeyError issues
-            'lsr': {'requests': 60, 'per_second': 1},  # Alias for long_short_ratio
-            'ohlcv': {'requests': 120, 'per_second': 1},  # Alias for kline
-            'oi_history': {'requests': 60, 'per_second': 1},  # Open interest history
-            'volatility': {'requests': 60, 'per_second': 1}  # Historical volatility calculations
+            'kline': {'requests': 120, 'per_second': 10},      # Was 1 - major bottleneck
+            'orderbook': {'requests': 60, 'per_second': 5},    # Was 1
+            'trades': {'requests': 60, 'per_second': 5},       # Was 1
+            'ticker': {'requests': 60, 'per_second': 10},      # Was 1
+            'market_data': {'requests': 120, 'per_second': 10},  # Was 1
+            'long_short_ratio': {'requests': 60, 'per_second': 5},
+            'risk_limits': {'requests': 60, 'per_second': 5},
+            # Endpoint aliases
+            'lsr': {'requests': 60, 'per_second': 5},  # Alias for long_short_ratio
+            'ohlcv': {'requests': 120, 'per_second': 10},  # Alias for kline (was 1)
+            'oi_history': {'requests': 60, 'per_second': 5},
+            'volatility': {'requests': 60, 'per_second': 5}
         }
     }
     
@@ -338,9 +339,35 @@ class BybitExchange(BaseExchange):
             
             # Test connection with a simple API call
             test_result = await self.health_check()
-            
+
             if test_result:
                 self.logger.info(f"✅ {self.exchange_id} exchange initialized successfully")
+
+                # Debug: Check exchange_config structure
+                self.logger.debug(f"exchange_config keys: {list(self.exchange_config.keys())}")
+                self.logger.debug(f"exchange_config websocket section: {self.exchange_config.get('websocket')}")
+
+                # Debug: Check the condition evaluation
+                ws_enabled = self.exchange_config.get('websocket', {}).get('enabled')
+                self.logger.info(f"🔍 DEBUG: WebSocket enabled check: {ws_enabled} (type: {type(ws_enabled)})")
+
+                # Initialize WebSocket if enabled in config
+                if ws_enabled:
+                    self.logger.info("🔌 Initializing WebSocket connection...")
+                    try:
+                        async with asyncio.timeout(30.0):
+                            ws_result = await self._init_websocket()
+                            if ws_result:
+                                self.logger.info(f"✅ WebSocket connection established for {self.exchange_id}")
+                            else:
+                                self.logger.warning(f"⚠️ WebSocket initialization failed, continuing with REST-only mode")
+                    except asyncio.TimeoutError:
+                        self.logger.error("⏱️ WebSocket initialization timed out (30s), continuing with REST-only mode")
+                    except Exception as e:
+                        self.logger.error(f"❌ WebSocket initialization error: {e}, continuing with REST-only mode")
+                else:
+                    self.logger.info("WebSocket disabled in config, using REST-only mode")
+
                 self.initialized = True
                 return True
             else:
@@ -508,13 +535,15 @@ class BybitExchange(BaseExchange):
             if not await self.ws.connect():
                 self.logger.error("Failed to connect WebSocket")
                 return False
-                
+
+            # Set connection flag for subscribe_liquidations() and other methods
+            self.ws_connected = True
             self.logger.info("WebSocket initialized successfully")
-            
+
             # Subscribe to default channels
             for symbol in self.ws_symbols:
                 await self.subscribe_market_data(symbol)
-            
+
             return True
             
         except Exception as e:
@@ -1398,30 +1427,54 @@ class BybitExchange(BaseExchange):
             self.logger.debug(traceback.format_exc())
 
     async def subscribe_liquidations(self, symbols: List[str]) -> bool:
-        """Subscribe to liquidation feed for symbols."""
+        """Subscribe to liquidation feed using the working WebSocket infrastructure."""
         try:
+            # Use the working connect_ws() method instead of broken _init_websocket()
             if not self.ws_connected:
-                self.logger.error("WebSocket not connected")
+                self.logger.info("WebSocket not connected, connecting now...")
+                try:
+                    async with asyncio.timeout(30.0):
+                        ws_result = await self.connect_ws()
+                        if not ws_result:
+                            self.logger.error("Failed to connect WebSocket for liquidation subscription")
+                            return False
+                        self.logger.info("✅ WebSocket connected successfully for liquidation feed")
+                except asyncio.TimeoutError:
+                    self.logger.error("WebSocket connection timed out")
+                    return False
+                except Exception as e:
+                    self.logger.error(f"WebSocket connection error: {e}")
+                    return False
+
+            self.logger.info(f"Subscribing to liquidations for symbols: {symbols}")
+
+            # Format liquidation channels
+            channels = [f"allLiquidation.{symbol}" for symbol in symbols]
+
+            # Send subscription using underlying aiohttp WebSocket
+            # CRITICAL FIX: self.ws is BybitWebSocket, self.ws.ws is the aiohttp ClientWebSocketResponse
+            try:
+                subscription_msg = {
+                    "op": "subscribe",
+                    "args": channels
+                }
+                # Use the underlying aiohttp WebSocket's send_str method
+                import json
+                await self.ws.ws.send_str(json.dumps(subscription_msg))
+                self.logger.info(f"✅ Liquidation subscription sent: {channels}")
+            except Exception as sub_ex:
+                self.logger.error(f"❌ ERROR: Failed to send subscription: {sub_ex}")
+                import traceback
+                self.logger.debug(traceback.format_exc())
                 return False
 
-            # Format subscription message
-            subscription = {
-                "op": "subscribe",
-                "args": [f"allLiquidation.{symbol}" for symbol in symbols]
-            }
-            
-            self.logger.info(f"Subscribing to liquidations for symbols: {symbols}")
-            
-            # Send subscription request
-            await self.ws.send_json(subscription)
-            
             # Store subscribed symbols
             if not hasattr(self, '_liquidation_subscriptions'):
                 self._liquidation_subscriptions = set()
             self._liquidation_subscriptions.update(symbols)
-            
+
             return True
-            
+
         except Exception as e:
             self.logger.error(f"Error subscribing to liquidations: {str(e)}")
             self.logger.debug(traceback.format_exc())
@@ -4837,7 +4890,9 @@ class BybitExchange(BaseExchange):
             # Query Bybit v5 open-interest endpoint
             params = {
                 'category': 'linear',
-                'symbol': api_symbol
+                'symbol': api_symbol,
+                'intervalTime': '5min',  # Required by Bybit V5 API
+                'limit': 1  # Only need latest value
             }
             response = await self._make_request('GET', '/v5/market/open-interest', params=params)
             data_list = (response or {}).get('result', {}).get('list', [])
@@ -4845,10 +4900,29 @@ class BybitExchange(BaseExchange):
                 latest = data_list[0]
                 oi_raw = latest.get('openInterest', latest.get('open_interest', 0))
                 ts_raw = latest.get('timestamp', int(time.time() * 1000))
+
+                # Staleness validation: reject data older than 5 minutes
+                current_time_ms = int(time.time() * 1000)
+                data_age_seconds = (current_time_ms - int(ts_raw)) / 1000
+                max_age_seconds = 300  # 5 minutes
+
+                if data_age_seconds > max_age_seconds:
+                    self.logger.warning(
+                        f"⚠️ Stale OI data for {symbol}: {data_age_seconds:.0f}s old "
+                        f"(max: {max_age_seconds}s). Rejecting."
+                    )
+                    return {
+                        'symbol': symbol,
+                        'openInterest': 0.0,
+                        'timestamp': current_time_ms,
+                        'stale': True  # Flag for monitoring
+                    }
+
                 return {
                     'symbol': symbol,
                     'openInterest': float(oi_raw) if oi_raw is not None else 0.0,
-                    'timestamp': int(ts_raw)
+                    'timestamp': int(ts_raw),
+                    'stale': False
                 }
             # Default structure if no data
             self.logger.warning(f"Open interest list empty for {symbol}")
@@ -5068,6 +5142,10 @@ class BybitExchange(BaseExchange):
                         price_change_decimal = self.safe_float(ticker, 'price24hPcnt') or 0
                         price_change_percent = price_change_decimal * 100  # Convert to percentage
 
+                        # Extract open interest and funding rate for liquidation risk ranking
+                        oi_value = self.safe_float(ticker, 'openInterestValue') or 0
+                        funding_rate = self.safe_float(ticker, 'fundingRate') or 0
+
                         normalized_ticker = {
                             'symbol': symbol,  # Keep Bybit format (e.g., 'BTCUSDT')
                             'quoteVolume': turnover24h,  # Use turnover as quote volume
@@ -5075,7 +5153,13 @@ class BybitExchange(BaseExchange):
                             'turnover24h': turnover24h,  # Keep original field
                             'lastPrice': self.safe_float(ticker, 'lastPrice') or 0,
                             'volume24h': volume24h,
-                            'priceChangePercent': price_change_percent  # 24h price change as percentage
+                            'priceChangePercent': price_change_percent,  # 24h price change as percentage
+                            # Include these for liquidation risk composite scoring
+                            'open_interest_value': oi_value,
+                            'openInterestValue': oi_value,  # Both naming conventions
+                            'funding_rate': funding_rate,
+                            'fundingRate': funding_rate,    # Both naming conventions
+                            'price24hPcnt': price_change_decimal  # Original decimal format
                         }
 
                         normalized_tickers.append(normalized_ticker)
@@ -5212,6 +5296,561 @@ class BybitExchange(BaseExchange):
             self.logger.error(f"Error fetching open interest history: {e}")
             self.logger.error(traceback.format_exc())
             return {'history': []}
+
+    async def fetch_funding_rate_history(
+        self,
+        symbol: str,
+        start_time: Optional[int] = None,
+        end_time: Optional[int] = None,
+        limit: int = 200
+    ) -> Dict[str, Any]:
+        """Fetch historical funding rate data for perpetual contracts.
+
+        Args:
+            symbol: Trading pair symbol (e.g., 'BTCUSDT')
+            start_time: Start timestamp in milliseconds (optional)
+            end_time: End timestamp in milliseconds (optional)
+            limit: Number of records to fetch (default: 200, max: 200)
+
+        Returns:
+            Dictionary containing:
+            - history: List of funding rate records with timestamp, fundingRate
+            - symbol: Symbol string
+            - timestamp: Request timestamp
+            - statistics: Dict with current, mean, std, z_score (if sufficient data)
+
+        Example:
+            {
+                'history': [
+                    {'timestamp': 1234567890000, 'fundingRate': '0.0001'},
+                    ...
+                ],
+                'symbol': 'BTCUSDT',
+                'timestamp': 1234567890000,
+                'statistics': {
+                    'current': 0.0001,
+                    'mean': 0.00008,
+                    'std': 0.00003,
+                    'z_score': 0.67,
+                    'is_extreme': False
+                }
+            }
+        """
+        try:
+            # Ensure symbol is properly formatted
+            symbol_str = self._convert_to_exchange_symbol(symbol)
+
+            # Check rate limit
+            await self._check_rate_limit('market_data', category='linear')
+
+            # Set up request parameters
+            params = {
+                'category': 'linear',
+                'symbol': symbol_str,
+                'limit': min(limit, 200)  # Bybit maximum is 200
+            }
+
+            if start_time:
+                params['startTime'] = start_time
+            if end_time:
+                params['endTime'] = end_time
+
+            self.logger.debug(f"Fetching funding rate history with params: {params}")
+
+            # Make the request
+            response = await self._make_request('GET', '/v5/market/funding/history', params=params)
+
+            # Log only essential information about the response
+            if response:
+                self.logger.debug(f"Funding rate API response: status={response.get('retCode')}, msg={response.get('retMsg')}")
+                if 'result' in response and 'list' in response['result']:
+                    record_count = len(response['result']['list'])
+                    self.logger.debug(f"Received {record_count} funding rate records for {symbol}")
+
+            # Parse response
+            if not response:
+                self.logger.error(f"Null response from funding rate API for {symbol}")
+                return {'history': []}
+
+            if 'retCode' in response and response['retCode'] != 0:
+                self.logger.error(f"API error fetching funding rate: code={response['retCode']}, msg={response.get('retMsg', 'No message')}")
+                return {'history': []}
+
+            if 'result' not in response:
+                self.logger.error(f"Missing 'result' field in funding rate response for {symbol}")
+                return {'history': []}
+
+            if 'list' not in response['result']:
+                self.logger.error(f"Missing 'list' field in funding rate result for {symbol}")
+                return {'history': []}
+
+            funding_list = response['result']['list']
+
+            if not funding_list:
+                self.logger.warning(f"Empty funding rate list for {symbol}")
+                return {'history': []}
+
+            # Process the funding rate data
+            history = []
+            processed_count = 0
+            error_count = 0
+
+            for item in funding_list:
+                try:
+                    timestamp = int(item.get('fundingRateTimestamp', 0))
+                    funding_rate = item.get('fundingRate', '0')
+
+                    if not timestamp:
+                        self.logger.warning(f"Missing timestamp in funding rate item: {item}")
+                        error_count += 1
+                        continue
+
+                    history.append({
+                        'timestamp': timestamp,
+                        'fundingRate': float(funding_rate),
+                        'symbol': symbol_str
+                    })
+                    processed_count += 1
+
+                except (ValueError, TypeError) as e:
+                    self.logger.warning(f"Error processing funding rate item: {e}")
+                    error_count += 1
+                    continue
+
+            # Sort by timestamp (newest first)
+            history.sort(key=lambda x: x['timestamp'], reverse=True)
+
+            self.logger.debug(f"Successfully processed {processed_count} of {len(funding_list)} funding rate records. Errors: {error_count}")
+
+            # Build result dictionary
+            result = {
+                'history': history,
+                'symbol': symbol,
+                'timestamp': int(time.time() * 1000)
+            }
+
+            # Calculate statistics if we have sufficient data
+            if len(history) >= 10:
+                rates = [item['fundingRate'] for item in history]
+                current_rate = rates[0]
+                mean_rate = np.mean(rates)
+                std_rate = np.std(rates)
+
+                # Calculate z-score for extremity detection
+                z_score = (current_rate - mean_rate) / std_rate if std_rate > 0 else 0
+
+                result['statistics'] = {
+                    'current': current_rate,
+                    'mean': mean_rate,
+                    'std': std_rate,
+                    'z_score': z_score,
+                    'is_extreme': abs(z_score) > 2.0  # 2 sigma threshold
+                }
+
+            return result
+
+        except Exception as e:
+            self.logger.error(f"Error fetching funding rate history: {e}")
+            self.logger.error(traceback.format_exc())
+            return {'history': []}
+
+    async def fetch_premium_index_kline(
+        self,
+        symbol: str,
+        interval: str = '15',
+        start_time: Optional[int] = None,
+        end_time: Optional[int] = None,
+        limit: int = 200
+    ) -> Dict[str, Any]:
+        """Fetch premium index kline data (Mark Price - Index Price).
+
+        The premium index shows the spread between perpetual mark price and spot index price,
+        revealing market leverage demand and overleveraged positions.
+
+        Args:
+            symbol: Trading pair symbol (e.g., 'BTCUSDT')
+            interval: Kline interval ('1', '3', '5', '15', '30', '60', '120', '240', '360', '720', 'D', 'W', 'M')
+            start_time: Start timestamp in milliseconds (optional)
+            end_time: End timestamp in milliseconds (optional)
+            limit: Number of records to fetch (default: 200, max: 1000)
+
+        Returns:
+            Dictionary containing:
+            - data: DataFrame with columns [timestamp, open, high, low, close]
+            - symbol: Symbol string
+            - interval: Interval string
+            - timestamp: Request timestamp
+            - signal: Dict with current_premium_pct, z_score, is_extreme_premium, is_extreme_discount
+
+        Example:
+            {
+                'data': DataFrame with premium OHLC data,
+                'symbol': 'BTCUSDT',
+                'interval': '15',
+                'timestamp': 1234567890000,
+                'signal': {
+                    'current_premium_pct': 0.15,
+                    'z_score': 1.2,
+                    'is_extreme_premium': False,
+                    'is_extreme_discount': False
+                }
+            }
+        """
+        try:
+            # Ensure symbol is properly formatted
+            symbol_str = self._convert_to_exchange_symbol(symbol)
+
+            # Check rate limit
+            await self._check_rate_limit('market_data', category='linear')
+
+            # Set up request parameters
+            params = {
+                'category': 'linear',
+                'symbol': symbol_str,
+                'interval': interval,
+                'limit': min(limit, 1000)  # Bybit maximum is 1000 for kline endpoints
+            }
+
+            if start_time:
+                params['start'] = start_time
+            if end_time:
+                params['end'] = end_time
+
+            self.logger.debug(f"Fetching premium index kline with params: {params}")
+
+            # Make the request
+            response = await self._make_request('GET', '/v5/market/premium-index-price-kline', params=params)
+
+            # Log only essential information about the response
+            if response:
+                self.logger.debug(f"Premium index API response: status={response.get('retCode')}, msg={response.get('retMsg')}")
+                if 'result' in response and 'list' in response['result']:
+                    record_count = len(response['result']['list'])
+                    self.logger.debug(f"Received {record_count} premium index kline records for {symbol}")
+
+            # Parse response
+            if not response:
+                self.logger.error(f"Null response from premium index API for {symbol}")
+                return {'data': pd.DataFrame(), 'history': []}
+
+            if 'retCode' in response and response['retCode'] != 0:
+                self.logger.error(f"API error fetching premium index: code={response['retCode']}, msg={response.get('retMsg', 'No message')}")
+                return {'data': pd.DataFrame(), 'history': []}
+
+            if 'result' not in response:
+                self.logger.error(f"Missing 'result' field in premium index response for {symbol}")
+                return {'data': pd.DataFrame(), 'history': []}
+
+            if 'list' not in response['result']:
+                self.logger.error(f"Missing 'list' field in premium index result for {symbol}")
+                return {'data': pd.DataFrame(), 'history': []}
+
+            kline_list = response['result']['list']
+
+            if not kline_list:
+                self.logger.warning(f"Empty premium index kline list for {symbol}")
+                return {'data': pd.DataFrame(), 'history': []}
+
+            # Process the kline data into DataFrame
+            # Bybit returns: [timestamp, open, high, low, close]
+            df = pd.DataFrame(kline_list, columns=['timestamp', 'open', 'high', 'low', 'close'])
+
+            # Convert to appropriate types
+            df['timestamp'] = pd.to_datetime(df['timestamp'].astype(float), unit='ms')
+            df['open'] = df['open'].astype(float)
+            df['high'] = df['high'].astype(float)
+            df['low'] = df['low'].astype(float)
+            df['close'] = df['close'].astype(float)
+
+            # Sort by timestamp (newest first)
+            df = df.sort_values('timestamp', ascending=False).reset_index(drop=True)
+
+            self.logger.debug(f"Successfully processed {len(df)} premium index kline records for {symbol}")
+
+            # Build result dictionary
+            result = {
+                'data': df,
+                'history': df.to_dict('records'),  # For backward compatibility
+                'symbol': symbol,
+                'interval': interval,
+                'timestamp': int(time.time() * 1000)
+            }
+
+            # Calculate premium statistics and signals
+            if len(df) >= 20:
+                current_premium = df['close'].iloc[0]
+                mean_premium = df['close'].mean()
+                std_premium = df['close'].std()
+
+                # Calculate z-score for extremity detection
+                premium_z_score = (current_premium - mean_premium) / std_premium if std_premium > 0 else 0
+
+                result['signal'] = {
+                    'current_premium_pct': current_premium * 100,  # Convert to percentage
+                    'mean_premium_pct': mean_premium * 100,
+                    'z_score': premium_z_score,
+                    'is_extreme_premium': premium_z_score > 2.0,  # Overleveraged long
+                    'is_extreme_discount': premium_z_score < -2.0  # Backwardation
+                }
+
+            return result
+
+        except Exception as e:
+            self.logger.error(f"Error fetching premium index kline: {e}")
+            self.logger.error(traceback.format_exc())
+            return {'data': pd.DataFrame(), 'history': []}
+
+    async def calculate_taker_buy_sell_ratio(
+        self,
+        symbol: str,
+        limit: int = 1000,
+        lookback_seconds: int = 300
+    ) -> Dict[str, Any]:
+        """
+        Calculate taker buy/sell volume ratio from recent trades.
+
+        Analyzes market orders (taker side) to detect directional pressure.
+        Higher ratio indicates aggressive buying, lower ratio indicates
+        aggressive selling.
+
+        Args:
+            symbol: Trading pair (e.g., 'BTC/USDT:USDT')
+            limit: Number of recent trades to analyze (max 1000)
+            lookback_seconds: Time window for analysis (default 5 min)
+
+        Returns:
+            Dictionary containing:
+            - buy_volume: Total taker buy volume
+            - sell_volume: Total taker sell volume
+            - ratio: Buy/Sell ratio
+            - score: 0-100 score (50 = neutral)
+            - signal: BULLISH/BEARISH/NEUTRAL classification
+            - trade_count: Number of trades analyzed
+            - avg_buy_size: Average buy order size
+            - avg_sell_size: Average sell order size
+
+        Example:
+            >>> ratio_data = await exchange.calculate_taker_buy_sell_ratio('BTC/USDT:USDT')
+            >>> print(f"Buy pressure: {ratio_data['score']}/100")
+            Buy pressure: 68/100
+        """
+        try:
+            # Fetch recent trades
+            trades = await self.fetch_trades(symbol, limit=limit)
+
+            if not trades:
+                return {
+                    'buy_volume': 0.0,
+                    'sell_volume': 0.0,
+                    'ratio': 1.0,
+                    'score': 50.0,
+                    'signal': 'NEUTRAL',
+                    'trade_count': 0,
+                    'buy_trade_count': 0,
+                    'sell_trade_count': 0,
+                    'avg_buy_size': 0.0,
+                    'avg_sell_size': 0.0,
+                    'lookback_seconds': lookback_seconds,
+                    'error': 'No trades available'
+                }
+
+            # Filter trades within lookback window
+            current_time = int(time.time() * 1000)
+            cutoff_time = current_time - (lookback_seconds * 1000)
+
+            recent_trades = [
+                t for t in trades
+                if t.get('timestamp', 0) >= cutoff_time
+            ]
+
+            if not recent_trades:
+                return {
+                    'buy_volume': 0.0,
+                    'sell_volume': 0.0,
+                    'ratio': 1.0,
+                    'score': 50.0,
+                    'signal': 'NEUTRAL',
+                    'trade_count': 0,
+                    'buy_trade_count': 0,
+                    'sell_trade_count': 0,
+                    'avg_buy_size': 0.0,
+                    'avg_sell_size': 0.0,
+                    'lookback_seconds': lookback_seconds,
+                    'error': 'No recent trades in lookback window'
+                }
+
+            # Separate buy and sell trades
+            buy_trades = [t for t in recent_trades if t.get('side') == 'buy']
+            sell_trades = [t for t in recent_trades if t.get('side') == 'sell']
+
+            # Calculate volumes
+            buy_volume = sum(float(t.get('amount', 0)) for t in buy_trades)
+            sell_volume = sum(float(t.get('amount', 0)) for t in sell_trades)
+
+            # Calculate ratio
+            if sell_volume > 0:
+                ratio = buy_volume / sell_volume
+            else:
+                ratio = 10.0 if buy_volume > 0 else 1.0
+
+            # Convert to 0-100 score
+            # ratio = 1.0 → score = 50 (neutral)
+            # ratio = 1.5 → score = 62.5
+            # ratio = 2.0 → score = 75
+            score = min(100, max(0, 50 + (ratio - 1) * 25))
+
+            # Classify signal
+            if ratio > 1.2:
+                signal = 'BULLISH'
+            elif ratio < 0.8:
+                signal = 'BEARISH'
+            else:
+                signal = 'NEUTRAL'
+
+            # Calculate average order sizes
+            avg_buy_size = buy_volume / len(buy_trades) if buy_trades else 0.0
+            avg_sell_size = sell_volume / len(sell_trades) if sell_trades else 0.0
+
+            return {
+                'buy_volume': round(buy_volume, 8),
+                'sell_volume': round(sell_volume, 8),
+                'ratio': round(ratio, 4),
+                'score': round(score, 2),
+                'signal': signal,
+                'trade_count': len(recent_trades),
+                'buy_trade_count': len(buy_trades),
+                'sell_trade_count': len(sell_trades),
+                'avg_buy_size': round(avg_buy_size, 8),
+                'avg_sell_size': round(avg_sell_size, 8),
+                'lookback_seconds': lookback_seconds,
+                'timestamp': current_time
+            }
+
+        except Exception as e:
+            self.logger.error(f"Error calculating taker buy/sell ratio for {symbol}: {e}")
+            self.logger.error(traceback.format_exc())
+            return {
+                'buy_volume': 0.0,
+                'sell_volume': 0.0,
+                'ratio': 1.0,
+                'score': 50.0,
+                'signal': 'NEUTRAL',
+                'trade_count': 0,
+                'buy_trade_count': 0,
+                'sell_trade_count': 0,
+                'avg_buy_size': 0.0,
+                'avg_sell_size': 0.0,
+                'lookback_seconds': lookback_seconds,
+                'error': str(e)
+            }
+
+    async def fetch_mark_price_kline(
+        self,
+        symbol: str,
+        interval: str = '15',
+        limit: int = 200,
+        start_time: Optional[int] = None,
+        end_time: Optional[int] = None
+    ) -> Dict[str, Any]:
+        """
+        Fetch mark price kline data (fair price used for liquidations).
+
+        Mark price is the exchange's "fair value" price used for liquidation calculations.
+        Large divergence between mark price and last traded price indicates:
+        - Market manipulation or wash trading
+        - Extremely illiquid conditions
+        - Exchange issues or data problems
+
+        Args:
+            symbol: Trading pair (e.g., 'BTC/USDT:USDT')
+            interval: Kline interval ('1', '3', '5', '15', '30', '60', '120', '240', '360', '720', 'D')
+            limit: Number of candles to fetch (max 1000)
+            start_time: Start timestamp in milliseconds (optional)
+            end_time: End timestamp in milliseconds (optional)
+
+        Returns:
+            Dictionary containing:
+            - data: DataFrame with columns [timestamp, open, high, low, close]
+            - history: List of raw kline data
+            - current_mark_price: Most recent mark price
+            - symbol: Trading pair
+
+        Example:
+            >>> result = await exchange.fetch_mark_price_kline('BTC/USDT:USDT')
+            >>> current_mark = result['current_mark_price']
+            >>> df = result['data']
+        """
+        try:
+            # Normalize symbol format for Bybit API
+            api_symbol = symbol.replace('/', '').replace(':USDT', '')
+
+            # Build request parameters
+            params = {
+                'category': 'linear',
+                'symbol': api_symbol,
+                'interval': interval,
+                'limit': limit
+            }
+
+            if start_time:
+                params['start'] = start_time
+            if end_time:
+                params['end'] = end_time
+
+            self.logger.debug(f"Fetching mark price kline for {symbol} (interval={interval}, limit={limit})")
+
+            # Make API request
+            response = await self._make_request('GET', '/v5/market/mark-price-kline', params)
+
+            if not response or 'result' not in response:
+                self.logger.warning(f"No mark price kline data returned for {symbol}")
+                return {'data': pd.DataFrame(), 'history': [], 'current_mark_price': None}
+
+            # Extract kline data
+            klines = response.get('result', {}).get('list', [])
+
+            if not klines:
+                self.logger.warning(f"Empty mark price kline list for {symbol}")
+                return {'data': pd.DataFrame(), 'history': [], 'current_mark_price': None}
+
+            # Parse klines into DataFrame
+            # Bybit returns: [startTime, open, high, low, close]
+            df = pd.DataFrame(
+                klines,
+                columns=['timestamp', 'open', 'high', 'low', 'close']
+            )
+
+            # Convert data types
+            df['timestamp'] = pd.to_datetime(df['timestamp'].astype(int), unit='ms')
+            for col in ['open', 'high', 'low', 'close']:
+                df[col] = df[col].astype(float)
+
+            # Sort by timestamp (ascending)
+            df = df.sort_values('timestamp').reset_index(drop=True)
+
+            # Get current mark price (most recent close)
+            current_mark_price = float(df.iloc[-1]['close']) if not df.empty else None
+
+            result = {
+                'data': df,
+                'history': klines,
+                'current_mark_price': current_mark_price,
+                'symbol': symbol,
+                'interval': interval,
+                'count': len(klines)
+            }
+
+            self.logger.debug(
+                f"Mark price kline fetched for {symbol}: {len(klines)} candles, "
+                f"current mark price: {current_mark_price}"
+            )
+
+            return result
+
+        except Exception as e:
+            self.logger.error(f"Error fetching mark price kline for {symbol}: {e}")
+            self.logger.error(traceback.format_exc())
+            return {'data': pd.DataFrame(), 'history': [], 'current_mark_price': None}
 
     async def _calculate_historical_volatility(self, symbol: str, timeframe: str = '5min', window: int = 24) -> Dict[str, Any]:
         """

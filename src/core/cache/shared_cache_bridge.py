@@ -116,7 +116,11 @@ class SharedCacheBridge:
         # Shared cache configuration
         self.cache_prefix = os.getenv('SHARED_CACHE_PREFIX', 'vt_shared')
         self.enable_pubsub = os.getenv('ENABLE_CACHE_PUBSUB', 'true').lower() == 'true'
-        self.cache_warming_enabled = os.getenv('ENABLE_CACHE_WARMING', 'true').lower() == 'true'
+        # Cache warming DISABLED by default - it writes placeholder data that overwrites
+        # real data from CoinGecko/exchanges, causing race conditions.
+        # All "critical keys" are populated by real data sources anyway.
+        # See: docs/07-technical/fixes/COINGECKO_API_TIMEOUT_FIX.md
+        self.cache_warming_enabled = os.getenv('ENABLE_CACHE_WARMING', 'false').lower() == 'true'
 
         # Core cache instance (singleton)
         self._core_cache = None
@@ -355,7 +359,11 @@ class SharedCacheBridge:
             # Try Memcached (fastest shared cache)
             if self._memcached_client:
                 try:
+                    # First try with prefix
                     cached_data = await self._memcached_client.get(cache_key.encode())
+                    # Fallback: try without prefix (for keys stored directly by other services)
+                    if not cached_data:
+                        cached_data = await self._memcached_client.get(key.encode())
                     if cached_data:
                         data = json.loads(cached_data.decode())
                         # Promote to local cache

@@ -59,6 +59,15 @@ class CacheWarmer:
             WarmingTask('analysis:market_regime', priority=3, interval_seconds=120),
             WarmingTask('market:breadth', priority=4, interval_seconds=90),
             WarmingTask('market:btc_dominance', priority=5, interval_seconds=180),
+
+            # Beta chart data - fetches from Bybit and computes rebased returns
+            # Priority 2 = critical for dashboard, interval 120s = matches cache TTL
+            # Keys use 'virtuoso:' prefix to match web service expectations
+            WarmingTask('virtuoso:beta_chart:4h', priority=2, interval_seconds=120),   # Default timeframe
+            WarmingTask('virtuoso:beta_chart:1h', priority=3, interval_seconds=120),
+            WarmingTask('virtuoso:beta_chart:8h', priority=3, interval_seconds=120),
+            WarmingTask('virtuoso:beta_chart:12h', priority=3, interval_seconds=120),
+            WarmingTask('virtuoso:beta_chart:24h', priority=4, interval_seconds=180),  # Less frequent for longer tf
         ]
 
         # Sort by priority
@@ -318,7 +327,7 @@ class CacheWarmer:
                     'trend_strength': 0,
                     'current_volatility': 0,
                     'avg_volatility': 20.0,
-                    'btc_dominance': 57.6,
+                    'btc_dominance': 57.0,  # Default, will be updated by CoinGecko
                     'average_change_24h': 0,
                     'timestamp': int(current_time),
                     # Legacy fields for backward compatibility
@@ -404,14 +413,52 @@ class CacheWarmer:
                 }
 
             elif cache_key == 'market:btc_dominance':
-                # Generate BTC dominance data
+                # Fetch REAL BTC dominance from CoinGecko API
+                btc_dominance = 57.0  # Default fallback
+                try:
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get(
+                            'https://api.coingecko.com/api/v3/global',
+                            timeout=aiohttp.ClientTimeout(total=10)
+                        ) as response:
+                            if response.status == 200:
+                                data = await response.json()
+                                real_dominance = data.get('data', {}).get('market_cap_percentage', {}).get('btc', 0)
+                                if real_dominance > 0:
+                                    btc_dominance = round(real_dominance, 2)
+                                    logger.info(f"✅ CoinGecko BTC Dominance: {btc_dominance}%")
+                except Exception as e:
+                    logger.warning(f"CoinGecko API error in cache_warmer: {e}")
+
                 independent_data = {
-                    'dominance': 59.3,
+                    'dominance': btc_dominance,
                     'change_24h': 0.0,
                     'last_updated': current_time,
                     'datetime': current_datetime,
-                    'status': 'cache_warmer_generated'
+                    'status': 'coingecko_fetched' if btc_dominance != 57.0 else 'fallback'
                 }
+
+            elif cache_key.startswith('virtuoso:beta_chart:') or cache_key.startswith('beta_chart:'):
+                # Generate beta chart data from Bybit
+                # Extract timeframe from key (e.g., 'virtuoso:beta_chart:4h' -> 4)
+                try:
+                    # Handle both 'virtuoso:beta_chart:4h' and 'beta_chart:4h' formats
+                    parts = cache_key.split(':')
+                    timeframe_str = parts[-1].replace('h', '')  # Last part is always timeframe
+                    timeframe_hours = int(timeframe_str)
+                except (IndexError, ValueError):
+                    timeframe_hours = 4  # Default fallback
+
+                logger.info(f"🔥 Warming beta chart data for {timeframe_hours}h timeframe...")
+
+                try:
+                    from src.core.chart.beta_chart_service import generate_beta_chart_data
+                    independent_data = await generate_beta_chart_data(timeframe_hours)
+                    independent_data['status'] = 'trading_service_generated'
+                    logger.info(f"✅ Beta chart {timeframe_hours}h: {independent_data.get('overview', {}).get('symbols_count', 0)} symbols")
+                except Exception as e:
+                    logger.error(f"❌ Failed to generate beta chart data ({timeframe_hours}h): {e}")
+                    independent_data = None
 
             # Store in cache if we generated data
             if independent_data:
@@ -555,7 +602,7 @@ class CacheWarmer:
                     'average_change': 0,
                     'volatility': 0,
                     'trend_strength': 0,
-                    'btc_dominance': 59.3,
+                    'btc_dominance': 57.0,  # Default, will be updated by CoinGecko
                     'timestamp': current_time,
                     'status': 'warming_placeholder'
                 },
@@ -582,7 +629,7 @@ class CacheWarmer:
                     'timestamp': current_time,
                     'status': 'warming_placeholder'
                 },
-                'market:btc_dominance': '59.3'
+                'market:btc_dominance': '57.0'  # Default, will be updated by CoinGecko
             }
             
             if cache_key in placeholder_data:

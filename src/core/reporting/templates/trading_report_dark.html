@@ -5,363 +5,540 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Trading Signal Report - {{ symbol }}</title>
     <style>
-        /* Overall document styling */
-        @page {
-            size: A4;
-            margin: 1cm;
+        @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=Inter:wght@400;500;600;700&display=swap');
+
+        /* CSS Variables - Virtuoso Brand */
+        :root {
+            --neon-amber: #fbbf24;
+            --neon-cyan: #06B6D4;
+            --success: #10b981;
+            --error: #ef4444;
+            --warning: #f59e0b;
+
+            --dark-bg-primary: #0a0a0a;
+            --dark-bg-secondary: #111111;
+            --dark-bg-tertiary: #1a1a1a;
+            --dark-border: #222222;
+            --dark-text-primary: #e0e0e0;
+            --dark-text-secondary: #9ca3af;
+            --dark-text-tertiary: #6b7280;
         }
-        body {
-            font-family: 'Courier New', monospace;
-            background-color: #121212;
-            color: #E0E0E0;
+
+        /* Reset and full-bleed setup */
+        * {
             margin: 0;
             padding: 0;
-            line-height: 1.4;       
+            box-sizing: border-box;
         }
+
+        /* Page setup for full-bleed printing */
+        @page {
+            size: A4;
+            margin: 0;
+        }
+
+        /* Dark gradient background inspired by Virtuoso Website style.html */
+        html {
+            background:
+                radial-gradient(ellipse at top right, rgba(251, 191, 36, 0.04) 0%, transparent 50%),
+                radial-gradient(ellipse at bottom left, rgba(251, 191, 36, 0.02) 0%, transparent 50%),
+                linear-gradient(180deg, #0f0f0f 0%, #0a0a0a 40%, #080808 100%);
+            background-attachment: fixed;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background:
+                radial-gradient(ellipse at top right, rgba(251, 191, 36, 0.04) 0%, transparent 50%),
+                radial-gradient(ellipse at bottom left, rgba(251, 191, 36, 0.02) 0%, transparent 50%),
+                linear-gradient(180deg, #0f0f0f 0%, #0a0a0a 40%, #080808 100%);
+            color: var(--dark-text-primary);
+            margin: 0;
+            padding: 0;
+            line-height: 1.5;
+            font-size: 0.9rem;
+            min-height: 100vh;
+        }
+
+        /* Print-specific styles for full-bleed backgrounds */
+        @media print {
+            @page {
+                margin: 0;
+            }
+
+            html {
+                background:
+                    radial-gradient(ellipse at top right, rgba(251, 191, 36, 0.04) 0%, transparent 50%),
+                    radial-gradient(ellipse at bottom left, rgba(251, 191, 36, 0.02) 0%, transparent 50%),
+                    linear-gradient(180deg, #0f0f0f 0%, #0a0a0a 40%, #080808 100%) !important;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+                color-adjust: exact !important;
+            }
+
+            body {
+                background:
+                    radial-gradient(ellipse at top right, rgba(251, 191, 36, 0.04) 0%, transparent 50%),
+                    radial-gradient(ellipse at bottom left, rgba(251, 191, 36, 0.02) 0%, transparent 50%),
+                    linear-gradient(180deg, #0f0f0f 0%, #0a0a0a 40%, #080808 100%) !important;
+                color: var(--dark-text-primary) !important;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+                color-adjust: exact !important;
+                padding: 0.5in !important;
+                margin: 0 !important;
+            }
+
+            .no-print { display: none !important; }
+
+            /* Prevent page breaks inside important elements */
+            .card, .summary-box, table, .section, .insights, .action-box, .risk-management {
+                page-break-inside: avoid;
+            }
+
+            h2, .section-title {
+                page-break-after: avoid;
+            }
+
+            .page-break-before {
+                page-break-before: always;
+            }
+        }
+
         .container {
             max-width: 21cm;
             margin: 0 auto;
-            padding: 1cm;
+            padding: 1.5rem;
         }
-        
-        /* Header Styling */
-        .header {
-            border-bottom: 2px solid #444;
-            padding-bottom: 15px;
-            margin-bottom: 20px;
+
+        /* Branded Header */
+        .branded-header {
+            background: linear-gradient(135deg, var(--dark-bg-secondary) 0%, var(--dark-bg-primary) 100%);
+            border: 1px solid var(--dark-border);
+            border-radius: 8px;
+            padding: 1rem 1.5rem;
+            margin-bottom: 1.5rem;
             display: flex;
             justify-content: space-between;
             align-items: center;
         }
+
+        .brand-logo {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .brand-name {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: var(--neon-amber);
+            text-shadow: 0 0 10px rgba(251, 191, 36, 0.5);
+        }
+
+        .brand-tagline {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.7rem;
+            color: var(--dark-text-tertiary);
+            margin-left: 0.5rem;
+        }
+
+        /* Header Styling */
+        .header {
+            border-bottom: 2px solid var(--neon-amber);
+            padding-bottom: 1rem;
+            margin-bottom: 1.25rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
         .header h1 {
-            font-size: 24px;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 1.5rem;
             margin: 0;
-            color: #E0E0E0;
-            font-weight: bold;
+            color: var(--neon-amber);
+            font-weight: 700;
             text-transform: uppercase;
+            letter-spacing: 0.05em;
+            text-shadow: 0 0 10px rgba(251, 191, 36, 0.3);
         }
+
         .header .signal-badge {
-            padding: 5px 10px;
-            border-radius: 4px;
-            font-weight: bold;
-            font-size: 16px;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            font-family: 'IBM Plex Mono', monospace;
+            font-weight: 700;
+            font-size: 1rem;
         }
+
         .header .date {
-            font-size: 12px;
-            color: #999;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.75rem;
+            color: var(--dark-text-tertiary);
             text-align: right;
+            margin-top: 0.5rem;
         }
-        
+
         /* Summary box styling */
         .summary-box {
-            background-color: #1E1E1E;
-            border: 1px solid #333;
-            border-radius: 5px;
-            padding: 15px;
-            margin-bottom: 20px;
+            background: var(--dark-bg-secondary);
+            border: 1px solid var(--dark-border);
+            border-radius: 8px;
+            padding: 1rem 1.25rem;
+            margin-bottom: 1.25rem;
             display: grid;
             grid-template-columns: 1fr 1fr;
-            grid-gap: 15px;
+            grid-gap: 1rem;
         }
+
         .summary-item {
             display: flex;
             flex-direction: column;
         }
+
         .summary-item .label {
-            font-size: 12px;
-            color: #999;
-            margin-bottom: 5px;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.7rem;
+            color: var(--dark-text-tertiary);
+            margin-bottom: 0.25rem;
             text-transform: uppercase;
+            letter-spacing: 0.05em;
         }
+
         .summary-item .value {
-            font-size: 24px;
-            font-weight: bold;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 1.75rem;
+            font-weight: 700;
         }
-        .reliability-high {
-            color: #4CAF50;
-        }
-        .reliability-medium {
-            color: #FFC107;
-        }
-        .reliability-low {
-            color: #F44336;
-        }
-        
+
+        .reliability-high { color: var(--success); }
+        .reliability-medium { color: var(--warning); }
+        .reliability-low { color: var(--error); }
+
         /* Section styling */
         .section {
-            margin-bottom: 20px;
+            margin-bottom: 1.25rem;
         }
+
         .section-title {
-            font-size: 18px;
-            font-weight: bold;
-            margin-bottom: 10px;
-            padding-bottom: 5px;
-            border-bottom: 1px solid #444;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 1rem;
+            font-weight: 600;
+            margin-bottom: 0.75rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid var(--dark-border);
             text-transform: uppercase;
+            color: var(--neon-amber);
             display: flex;
             align-items: center;
+            letter-spacing: 0.05em;
         }
+
         .section-title::before {
             content: ">";
-            margin-right: 10px;
-            color: #4CAF50;
+            margin-right: 0.75rem;
+            color: var(--neon-amber);
+            font-weight: 700;
         }
-        
+
         /* Component table styling */
         .component-table {
             width: 100%;
             border-collapse: collapse;
-            margin-bottom: 20px;
-            font-size: 14px;
+            margin-bottom: 1rem;
+            font-size: 0.85rem;
         }
+
         .component-table th {
             text-align: left;
-            padding: 8px;
-            background-color: #1E1E1E;
-            border-bottom: 1px solid #444;
-            color: #999;
+            padding: 0.6rem 0.75rem;
+            background: var(--dark-bg-tertiary);
+            border-bottom: 1px solid var(--dark-border);
+            font-family: 'IBM Plex Mono', monospace;
+            color: var(--neon-amber);
             text-transform: uppercase;
-            font-size: 12px;
+            font-size: 0.7rem;
+            letter-spacing: 0.05em;
         }
+
         .component-table td {
-            padding: 8px;
-            border-bottom: 1px solid #222;
+            padding: 0.6rem 0.75rem;
+            border-bottom: 1px solid var(--dark-border);
+            background: var(--dark-bg-secondary);
         }
+
         .component-table tr:last-child td {
             border-bottom: none;
         }
+
         .component-name {
-            font-weight: bold;
+            font-family: 'IBM Plex Mono', monospace;
+            font-weight: 600;
         }
-        .high-score {
-            color: #4CAF50;
-        }
-        .medium-score {
-            color: #FFC107;
-        }
-        .low-score {
-            color: #F44336;
-        }
-        
+
+        .high-score { color: var(--success); }
+        .medium-score { color: var(--warning); }
+        .low-score { color: var(--error); }
+
         /* Insights styling */
         .insights {
-            background-color: #1E1E1E;
-            border: 1px solid #333;
-            border-radius: 5px;
-            padding: 15px;
-            margin-bottom: 20px;
+            background: var(--dark-bg-secondary);
+            border: 1px solid var(--dark-border);
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 1rem;
         }
+
         .insight-item {
-            margin-bottom: 10px;
-            padding-left: 20px;
+            margin-bottom: 0.6rem;
+            padding-left: 1.25rem;
             position: relative;
+            color: var(--dark-text-primary);
         }
+
         .insight-item:last-child {
             margin-bottom: 0;
         }
+
         .insight-item::before {
-            content: "•";
+            content: "+";
             position: absolute;
             left: 0;
-            color: #4CAF50;
+            color: var(--neon-amber);
+            font-family: 'IBM Plex Mono', monospace;
+            font-weight: 700;
         }
-        
+
         /* Action box styling */
         .action-box {
-            background-color: #1E1E1E;
-            border: 1px solid #333;
-            border-radius: 5px;
-            padding: 15px;
-            margin-bottom: 20px;
+            background: var(--dark-bg-secondary);
+            border: 1px solid var(--dark-border);
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 1rem;
         }
+
         .action-item {
-            margin-bottom: 10px;
-            padding-left: 20px;
+            margin-bottom: 0.6rem;
+            padding-left: 1.25rem;
             position: relative;
         }
+
         .action-item:last-child {
             margin-bottom: 0;
         }
+
         .action-item::before {
-            content: "➤";
+            content: ">";
             position: absolute;
             left: 0;
-            color: #2196F3;
+            color: var(--neon-cyan);
+            font-family: 'IBM Plex Mono', monospace;
+            font-weight: 700;
         }
-        
+
         /* Charts styling */
         .chart-container {
-            margin-bottom: 20px;
-            background-color: #1E1E1E;
-            border: 1px solid #333;
-            border-radius: 5px;
-            padding: 15px;
+            margin-bottom: 1rem;
+            background: var(--dark-bg-primary);
+            border: 1px solid var(--dark-border);
+            border-radius: 8px;
+            padding: 0.75rem;
             text-align: center;
         }
+
         .chart-image {
             max-width: 100%;
             height: auto;
-            margin-bottom: 10px;
+            margin-bottom: 0.5rem;
+            border-radius: 4px;
         }
+
         .chart-caption {
-            font-size: 12px;
-            color: #999;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.7rem;
+            color: var(--dark-text-tertiary);
             text-align: center;
         }
-        
+
         /* Risk management styling */
         .risk-management {
-            background-color: #1E1E1E;
-            border: 1px solid #333;
-            border-radius: 5px;
-            padding: 15px;
-            margin-bottom: 20px;
+            background: var(--dark-bg-secondary);
+            border: 1px solid var(--dark-border);
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 1rem;
             display: grid;
             grid-template-columns: 1fr 1fr;
-            grid-gap: 15px;
+            grid-gap: 1rem;
         }
+
         .risk-item {
             display: flex;
             flex-direction: column;
         }
+
         .risk-item .label {
-            font-size: 12px;
-            color: #999;
-            margin-bottom: 5px;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.7rem;
+            color: var(--dark-text-tertiary);
+            margin-bottom: 0.25rem;
             text-transform: uppercase;
+            letter-spacing: 0.05em;
         }
+
         .risk-item .value {
-            font-size: 18px;
-            font-weight: bold;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 1.1rem;
+            font-weight: 600;
         }
+
         .target-table {
             width: 100%;
             border-collapse: collapse;
-            margin-top: 10px;
-            font-size: 14px;
+            margin-top: 0.75rem;
+            font-size: 0.85rem;
         }
+
         .target-table th {
             text-align: left;
-            padding: 8px;
-            background-color: #252525;
-            border-bottom: 1px solid #444;
-            color: #999;
+            padding: 0.5rem 0.75rem;
+            background: var(--dark-bg-tertiary);
+            border-bottom: 1px solid var(--dark-border);
+            font-family: 'IBM Plex Mono', monospace;
+            color: var(--neon-amber);
             text-transform: uppercase;
-            font-size: 12px;
+            font-size: 0.7rem;
+            letter-spacing: 0.05em;
         }
+
         .target-table td {
-            padding: 8px;
-            border-bottom: 1px solid #222;
+            padding: 0.5rem 0.75rem;
+            border-bottom: 1px solid var(--dark-border);
+            background: var(--dark-bg-secondary);
         }
+
         .target-table tr:last-child td {
             border-bottom: none;
         }
-        
+
         /* Footer styling */
         .footer {
-            margin-top: 30px;
-            padding-top: 15px;
-            border-top: 1px solid #444;
-            font-size: 12px;
-            color: #999;
+            margin-top: 2rem;
+            padding-top: 1rem;
+            border-top: 1px solid var(--dark-border);
+            font-size: 0.7rem;
+            color: var(--dark-text-tertiary);
             display: flex;
             justify-content: space-between;
+            font-family: 'IBM Plex Mono', monospace;
         }
-        
-        /* CRT retro effect */
-        .crt-effect {
-            position: relative;
+
+        .footer-brand {
+            color: var(--neon-amber);
+            font-weight: 600;
         }
-        .crt-effect::after {
-            content: "";
-            display: block;
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.2) 50%);
-            background-size: 100% 4px;
-            pointer-events: none;
-            z-index: 100;
-            opacity: 0.1;
-        }
-        
-        /* Terminal effect for title */
-        .terminal-title {
-            font-family: 'Courier New', monospace;
-            color: #4CAF50;
-            overflow: hidden;
-            border-right: 0.15em solid #4CAF50;
-            white-space: nowrap;
-            margin: 0;
-            padding: 0;
-            letter-spacing: 0.1em;
-        }
-        
-        /* Retro score gauge */
+
+        /* Score gauge */
         .score-gauge {
             width: 100%;
-            background-color: #1E1E1E;
+            background: var(--dark-bg-primary);
             height: 20px;
-            border-radius: 10px;
+            border-radius: 4px;
             overflow: hidden;
-            margin-top: 5px;
-            border: 1px solid #333;
+            margin-top: 0.5rem;
+            border: 1px solid var(--dark-border);
         }
+
         .score-gauge-fill {
             height: 100%;
-            border-radius: 10px;
+            border-radius: 4px;
         }
+
         .score-gauge-markers {
             display: flex;
             justify-content: space-between;
-            margin-top: 5px;
-            font-size: 10px;
-            color: #999;
+            margin-top: 0.25rem;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.6rem;
+            color: var(--dark-text-tertiary);
         }
+
         /* Market interpretation callout */
         .market-interpretation {
-            background-color: #252525;
-            border-left: 3px solid #4CAF50;
-            padding: 10px 15px;
-            margin-bottom: 15px;
-            font-style: italic;
+            background: var(--dark-bg-tertiary);
+            border-left: 3px solid var(--neon-amber);
+            padding: 0.75rem 1rem;
+            margin-bottom: 0.75rem;
+            border-radius: 0 6px 6px 0;
         }
-        
-        /* Reliability value colors */
-        .reliability-high {
-            color: #4CAF50;
+
+        .market-interpretation strong {
+            color: var(--neon-amber);
+            font-family: 'IBM Plex Mono', monospace;
         }
-        .reliability-medium {
-            color: #FFC107;
+
+        /* Highlight box */
+        .highlight-box {
+            background: rgba(251, 191, 36, 0.1);
+            border: 1px solid rgba(251, 191, 36, 0.3);
+            border-radius: 6px;
+            padding: 0.75rem 1rem;
+            margin: 0.75rem 0;
         }
-        .reliability-low {
-            color: #F44336;
+
+        .highlight-box.success {
+            background: rgba(16, 185, 129, 0.1);
+            border-color: rgba(16, 185, 129, 0.3);
+        }
+
+        .highlight-box.danger {
+            background: rgba(239, 68, 68, 0.1);
+            border-color: rgba(239, 68, 68, 0.3);
         }
     </style>
 </head>
-<body class="crt-effect">
+<body>
     <div class="container">
+        <!-- Branded Header -->
+        <div class="branded-header">
+            <div class="brand-logo">
+                <!-- Lucide trending-up icon SVG -->
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="filter: drop-shadow(0 0 6px rgba(251, 191, 36, 0.5));">
+                    <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"></polyline>
+                    <polyline points="16 7 22 7 22 13"></polyline>
+                </svg>
+                <span class="brand-name">VIRTUOSO</span>
+                <span class="brand-tagline">// AI TRADING</span>
+            </div>
+            <div style="text-align: right;">
+                <div style="font-family: 'IBM Plex Mono', monospace; font-size: 0.65rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.1em;">Signal Report</div>
+                <div style="font-family: 'IBM Plex Mono', monospace; font-size: 0.8rem; color: #9ca3af;">{{ timestamp }}</div>
+            </div>
+        </div>
+
         <!-- Header -->
         <div class="header">
             <div>
-                <h1 class="terminal-title">TRADING SIGNAL REPORT</h1>
-                <div style="margin-top: 5px;">{{ symbol }} @ ${{ price|format_number }}</div>
+                <h1>{{ symbol }}</h1>
+                <div style="margin-top: 0.5rem; font-family: 'IBM Plex Mono', monospace; color: #9ca3af;">
+                    Current Price: <span style="color: #fbbf24; font-weight: 600;">${{ price|format_number }}</span>
+                </div>
             </div>
             <div>
-                <div class="signal-badge" style="background-color: {{ signal_color }};">{{ signal_type }}</div>
-                <div class="date">{{ timestamp }}</div>
+                <div class="signal-badge" style="background-color: {{ signal_color }}; color: #000;">{{ signal_type }}</div>
             </div>
         </div>
-        
+
         <!-- Summary -->
         <div class="summary-box">
             <div class="summary-item">
-                <div class="label">Overall Score</div>
-                <div class="value" style="color: {{ signal_color }};">{{ score|format_number }}</div>
+                <div class="label">Confluence Score</div>
+                <div class="value" style="color: {{ signal_color }};">{{ score|format_number }}<span style="font-size: 0.8rem; color: #6b7280;">/100</span></div>
                 <div class="score-gauge">
-                    <div class="score-gauge-fill" style="width: {{ score_width_pct }}; background-color: {{ signal_color }};"></div>
+                    <div class="score-gauge-fill" style="width: {{ score_width_pct }}; background: linear-gradient(90deg, {{ signal_color }}, {{ signal_color }}99);"></div>
                 </div>
                 <div class="score-gauge-markers">
                     <span>0</span>
@@ -383,7 +560,7 @@
                 {% endif %}
             </div>
         </div>
-        
+
         <!-- Candlestick Chart -->
         {% if candlestick_chart %}
         <div class="section">
@@ -394,7 +571,7 @@
             </div>
         </div>
         {% endif %}
-        
+
         <!-- Component Scores Chart -->
         {% if component_chart %}
         <div class="section">
@@ -405,7 +582,7 @@
             </div>
         </div>
         {% endif %}
-        
+
         <!-- Component Table -->
         <div class="section">
             <div class="section-title">Component Breakdown</div>
@@ -428,11 +605,11 @@
                 </tbody>
             </table>
         </div>
-        
+
         <!-- Top Influential Individual Components -->
         {% if top_weighted_subcomponents and top_weighted_subcomponents|length > 0 %}
         <div class="section">
-            <div class="section-title">Top Influential Individual Components</div>
+            <div class="section-title">Top Influential Components</div>
             <table class="component-table">
                 <thead>
                     <tr>
@@ -455,7 +632,7 @@
             </table>
         </div>
         {% endif %}
-        
+
         <!-- Component Interpretations -->
         <div class="section">
             <div class="section-title">Component Interpretations</div>
@@ -467,7 +644,7 @@
                 {% endif %}
             {% endfor %}
         </div>
-        
+
         <!-- Market Insights -->
         {% if insights and insights|length > 0 %}
         <div class="section">
@@ -479,7 +656,7 @@
             </div>
         </div>
         {% endif %}
-        
+
         <!-- Actionable Insights -->
         {% if actionable_insights and actionable_insights|length > 0 %}
         <div class="section">
@@ -491,21 +668,21 @@
             </div>
         </div>
         {% endif %}
-        
+
         <!-- Risk Management -->
         <div class="section">
             <div class="section-title">Risk Management</div>
             <div class="risk-management">
                 <div class="risk-item">
                     <div class="label">Entry Price</div>
-                    <div class="value">${{ entry_price|format_number }}</div>
+                    <div class="value" style="color: #fbbf24;">${{ entry_price|format_number }}</div>
                 </div>
                 <div class="risk-item">
                     <div class="label">Stop Loss</div>
-                    <div class="value">${{ stop_loss|format_number }} ({{ stop_loss_percent|format_number }}%)</div>
+                    <div class="value" style="color: #ef4444;">${{ stop_loss|format_number }} <span style="font-size: 0.8rem; color: #6b7280;">({{ stop_loss_percent|format_number }}%)</span></div>
                 </div>
             </div>
-            
+
             <!-- Targets -->
             {% if targets and targets|length > 0 %}
             <table class="target-table">
@@ -521,8 +698,8 @@
                     {% for target in targets %}
                     <tr>
                         <td>{{ target.name }}</td>
-                        <td>${{ target.price|format_number }}</td>
-                        <td>{{ target.percent|format_number }}%</td>
+                        <td style="color: #10b981; font-weight: 600;">${{ target.price|format_number }}</td>
+                        <td style="color: #10b981;">+{{ target.percent|format_number }}%</td>
                         <td>{{ target.size|format_number }}%</td>
                     </tr>
                     {% endfor %}
@@ -530,12 +707,11 @@
             </table>
             {% endif %}
         </div>
-        
+
         <!-- Footer -->
         <div class="footer">
-            <div>Generated by Virtuoso Trading Bot</div>
-            <div>{{ hostname }} | {{ timestamp }}</div>
-            <div>Detailed JSON data available: {{ json_path }}</div>
+            <div><span class="footer-brand">VIRTUOSO TRADING</span> | AI-Powered Analysis</div>
+            <div>{{ timestamp }}</div>
         </div>
     </div>
 </body>

@@ -636,7 +636,7 @@ class EventStore:
     
     async def _archive_hot_events(self):
         """Archive old hot events to warm storage."""
-        cutoff_time = datetime.utcnow() - timedelta(hours=self.hot_retention_hours)
+        cutoff_time = datetime.now(timezone.utc) - timedelta(hours=self.hot_retention_hours)
         
         # Identify events to archive
         events_to_archive = []
@@ -688,7 +688,7 @@ class EventStore:
     
     async def _cleanup_warm_storage(self):
         """Clean up old warm storage files."""
-        cutoff_date = datetime.utcnow() - timedelta(days=self.warm_retention_days)
+        cutoff_date = datetime.now(timezone.utc) - timedelta(days=self.warm_retention_days)
         cutoff_str = cutoff_date.strftime('%Y-%m-%d')
         
         # Find old warm files
@@ -859,7 +859,7 @@ class EventSourcingManager(IAsyncDisposable):
         hours_back: int = 24
     ) -> List[EventRecord]:
         """Get audit trail for specific criteria."""
-        end_time = datetime.utcnow()
+        end_time = datetime.now(timezone.utc)
         start_time = end_time - timedelta(hours=hours_back)
         
         records = await self.event_store.query_events(

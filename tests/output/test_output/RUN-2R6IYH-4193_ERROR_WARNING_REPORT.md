@@ -103,7 +103,7 @@ CRITICAL Memory usage alerts from previous runs:
 ### Process Information
 - **Python Version:** 3.11.12
 - **Platform:** Darwin (macOS)
-- **Working Directory:** /Users/ffv_macmini/Desktop/Virtuoso_ccxt
+- **Working Directory:** .
 - **Log Level:** DEBUG (detailed logging enabled)
 
 ### WebSocket Connections (Active)

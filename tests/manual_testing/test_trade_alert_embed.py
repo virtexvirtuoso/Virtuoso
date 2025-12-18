@@ -3,7 +3,7 @@ import json
 import aiohttp
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 # Setup logging
 logging.basicConfig(
@@ -79,7 +79,7 @@ async def send_trade_alert_embed():
         "footer": {
             "text": "Virtuoso Trading Bot"
         },
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.now(timezone.utc).isoformat()
     }
     
     # Final webhook payload

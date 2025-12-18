@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 def generate_hyperliquid_test_data():
     """Generate sample Hyperliquid market data for testing."""
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     periods = 100
     
     # Generate timestamps

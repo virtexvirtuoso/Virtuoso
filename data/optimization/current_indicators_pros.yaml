@@ -1,0 +1,2540 @@
+timestamp: '2025-11-25T15:02:49.138138'
+train_period: 2024-08-01 to 2025-03-31
+holdout_period: 2025-04-01 to 2025-10-31
+symbols:
+- BTCUSDT
+- ETHUSDT
+- SOLUSDT
+- BNBUSDT
+- AVAXUSDT
+- ADAUSDT
+n_trials: 75
+indicators:
+  rsi:
+    indicator: rsi
+    name: RSI (Relative Strength Index)
+    is_alternative: false
+    default_params:
+      period: 14
+      overbought: 70
+      oversold: 30
+    optimized_params:
+      period: 6
+      overbought: 65
+      oversold: 35
+    optimization_score: 0.7228
+    n_trials: 75
+    directional_preference:
+      direction: BALANCED
+      confidence: HIGH
+      long_win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+      - &id001 !!python/object/apply:numpy.dtype
+        args:
+        - f8
+        - false
+        - true
+        state: !!python/tuple
+        - 3
+        - <
+        - null
+        - null
+        - null
+        - -1
+        - -1
+        - 0
+      - !!binary |
+        XwfOGVHa5T8=
+      short_win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        aLPqc7UV5T8=
+    pros_scores:
+      profitability: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        pHA9CtcjT0A=
+      robustness: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        9ihcj8JVTkA=
+      operational: 100
+      stability: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        9ihcj8JVVEA=
+      overall: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        UrgehesRUkA=
+    train_performance:
+      BTCUSDT:
+        long:
+          total_return: -27.1637
+          sharpe: -1.1219
+          win_rate: 0.6567
+          num_trades: 367
+          avg_profit: -0.074
+          max_drawdown: -30.0867
+        short:
+          total_return: -1.0749
+          sharpe: -0.0417
+          win_rate: 0.6548
+          num_trades: 394
+          avg_profit: -0.0027
+          max_drawdown: -20.6712
+        combined:
+          symmetry_score: 0.0717
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            uECC4seY178=
+          overall_sharpe: -0.5648
+          total_trades: 761
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            B84ZUdob7D8=
+      ETHUSDT:
+        long:
+          total_return: -26.7887
+          sharpe: -0.6015
+          win_rate: 0.7109
+          num_trades: 384
+          avg_profit: -0.0698
+          max_drawdown: -36.8006
+        short:
+          total_return: -12.7784
+          sharpe: -0.4814
+          win_rate: 0.6604
+          num_trades: 374
+          avg_profit: -0.0342
+          max_drawdown: -25.5859
+        combined:
+          symmetry_score: 0.8891
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            IEHxY8xd278=
+          overall_sharpe: -0.5413
+          total_trades: 758
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            1XjpJjEI7D8=
+      SOLUSDT:
+        long:
+          total_return: 12.4029
+          sharpe: 0.2721
+          win_rate: 0.6799
+          num_trades: 403
+          avg_profit: 0.0308
+          max_drawdown: -38.3501
+        short:
+          total_return: 10.2752
+          sharpe: 0.2831
+          win_rate: 0.6881
+          num_trades: 388
+          avg_profit: 0.0265
+          max_drawdown: -21.6727
+        combined:
+          symmetry_score: 0.9801
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            jnVxGw3g1b8=
+          overall_sharpe: 0.2757
+          total_trades: 791
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            lkOLbOf78D8=
+      BNBUSDT:
+        long:
+          total_return: -3.7541
+          sharpe: -0.1256
+          win_rate: 0.6532
+          num_trades: 395
+          avg_profit: -0.0095
+          max_drawdown: -25.1145
+        short:
+          total_return: -29.2496
+          sharpe: -0.9448
+          win_rate: 0.616
+          num_trades: 401
+          avg_profit: -0.0729
+          max_drawdown: -41.5273
+        combined:
+          symmetry_score: 0.2347
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            +8vuycNC1b8=
+          overall_sharpe: -0.5422
+          total_trades: 796
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            9UpZhjjW6z8=
+      AVAXUSDT:
+        long:
+          total_return: -36.5447
+          sharpe: -0.7115
+          win_rate: 0.7012
+          num_trades: 405
+          avg_profit: -0.0902
+          max_drawdown: -52.5516
+        short:
+          total_return: -26.7746
+          sharpe: -0.5959
+          win_rate: 0.6632
+          num_trades: 380
+          avg_profit: -0.0705
+          max_drawdown: -46.6011
+        combined:
+          symmetry_score: 0.9115
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            EHo2qz5X278=
+          overall_sharpe: -0.6571
+          total_trades: 785
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            93XgnBGl6z8=
+      ADAUSDT:
+        long:
+          total_return: 76.5844
+          sharpe: 1.3007
+          win_rate: 0.6958
+          num_trades: 401
+          avg_profit: 0.191
+          max_drawdown: -24.7631
+        short:
+          total_return: -64.1105
+          sharpe: -1.0724
+          win_rate: 0.6712
+          num_trades: 368
+          avg_profit: -0.1742
+          max_drawdown: -97.1743
+        combined:
+          symmetry_score: 0.0
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            J8KGp1fK1r8=
+          overall_sharpe: 0.1047
+          total_trades: 769
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            xEKtad5x8D8=
+    holdout_performance:
+      BTCUSDT:
+        long:
+          total_return: -20.7532
+          sharpe: -1.4251
+          win_rate: 0.5892
+          num_trades: 314
+          avg_profit: -0.0661
+          max_drawdown: -23.0222
+        short:
+          total_return: -20.0978
+          sharpe: -1.2149
+          win_rate: 0.6116
+          num_trades: 363
+          avg_profit: -0.0554
+          max_drawdown: -27.4524
+        combined:
+          symmetry_score: 0.9204
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            XCBB8WPM1b8=
+          overall_sharpe: -1.3132
+          total_trades: 677
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            7nw/NV665z8=
+      ETHUSDT:
+        long:
+          total_return: -15.8388
+          sharpe: -0.5199
+          win_rate: 0.6449
+          num_trades: 321
+          avg_profit: -0.0493
+          max_drawdown: -25.1492
+        short:
+          total_return: -71.169
+          sharpe: -1.8218
+          win_rate: 0.6514
+          num_trades: 350
+          avg_profit: -0.2033
+          max_drawdown: -82.9878
+        combined:
+          symmetry_score: 0.444
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            Io51cRsN3L8=
+          overall_sharpe: -1.2459
+          total_trades: 671
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            RiV1ApoI5z8=
+      SOLUSDT:
+        long:
+          total_return: -24.0116
+          sharpe: -0.8049
+          win_rate: 0.6212
+          num_trades: 330
+          avg_profit: -0.0728
+          max_drawdown: -32.4878
+        short:
+          total_return: -27.2798
+          sharpe: -0.8413
+          win_rate: 0.6582
+          num_trades: 354
+          avg_profit: -0.0771
+          max_drawdown: -39.4462
+        combined:
+          symmetry_score: 0.9779
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            aLPqc7UV178=
+          overall_sharpe: -0.8239
+          total_trades: 684
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            FvvL7snD6j8=
+      BNBUSDT:
+        long:
+          total_return: 6.0104
+          sharpe: 0.342
+          win_rate: 0.6591
+          num_trades: 308
+          avg_profit: 0.0195
+          max_drawdown: -12.1413
+        short:
+          total_return: -59.5472
+          sharpe: -2.6671
+          win_rate: 0.5659
+          num_trades: 364
+          avg_profit: -0.1636
+          max_drawdown: -67.7916
+        combined:
+          symmetry_score: 0.0
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            TfOOU3Qk178=
+          overall_sharpe: -1.3346
+          total_trades: 672
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            aW/whclU5z8=
+      AVAXUSDT:
+        long:
+          total_return: -21.9239
+          sharpe: -0.565
+          win_rate: 0.6766
+          num_trades: 337
+          avg_profit: -0.0651
+          max_drawdown: -35.6716
+        short:
+          total_return: -37.9017
+          sharpe: -1.1659
+          win_rate: 0.6667
+          num_trades: 324
+          avg_profit: -0.117
+          max_drawdown: -59.0682
+        combined:
+          symmetry_score: 0.6528
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            NV66SQwC278=
+          overall_sharpe: -0.8369
+          total_trades: 661
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            sVBrmnec6j8=
+      ADAUSDT:
+        long:
+          total_return: -12.9788
+          sharpe: -0.3489
+          win_rate: 0.6523
+          num_trades: 348
+          avg_profit: -0.0373
+          max_drawdown: -26.9247
+        short:
+          total_return: -32.4999
+          sharpe: -0.9655
+          win_rate: 0.6534
+          num_trades: 326
+          avg_profit: -0.0997
+          max_drawdown: -46.6891
+        combined:
+          symmetry_score: 0.5309
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            0NVW7C+7178=
+          overall_sharpe: -0.6415
+          total_trades: 674
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            5q4l5IOe6z8=
+    summary:
+      avg_long_wr: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        XwfOGVHa5T8=
+      avg_short_wr: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        aLPqc7UV5T8=
+      avg_sharpe: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        nKIjufyH1L8=
+      sharpe_std: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        KA8LtaZ51z8=
+      sharpe_min: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        gnNGlPYG5b8=
+      sharpe_max: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        93XgnBGl0T8=
+      total_trades: 4660
+  ao:
+    indicator: ao
+    name: AO (Awesome Oscillator)
+    is_alternative: false
+    default_params:
+      fast: 5
+      slow: 34
+    optimized_params:
+      fast: 9
+      slow: 25
+    optimization_score: 0.5248
+    n_trials: 75
+    directional_preference:
+      direction: BALANCED
+      confidence: MEDIUM
+      long_win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        4lgXt9EA3j8=
+      short_win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        xty1hHzQ2z8=
+    pros_scores:
+      profitability: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        UrgehesRPkA=
+      robustness: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        9ihcj8KVREA=
+      operational: 100
+      stability: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        H4XrUbjuUEA=
+      overall: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        PQrXo3A9SkA=
+    train_performance:
+      BTCUSDT:
+        long:
+          total_return: -9.4334
+          sharpe: -1.9961
+          win_rate: 0.4297
+          num_trades: 128
+          avg_profit: -0.0737
+          max_drawdown: -8.1166
+        short:
+          total_return: 0.9005
+          sharpe: 0.2158
+          win_rate: 0.4882
+          num_trades: 127
+          avg_profit: 0.0071
+          max_drawdown: -7.455
+        combined:
+          symmetry_score: 0.0
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            x7q4jQbwdr8=
+          overall_sharpe: -0.9549
+          total_trades: 255
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            3pOHhVrT6j8=
+      ETHUSDT:
+        long:
+          total_return: 2.6728
+          sharpe: 0.392
+          win_rate: 0.5391
+          num_trades: 128
+          avg_profit: 0.0209
+          max_drawdown: -7.8877
+        short:
+          total_return: -12.4034
+          sharpe: -2.4224
+          win_rate: 0.3858
+          num_trades: 127
+          avg_profit: -0.0977
+          max_drawdown: -14.969
+        combined:
+          symmetry_score: 0.0
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            kst/SL99Xb8=
+          overall_sharpe: -0.8049
+          total_trades: 255
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            gQTFjzF36z8=
+      SOLUSDT:
+        long:
+          total_return: -2.3066
+          sharpe: -0.2884
+          win_rate: 0.4776
+          num_trades: 134
+          avg_profit: -0.0172
+          max_drawdown: -9.708
+        short:
+          total_return: -6.6321
+          sharpe: -1.0448
+          win_rate: 0.4887
+          num_trades: 133
+          avg_profit: -0.0499
+          max_drawdown: -8.4357
+        combined:
+          symmetry_score: 0.4326
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            AU2EDU+vlL8=
+          overall_sharpe: -0.6192
+          total_trades: 267
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            XynLEMe67D8=
+      BNBUSDT:
+        long:
+          total_return: -8.86
+          sharpe: -1.6952
+          win_rate: 0.4167
+          num_trades: 132
+          avg_profit: -0.0671
+          max_drawdown: -12.6054
+        short:
+          total_return: -13.3708
+          sharpe: -2.5474
+          win_rate: 0.3588
+          num_trades: 131
+          avg_profit: -0.1021
+          max_drawdown: -19.9287
+        combined:
+          symmetry_score: 0.7991
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            vw6cM6K0pz8=
+          overall_sharpe: -2.1214
+          total_trades: 263
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            IGPuWkI+5j8=
+      AVAXUSDT:
+        long:
+          total_return: -14.0423
+          sharpe: -1.3673
+          win_rate: 0.4844
+          num_trades: 128
+          avg_profit: -0.1097
+          max_drawdown: -18.2529
+        short:
+          total_return: -6.3167
+          sharpe: -0.6667
+          win_rate: 0.4252
+          num_trades: 127
+          avg_profit: -0.0497
+          max_drawdown: -10.9265
+        combined:
+          symmetry_score: 0.6556
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            XwfOGVHaW78=
+          overall_sharpe: -1.0301
+          total_trades: 255
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            k6mCUUmd6j8=
+      ADAUSDT:
+        long:
+          total_return: 1.7797
+          sharpe: 0.2185
+          win_rate: 0.4651
+          num_trades: 129
+          avg_profit: 0.0138
+          max_drawdown: -10.872
+        short:
+          total_return: -10.0706
+          sharpe: -1.234
+          win_rate: 0.4609
+          num_trades: 128
+          avg_profit: -0.0787
+          max_drawdown: -17.5601
+        combined:
+          symmetry_score: 0.0
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            GQRWDi2ynT8=
+          overall_sharpe: -0.508
+          total_trades: 257
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            rrZif9k97T8=
+    holdout_performance:
+      BTCUSDT:
+        long:
+          total_return: -10.5927
+          sharpe: -3.8636
+          win_rate: 0.3361
+          num_trades: 119
+          avg_profit: -0.089
+          max_drawdown: -12.0344
+        short:
+          total_return: -9.3738
+          sharpe: -3.5098
+          win_rate: 0.3445
+          num_trades: 119
+          avg_profit: -0.0788
+          max_drawdown: -10.6993
+        combined:
+          symmetry_score: 0.952
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            /Knx0k1ikL8=
+          overall_sharpe: -3.6883
+          total_trades: 238
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            s+pztRX73z8=
+      ETHUSDT:
+        long:
+          total_return: -4.2431
+          sharpe: -1.1001
+          win_rate: 0.4797
+          num_trades: 123
+          avg_profit: -0.0345
+          max_drawdown: -9.4944
+        short:
+          total_return: -7.155
+          sharpe: -1.2734
+          win_rate: 0.4426
+          num_trades: 122
+          avg_profit: -0.0586
+          max_drawdown: -11.1272
+        combined:
+          symmetry_score: 0.927
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            /yH99nXgnL8=
+          overall_sharpe: -1.1815
+          total_trades: 245
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            +THmriXk6T8=
+      SOLUSDT:
+        long:
+          total_return: 1.3872
+          sharpe: 0.2666
+          win_rate: 0.4906
+          num_trades: 106
+          avg_profit: 0.0131
+          max_drawdown: -7.0144
+        short:
+          total_return: -7.2321
+          sharpe: -1.5612
+          win_rate: 0.4057
+          num_trades: 106
+          avg_profit: -0.0682
+          max_drawdown: -9.4976
+        combined:
+          symmetry_score: 0.0
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            0SLb+X5qrD8=
+          overall_sharpe: -0.5924
+          total_trades: 212
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            RiV1ApoI7T8=
+      BNBUSDT:
+        long:
+          total_return: -8.6273
+          sharpe: -2.5544
+          win_rate: 0.4048
+          num_trades: 126
+          avg_profit: -0.0685
+          max_drawdown: -12.038
+        short:
+          total_return: -17.1566
+          sharpe: -4.913
+          win_rate: 0.3175
+          num_trades: 126
+          avg_profit: -0.1362
+          max_drawdown: -21.4967
+        combined:
+          symmetry_score: 0.6841
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            xf6ye/KwoL8=
+          overall_sharpe: -3.7414
+          total_trades: 252
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            bcX+snvy4D8=
+      AVAXUSDT:
+        long:
+          total_return: -3.4386
+          sharpe: -0.5417
+          win_rate: 0.422
+          num_trades: 109
+          avg_profit: -0.0315
+          max_drawdown: -8.1409
+        short:
+          total_return: -10.8431
+          sharpe: -1.8794
+          win_rate: 0.4679
+          num_trades: 109
+          avg_profit: -0.0995
+          max_drawdown: -13.5573
+        combined:
+          symmetry_score: 0.4475
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            guLHmLuWgD8=
+          overall_sharpe: -1.1764
+          total_trades: 218
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            bqMBvAUS6j8=
+      ADAUSDT:
+        long:
+          total_return: -11.3705
+          sharpe: -1.9487
+          win_rate: 0.425
+          num_trades: 120
+          avg_profit: -0.0948
+          max_drawdown: -15.0112
+        short:
+          total_return: 10.0425
+          sharpe: 1.8258
+          win_rate: 0.5083
+          num_trades: 120
+          avg_profit: 0.0837
+          max_drawdown: -6.8374
+        combined:
+          symmetry_score: 0.0
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            Qj7o2az6rD8=
+          overall_sharpe: -0.1163
+          total_trades: 240
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            ejarPldb7z8=
+    summary:
+      avg_long_wr: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        4lgXt9EA3j8=
+      avg_short_wr: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        xty1hHzQ2z8=
+      avg_sharpe: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        Qxzr4jYa8L8=
+      sharpe_std: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        9ihcj8L14D8=
+      sharpe_min: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        DeAtkKD4AMA=
+      sharpe_max: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        qMZLN4lB4L8=
+      total_trades: 1552
+  adx:
+    indicator: adx
+    name: ADX (Average Directional Index)
+    is_alternative: false
+    default_params:
+      period: 14
+      threshold: 25
+    optimized_params:
+      period: 19
+      threshold: 30
+    optimization_score: 0.5757
+    n_trials: 75
+    directional_preference:
+      direction: BALANCED
+      confidence: HIGH
+      long_win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        zF1LyAc91z8=
+      short_win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        Q61p3nGK1j8=
+    pros_scores:
+      profitability: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        uB6F61HYSUA=
+      robustness: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        uB6F61F4SkA=
+      operational: 85.6
+      stability: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        rkfhehTORUA=
+      overall: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        KVyPwvXITEA=
+    train_performance:
+      BTCUSDT:
+        long:
+          total_return: -7.2698
+          sharpe: -1.3555
+          win_rate: 0.3611
+          num_trades: 36
+          avg_profit: -0.2019
+          max_drawdown: -11.2207
+        short:
+          total_return: 5.7349
+          sharpe: 0.7913
+          win_rate: 0.2973
+          num_trades: 37
+          avg_profit: 0.155
+          max_drawdown: -17.5093
+        combined:
+          symmetry_score: 0.0
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            c2iR7Xw/1T8=
+          overall_sharpe: -0.1204
+          total_trades: 73
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            NxrAWyBB7z8=
+      ETHUSDT:
+        long:
+          total_return: 15.2464
+          sharpe: 1.9589
+          win_rate: 0.2963
+          num_trades: 27
+          avg_profit: 0.5647
+          max_drawdown: -7.0518
+        short:
+          total_return: 32.4199
+          sharpe: 2.9585
+          win_rate: 0.3214
+          num_trades: 28
+          avg_profit: 1.1579
+          max_drawdown: -11.8438
+        combined:
+          symmetry_score: 0.7967
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            a5p3nKIj4z8=
+          overall_sharpe: 2.5111
+          total_trades: 55
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            n6ut2F92/D8=
+      SOLUSDT:
+        long:
+          total_return: 19.1083
+          sharpe: 1.8884
+          win_rate: 0.4828
+          num_trades: 29
+          avg_profit: 0.6589
+          max_drawdown: -16.0382
+        short:
+          total_return: -9.7958
+          sharpe: -1.1587
+          win_rate: 0.2581
+          num_trades: 31
+          avg_profit: -0.316
+          max_drawdown: -31.6321
+        combined:
+          symmetry_score: 0.0
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            veMUHcnl0z8=
+          overall_sharpe: 0.4953
+          total_trades: 60
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            yAc9m1Wf8T8=
+      BNBUSDT:
+        long:
+          total_return: -17.4766
+          sharpe: -10.843
+          win_rate: 0.2632
+          num_trades: 19
+          avg_profit: -0.9198
+          max_drawdown: -15.7358
+        short:
+          total_return: 15.0265
+          sharpe: 1.985
+          win_rate: 0.3333
+          num_trades: 33
+          avg_profit: 0.4553
+          max_drawdown: -12.7467
+        combined:
+          symmetry_score: 0.0
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            zF1LyAc91z8=
+          overall_sharpe: -0.2425
+          total_trades: 52
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            AJF++zpw7j8=
+      AVAXUSDT:
+        long:
+          total_return: 2.6488
+          sharpe: 0.3388
+          win_rate: 0.3939
+          num_trades: 33
+          avg_profit: 0.0803
+          max_drawdown: -21.2497
+        short:
+          total_return: 17.8301
+          sharpe: 1.8183
+          win_rate: 0.2903
+          num_trades: 31
+          avg_profit: 0.5752
+          max_drawdown: -17.1852
+        combined:
+          symmetry_score: 0.3142
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            t9EA3gIJ2j8=
+          overall_sharpe: 1.1484
+          total_trades: 64
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            /yH99nXg8z8=
+      ADAUSDT:
+        long:
+          total_return: 55.9587
+          sharpe: 2.9897
+          win_rate: 0.381
+          num_trades: 21
+          avg_profit: 2.6647
+          max_drawdown: -27.894
+        short:
+          total_return: 25.1048
+          sharpe: 3.0556
+          win_rate: 0.6129
+          num_trades: 31
+          avg_profit: 0.8098
+          max_drawdown: -7.6575
+        combined:
+          symmetry_score: 0.9891
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            9bnaiv1l0z8=
+          overall_sharpe: 2.5769
+          total_trades: 52
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            nYAmwoYnAEA=
+    holdout_performance:
+      BTCUSDT:
+        long:
+          total_return: 9.5276
+          sharpe: 2.5284
+          win_rate: 0.3448
+          num_trades: 29
+          avg_profit: 0.3285
+          max_drawdown: -5.0964
+        short:
+          total_return: -7.4253
+          sharpe: -4.8981
+          win_rate: 0.28
+          num_trades: 25
+          avg_profit: -0.297
+          max_drawdown: -9.8052
+        combined:
+          symmetry_score: 0.0
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            kKD4Meau2T8=
+          overall_sharpe: 0.3686
+          total_trades: 54
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            aJHtfD818T8=
+      ETHUSDT:
+        long:
+          total_return: 45.2092
+          sharpe: 4.4038
+          win_rate: 0.4828
+          num_trades: 29
+          avg_profit: 1.5589
+          max_drawdown: -4.4037
+        short:
+          total_return: -5.8734
+          sharpe: -1.3835
+          win_rate: 0.2759
+          num_trades: 29
+          avg_profit: -0.2025
+          max_drawdown: -16.9827
+        combined:
+          symmetry_score: 0.0
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            lIeFWtO83z8=
+          overall_sharpe: 2.4528
+          total_trades: 58
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            arx0kxgE/T8=
+      SOLUSDT:
+        long:
+          total_return: 11.4526
+          sharpe: 2.1802
+          win_rate: 0.4194
+          num_trades: 31
+          avg_profit: 0.3694
+          max_drawdown: -12.2003
+        short:
+          total_return: -5.6009
+          sharpe: -1.2842
+          win_rate: 0.3333
+          num_trades: 30
+          avg_profit: -0.1867
+          max_drawdown: -9.8198
+        combined:
+          symmetry_score: 0.0
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            i2zn+6nx0j8=
+          overall_sharpe: 0.6032
+          total_trades: 61
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            T0ATYcPT8T8=
+      BNBUSDT:
+        long:
+          total_return: 21.9167
+          sharpe: 5.5426
+          win_rate: 0.52
+          num_trades: 25
+          avg_profit: 0.8767
+          max_drawdown: -6.1017
+        short:
+          total_return: -29.8929
+          sharpe: -7.7689
+          win_rate: 0.1923
+          num_trades: 26
+          avg_profit: -1.1497
+          max_drawdown: -31.9652
+        combined:
+          symmetry_score: 0.0
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            oImw4emVyj8=
+          overall_sharpe: -0.9431
+          total_trades: 51
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            z/dT46Wb6j8=
+      AVAXUSDT:
+        long:
+          total_return: 11.0566
+          sharpe: 1.6204
+          win_rate: 0.2759
+          num_trades: 29
+          avg_profit: 0.3813
+          max_drawdown: -10.2493
+        short:
+          total_return: -22.1648
+          sharpe: -2.9753
+          win_rate: 0.3421
+          num_trades: 38
+          avg_profit: -0.5833
+          max_drawdown: -24.3183
+        combined:
+          symmetry_score: 0.0
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            Nqs+V1ux0z8=
+          overall_sharpe: -0.7675
+          total_trades: 67
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            uECC4seY6z8=
+      ADAUSDT:
+        long:
+          total_return: 2.0622
+          sharpe: 0.4314
+          win_rate: 0.3846
+          num_trades: 26
+          avg_profit: 0.0793
+          max_drawdown: -10.4756
+        short:
+          total_return: -10.3111
+          sharpe: -1.6377
+          win_rate: 0.4545
+          num_trades: 33
+          avg_profit: -0.3125
+          max_drawdown: -17.727
+        combined:
+          symmetry_score: 0.0
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            e4MvTKYKtj8=
+          overall_sharpe: -0.743
+          total_trades: 59
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            SS7/If326z8=
+    summary:
+      avg_long_wr: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        zF1LyAc91z8=
+      avg_short_wr: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        Q61p3nGK1j8=
+      avg_sharpe: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        lkOLbOf78D8=
+      sharpe_std: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        odY07zhF8j8=
+      sharpe_min: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        CtejcD0Kz78=
+      sharpe_max: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        zH9Iv32dBEA=
+      total_trades: 356
+  williams_r:
+    indicator: williams_r
+    name: Williams %R
+    is_alternative: false
+    default_params:
+      period: 14
+      overbought: -20
+      oversold: -80
+    optimized_params:
+      period: 26
+      overbought: -26
+      oversold: -76
+    optimization_score: 0.7644
+    n_trials: 75
+    directional_preference:
+      direction: BALANCED
+      confidence: HIGH
+      long_win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        bHh6pSxD5j8=
+      short_win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        ysNCrWne5T8=
+    pros_scores:
+      profitability: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        H4XrUbheUEA=
+      robustness: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        uB6F61HIUEA=
+      operational: 100
+      stability: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        4XoUrkdxVkA=
+      overall: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        XI/C9SgcU0A=
+    train_performance:
+      BTCUSDT:
+        long:
+          total_return: 10.7634
+          sharpe: 0.5575
+          win_rate: 0.6733
+          num_trades: 303
+          avg_profit: 0.0355
+          max_drawdown: -15.8401
+        short:
+          total_return: -17.9091
+          sharpe: -0.8642
+          win_rate: 0.6304
+          num_trades: 303
+          avg_profit: -0.0591
+          max_drawdown: -35.1946
+        combined:
+          symmetry_score: 0.0
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            8rBQa5p31L8=
+          overall_sharpe: -0.1782
+          total_trades: 606
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            /yH99nXg7j8=
+      ETHUSDT:
+        long:
+          total_return: -39.9564
+          sharpe: -0.9648
+          win_rate: 0.7252
+          num_trades: 313
+          avg_profit: -0.1277
+          max_drawdown: -52.816
+        short:
+          total_return: 16.6897
+          sharpe: 0.6125
+          win_rate: 0.7098
+          num_trades: 286
+          avg_profit: 0.0584
+          max_drawdown: -25.5611
+        combined:
+          symmetry_score: 0.0
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            jnVxGw3g3b8=
+          overall_sharpe: -0.3341
+          total_trades: 599
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            uECC4seY7T8=
+      SOLUSDT:
+        long:
+          total_return: -2.4662
+          sharpe: -0.062
+          win_rate: 0.7034
+          num_trades: 327
+          avg_profit: -0.0075
+          max_drawdown: -58.8601
+        short:
+          total_return: 9.9101
+          sharpe: 0.2946
+          win_rate: 0.7018
+          num_trades: 285
+          avg_profit: 0.0348
+          max_drawdown: -34.3056
+        combined:
+          symmetry_score: 0.0
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            x0s3iUFg2b8=
+          overall_sharpe: 0.1013
+          total_trades: 612
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            S8gHPZtV8D8=
+      BNBUSDT:
+        long:
+          total_return: 0.9728
+          sharpe: 0.0341
+          win_rate: 0.6738
+          num_trades: 328
+          avg_profit: 0.003
+          max_drawdown: -28.9972
+        short:
+          total_return: -14.9931
+          sharpe: -0.6296
+          win_rate: 0.6599
+          num_trades: 297
+          avg_profit: -0.0505
+          max_drawdown: -21.4021
+        combined:
+          symmetry_score: 0.0
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            kzoBTYQN178=
+          overall_sharpe: -0.2676
+          total_trades: 625
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            sb/snjws7j8=
+      AVAXUSDT:
+        long:
+          total_return: -17.2856
+          sharpe: -0.351
+          win_rate: 0.6994
+          num_trades: 316
+          avg_profit: -0.0547
+          max_drawdown: -65.2515
+        short:
+          total_return: -10.6669
+          sharpe: -0.244
+          win_rate: 0.6781
+          num_trades: 292
+          avg_profit: -0.0365
+          max_drawdown: -64.8257
+        combined:
+          symmetry_score: 0.8201
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            SS7/If322b8=
+          overall_sharpe: -0.3006
+          total_trades: 608
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            WvW52or97T8=
+      ADAUSDT:
+        long:
+          total_return: 2.367
+          sharpe: 0.0517
+          win_rate: 0.6991
+          num_trades: 329
+          avg_profit: 0.0072
+          max_drawdown: -55.3762
+        short:
+          total_return: -43.9022
+          sharpe: -0.8075
+          win_rate: 0.7207
+          num_trades: 290
+          avg_profit: -0.1514
+          max_drawdown: -76.4459
+        combined:
+          symmetry_score: 0.0
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            YqHWNO843b8=
+          overall_sharpe: -0.4102
+          total_trades: 619
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            W9O84xQd7T8=
+    holdout_performance:
+      BTCUSDT:
+        long:
+          total_return: -0.3822
+          sharpe: -0.0298
+          win_rate: 0.6577
+          num_trades: 260
+          avg_profit: -0.0015
+          max_drawdown: -10.0432
+        short:
+          total_return: -23.2052
+          sharpe: -1.441
+          win_rate: 0.6268
+          num_trades: 284
+          avg_profit: -0.0817
+          max_drawdown: -31.6322
+        combined:
+          symmetry_score: 0.0405
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            F0hQ/Bhz178=
+          overall_sharpe: -0.8119
+          total_trades: 544
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            rWnecYqO6j8=
+      ETHUSDT:
+        long:
+          total_return: -3.3001
+          sharpe: -0.1425
+          win_rate: 0.6667
+          num_trades: 237
+          avg_profit: -0.0139
+          max_drawdown: -18.2338
+        short:
+          total_return: -87.6675
+          sharpe: -2.4258
+          win_rate: 0.6528
+          num_trades: 265
+          avg_profit: -0.3308
+          max_drawdown: -94.4968
+        combined:
+          symmetry_score: 0.1109
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            W0I+6Nms3r8=
+          overall_sharpe: -1.5086
+          total_trades: 502
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            INJvXwfO5T8=
+      SOLUSDT:
+        long:
+          total_return: -2.0434
+          sharpe: -0.0796
+          win_rate: 0.6603
+          num_trades: 262
+          avg_profit: -0.0078
+          max_drawdown: -20.8718
+        short:
+          total_return: -20.253
+          sharpe: -0.6511
+          win_rate: 0.6171
+          num_trades: 269
+          avg_profit: -0.0753
+          max_drawdown: -37.9962
+        combined:
+          symmetry_score: 0.2179
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            5j+k374O1L8=
+          overall_sharpe: -0.3913
+          total_trades: 531
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            0gDeAgmK7T8=
+      BNBUSDT:
+        long:
+          total_return: -6.9418
+          sharpe: -0.4404
+          win_rate: 0.6553
+          num_trades: 235
+          avg_profit: -0.0295
+          max_drawdown: -13.3512
+        short:
+          total_return: -45.2325
+          sharpe: -1.9397
+          win_rate: 0.6485
+          num_trades: 293
+          avg_profit: -0.1544
+          max_drawdown: -57.3777
+        combined:
+          symmetry_score: 0.3701
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            +THmriXk278=
+          overall_sharpe: -1.3285
+          total_trades: 528
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            3+ALk6mC5z8=
+      AVAXUSDT:
+        long:
+          total_return: -34.0881
+          sharpe: -0.9274
+          win_rate: 0.6834
+          num_trades: 259
+          avg_profit: -0.1316
+          max_drawdown: -41.9149
+        short:
+          total_return: -37.2011
+          sharpe: -1.0354
+          win_rate: 0.7061
+          num_trades: 262
+          avg_profit: -0.142
+          max_drawdown: -56.0882
+        combined:
+          symmetry_score: 0.945
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            Ke0NvjCZ3r8=
+          overall_sharpe: -0.9806
+          total_trades: 521
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            7nw/NV666T8=
+      ADAUSDT:
+        long:
+          total_return: 5.8678
+          sharpe: 0.1634
+          win_rate: 0.7244
+          num_trades: 283
+          avg_profit: 0.0207
+          max_drawdown: -22.1045
+        short:
+          total_return: -23.7405
+          sharpe: -0.6916
+          win_rate: 0.6982
+          num_trades: 275
+          avg_profit: -0.0863
+          max_drawdown: -40.5858
+        combined:
+          symmetry_score: 0.0
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            aCJseHql3L8=
+          overall_sharpe: -0.2543
+          total_trades: 558
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            B84ZUdob7j8=
+    summary:
+      avg_long_wr: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        bHh6pSxD5j8=
+      avg_short_wr: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        ysNCrWne5T8=
+      avg_sharpe: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        93XgnBGlzb8=
+      sharpe_std: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        7C+7Jw8LxT8=
+      sharpe_min: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        xm00gLdA2r8=
+      sharpe_max: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        dLUV+8vuuT8=
+      total_trades: 3669
+  atr:
+    indicator: atr
+    name: ATR (Average True Range)
+    is_alternative: false
+    default_params:
+      period: 14
+      multiplier: 2.0
+    optimized_params:
+      period: 10
+      multiplier: 2.2884063675671404
+    optimization_score: 0.7742
+    n_trials: 75
+    directional_preference:
+      direction: BALANCED
+      confidence: HIGH
+      long_win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        9ihcj8L14D8=
+      short_win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        RIts5/up4T8=
+    pros_scores:
+      profitability: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        ZmZmZmYGVUA=
+      robustness: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        MzMzMzOzVUA=
+      operational: 62.0
+      stability: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        UrgeheshUEA=
+      overall: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        exSuR+FaU0A=
+    train_performance:
+      BTCUSDT:
+        long:
+          total_return: 5.772
+          sharpe: 3.0618
+          win_rate: 0.4375
+          num_trades: 16
+          avg_profit: 0.3607
+          max_drawdown: -4.7892
+        short:
+          total_return: 0.6426
+          sharpe: 0.394
+          win_rate: 0.5455
+          num_trades: 22
+          avg_profit: 0.0292
+          max_drawdown: -4.5928
+        combined:
+          symmetry_score: 0.228
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            pSxDHOvixj8=
+          overall_sharpe: 1.7662
+          total_trades: 38
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            K4cW2c739j8=
+      ETHUSDT:
+        long:
+          total_return: 1.3875
+          sharpe: 1.0155
+          win_rate: 0.6
+          num_trades: 15
+          avg_profit: 0.0925
+          max_drawdown: -4.1825
+        short:
+          total_return: 8.0278
+          sharpe: 2.9696
+          win_rate: 0.5909
+          num_trades: 22
+          avg_profit: 0.3649
+          max_drawdown: -3.2723
+        combined:
+          symmetry_score: 0.5096
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            oWez6nO1pT8=
+          overall_sharpe: 2.284
+          total_trades: 37
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            B1+YTBWM+T8=
+      SOLUSDT:
+        long:
+          total_return: 6.848
+          sharpe: 3.1473
+          win_rate: 0.5385
+          num_trades: 13
+          avg_profit: 0.5268
+          max_drawdown: -4.8426
+        short:
+          total_return: -0.7502
+          sharpe: -1.129
+          win_rate: 0.4545
+          num_trades: 11
+          avg_profit: -0.0682
+          max_drawdown: -3.342
+        combined:
+          symmetry_score: 0.0
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            FK5H4XoUzj8=
+          overall_sharpe: 1.9376
+          total_trades: 24
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            MZkqGJXU+T8=
+      BNBUSDT:
+        long:
+          total_return: 0.1739
+          sharpe: 0.341
+          win_rate: 0.6667
+          num_trades: 9
+          avg_profit: 0.0193
+          max_drawdown: -2.8878
+        short:
+          total_return: 5.7572
+          sharpe: 4.2026
+          win_rate: 0.4615
+          num_trades: 13
+          avg_profit: 0.4429
+          max_drawdown: -3.2445
+        combined:
+          symmetry_score: 0.1501
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            2V92Tx4Wyj8=
+          overall_sharpe: 3.0053
+          total_trades: 22
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            8x/Sb18H/T8=
+      AVAXUSDT:
+        long:
+          total_return: 6.3738
+          sharpe: 6.3927
+          win_rate: 0.625
+          num_trades: 8
+          avg_profit: 0.7967
+          max_drawdown: -2.3803
+        short:
+          total_return: -1.0111
+          sharpe: -0.8016
+          win_rate: 0.7143
+          num_trades: 14
+          avg_profit: -0.0722
+          max_drawdown: -6.4747
+        combined:
+          symmetry_score: 0.0
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            4lgXt9EAxr8=
+          overall_sharpe: 2.2723
+          total_trades: 22
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            taZ5xyk6+D8=
+      ADAUSDT:
+        long:
+          total_return: 21.5498
+          sharpe: 4.0538
+          win_rate: 0.3125
+          num_trades: 16
+          avg_profit: 1.3469
+          max_drawdown: -7.759
+        short:
+          total_return: 4.7529
+          sharpe: 2.8256
+          win_rate: 0.5455
+          num_trades: 11
+          avg_profit: 0.4321
+          max_drawdown: -5.7585
+        combined:
+          symmetry_score: 0.8215
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            FD/G3LWE4j8=
+          overall_sharpe: 3.5397
+          total_trades: 27
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            Iv32deCcBEA=
+    holdout_performance:
+      BTCUSDT:
+        long:
+          total_return: 1.4763
+          sharpe: 2.0614
+          win_rate: 0.5769
+          num_trades: 26
+          avg_profit: 0.0568
+          max_drawdown: -1.2548
+        short:
+          total_return: -2.6492
+          sharpe: -3.3908
+          win_rate: 0.3158
+          num_trades: 19
+          avg_profit: -0.1394
+          max_drawdown: -4.4588
+        combined:
+          symmetry_score: 0.0
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            iIVa07zjdD8=
+          overall_sharpe: -0.7557
+          total_trades: 45
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            fT81XrpJ7D8=
+      ETHUSDT:
+        long:
+          total_return: 4.5012
+          sharpe: 4.0909
+          win_rate: 0.4167
+          num_trades: 24
+          avg_profit: 0.1875
+          max_drawdown: -1.9877
+        short:
+          total_return: 0.7161
+          sharpe: 0.6144
+          win_rate: 0.4444
+          num_trades: 18
+          avg_profit: 0.0398
+          max_drawdown: -2.6239
+        combined:
+          symmetry_score: 0.2611
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            guLHmLuW1D8=
+          overall_sharpe: 2.2607
+          total_trades: 42
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            qaROQBNh9z8=
+      SOLUSDT:
+        long:
+          total_return: -1.4223
+          sharpe: -2.2083
+          win_rate: 0.4167
+          num_trades: 12
+          avg_profit: -0.1185
+          max_drawdown: -2.7036
+        short:
+          total_return: -1.2347
+          sharpe: -2.122
+          win_rate: 0.4167
+          num_trades: 12
+          avg_profit: -0.1029
+          max_drawdown: -2.5744
+        combined:
+          symmetry_score: 0.9801
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            3nGKjuTyfz8=
+          overall_sharpe: -2.1644
+          total_trades: 24
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            gEi/fR045z8=
+      BNBUSDT:
+        long:
+          total_return: 0.6408
+          sharpe: 1.4339
+          win_rate: 0.5263
+          num_trades: 19
+          avg_profit: 0.0337
+          max_drawdown: -0.9179
+        short:
+          total_return: -7.8529
+          sharpe: -11.6803
+          win_rate: 0.2308
+          num_trades: 13
+          avg_profit: -0.6041
+          max_drawdown: -8.0764
+        combined:
+          symmetry_score: 0.0
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            BhIUP8bczb8=
+          overall_sharpe: -5.3058
+          total_trades: 32
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            gEi/fR042z8=
+      AVAXUSDT:
+        long:
+          total_return: 4.281
+          sharpe: 2.8937
+          win_rate: 0.6
+          num_trades: 20
+          avg_profit: 0.214
+          max_drawdown: -1.0608
+        short:
+          total_return: -2.1222
+          sharpe: -3.3444
+          win_rate: 0.3333
+          num_trades: 9
+          avg_profit: -0.2358
+          max_drawdown: -2.8544
+        combined:
+          symmetry_score: 0.0
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            mpmZmZmZqT8=
+          overall_sharpe: 1.0048
+          total_trades: 29
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            3nGKjuTy8j8=
+      ADAUSDT:
+        long:
+          total_return: -7.9122
+          sharpe: -9.5059
+          win_rate: 0.3571
+          num_trades: 14
+          avg_profit: -0.5652
+          max_drawdown: -7.0403
+        short:
+          total_return: 9.9084
+          sharpe: 2.8529
+          win_rate: 0.3333
+          num_trades: 12
+          avg_profit: 0.8257
+          max_drawdown: -4.7703
+        combined:
+          symmetry_score: 0.0
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            W0I+6Nms1j8=
+          overall_sharpe: 0.3725
+          total_trades: 26
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            +FPjpZvE8T8=
+    summary:
+      avg_long_wr: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        9ihcj8L14D8=
+      avg_short_wr: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        RIts5/up4T8=
+      avg_sharpe: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        PQrXo3C9A0A=
+      sharpe_std: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        duCcEaW94z8=
+      sharpe_min: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        ih9j7lpC/D8=
+      sharpe_max: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        qDXNO05RDEA=
+      total_trades: 170
+  cci:
+    indicator: cci
+    name: CCI (Commodity Channel Index)
+    is_alternative: false
+    default_params:
+      period: 20
+      overbought: 100
+      oversold: -100
+    optimized_params:
+      period: 40
+      overbought: 80
+      oversold: -98
+    optimization_score: 0.7048
+    n_trials: 75
+    directional_preference:
+      direction: BALANCED
+      confidence: HIGH
+      long_win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        p3nHKTqS5T8=
+      short_win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        lrIMcayL5T8=
+    pros_scores:
+      profitability: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        ZmZmZmbmTEA=
+      robustness: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        cT0K16MwTUA=
+      operational: 100
+      stability: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        SOF6FK5HVUA=
+      overall: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        H4XrUbieUUA=
+    train_performance:
+      BTCUSDT:
+        long:
+          total_return: -2.2927
+          sharpe: -0.1428
+          win_rate: 0.65
+          num_trades: 180
+          avg_profit: -0.0127
+          max_drawdown: -13.6788
+        short:
+          total_return: -24.4866
+          sharpe: -1.3086
+          win_rate: 0.64
+          num_trades: 200
+          avg_profit: -0.1224
+          max_drawdown: -34.545
+        combined:
+          symmetry_score: 0.1968
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            9+RhodY0178=
+          overall_sharpe: -0.7696
+          total_trades: 380
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            XrpJDAIr6z8=
+      ETHUSDT:
+        long:
+          total_return: -38.2104
+          sharpe: -1.4018
+          win_rate: 0.691
+          num_trades: 178
+          avg_profit: -0.2147
+          max_drawdown: -41.6554
+        short:
+          total_return: -6.8905
+          sharpe: -0.352
+          win_rate: 0.6831
+          num_trades: 183
+          avg_profit: -0.0377
+          max_drawdown: -39.9018
+        combined:
+          symmetry_score: 0.4014
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            INJvXwfO3b8=
+          overall_sharpe: -0.9473
+          total_trades: 361
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            uECC4seY6T8=
+      SOLUSDT:
+        long:
+          total_return: -34.4717
+          sharpe: -1.3233
+          win_rate: 0.6358
+          num_trades: 173
+          avg_profit: -0.1993
+          max_drawdown: -51.8866
+        short:
+          total_return: 17.9784
+          sharpe: 0.58
+          win_rate: 0.6995
+          num_trades: 193
+          avg_profit: 0.0932
+          max_drawdown: -27.2904
+        combined:
+          symmetry_score: 0.0
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            qaROQBNh178=
+          overall_sharpe: -0.2885
+          total_trades: 366
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            kDF3LSEf7j8=
+      BNBUSDT:
+        long:
+          total_return: 5.5353
+          sharpe: 0.2744
+          win_rate: 0.6935
+          num_trades: 186
+          avg_profit: 0.0298
+          max_drawdown: -25.8869
+        short:
+          total_return: -13.923
+          sharpe: -0.6611
+          win_rate: 0.6256
+          num_trades: 203
+          avg_profit: -0.0686
+          max_drawdown: -19.9302
+        combined:
+          symmetry_score: 0.0
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            zhlR2ht81b8=
+          overall_sharpe: -0.2033
+          total_trades: 389
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            4L4OnDOi7j8=
+      AVAXUSDT:
+        long:
+          total_return: 8.7196
+          sharpe: 0.2349
+          win_rate: 0.6954
+          num_trades: 197
+          avg_profit: 0.0443
+          max_drawdown: -36.1258
+        short:
+          total_return: -68.5566
+          sharpe: -2.226
+          win_rate: 0.6647
+          num_trades: 170
+          avg_profit: -0.4033
+          max_drawdown: -83.7247
+        combined:
+          symmetry_score: 0.0
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            GJXUCWgi3L8=
+          overall_sharpe: -0.8784
+          total_trades: 367
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            k6mCUUmd6j8=
+      ADAUSDT:
+        long:
+          total_return: -12.1118
+          sharpe: -0.3515
+          win_rate: 0.6788
+          num_trades: 193
+          avg_profit: -0.0628
+          max_drawdown: -31.1446
+        short:
+          total_return: -49.3731
+          sharpe: -1.0482
+          win_rate: 0.7268
+          num_trades: 183
+          avg_profit: -0.2698
+          max_drawdown: -89.3839
+        combined:
+          symmetry_score: 0.5023
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            f/s6cM6I3r8=
+          overall_sharpe: -0.7414
+          total_trades: 376
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            bAn5oGez6j8=
+    holdout_performance:
+      BTCUSDT:
+        long:
+          total_return: -12.6879
+          sharpe: -1.3756
+          win_rate: 0.5882
+          num_trades: 136
+          avg_profit: -0.0933
+          max_drawdown: -13.5536
+        short:
+          total_return: -8.7674
+          sharpe: -0.7347
+          win_rate: 0.6387
+          num_trades: 191
+          avg_profit: -0.0459
+          max_drawdown: -17.9131
+        combined:
+          symmetry_score: 0.6963
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            07zjFB3J1b8=
+          overall_sharpe: -1.013
+          total_trades: 327
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            Ne84RUdy6T8=
+      ETHUSDT:
+        long:
+          total_return: -9.554
+          sharpe: -0.5272
+          win_rate: 0.6644
+          num_trades: 146
+          avg_profit: -0.0654
+          max_drawdown: -20.2277
+        short:
+          total_return: -78.0057
+          sharpe: -2.9411
+          win_rate: 0.6087
+          num_trades: 161
+          avg_profit: -0.4845
+          max_drawdown: -82.5415
+        combined:
+          symmetry_score: 0.304
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            YcPTK2UZ3r8=
+          overall_sharpe: -1.9347
+          total_trades: 307
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            UPwYc9cS5D8=
+      SOLUSDT:
+        long:
+          total_return: -26.9248
+          sharpe: -1.3263
+          win_rate: 0.6027
+          num_trades: 146
+          avg_profit: -0.1844
+          max_drawdown: -36.829
+        short:
+          total_return: -19.5758
+          sharpe: -0.7712
+          win_rate: 0.6684
+          num_trades: 190
+          avg_profit: -0.103
+          max_drawdown: -40.2064
+        combined:
+          symmetry_score: 0.7354
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            B84ZUdob2L8=
+          overall_sharpe: -1.0175
+          total_trades: 336
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            duCcEaW96T8=
+      BNBUSDT:
+        long:
+          total_return: -5.3273
+          sharpe: -0.4718
+          win_rate: 0.6562
+          num_trades: 128
+          avg_profit: -0.0416
+          max_drawdown: -15.2491
+        short:
+          total_return: -60.6545
+          sharpe: -3.3665
+          win_rate: 0.6012
+          num_trades: 173
+          avg_profit: -0.3506
+          max_drawdown: -63.6953
+        combined:
+          symmetry_score: 0.2458
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            TfOOU3Qk378=
+          overall_sharpe: -2.2332
+          total_trades: 301
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            3gIJih9j4j8=
+      AVAXUSDT:
+        long:
+          total_return: -48.3989
+          sharpe: -1.8424
+          win_rate: 0.673
+          num_trades: 159
+          avg_profit: -0.3044
+          max_drawdown: -50.4135
+        short:
+          total_return: -30.8289
+          sharpe: -1.2003
+          win_rate: 0.6522
+          num_trades: 161
+          avg_profit: -0.1915
+          max_drawdown: -51.2891
+        combined:
+          symmetry_score: 0.789
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            kst/SL993b8=
+          overall_sharpe: -1.5244
+          total_trades: 320
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            yXa+nxov5z8=
+      ADAUSDT:
+        long:
+          total_return: -9.7118
+          sharpe: -0.409
+          win_rate: 0.6646
+          num_trades: 164
+          avg_profit: -0.0592
+          max_drawdown: -23.0782
+        short:
+          total_return: -14.0713
+          sharpe: -0.5636
+          win_rate: 0.6768
+          num_trades: 164
+          avg_profit: -0.0858
+          max_drawdown: -40.8267
+        combined:
+          symmetry_score: 0.8411
+          signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            +FPjpZvE2L8=
+          overall_sharpe: -0.4881
+          total_trades: 328
+          profit_factor: !!python/object/apply:numpy._core.multiarray.scalar
+          - *id001
+          - !!binary |
+            c9cS8kHP7D8=
+    summary:
+      avg_long_wr: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        p3nHKTqS5T8=
+      avg_short_wr: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        lrIMcayL5T8=
+      avg_sharpe: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        s3vysFBr5L8=
+      sharpe_std: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        vHSTGARW0j8=
+      sharpe_min: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        jgbwFkhQ7r8=
+      sharpe_max: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        L26jAbwFyr8=
+      total_trades: 2239
+ranking:
+- rank: 1
+  indicator: atr
+  avg_win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    HVpkO99P4T8=
+  opt_score: 0.7742
+  is_alternative: false
+  pros_overall: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    mpmZmZlZU0A=
+  pros_p: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    ZmZmZmYGVUA=
+  pros_r: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    MzMzMzOzVUA=
+  pros_o: 62.0
+  pros_s: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    AAAAAAAgUEA=
+- rank: 2
+  indicator: williams_r
+  avg_win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    jErqBDQR5j8=
+  opt_score: 0.7644
+  is_alternative: false
+  pros_overall: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    mpmZmZkZU0A=
+  pros_p: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    AAAAAABgUEA=
+  pros_r: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    ZmZmZmbGUEA=
+  pros_o: 100
+  pros_s: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    MzMzMzNzVkA=
+- rank: 3
+  indicator: rsi
+  avg_win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    ZF3cRgN45T8=
+  opt_score: 0.7228
+  is_alternative: false
+  pros_overall: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    MzMzMzMTUkA=
+  pros_p: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    ZmZmZmYmT0A=
+  pros_r: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    mpmZmZlZTkA=
+  pros_o: 100
+  pros_s: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    MzMzMzNTVEA=
+- rank: 4
+  indicator: cci
+  avg_win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    HhZqTfOO5T8=
+  opt_score: 0.7048
+  is_alternative: false
+  pros_overall: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    AAAAAACgUUA=
+  pros_p: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    ZmZmZmbmTEA=
+  pros_r: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    MzMzMzMzTUA=
+  pros_o: 100
+  pros_s: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    ZmZmZmZGVUA=
+- rank: 5
+  indicator: adx
+  avg_win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    at5xio7k1j8=
+  opt_score: 0.5757
+  is_alternative: false
+  pros_overall: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    zczMzMzMTEA=
+  pros_p: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    mpmZmZnZSUA=
+  pros_r: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    MzMzMzNzSkA=
+  pros_o: 85.6
+  pros_s: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    zczMzMzMRUA=
+- rank: 6
+  indicator: ao
+  avg_win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    1JrmHafo3D8=
+  opt_score: 0.5248
+  is_alternative: false
+  pros_overall: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    AAAAAABASkA=
+  pros_p: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    mpmZmZkZPkA=
+  pros_r: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    mpmZmZmZREA=
+  pros_o: 100
+  pros_s: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    zczMzMzsUEA=

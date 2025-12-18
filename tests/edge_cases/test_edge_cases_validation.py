@@ -13,7 +13,7 @@ import os
 import sys
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 import pandas as pd
 import numpy as np
 
@@ -31,7 +31,7 @@ def create_test_ohlcv(base_price: float = 50000.0) -> pd.DataFrame:
     for _ in range(periods - 1):
         prices.append(max(1000.0, prices[-1] * (1 + rng.normal(0, 0.004))))
 
-    dates = pd.date_range(end=datetime.utcnow(), periods=periods, freq="5min")
+    dates = pd.date_range(end=datetime.now(timezone.utc), periods=periods, freq="5min")
     opens = np.array(prices) * (1 + rng.normal(0, 0.0015, periods))
     closes = np.array(prices)
     highs = np.maximum(opens, closes) * (1 + np.abs(rng.normal(0, 0.002, periods)))

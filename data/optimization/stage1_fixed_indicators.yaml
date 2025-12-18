@@ -1,0 +1,46 @@
+best_trial:
+  number: 41
+  params:
+    weight_market_structure: 0.3532123695773376
+    weight_order_blocks: 0.06029356294787744
+    weight_range_analysis: 0.33797815411644827
+    weight_support_resistance: 0.2669156737601883
+    weight_trend_position: 0.2621626054786969
+    weight_volume_profile: 0.3534912424453251
+  value: -2.9240304287163212
+metadata:
+  data_end: '2025-10-31T00:00:00'
+  data_start: '2024-08-01T00:00:00'
+  n_folds: 3
+  n_trials: 50
+  optimization_date: '2025-11-20T13:52:31.182929'
+  stage: 1
+  version: 1.0.0
+performance:
+  baseline_sharpe: -4.525665733949592
+  best_sharpe: -2.9240304287163212
+  improvement_pct: 35.39004865557113
+study_stats:
+  n_complete_trials: 38
+  n_failed_trials: 0
+  n_pruned_trials: 12
+weights:
+  baseline:
+    market_structure: 16.67
+    order_blocks: 16.67
+    range_analysis: 16.67
+    support_resistance: 16.67
+    trend_position: 16.67
+    volume_profile: 16.67
+  optimized:
+    market_structure: 21.615714917652674
+    order_blocks: 3.6898154773300016
+    range_analysis: 20.68341897685443
+    support_resistance: 16.334572648057105
+    trend_position: 16.043696739379847
+    volume_profile: 21.632781240725954
+  timeframe_weights:
+    1m: 10.0
+    30m: 30.0
+    4h: 40.0
+    5m: 20.0

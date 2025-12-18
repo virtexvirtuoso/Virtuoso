@@ -3,7 +3,7 @@
 from enum import Enum
 from dataclasses import dataclass, field
 from typing import Dict, Any, Optional, List
-from datetime import datetime
+from datetime import datetime, timezone
 
 class ErrorSeverity(Enum):
     """Error severity levels."""
@@ -68,7 +68,7 @@ class ErrorRecord:
     """Persistent record of an error event."""
     
     event: ErrorEvent
-    record_id: str = field(default_factory=lambda: str(datetime.utcnow().timestamp()))
+    record_id: str = field(default_factory=lambda: str(datetime.now(timezone.utc).timestamp()))
     tags: List[str] = field(default_factory=list)
     metadata: Dict[str, Any] = field(default_factory=dict)
     created_at: datetime = field(default_factory=datetime.utcnow)
@@ -78,12 +78,12 @@ class ErrorRecord:
         """Add a tag to the error record."""
         if tag not in self.tags:
             self.tags.append(tag)
-            self.updated_at = datetime.utcnow()
+            self.updated_at = datetime.now(timezone.utc)
     
     def add_metadata(self, key: str, value: Any) -> None:
         """Add metadata to the error record."""
         self.metadata[key] = value
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert error record to dictionary."""

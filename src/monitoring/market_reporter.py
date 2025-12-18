@@ -6,7 +6,7 @@ import math
 import time
 import random
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import logging
 import sys
 import os
@@ -1738,7 +1738,7 @@ class MarketReporter:
         try:
             while True:
                 try:
-                    current_time = datetime.utcnow()
+                    current_time = datetime.now(timezone.utc)
                     current_hhmm = current_time.strftime("%H:%M")
                     self.logger.debug(f"Current time (UTC): {current_hhmm}, Scheduled times: {self.report_times}")
                     
@@ -1961,7 +1961,7 @@ class MarketReporter:
         try:
             self.logger.info("Starting optimized market report formatting")
             # Get current time for timestamps
-            utc_now = datetime.utcnow()
+            utc_now = datetime.now(timezone.utc)
             
             # Base URL for dashboard links
             dashboard_base_url = "https://virtuoso.internal-dashboard.com"
@@ -2403,14 +2403,26 @@ class MarketReporter:
                     f.write(json_content)
                     
                 self.logger.info(f"Market report JSON saved to {reports_json_path} and {export_json_path}")
-                
+
                 # Add paths to report for reference
                 report['json_path'] = reports_json_path
                 report['export_json_path'] = export_json_path
                 report['html_path'] = reports_html_path
                 report['pdf_path'] = reports_pdf_path
                 report['timestamp'] = timestamp
-                
+
+                # Store signal to database if it's a trading signal
+                if report.get('signal_type') in ['LONG', 'SHORT']:
+                    try:
+                        from src.database.signal_storage import store_trading_signal
+                        store_trading_signal(
+                            signal_data=report,
+                            json_path=reports_json_path,
+                            pdf_path=reports_pdf_path
+                        )
+                    except Exception as db_error:
+                        self.logger.warning(f"Could not store signal to database: {db_error}")
+
             except Exception as e:
                 self.logger.error(f"Error saving JSON report: {str(e)}")
                 
@@ -4563,7 +4575,7 @@ class MarketReporter:
         try:
             while True:
                 try:
-                    current_time = datetime.utcnow()
+                    current_time = datetime.now(timezone.utc)
                     current_hhmm = current_time.strftime("%H:%M")
                     
                     if current_hhmm in beta_report_times:

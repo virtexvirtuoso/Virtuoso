@@ -150,10 +150,10 @@ echo "🚀 Deploying WebSocket Handler Fixes..."
 cd /home/linuxuser/trading/Virtuoso_ccxt
 
 # Sync files from local to VPS
-rsync -av /Users/ffv_macmini/Desktop/Virtuoso_ccxt/src/core/market/market_data_manager.py \
+rsync -av src/core/market/market_data_manager.py \
   vps:/home/linuxuser/trading/Virtuoso_ccxt/src/core/market/
 
-rsync -av /Users/ffv_macmini/Desktop/Virtuoso_ccxt/src/core/exchanges/websocket_manager.py \
+rsync -av src/core/exchanges/websocket_manager.py \
   vps:/home/linuxuser/trading/Virtuoso_ccxt/src/core/exchanges/
 
 # Restart services on VPS

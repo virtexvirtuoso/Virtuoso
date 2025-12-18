@@ -28,7 +28,7 @@ import time
 import sys
 from pathlib import Path
 from typing import Dict, Any, List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 import traceback
 
 # Add project root to path
@@ -54,7 +54,7 @@ class DashboardBreakdownValidator:
             "status": status,
             "details": details,
             "evidence": evidence or {},
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
         self.test_results.append(result)
 
@@ -504,7 +504,7 @@ class DashboardBreakdownValidator:
 
         report = {
             "change_id": "dashboard-breakdown-cache-integration",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "environment": "local_validation",
             "summary": {
                 "total_tests": total_tests,
@@ -569,7 +569,7 @@ async def main():
     print("="*70)
     print("DASHBOARD BREAKDOWN CACHE INTEGRATION VALIDATION")
     print("="*70)
-    print(f"Started at: {datetime.utcnow().isoformat()}")
+    print(f"Started at: {datetime.now(timezone.utc).isoformat()}")
 
     validator = DashboardBreakdownValidator()
 

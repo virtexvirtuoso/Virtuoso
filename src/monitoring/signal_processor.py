@@ -627,11 +627,29 @@ class SignalProcessor:
                 risk = abs(price - stop_loss_price)
                 reward = abs(take_profit_price - price)
                 risk_reward_ratio = reward / risk if risk > 0 else None
-            
+
+            # Generate targets array with sizes for PDF chart annotations
+            targets = []
+            if stop_loss_price and price:
+                risk_distance = abs(price - stop_loss_price)
+                if signal_type == "LONG":
+                    targets = [
+                        {"name": "Target 1", "price": price + (risk_distance * 1.5), "size": 50},  # 1.5:1 R:R
+                        {"name": "Target 2", "price": price + (risk_distance * 2.5), "size": 30},  # 2.5:1 R:R
+                        {"name": "Target 3", "price": price + (risk_distance * 4.0), "size": 20},  # 4:1 R:R
+                    ]
+                elif signal_type == "SHORT":
+                    targets = [
+                        {"name": "Target 1", "price": price - (risk_distance * 1.5), "size": 50},  # 1.5:1 R:R
+                        {"name": "Target 2", "price": price - (risk_distance * 2.5), "size": 30},  # 2.5:1 R:R
+                        {"name": "Target 3", "price": price - (risk_distance * 4.0), "size": 20},  # 4:1 R:R
+                    ]
+
             return {
                 'entry_price': price,
                 'stop_loss': stop_loss_price,
                 'take_profit': take_profit_price,
+                'targets': targets,  # Array with name, price, size for PDF
                 'position_size': position_size,
                 'risk_reward_ratio': risk_reward_ratio,
                 'risk_percentage': adjusted_risk_percent,
@@ -651,6 +669,7 @@ class SignalProcessor:
             'entry_price': price,
             'stop_loss': None,
             'take_profit': None,
+            'targets': [],  # Empty targets array for PDF
             'position_size': None,
             'risk_reward_ratio': None,
             'risk_percentage': None,
@@ -766,11 +785,12 @@ class SignalProcessor:
                 order_type=order_type
             )
 
-            # Calculate position size
+            # Calculate position size (with order_type for validation period logic)
             position_info = self.risk_manager.calculate_position_size(
                 account_balance=account_balance,
                 entry_price=price,
-                stop_loss_price=sl_tp['stop_loss_price']
+                stop_loss_price=sl_tp['stop_loss_price'],
+                order_type=order_type
             )
 
             # Build trade parameters

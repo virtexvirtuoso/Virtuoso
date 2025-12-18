@@ -20,7 +20,8 @@ from datetime import datetime
 from typing import Dict, Any, Optional
 
 # Add src to path for imports
-sys.path.insert(0, '/Users/ffv_macmini/Desktop/Virtuoso_ccxt/src')
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'src'))
 
 # Configure logging
 logging.basicConfig(
@@ -50,7 +51,7 @@ class SystemStartupTest:
 
         try:
             import yaml
-            config_path = '/Users/ffv_macmini/Desktop/Virtuoso_ccxt/config/config.yaml'
+            config_path = Path(__file__).parent.parent.parent / 'config' / 'config.yaml'
 
             with open(config_path, 'r') as f:
                 config = yaml.safe_load(f)
@@ -385,8 +386,9 @@ async def main():
     print(report)
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    report_file = f'/Users/ffv_macmini/Desktop/Virtuoso_ccxt/startup_test_report_{timestamp}.txt'
-    json_file = f'/Users/ffv_macmini/Desktop/Virtuoso_ccxt/startup_test_results_{timestamp}.json'
+    project_root = Path(__file__).parent.parent.parent
+    report_file = project_root / f'startup_test_report_{timestamp}.txt'
+    json_file = project_root / f'startup_test_results_{timestamp}.json'
 
     with open(report_file, 'w') as f:
         f.write(report)

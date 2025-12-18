@@ -23,7 +23,7 @@ import asyncio
 import logging
 import time
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from dataclasses import asdict
 import traceback
 
@@ -415,7 +415,7 @@ class ConfluenceEventAdapter(IAsyncDisposable):
         market_data = {
             'symbol': symbol,
             'timeframe': timeframe,
-            'timestamp': datetime.utcnow(),
+            'timestamp': datetime.now(timezone.utc),
             'data': {}
         }
         
@@ -489,7 +489,7 @@ class ConfluenceEventAdapter(IAsyncDisposable):
             result.update({
                 'symbol': symbol,
                 'timeframe': timeframe,
-                'processed_at': datetime.utcnow().isoformat(),
+                'processed_at': datetime.now(timezone.utc).isoformat(),
                 'adapter_version': '1.0.0'
             })
             

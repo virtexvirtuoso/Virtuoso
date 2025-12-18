@@ -371,7 +371,7 @@ def get_config_health() -> Dict[str, Any]:
     config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "config", "config.yaml")
 
     health = {
-        "timestamp": __import__("datetime").datetime.utcnow().isoformat(),
+        "timestamp": __import__("datetime").datetime.now(timezone.utc).isoformat(),
         "config_file": config_path,
         "status": "unknown"
     }

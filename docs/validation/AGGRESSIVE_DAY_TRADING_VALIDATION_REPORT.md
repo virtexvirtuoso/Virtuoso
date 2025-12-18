@@ -31,7 +31,7 @@ The system is ready to generate signals with aggressive day trading parameters. 
 
 ### 1.1 Local Configuration Status ✅
 
-**File**: `/Users/ffv_macmini/Desktop/Virtuoso_ccxt/config/config.yaml`
+**File**: `config/config.yaml`
 
 ```yaml
 risk:
@@ -584,7 +584,7 @@ BTCUSDT SHORT @ $107,981.50 (Score: 32.76)
 
 ### Test Environment
 - **Local Machine**: macOS (Darwin 24.5.0)
-- **VPS**: Linux (45.77.40.77)
+- **VPS**: Linux (<vps-ip>)
 - **Python Version**: 3.11 (venv311)
 - **Config Version**: Aggressive Day Trading (2025-10-30)
 
@@ -633,7 +633,7 @@ BTCUSDT SHORT @ $107,981.50 (Score: 32.76)
 3. **Deploy to VPS**:
    ```bash
    rsync -avz --exclude '.git' --exclude 'venv*' --exclude '__pycache__' \
-     ./ linuxuser@45.77.40.77:/home/linuxuser/trading/Virtuoso_ccxt/
+     ./ linuxuser@<vps-ip>:/home/linuxuser/trading/Virtuoso_ccxt/
    ```
 
 4. **Restart services**:

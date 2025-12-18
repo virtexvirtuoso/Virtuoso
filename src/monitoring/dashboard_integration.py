@@ -10,7 +10,7 @@ import json
 import logging
 import time
 from typing import Dict, List, Any, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import math
 
 # Import monitoring system components (avoid circular imports)
@@ -63,7 +63,8 @@ class DashboardIntegrationService:
         self._confluence_cache = {}
         self._confluence_cache_ttl = 30  # 30 seconds cache
         self._confluence_update_task = None
-        
+        self._score_history_max_size = 60  # Keep last 60 readings (~30 mins at 30s intervals)
+
         # Full confluence analysis cache
         self._confluence_analysis_cache = {}
         self._confluence_analysis_cache_ttl = 60  # 60 seconds cache
@@ -176,13 +177,14 @@ class DashboardIntegrationService:
         """Background task to update confluence scores cache."""
         while self._running:
             try:
-                # Get all symbols we're tracking
+                # Get all symbols we're tracking (max_symbols from config, default 20)
                 symbols = []
+                max_symbols = self.monitor.config.get('market', {}).get('symbols', {}).get('max_symbols', 20)
                 if hasattr(self.monitor, 'symbols') and self.monitor.symbols:
-                    symbols = self.monitor.symbols[:15]  # Top 15 symbols
+                    symbols = self.monitor.symbols[:max_symbols]
                 elif hasattr(self.monitor, 'top_symbols_manager'):
                     try:
-                        top_symbols = await self.monitor.top_symbols_manager.get_top_symbols(limit=15)
+                        top_symbols = await self.monitor.top_symbols_manager.get_top_symbols(limit=max_symbols)
                         symbols = [s.get('symbol', s) if isinstance(s, dict) else s for s in top_symbols]
                     except:
                         pass
@@ -227,12 +229,51 @@ class DashboardIntegrationService:
                                     except Exception as e:
                                         self.logger.debug(f"Could not format analysis: {e}")
                                     
+                                    # Get existing score history or create new
+                                    # First check in-memory cache, then fall back to persistent memcached
+                                    existing_history = []
+                                    if symbol in self._confluence_cache:
+                                        existing_history = self._confluence_cache[symbol].get('score_history', [])
+
+                                    # If no in-memory history, try to restore from memcached (survives restarts)
+                                    if not existing_history:
+                                        try:
+                                            import aiomcache
+                                            import json
+                                            client = aiomcache.Client('localhost', 11211)
+                                            history_key = f'confluence:history:{symbol}'
+                                            cached_history = await client.get(history_key.encode())
+                                            await client.close()
+                                            if cached_history:
+                                                existing_history = json.loads(cached_history.decode())
+                                                self.logger.info(f"Restored {len(existing_history)} history points for {symbol} from memcached")
+                                        except Exception as e:
+                                            self.logger.debug(f"Could not restore history from memcached: {e}")
+
+                                    # Append new score and maintain rolling buffer
+                                    score_history = existing_history + [round(score, 1)]
+                                    if len(score_history) > self._score_history_max_size:
+                                        score_history = score_history[-self._score_history_max_size:]
+
                                     self._confluence_cache[symbol] = {
                                         'score': score,
                                         'components': components,
                                         'timestamp': time.time(),
-                                        'formatted_analysis': formatted_analysis
+                                        'formatted_analysis': formatted_analysis,
+                                        'score_history': score_history
                                     }
+
+                                    # Persist score history to memcached with 1 hour TTL for restart recovery
+                                    try:
+                                        import aiomcache
+                                        import json
+                                        client = aiomcache.Client('localhost', 11211)
+                                        history_key = f'confluence:history:{symbol}'
+                                        await client.set(history_key.encode(), json.dumps(score_history).encode(), exptime=3600)
+                                        await client.close()
+                                    except Exception as e:
+                                        self.logger.debug(f"Could not persist history to memcached: {e}")
+
                                     self.logger.info(f"Updated confluence cache for {symbol}: {score:.2f}")
                                     
                                     # Also generate and store full analysis
@@ -405,7 +446,9 @@ class DashboardIntegrationService:
                 self.logger.warning("No symbols found in monitor.symbols, trying top_symbols_manager")
                 if hasattr(self.monitor, 'top_symbols_manager') and self.monitor.top_symbols_manager:
                     try:
-                        top_symbols = await self.monitor.top_symbols_manager.get_top_symbols(limit=10)
+                        # Get max_symbols from config for consistency
+                        max_symbols = self.monitor.config.get('market', {}).get('symbols', {}).get('max_symbols', 20)
+                        top_symbols = await self.monitor.top_symbols_manager.get_top_symbols(limit=max_symbols)
                         self.logger.info(f"Got {len(top_symbols)} symbols from top_symbols_manager")
                         
                         for symbol_info in top_symbols:
@@ -961,10 +1004,11 @@ class DashboardIntegrationService:
             if self.monitor and hasattr(self.monitor, 'top_symbols_manager'):
                 top_symbols_manager = self.monitor.top_symbols_manager
                 exchange_manager = getattr(self.monitor, 'exchange_manager', None)
-                
+
                 if top_symbols_manager and exchange_manager:
-                    # Get top symbols
-                    top_symbols = await top_symbols_manager.get_top_symbols(limit=15)
+                    # Get top symbols - use config value for consistency
+                    max_symbols = self.monitor.config.get('market', {}).get('symbols', {}).get('max_symbols', 20)
+                    top_symbols = await top_symbols_manager.get_top_symbols(limit=max_symbols)
                     
                     for symbol_info in top_symbols:
                         symbol = symbol_info.get('symbol', symbol_info) if isinstance(symbol_info, dict) else symbol_info
@@ -1010,14 +1054,14 @@ class DashboardIntegrationService:
             
             return {
                 "symbols": symbols_data,
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
             
         except Exception as e:
             self.logger.error(f"Error getting symbols data: {e}")
             return {
                 "symbols": [],
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
     
     async def get_performance_metrics(self) -> Dict[str, Any]:
@@ -1056,7 +1100,7 @@ class DashboardIntegrationService:
                 "api_latency": round(api_latency, 0),
                 "active_connections": active_connections,
                 "uptime": uptime_str,
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
             
         except Exception as e:
@@ -1067,7 +1111,7 @@ class DashboardIntegrationService:
                 "api_latency": 0,
                 "active_connections": 0,
                 "uptime": "0h 0m",
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
     
     async def get_confluence_analysis(self, symbol: str) -> Dict[str, Any]:

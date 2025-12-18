@@ -19,7 +19,7 @@ import json
 import time
 from typing import Dict, Any, List, Optional
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import statistics
 
 
@@ -54,7 +54,7 @@ class QualityMetricsTracker:
 
     def _ensure_log_file(self) -> Path:
         """Ensure log file exists for current date."""
-        date_str = datetime.utcnow().strftime("%Y%m%d")
+        date_str = datetime.now(timezone.utc).strftime("%Y%m%d")
         log_file = self.log_dir / f"quality_metrics_{date_str}.jsonl"
 
         if log_file != self.current_log_file:
@@ -98,7 +98,7 @@ class QualityMetricsTracker:
         try:
             # Build metrics entry
             entry = {
-                'timestamp': datetime.utcnow().isoformat(),
+                'timestamp': datetime.now(timezone.utc).isoformat(),
                 'timestamp_ms': int(time.time() * 1000),
                 'symbol': symbol,
                 'scores': {

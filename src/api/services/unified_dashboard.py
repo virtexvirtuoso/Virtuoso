@@ -10,7 +10,7 @@ import time
 from typing import Dict, List, Any, Optional, Union
 from dataclasses import dataclass
 import aiohttp
-from datetime import datetime
+from datetime import datetime, timezone
 
 # Import our cache components
 from src.core.cache.key_generator import CacheKeyGenerator
@@ -42,15 +42,15 @@ class UnifiedDashboardService:
         self.data_sources = {
             'market_overview': DataSource(
                 name='market_overview',
-                url='http://localhost:8004/api/dashboard-cached/market-overview',
+                url='http://localhost:8002/api/dashboard-cached/market-overview',
                 timeout=2.0,
                 cache_key=CacheKeyGenerator.market_overview(),
                 ttl=60,
                 fallback_data={'market_regime': 'NEUTRAL', 'volatility': 0, 'trend_strength': 0}
             ),
             'market_breadth': DataSource(
-                name='market_breadth', 
-                url='http://localhost:8004/api/dashboard-cached/market-breadth',
+                name='market_breadth',
+                url='http://localhost:8002/api/dashboard-cached/market-breadth',
                 timeout=2.0,
                 cache_key=CacheKeyGenerator.market_breadth(),
                 ttl=30,
@@ -58,7 +58,7 @@ class UnifiedDashboardService:
             ),
             'confluence_scores': DataSource(
                 name='confluence_scores',
-                url='http://localhost:8004/api/dashboard-cached/confluence-scores',
+                url='http://localhost:8002/api/dashboard-cached/confluence-scores',
                 timeout=3.0,
                 cache_key=CacheKeyGenerator.confluence_scores('all'),
                 ttl=30,
@@ -139,7 +139,7 @@ class UnifiedDashboardService:
             # Add metadata
             complete_data['_metadata'] = {
                 'view_type': view_type,
-                'timestamp': datetime.utcnow().isoformat(),
+                'timestamp': datetime.now(timezone.utc).isoformat(),
                 'response_time_ms': round((time.time() - start_time) * 1000, 2),
                 'cache_performance': {
                     'hits': len(cache_keys) - len(missing_sources),
@@ -382,7 +382,7 @@ class UnifiedDashboardService:
             'top_movers': {'gainers': [], 'losers': []},
             '_metadata': {
                 'view_type': view_type,
-                'timestamp': datetime.utcnow().isoformat(),
+                'timestamp': datetime.now(timezone.utc).isoformat(),
                 'status': 'fallback_mode',
                 'message': 'Using fallback data due to service unavailability'
             }

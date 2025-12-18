@@ -17,20 +17,81 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timezone
 import traceback
+import httpx
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/bitcoin-prediction", tags=["Bitcoin Prediction"])
 
 
-def get_btc_predictor():
-    """Get Bitcoin predictor instance from signal generator."""
-    try:
-        from src.signal_generation.signal_generator import SignalGenerator
-        from src.config.validator import load_config
+async def fetch_top_symbols_from_bybit(limit: int = 20) -> List[str]:
+    """
+    Fetch top symbols directly from Bybit (same logic as trading service's TopSymbolsProvider).
+    Returns symbols sorted by 24h turnover (volume * price).
 
-        config = load_config()
-        signal_gen = SignalGenerator(config)
+    This ensures Bitcoin prediction uses the SAME symbols as the trading service
+    without needing cross-process communication.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            # Fetch tickers from Bybit public API (same as TopSymbolsProvider does)
+            response = await client.get(
+                "https://api.bybit.com/v5/market/tickers",
+                params={"category": "linear"}
+            )
+
+            if response.status_code != 200:
+                logger.error(f"Bybit API returned {response.status_code}")
+                return []
+
+            data = response.json()
+            if data.get('retCode') != 0:
+                logger.error(f"Bybit API error: {data.get('retMsg')}")
+                return []
+
+            tickers = data.get('result', {}).get('list', [])
+
+            # Filter and calculate turnover (same logic as trading service)
+            symbols_with_turnover = []
+            for ticker in tickers:
+                symbol = ticker.get('symbol', '')
+                if not symbol.endswith('USDT'):
+                    continue
+
+                try:
+                    volume_24h = float(ticker.get('volume24h', 0))
+                    last_price = float(ticker.get('lastPrice', 0))
+                    turnover = volume_24h * last_price
+
+                    if turnover > 0:
+                        symbols_with_turnover.append({
+                            'symbol': symbol,
+                            'turnover': turnover
+                        })
+                except (ValueError, TypeError):
+                    continue
+
+            # Sort by turnover and get top N (same as trading service)
+            symbols_with_turnover.sort(key=lambda x: x['turnover'], reverse=True)
+            top_symbols = [s['symbol'] for s in symbols_with_turnover[:limit]]
+
+            logger.info(f"✅ Fetched {len(top_symbols)} top symbols from Bybit (same as trading service)")
+            return top_symbols
+
+    except Exception as e:
+        logger.error(f"Error fetching symbols from Bybit: {e}")
+        return []
+
+
+def get_btc_predictor():
+    """Get Bitcoin predictor instance from service registry."""
+    try:
+        # Get signal_generator from service registry (avoids circular import)
+        from src.core.service_registry import get_signal_generator
+        signal_gen = get_signal_generator()
+
+        if signal_gen is None:
+            return None, "Signal generator not initialized (system starting up)"
 
         if signal_gen.btc_predictor is None:
             return None, "Bitcoin predictor not initialized"
@@ -231,10 +292,23 @@ async def analyze_all_symbols(
         if error:
             raise HTTPException(status_code=503, detail=f"Predictor unavailable: {error}")
 
-        # Default symbols if none provided
+        # Default symbols if none provided - fetch from Bybit (same as trading service does)
         if symbols is None:
-            symbols = ['ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'ADAUSDT', 'DOTUSDT',
-                      'MATICUSDT', 'AVAXUSDT', 'LINKUSDT', 'UNIUSDT', 'ATOMUSDT']
+            # Fetch top symbols directly from Bybit using same logic as trading service
+            # This ensures both services independently get the same symbols
+            fetched_symbols = await fetch_top_symbols_from_bybit(limit=20)
+
+            if fetched_symbols:
+                # Filter out BTCUSDT since we're predicting based on BTC
+                symbols = [s for s in fetched_symbols if s != 'BTCUSDT']
+                logger.info(f"📊 Bitcoin prediction using {len(symbols)} top symbols")
+            else:
+                # Fallback if Bybit fetch fails
+                logger.warning("Failed to fetch symbols from Bybit, using fallback list")
+                symbols = [
+                    'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'ADAUSDT', 'AVAXUSDT',
+                    'DOTUSDT', 'MATICUSDT', 'LINKUSDT', 'UNIUSDT', 'ATOMUSDT'
+                ]
 
         # Check BTC history
         if len(signal_gen.btc_price_history) < 60:
@@ -246,6 +320,9 @@ async def analyze_all_symbols(
             }
 
         results = []
+        btc_prices = pd.Series([p['price'] for p in signal_gen.btc_price_history])
+        btc_returns = np.log(btc_prices / btc_prices.shift(1)).fillna(0)
+        recent_btc_move_pct = btc_returns.iloc[-5:].sum() * 100
 
         for symbol in symbols:
             try:
@@ -263,6 +340,17 @@ async def analyze_all_symbols(
                         "beta": btc_signal['beta'],
                         "stability_score": btc_signal['stability_score']
                     })
+
+                    # Send Discord alert for active predictions with high confidence
+                    if btc_signal['confidence'] >= 0.7:  # Only alert on >70% confidence
+                        try:
+                            await signal_gen.send_bitcoin_prediction_alert(
+                                symbol=symbol,
+                                prediction=btc_signal,
+                                btc_move_pct=recent_btc_move_pct
+                            )
+                        except Exception as alert_error:
+                            logger.warning(f"Failed to send alert for {symbol}: {alert_error}")
                 else:
                     results.append({
                         "symbol": symbol,

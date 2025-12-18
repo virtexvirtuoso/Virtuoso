@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Query
 from typing import Dict, Any, List
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import logging
 
 router = APIRouter()
@@ -87,7 +87,7 @@ async def get_manipulation_alerts(
         detector = ManipulationDetector(config)
         
         # Get alerts from the last N hours
-        since = datetime.utcnow() - timedelta(hours=hours)
+        since = datetime.now(timezone.utc) - timedelta(hours=hours)
         
         try:
             alerts = await detector.get_recent_alerts(since=since, limit=limit)
@@ -97,7 +97,7 @@ async def get_manipulation_alerts(
             for alert in alerts:
                 formatted_alerts.append({
                     "id": alert.get("id", ""),
-                    "timestamp": alert.get("timestamp", datetime.utcnow().isoformat()),
+                    "timestamp": alert.get("timestamp", datetime.now(timezone.utc).isoformat()),
                     "symbol": alert.get("symbol", ""),
                     "exchange": alert.get("exchange", ""),
                     "type": alert.get("type", "unknown"),
@@ -141,7 +141,7 @@ async def get_manipulation_stats() -> Dict[str, Any]:
             
             return {
                 "status": "active",
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "total_alerts_24h": stats.get("alerts_24h", 0),
                 "total_alerts_7d": stats.get("alerts_7d", 0),
                 "high_confidence_alerts": stats.get("high_confidence", 0),
@@ -160,7 +160,7 @@ async def get_manipulation_stats() -> Dict[str, Any]:
             # Return default stats if method doesn't exist
             return {
                 "status": "inactive",
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "total_alerts_24h": 0,
                 "total_alerts_7d": 0,
                 "high_confidence_alerts": 0,
@@ -179,7 +179,7 @@ async def get_manipulation_stats() -> Dict[str, Any]:
             # Return default stats if detection fails
             return {
                 "status": "inactive",
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "total_alerts_24h": 0,
                 "total_alerts_7d": 0,
                 "high_confidence_alerts": 0,
@@ -215,14 +215,14 @@ async def get_symbol_manipulation_analysis(symbol: str) -> Dict[str, Any]:
             
             return {
                 "symbol": symbol.upper(),
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "analysis": analysis
             }
         except AttributeError as e:
             logger.warning(f"ManipulationDetector method not available: {e}")
             return {
                 "symbol": symbol.upper(),
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "analysis": {
                     "status": "unavailable",
                     "message": "Symbol analysis method not available"
@@ -247,7 +247,7 @@ async def manipulation_detector_health() -> Dict[str, Any]:
         
         return {
             "status": "healthy",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "service": "manipulation_detector",
             "version": "1.0.0",
             "config_status": "loaded"
@@ -256,7 +256,7 @@ async def manipulation_detector_health() -> Dict[str, Any]:
     except Exception as e:
         return {
             "status": "unhealthy",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "service": "manipulation_detector",
             "error": str(e),
             "config_status": "error"

@@ -34,7 +34,7 @@ import logging
 import time
 import os
 from typing import Dict, List, Any, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import signal
 import sys
 from pathlib import Path
@@ -75,7 +75,7 @@ class Phase4SystemState:
     def update_component_health(self, component: str, status: str):
         """Update health status of a component."""
         self.component_health[component] = status
-        self.last_health_check = datetime.utcnow()
+        self.last_health_check = datetime.now(timezone.utc)
     
     def is_healthy(self) -> bool:
         """Check if system is in healthy state."""
@@ -87,7 +87,7 @@ class Phase4SystemState:
     
     def get_system_summary(self) -> Dict[str, Any]:
         """Get comprehensive system summary."""
-        uptime = (datetime.utcnow() - self.start_time).total_seconds() if self.start_time else 0
+        uptime = (datetime.now(timezone.utc) - self.start_time).total_seconds() if self.start_time else 0
         
         return {
             'uptime_seconds': uptime,
@@ -204,7 +204,7 @@ class Phase4IntegrationManager:
     async def initialize(self) -> bool:
         """Initialize all Phase 4 components."""
         self.logger.info("Initializing Phase 4 optimized system...")
-        self.state.start_time = datetime.utcnow()
+        self.state.start_time = datetime.now(timezone.utc)
         
         try:
             # Initialize event processor

@@ -812,7 +812,7 @@ The fixes successfully address the root causes of production issues with high co
 
 Full test execution logs available in test output from:
 ```bash
-PYTHONPATH=/Users/ffv_macmini/Desktop/Virtuoso_ccxt ./venv311/bin/python test_websocket_comprehensive.py
+PYTHONPATH=. ./venv311/bin/python test_websocket_comprehensive.py
 ```
 
 ### Appendix B: Code Diff Summary

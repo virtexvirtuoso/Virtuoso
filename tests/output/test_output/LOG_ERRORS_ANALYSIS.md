@@ -4,7 +4,7 @@ Generated: 2025-07-23 12:35:00
 
 ## Environment Configuration Update ✅
 
-**Fixed**: Updated `src/main.py` to correctly load .env from project root (`/Users/ffv_macmini/Desktop/Virtuoso_ccxt/.env`) instead of `config/env/.env`.
+**Fixed**: Updated `src/main.py` to correctly load .env from project root (`.env`) instead of `config/env/.env`.
 
 ## Log Errors Found
 
@@ -79,7 +79,7 @@ Future exception was never retrieved
 1. **Fix Binance Configuration**:
    ```bash
    # Check .env file
-   grep BINANCE /Users/ffv_macmini/Desktop/Virtuoso_ccxt/.env
+   grep BINANCE .env
    
    # Or disable if not needed
    # Edit config/config.yaml and set binance.enabled: false

@@ -6,7 +6,8 @@ Validates that the 8333% -> 83% bug is resolved and other related fixes work cor
 
 import sys
 import os
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from pathlib import Path
+sys.path.append(str(Path(__file__).parent.parent.parent))
 
 import json
 import asyncio
@@ -179,7 +180,8 @@ def test_monitor_fallback_logic():
 
     # Read the monitor.py file and check for fallback patterns
     try:
-        with open('/Users/ffv_macmini/Desktop/Virtuoso_ccxt/src/monitoring/monitor.py', 'r') as f:
+        project_root = Path(__file__).parent.parent.parent
+        with open(project_root / 'src' / 'monitoring' / 'monitor.py', 'r') as f:
             monitor_content = f.read()
 
         # Check for the expected patterns

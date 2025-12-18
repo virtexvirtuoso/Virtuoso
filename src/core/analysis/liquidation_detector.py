@@ -498,16 +498,20 @@ class LiquidationDetectionEngine:
                             trigger_price=row['close'],
                             price_impact=price_change * 100,
                             volume_spike_ratio=row['volume'] / df['volume_sma'].iloc[-1],
+                            liquidated_amount_usd=row['volume'] * row['close'],
                             bid_ask_spread_pct=self._calculate_spread_percentage(market_data.orderbook),
                             order_book_imbalance=self._calculate_orderbook_imbalance(market_data.orderbook),
                             market_depth_impact=self._calculate_depth_impact(market_data.orderbook, row['volume']),
-                            rsi=row['rsi'],
-                            volume_weighted_price=self._calculate_vwap(df.tail(20)),
                             volatility_spike=row['volatility'] / df['volatility'].mean() if df['volatility'].mean() > 0 else 1,
-                            funding_rate=market_data.funding_rate,
                             duration_seconds=300,  # Simplified - would calculate actual duration
                             suspected_triggers=self._identify_triggers(row, df, market_data) + ['pattern_detection'],
-                            market_conditions=self._extract_market_conditions(df, market_data)
+                            market_conditions=self._extract_market_conditions(df, market_data),
+                            # Optional fields
+                            rsi=row['rsi'],
+                            volume_weighted_price=self._calculate_vwap(df.tail(20)),
+                            funding_rate=market_data.funding_rate,
+                            open_interest_change=None,
+                            recovery_time_seconds=None
                         )
                         events.append(event)
         
@@ -913,13 +917,20 @@ class LiquidationDetectionEngine:
             bid_ask_spread_pct=base_event.bid_ask_spread_pct,
             order_book_imbalance=base_event.order_book_imbalance,
             market_depth_impact=max(e.market_depth_impact for e in events),
+            volatility_spike=max(e.volatility_spike for e in events),
             duration_seconds=sum(e.duration_seconds for e in events),
             suspected_triggers=list(all_triggers),
             market_conditions={
                 **base_event.market_conditions,
                 'merged_events_count': len(events),
                 'data_sources': ['real_data', 'pattern_detection']
-            }
+            },
+            # Optional fields - aggregate from merged events
+            rsi=sum(e.rsi for e in events if e.rsi is not None) / len([e for e in events if e.rsi is not None]) if any(e.rsi is not None for e in events) else None,
+            volume_weighted_price=sum(e.volume_weighted_price for e in events if e.volume_weighted_price is not None) / len([e for e in events if e.volume_weighted_price is not None]) if any(e.volume_weighted_price is not None for e in events) else None,
+            funding_rate=base_event.funding_rate,
+            open_interest_change=sum(e.open_interest_change for e in events if e.open_interest_change is not None) / len([e for e in events if e.open_interest_change is not None]) if any(e.open_interest_change is not None for e in events) else None,
+            recovery_time_seconds=max((e.recovery_time_seconds for e in events if e.recovery_time_seconds is not None), default=None)
         )
         
         return merged_event

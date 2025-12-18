@@ -12,7 +12,7 @@ import os
 import sys
 import json
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any
 
 # Add project root to path
@@ -84,7 +84,7 @@ async def health_check():
     """Basic health check endpoint"""
     return {
         "status": "healthy",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "service": "monitoring-api"
     }
 
@@ -93,7 +93,7 @@ async def get_monitoring_status():
     """Get overall system monitoring status"""
     try:
         status = {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "services": {
                 "cache_adapter": cache_adapter is not None,
                 "health_monitor": health_monitor is not None,
@@ -126,7 +126,7 @@ async def get_metrics():
     """Get system performance metrics"""
     try:
         metrics = {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "cache": {},
             "system": {}
         }
@@ -163,7 +163,7 @@ async def get_cache_metrics():
 
         # Add additional cache analysis
         cache_metrics = {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "stats": cache_stats,
             "performance": {
                 "hit_rate": cache_stats.get("cache_hit_rate", 0),
@@ -180,29 +180,86 @@ async def get_cache_metrics():
 
 @app.get("/api/monitoring/symbols")
 async def get_symbol_monitoring():
-    """Get monitoring status for active symbols"""
+    """Get monitoring status for active symbols from cache."""
     try:
-        if not market_monitor:
-            return {
-                "timestamp": datetime.utcnow().isoformat(),
-                "symbols": [],
-                "status": "market_monitor_not_available"
-            }
+        symbols_data = []
+        total_available = 0
 
-        # Get active symbols from market monitor
-        symbols_status = {
-            "timestamp": datetime.utcnow().isoformat(),
-            "symbols": [],
-            "total_symbols": 0
+        # Try to get symbol data from cache (check multiple sources)
+        if cache_adapter:
+            # Try market:movers first (most reliable source)
+            try:
+                movers = await cache_adapter.get("market:movers")
+                if movers:
+                    # Handle both dict and string (JSON) formats
+                    if isinstance(movers, str):
+                        import json
+                        movers = json.loads(movers)
+
+                    if isinstance(movers, dict):
+                        # Get top gainers, losers, and volume leaders
+                        gainers = movers.get("gainers", [])[:5]
+                        losers = movers.get("losers", [])[:5]
+                        volume_leaders = movers.get("volume_leaders", [])[:5]
+
+                        for mover in gainers:
+                            symbols_data.append({
+                                "symbol": mover.get("symbol", ""),
+                                "price": mover.get("price", 0),
+                                "change_24h": round(mover.get("change", 0), 2),
+                                "volume_24h": round(mover.get("volume", 0), 2),
+                                "category": "gainer",
+                                "data_source": "market_movers"
+                            })
+
+                        for mover in losers:
+                            symbols_data.append({
+                                "symbol": mover.get("symbol", ""),
+                                "price": mover.get("price", 0),
+                                "change_24h": round(mover.get("change", 0), 2),
+                                "volume_24h": round(mover.get("volume", 0), 2),
+                                "category": "loser",
+                                "data_source": "market_movers"
+                            })
+
+                        for mover in volume_leaders:
+                            # Avoid duplicates
+                            if not any(s["symbol"] == mover.get("symbol") for s in symbols_data):
+                                symbols_data.append({
+                                    "symbol": mover.get("symbol", ""),
+                                    "price": mover.get("price", 0),
+                                    "change_24h": round(mover.get("change", 0), 2),
+                                    "volume_24h": round(mover.get("volume", 0), 2),
+                                    "category": "volume_leader",
+                                    "data_source": "market_movers"
+                                })
+
+                        total_available = len(gainers) + len(losers) + len(volume_leaders)
+
+            except Exception as e:
+                logger.debug(f"Could not get market:movers: {e}")
+
+        # Return status with available data
+        return {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "symbols": symbols_data,
+            "total_symbols": len(symbols_data),
+            "unique_symbols": len(set(s["symbol"] for s in symbols_data)),
+            "status": "active" if symbols_data else "no_cached_data",
+            "mode": "standalone_monitoring",
+            "categories": {
+                "gainers": len([s for s in symbols_data if s.get("category") == "gainer"]),
+                "losers": len([s for s in symbols_data if s.get("category") == "loser"]),
+                "volume_leaders": len([s for s in symbols_data if s.get("category") == "volume_leader"])
+            },
+            "note": "Symbol data is populated by the trading service" if not symbols_data else None
         }
-
-        return symbols_status
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error getting symbol monitoring: {str(e)}")
 
 @app.get("/api/monitoring/websocket")
-async def get_websocket_health():
+async def get_websocket_health_endpoint():
     """Get comprehensive WebSocket health status and diagnostics"""
     try:
         # Get market data manager from market monitor
@@ -210,14 +267,14 @@ async def get_websocket_health():
         if market_monitor and hasattr(market_monitor, 'market_data_manager'):
             market_data_manager = market_monitor.market_data_manager
 
-        # Get comprehensive WebSocket health
+        # Get comprehensive WebSocket health (calls imported function, not this endpoint)
         websocket_health = await get_websocket_health(market_data_manager)
 
         return websocket_health
 
     except Exception as e:
         return {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "overall_status": "error",
             "websocket": {
                 "connected": False,
@@ -228,7 +285,7 @@ async def get_websocket_health():
                 "name": "websocket_health_check",
                 "status": "failed",
                 "message": f"Error getting WebSocket health: {str(e)}",
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }],
             "recommendations": [{
                 "priority": "critical",
@@ -250,7 +307,7 @@ async def get_websocket_status_simple():
 
         if not market_data_manager:
             return {
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "connected": False,
                 "status": "market_data_manager_unavailable",
                 "message": "MarketDataManager not available"
@@ -271,13 +328,13 @@ async def get_websocket_status_simple():
                 }
 
         # Add timestamp to response
-        ws_status["timestamp"] = datetime.utcnow().isoformat()
+        ws_status["timestamp"] = datetime.now(timezone.utc).isoformat()
 
         return ws_status
 
     except Exception as e:
         return {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "connected": False,
             "status": "error",
             "message": f"Error getting WebSocket status: {str(e)}"
@@ -293,7 +350,7 @@ async def get_websocket_health_history():
         trends = websocket_health_monitor.get_health_trends()
 
         return {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "history": history,
             "trends": trends,
             "count": len(history)
@@ -301,7 +358,7 @@ async def get_websocket_health_history():
 
     except Exception as e:
         return {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "status": "error",
             "message": f"Error getting WebSocket health history: {str(e)}",
             "history": [],

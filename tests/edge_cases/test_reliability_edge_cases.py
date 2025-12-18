@@ -7,7 +7,7 @@ import os
 import sys
 import time
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import numpy as np
 import pandas as pd
 
@@ -18,7 +18,7 @@ sys.path.insert(0, PROJECT_ROOT)
 def create_test_ohlcv(periods: int = 60, base_price: float = 50000.0) -> pd.DataFrame:
     """Create minimal OHLCV DataFrame."""
     rng = np.random.default_rng(42)
-    timestamps = [datetime.utcnow() - timedelta(minutes=5 * i) for i in range(periods)][::-1]
+    timestamps = [datetime.now(timezone.utc) - timedelta(minutes=5 * i) for i in range(periods)][::-1]
     prices = [base_price] * periods
     df = pd.DataFrame({
         'timestamp': pd.to_datetime(timestamps),

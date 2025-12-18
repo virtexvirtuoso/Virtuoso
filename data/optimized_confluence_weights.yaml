@@ -1,0 +1,39 @@
+timestamp: '2025-11-13T12:27:39.144847'
+optimization_info:
+  mode: production
+  n_trials: 100
+  best_performance: 1.9949879912711448
+  best_trial: 59
+confluence:
+  weights:
+    components:
+      orderbook: 0.028907396539368246
+      orderflow: 0.12966376606339255
+      price_structure: 0.2316056138624644
+      technical: 0.11958930743188449
+      volume: 0.11426633698285696
+      sentiment: 0.3759675791200332
+    sub_components:
+      technical:
+        rsi: 0.16844561102623326
+        ao: 0.01974500602461611
+        macd: 0.1804559428860058
+        williams_r: 0.24320615864622913
+        atr: 0.3401147568597339
+        cci: 0.048032524557181794
+      orderbook:
+        depth: 0.08830427841678547
+        imbalance: 0.2134361341402309
+        oir: 0.22261761784859183
+        liquidity: 0.07205210165569037
+        mpi: 0.24414553561820032
+        absorption_exhaustion: 0.13793686764300142
+        di: 0.02150746467749962
+      volume:
+        volume_delta: 0.4199738700133307
+        adl: 0.020198952579214256
+        cmf: 0.11848623749881403
+        relative_volume: 0.39847492067509593
+        obv: 0.021080730213322647
+        volume_profile: 0.0016178933870641264
+        vwap: 0.020167395633158502

@@ -5,7 +5,7 @@ Integrates with dependency injection system and provides real correlation calcul
 
 import logging
 from typing import Dict, List, Any, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from src.core.analysis.correlation_calculator import CorrelationCalculator
 from src.core.interfaces.services import IExchangeManagerService
 
@@ -228,7 +228,7 @@ class CorrelationService:
                     "performance": round(avg_performance, 2)
                 },
                 "status": "success",
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
             
         except Exception as e:

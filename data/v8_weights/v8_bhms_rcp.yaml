@@ -1,0 +1,131 @@
+timestamp: '2025-11-16T18:27:15.888055'
+optimization_info:
+  version: V8-BHMS-RCP
+  n_trials: 300
+  best_trial: 106
+  best_score: 1.6890199457465889
+  total_trades: 29
+  parameter_count: 25
+  methodology: Bayesian Hierarchical Multi-Stage with Regime-Conditional Priors
+regime_performance:
+  TRENDING:
+    score: 1.163323279565314
+    trades: 23
+    sharpe: 1.532579194034855
+  RANGING:
+    score: 7.2060183470291985
+    trades: 6
+    sharpe: 4.179434382568076
+  VOLATILE:
+    score: -0.30000000000000004
+    trades: 0
+    sharpe: 0.0
+hierarchical_parameters:
+  global_strengths:
+    rsi: 0.6896462407344313
+    macd: 0.6746275690370538
+    cci: 0.8490374919849949
+    williams_r: 0.38549622489781216
+    atr: 0.8039386755943633
+    ao: 0.9260512256979508
+    trend_position: 0.3081675440524592
+    market_structure: 0.40260967627178407
+    support_resistance: 0.15145997418546403
+    range_analysis: 0.8214472984314027
+    order_blocks: 0.1013178150461751
+    adl: 0.6585345993609487
+    cmf: 0.28670638140243465
+    obv: 0.8079574563747942
+    relative_volume: 0.28724320751274246
+    volume_profile: 0.25230079374289915
+  regime_modulations:
+    TRENDING:
+      momentum: 0.31145712599091985
+      volatility: 2.484230140205013
+      volume: 0.30857976245099866
+      support_resistance: 0.7
+      trend: 1.8
+      volume_structure: 0.9
+    RANGING:
+      momentum: 2.3228288578793346
+      volatility: 0.7238788868252286
+      volume: 0.22788634223745594
+      support_resistance: 1.8
+      trend: 0.3
+      volume_structure: 1.4
+    VOLATILE:
+      momentum: 1.809525602839723
+      volatility: 1.6752357923184722
+      volume: 1.893170564875126
+      support_resistance: 1.0
+      trend: 0.6
+      volume_structure: 1.2
+generated_weights:
+  TRENDING:
+    rsi: 0.02686560296325011
+    macd: 0.026280541163409863
+    cci: 0.03307478938229455
+    williams_r: 0.0150172478442096
+    atr: 0.24979669950051833
+    ao: 0.2877390362849955
+    trend_position: 0.06937952937744062
+    market_structure: 0.09064182910120185
+    support_resistance: 0.013260743225774094
+    range_analysis: 0.0719200023411207
+    order_blocks: 0.008870657325470101
+    adl: 0.02541663108283197
+    cmf: 0.011065645346912543
+    obv: 0.031183717027517526
+    relative_volume: 0.011086364548628847
+    volume_profile: 0.02840096348442403
+  RANGING:
+    rsi: 0.15622587379438815
+    macd: 0.152823687324619
+    cci: 0.19233284579104848
+    williams_r: 0.08732663360125514
+    atr: 0.05675422638968082
+    ao: 0.06537478853451917
+    trend_position: 0.009016075261089326
+    market_structure: 0.011779174063480507
+    support_resistance: 0.026587638172558412
+    range_analysis: 0.144198780344278
+    order_blocks: 0.017785566261772336
+    adl: 0.014635456448366686
+    cmf: 0.0063718425160288845
+    obv: 0.017956271661931516
+    relative_volume: 0.006383773089100339
+    volume_profile: 0.034447366745883425
+  VOLATILE:
+    rsi: 0.09406214975501442
+    macd: 0.09201372483383209
+    cci: 0.1158018227340237
+    williams_r: 0.05257855621414741
+    atr: 0.10151323315165155
+    ao: 0.11693236914513219
+    trend_position: 0.01393676388401531
+    market_structure: 0.01820787459260968
+    support_resistance: 0.01141620274880156
+    range_analysis: 0.061916086786499694
+    order_blocks: 0.0076367682277323394
+    adl: 0.09397062941655443
+    cmf: 0.04091201759827711
+    obv: 0.11529275878748925
+    relative_volume: 0.04098862084360669
+    volume_profile: 0.022820421280612613
+analysis: "================================================================================\n\
+  V8 LEARNED HIERARCHICAL STRUCTURE\n================================================================================\n\
+  \nGLOBAL INDICATOR STRENGTHS (Top 8):\n  ao                  : 0.926  (volatility)\n\
+  \  cci                 : 0.849  (momentum)\n  range_analysis      : 0.821  (support_resistance)\n\
+  \  obv                 : 0.808  (volume)\n  atr                 : 0.804  (volatility)\n\
+  \  rsi                 : 0.690  (momentum)\n  macd                : 0.675  (momentum)\n\
+  \  adl                 : 0.659  (volume)\n\nTRENDING CATEGORY MODULATIONS:\n  volatility\
+  \          : 2.48x  (BOOST)\n  trend               : 1.80x  (BOOST)\n  volume_structure\
+  \    : 0.90x  (REDUCE)\n  support_resistance  : 0.70x  (REDUCE)\n  momentum    \
+  \        : 0.31x  (REDUCE)\n  volume              : 0.31x  (REDUCE)\n\nRANGING CATEGORY\
+  \ MODULATIONS:\n  momentum            : 2.32x  (BOOST)\n  support_resistance  :\
+  \ 1.80x  (BOOST)\n  volume_structure    : 1.40x  (BOOST)\n  volatility         \
+  \ : 0.72x  (REDUCE)\n  trend               : 0.30x  (REDUCE)\n  volume         \
+  \     : 0.23x  (REDUCE)\n\nVOLATILE CATEGORY MODULATIONS:\n  volume            \
+  \  : 1.89x  (BOOST)\n  momentum            : 1.81x  (BOOST)\n  volatility      \
+  \    : 1.68x  (BOOST)\n  volume_structure    : 1.20x  (BOOST)\n  support_resistance\
+  \  : 1.00x  (NEUTRAL)\n  trend               : 0.60x  (REDUCE)\n================================================================================"

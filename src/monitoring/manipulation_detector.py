@@ -18,7 +18,7 @@ import traceback
 import pandas as pd
 import numpy as np
 from typing import Dict, List, Any, Optional, Union
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass
 
 # Standard logging setup
@@ -758,7 +758,7 @@ class ManipulationDetector:
             Dictionary with detection statistics
         """
         try:
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
             yesterday = now - timedelta(days=1)
             week_ago = now - timedelta(days=7)
             
@@ -943,7 +943,7 @@ class ManipulationDetector:
                     "volume_spikes": len(volume_spikes),
                     "avg_oi_volatility": round(np.mean([abs(oi_values[i] - oi_values[i-1]) / oi_values[i-1] for i in range(1, len(oi_values)) if oi_values[i-1] > 0]) * 100, 2) if len(oi_values) > 1 else 0.0
                 },
-                "last_analysis": datetime.utcnow().isoformat()
+                "last_analysis": datetime.now(timezone.utc).isoformat()
             }
             
         except Exception as e:
@@ -953,5 +953,5 @@ class ManipulationDetector:
                 "message": f"Error analyzing symbol: {str(e)}",
                 "manipulation_risk": "unknown",
                 "confidence": 0.0,
-                "last_analysis": datetime.utcnow().isoformat()
+                "last_analysis": datetime.now(timezone.utc).isoformat()
             } 

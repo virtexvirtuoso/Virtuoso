@@ -10,7 +10,7 @@ import aiohttp
 import logging
 import json
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from functools import wraps
 
 logger = logging.getLogger(__name__)
@@ -92,7 +92,7 @@ async def get_mobile_dashboard_data() -> Dict[str, Any]:
         # Build response
         response = {
             "status": "success",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "response_time": round(time.time() - start_time, 3),
             "market_overview": data.get('overview', {}),
             "market_breadth": data.get('breadth', {}),
@@ -182,7 +182,7 @@ async def get_dashboard_data() -> Dict[str, Any]:
     # Build response with defaults for missing data
     response = {
         "status": "success",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "market": {
             "overview": cached_data.get("market:overview", {}),
             "breadth": cached_data.get("market:breadth", {}),
@@ -216,5 +216,5 @@ async def get_performance_metrics() -> Dict[str, Any]:
             "entries": len(response_cache),
             "keys": list(response_cache.keys())
         },
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.now(timezone.utc).isoformat()
     }

@@ -4305,40 +4305,20 @@ async def run_application():
         
         logger.info("✅ All components initialized successfully")
         
-        # Start cache warming for optimized cache system
-        # Note: Cache bridge is no longer needed after cache rationalization
-        # The DirectCacheAdapter and CacheWarmer handle all caching needs
-        try:
-            logger.info("🔧 Starting optimized cache warming system...")
-            from src.core.cache_warmer import CacheWarmer
-            
-            # Initialize cache warmer with components
-            cache_warmer = CacheWarmer()
-            
-            # Start initial cache warming
-            async def start_cache_warming():
-                try:
-                    logger.info("🚀 Initial cache warming starting...")
-                    await cache_warmer.warm_all_caches()
-                    logger.info("✅ Initial cache warming completed")
-                    
-                    # Start continuous warming in background
-                    create_tracked_task(cache_warmer.start_warming_loop(), name="cache_warmer_continuous")
-                    logger.info("✅ Continuous cache warming started (30s intervals)")
-                    
-                except Exception as e:
-                    logger.error(f"❌ Cache warming failed: {e}")
-                    logger.debug(f"Cache warming error details: {traceback.format_exc()}")
-            
-            # Start the warming task
-            create_tracked_task(start_cache_warming(), name="start_cache_warming")
-            logger.info("✅ Cache warming system initialized")
-            
-        except ImportError as e:
-            logger.warning(f"⚠️ Cache warmer not available: {e}")
-            logger.info("📌 Using DirectCacheAdapter without warming (data on demand)")
-        except Exception as e:
-            logger.error(f"❌ Could not start cache warming: {e}")
+        # ============================================================================
+        # CACHE WARMING - DISABLED (2025-12-16)
+        # ============================================================================
+        # The core/cache_warmer.py placeholder generator was disabled because it was
+        # overwriting real market data with zeros/placeholders every 30 seconds.
+        #
+        # Cache warming is now handled exclusively by CacheDataAggregator in MarketMonitor,
+        # which provides REAL market data (CoinGecko, Fear & Greed, Bybit) every 3-5 seconds.
+        #
+        # See: src/monitoring/cache_data_aggregator.py for the active data source
+        # See: CACHE_PIPELINE_INVESTIGATION_REPORT.md for analysis
+        # ============================================================================
+        logger.info("✅ Cache warming handled by CacheDataAggregator (via MarketMonitor)")
+        logger.info("📊 Real market data updates every 3-5 seconds from aggregator")
 
         # ============================================================================
         # 🔗 SHARED CACHE BRIDGE - Cross-Process Communication

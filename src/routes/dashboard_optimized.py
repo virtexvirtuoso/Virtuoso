@@ -3,7 +3,7 @@ from typing import Dict, Any, Optional, List
 import asyncio
 import logging
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import json
 from contextlib import asynccontextmanager
 
@@ -99,7 +99,7 @@ def get_fallback_data(key: str) -> Dict[str, Any]:
     """Get fallback data for different endpoints"""
     base_response = {
         "status": "fallback",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "message": "Using fallback data due to temporary issue"
     }
     
@@ -147,7 +147,7 @@ async def get_mobile_dashboard_data():
         # Simulate data gathering (replace with actual logic)
         return {
             "status": "success",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "market_metrics": {
                 "breadth": {
                     "advancing": 15,
@@ -175,7 +175,7 @@ async def get_dashboard_overview():
     async def compute():
         return {
             "status": "success",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "summary": {
                 "total_symbols": 30,
                 "active_signals": 5,
@@ -191,7 +191,7 @@ async def get_dashboard_overview():
                     "symbol": "BTC-USDT",
                     "signal": "buy",
                     "confidence": 0.75,
-                    "timestamp": datetime.utcnow().isoformat()
+                    "timestamp": datetime.now(timezone.utc).isoformat()
                 }
             ]
         }
@@ -211,7 +211,7 @@ async def get_dashboard_alerts(
                 "symbol": "BTC-USDT",
                 "message": "Price breakout detected",
                 "severity": "high",
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
         ]
         
@@ -232,7 +232,7 @@ async def get_trading_opportunities():
     async def compute():
         return {
             "status": "success",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "opportunities": [
                 {
                     "symbol": "BTC-USDT",
@@ -278,7 +278,7 @@ async def health_check():
     
     return {
         "status": "healthy",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "circuit_breakers": circuit_status,
         "cache_size": cache_size,
         "cache_hit_rate": cache_hit_rate

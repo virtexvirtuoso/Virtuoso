@@ -1,0 +1,27 @@
+methodology: multi_timeframe
+timeframes: 1m (40%), 5m (30%), 30m (20%), 4h (10%)
+signal_frequency: 1h
+training_period: 2024-08-01 to 2025-01-31
+holdout_period: 2025-02-01 to 2025-10-31
+n_trials: 50
+optimized_weights:
+  rsi: 19.447636211454984
+  macd: 18.95122595399468
+  williams_r: 15.299993270421824
+  ao: 24.0948474187845
+  cci: 11.135197235494422
+  atr: 11.071099909849586
+training_performance:
+  baseline_return: 14.686851966524173
+  optimized_return: 24.63979754367756
+  improvement: 9.952945577153386
+holdout_performance:
+  baseline_return: -14.154493959043885
+  optimized_return: .nan
+  improvement: .nan
+  baseline_sharpe: 0.7489547213176823
+  optimized_sharpe: 0.0
+  baseline_drawdown: 26.008421195862404
+  optimized_drawdown: .nan
+  baseline_win_rate: 0.3954305799648506
+  optimized_win_rate: 0.05311355311355311

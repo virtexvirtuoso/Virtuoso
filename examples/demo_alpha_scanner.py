@@ -5,7 +5,7 @@ Compatible with Python 3.7+
 """
 
 from typing import Dict, List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 import json
 
@@ -41,7 +41,7 @@ class AlphaOpportunity:
         self.confidence = confidence
         self.indicators = indicators or {}
         self.insights = insights or []
-        self.discovered_at = datetime.utcnow()
+        self.discovered_at = datetime.now(timezone.utc)
 
     def to_dict(self):
         return {
@@ -279,7 +279,7 @@ def demo_alpha_scanner():
     if opportunities:
         sample_response = {
             "opportunities": [opp.to_dict() for opp in opportunities[:2]],
-            "scan_timestamp": datetime.utcnow().isoformat(),
+            "scan_timestamp": datetime.now(timezone.utc).isoformat(),
             "total_symbols_scanned": len(scanner.mock_market_data),
             "scan_duration_ms": 150,
             "metadata": {

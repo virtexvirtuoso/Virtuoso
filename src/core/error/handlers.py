@@ -4,7 +4,7 @@ import logging
 import asyncio
 from typing import Dict, Any, Optional, List, Callable, Awaitable
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from .models import ErrorSeverity, ErrorContext, ErrorEvent
 
@@ -109,7 +109,7 @@ class SimpleErrorHandler:
         Returns:
             List of error events as dictionaries
         """
-        cutoff = datetime.utcnow() - timedelta(minutes=minutes)
+        cutoff = datetime.now(timezone.utc) - timedelta(minutes=minutes)
         return [
             event.to_dict() for event in self._error_events
             if event.timestamp >= cutoff

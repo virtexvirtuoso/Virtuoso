@@ -71,7 +71,9 @@ class Alert:
 class AlertPersistence:
     """Manages alert persistence in SQLite database"""
     
-    def __init__(self, db_path: str = "data/alerts.db", logger: Optional[logging.Logger] = None):
+    def __init__(self, db_path: str = "data/virtuoso.db", logger: Optional[logging.Logger] = None):
+        # MIGRATION 2025-12-06: Changed default from alerts.db to virtuoso.db
+        # to consolidate all alerts into a single database
         self.db_path = db_path
         self.logger = logger or logging.getLogger(__name__)
         self._init_db()

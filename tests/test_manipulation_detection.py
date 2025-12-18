@@ -6,7 +6,7 @@ and wash trading patterns in orderbook data.
 
 import pytest
 import numpy as np
-from datetime import datetime
+from datetime import datetime, timezone
 from collections import deque
 import logging
 from unittest.mock import MagicMock, patch
@@ -273,7 +273,7 @@ class TestManipulationDetector:
         
         # Force a detection
         detector.detection_count = 1
-        detector.last_detection_time = datetime.utcnow()
+        detector.last_detection_time = datetime.now(timezone.utc)
         
         stats = detector.get_statistics()
         assert stats['detection_count'] == 1

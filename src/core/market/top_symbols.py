@@ -724,6 +724,151 @@ class TopSymbolsManager:
             # Really last resort - empty list
             return []
 
+    async def get_top_symbols_by_liquidation_risk(
+        self,
+        limit: int = 20,
+        weights: Optional[Dict[str, float]] = None
+    ) -> List[Dict[str, Any]]:
+        """Get top symbols ranked by liquidation risk potential.
+
+        Uses a composite score based on multiple factors that predict
+        where liquidation cascades are most likely to occur:
+
+        - Open Interest Value (OI in USD) - Higher = more leveraged exposure at risk
+        - Absolute Funding Rate - Extreme values = crowded trades prone to unwind
+        - 24h Price Volatility - Higher volatility = higher liquidation probability
+        - 24h Turnover - Liquidity/activity baseline
+
+        Args:
+            limit: Maximum number of symbols to return
+            weights: Optional custom weights dict. Defaults to:
+                     {'oi_value': 0.35, 'funding': 0.25, 'volatility': 0.20, 'turnover': 0.20}
+
+        Returns:
+            List of dictionaries with symbol data and liquidation_risk_score
+        """
+        try:
+            self.logger.info(f"Getting top {limit} symbols by LIQUIDATION RISK")
+
+            # Default weights optimized for liquidation prediction
+            default_weights = {
+                'oi_value': 0.35,      # Largest factor - direct measure of leveraged exposure
+                'funding': 0.25,       # Crowded trade indicator
+                'volatility': 0.20,    # Price movement risk
+                'turnover': 0.20       # Activity/liquidity
+            }
+            w = weights or default_weights
+
+            # Refresh top symbols first
+            await self.update_top_symbols()
+
+            # Get all available market data
+            markets = []
+            exchange = None
+            if hasattr(self, 'exchange') and self.exchange:
+                exchange = self.exchange
+            elif hasattr(self, 'exchange_manager') and self.exchange_manager:
+                exchange = await self.exchange_manager.get_primary_exchange()
+            elif hasattr(self, '_exchange_manager') and self._exchange_manager:
+                exchange = await self._exchange_manager.get_primary_exchange()
+
+            if exchange:
+                try:
+                    tickers = await self._fetch_all_market_tickers(exchange)
+                    for ticker in tickers:
+                        symbol = ticker.get('symbol', '')
+                        # Pass full ticker data so _should_include_symbol can check turnover
+                        if not self._should_include_symbol(ticker):
+                            continue
+                        normalized = self._normalize_market_data(ticker, symbol)
+                        if normalized:
+                            markets.append(normalized)
+                except Exception as e:
+                    self.logger.error(f"Error fetching tickers: {str(e)}")
+
+            if not markets:
+                self.logger.warning("No markets available for liquidation risk ranking")
+                # Fallback to regular top symbols
+                return await self.get_top_symbols(limit=limit)
+
+            # Extract values for normalization
+            oi_values = [m.get('openInterestValue', 0) for m in markets if m.get('openInterestValue', 0) > 0]
+            funding_values = [abs(m.get('fundingRate', 0)) for m in markets if m.get('fundingRate') is not None]
+            volatility_values = [abs(m.get('price24hPcnt', 0)) for m in markets if m.get('price24hPcnt') is not None]
+            turnover_values = [m.get('turnover', 0) for m in markets if m.get('turnover', 0) > 0]
+
+            # Calculate max values for normalization (avoid division by zero)
+            max_oi = max(oi_values) if oi_values else 1
+            max_funding = max(funding_values) if funding_values else 0.01
+            max_volatility = max(volatility_values) if volatility_values else 0.1
+            max_turnover = max(turnover_values) if turnover_values else 1
+
+            self.logger.info(f"📊 Normalization maxes - OI: ${max_oi:,.0f}, Funding: {max_funding:.6f}, "
+                            f"Volatility: {max_volatility:.4f}%, Turnover: ${max_turnover:,.0f}")
+
+            # Calculate composite liquidation risk score for each market
+            scored_markets = []
+            for market in markets:
+                oi_value = market.get('openInterestValue', 0)
+                funding = abs(market.get('fundingRate', 0))
+                volatility = abs(market.get('price24hPcnt', 0))
+                turnover = market.get('turnover', 0)
+
+                # Skip markets with zero OI (no leverage risk)
+                if oi_value <= 0:
+                    continue
+
+                # Normalize each component to 0-1 scale
+                norm_oi = oi_value / max_oi if max_oi > 0 else 0
+                norm_funding = funding / max_funding if max_funding > 0 else 0
+                norm_volatility = volatility / max_volatility if max_volatility > 0 else 0
+                norm_turnover = turnover / max_turnover if max_turnover > 0 else 0
+
+                # Calculate weighted composite score
+                risk_score = (
+                    w['oi_value'] * norm_oi +
+                    w['funding'] * norm_funding +
+                    w['volatility'] * norm_volatility +
+                    w['turnover'] * norm_turnover
+                )
+
+                market['liquidation_risk_score'] = risk_score
+                market['risk_components'] = {
+                    'oi_contribution': w['oi_value'] * norm_oi,
+                    'funding_contribution': w['funding'] * norm_funding,
+                    'volatility_contribution': w['volatility'] * norm_volatility,
+                    'turnover_contribution': w['turnover'] * norm_turnover
+                }
+                scored_markets.append(market)
+
+            # Sort by liquidation risk score (descending)
+            scored_markets.sort(key=lambda x: x.get('liquidation_risk_score', 0), reverse=True)
+
+            # Take top N markets
+            top_markets = scored_markets[:limit]
+
+            # Log selections with detailed breakdown
+            self.logger.info(f"📊 Top {len(top_markets)} symbols by liquidation risk:")
+            for i, market in enumerate(top_markets[:10]):  # Log top 10 details
+                symbol = market.get('symbol', 'UNKNOWN')
+                score = market.get('liquidation_risk_score', 0)
+                oi_val = market.get('openInterestValue', 0)
+                funding = market.get('fundingRate', 0)
+                vol = market.get('price24hPcnt', 0)
+
+                self.logger.info(
+                    f"  {i+1}. {symbol}: score={score:.4f} | "
+                    f"OI=${oi_val:,.0f} | funding={funding:.6f} | vol24h={vol:.4f}"
+                )
+
+            return top_markets
+
+        except Exception as e:
+            self.logger.error(f"Error getting symbols by liquidation risk: {str(e)}")
+            self.logger.error(traceback.format_exc())
+            # Fallback to regular ranking
+            return await self.get_top_symbols(limit=limit)
+
     async def _fetch_all_market_tickers(self, exchange) -> List[Dict[str, Any]]:
         """Unified ticker fetch across implementations.
         Returns a list of dicts with at least symbol, quoteVolume/turnover fields.
@@ -757,11 +902,16 @@ class TopSymbolsManager:
 
                 normalized = []
                 for sym, t in all_ticks.items():
-                    normalized.append({
-                        'symbol': _normalize_symbol(sym),
-                        'quoteVolume': t.get('quoteVolume') or t.get('baseVolume') or 0,
-                        'turnover24h': t.get('turnover24h') or 0
-                    })
+                    # Preserve ALL ticker fields for downstream normalization
+                    # Important for liquidation risk ranking which needs OI, funding rate, etc.
+                    ticker_data = t.copy() if isinstance(t, dict) else {'quoteVolume': 0}
+                    ticker_data['symbol'] = _normalize_symbol(sym)
+                    # Ensure volume fields are present
+                    if 'quoteVolume' not in ticker_data:
+                        ticker_data['quoteVolume'] = t.get('baseVolume') or 0
+                    if 'turnover24h' not in ticker_data:
+                        ticker_data['turnover24h'] = 0
+                    normalized.append(ticker_data)
 
                 self.logger.info(f"🔍 DEBUG: Method 1 - Normalized {len(normalized)} tickers")
                 if normalized:
@@ -847,11 +997,14 @@ class TopSymbolsManager:
                         self.logger.debug(f"🔍 DEBUG: Method 3 - Fetching ticker {i+1}/{len(symbols_to_fetch)}: {s}")
                         t = await exchange.fetch_ticker(s)
                         if t:
-                            results.append({
-                                'symbol': _normalize_symbol(s),
-                                'quoteVolume': t.get('quoteVolume') or t.get('baseVolume') or 0,
-                                'turnover24h': t.get('turnover24h') or 0
-                            })
+                            # Preserve ALL ticker fields for downstream normalization
+                            ticker_data = t.copy() if isinstance(t, dict) else {'quoteVolume': 0}
+                            ticker_data['symbol'] = _normalize_symbol(s)
+                            if 'quoteVolume' not in ticker_data:
+                                ticker_data['quoteVolume'] = t.get('baseVolume') or 0
+                            if 'turnover24h' not in ticker_data:
+                                ticker_data['turnover24h'] = 0
+                            results.append(ticker_data)
                         else:
                             self.logger.warning(f"⚠️ DEBUG: Method 3 - Empty ticker result for {s}")
                     except Exception as e:
@@ -1010,6 +1163,83 @@ class TopSymbolsManager:
                         except (ValueError, TypeError):
                             continue
             
+            # Extract open interest VALUE (in USD) - better for liquidation risk
+            oiv = None
+            oiv_field_names = ['openInterestValue', 'oiValue', 'open_interest_value']
+
+            for field in oiv_field_names:
+                if field in normalized and normalized[field] is not None:
+                    try:
+                        oiv = float(normalized[field])
+                        if oiv > 0:
+                            normalized['openInterestValue'] = oiv
+                            break
+                    except (ValueError, TypeError):
+                        continue
+
+            # Try to extract from info
+            if oiv is None and 'info' in normalized:
+                info = normalized['info']
+                for field in oiv_field_names:
+                    if field in info and info[field] is not None:
+                        try:
+                            oiv = float(info[field])
+                            if oiv > 0:
+                                normalized['openInterestValue'] = oiv
+                                break
+                        except (ValueError, TypeError):
+                            continue
+
+            # Extract funding rate for crowded trade detection
+            funding = None
+            funding_field_names = ['fundingRate', 'funding_rate', 'funding']
+
+            for field in funding_field_names:
+                if field in normalized and normalized[field] is not None:
+                    try:
+                        funding = float(normalized[field])
+                        normalized['fundingRate'] = funding
+                        break
+                    except (ValueError, TypeError):
+                        continue
+
+            # Try to extract from info
+            if funding is None and 'info' in normalized:
+                info = normalized['info']
+                for field in funding_field_names:
+                    if field in info and info[field] is not None:
+                        try:
+                            funding = float(info[field])
+                            normalized['fundingRate'] = funding
+                            break
+                        except (ValueError, TypeError):
+                            continue
+
+            # Extract 24h price change percentage for volatility
+            price_change = None
+            price_change_fields = ['price24hPcnt', 'priceChangePercent', 'change24h', 'percentage']
+
+            for field in price_change_fields:
+                if field in normalized and normalized[field] is not None:
+                    try:
+                        price_change = float(normalized[field])
+                        normalized['price24hPcnt'] = price_change
+                        break
+                    except (ValueError, TypeError):
+                        continue
+
+            # Try to extract from info
+            if price_change is None and 'info' in normalized:
+                info = normalized['info']
+                for field in price_change_fields:
+                    if field in info and info[field] is not None:
+                        try:
+                            price_change = float(info[field])
+                            normalized['price24hPcnt'] = price_change
+                            break
+                        except (ValueError, TypeError):
+                            continue
+
             # Log the extracted data
             extracted_fields = []
             if 'volume' in normalized:
@@ -1018,6 +1248,12 @@ class TopSymbolsManager:
                 extracted_fields.append(f"turnover={normalized['turnover']}")
             if 'openInterest' in normalized:
                 extracted_fields.append(f"openInterest={normalized['openInterest']}")
+            if 'openInterestValue' in normalized:
+                extracted_fields.append(f"oiValue=${normalized['openInterestValue']:,.0f}")
+            if 'fundingRate' in normalized:
+                extracted_fields.append(f"funding={normalized['fundingRate']:.6f}")
+            if 'price24hPcnt' in normalized:
+                extracted_fields.append(f"change24h={normalized['price24hPcnt']:.4f}")
                 
             if extracted_fields:
                 self.logger.debug(f"Extracted market data for {symbol}: {', '.join(extracted_fields)}")

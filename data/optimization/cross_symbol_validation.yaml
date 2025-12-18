@@ -1,0 +1,1077 @@
+metadata:
+  validation_date: '2025-11-19T12:40:22.897237'
+  weights_source: data/optimization/stage1_full_results.yaml
+  data_start: '2024-08-01T00:00:00'
+  data_end: '2025-10-31T00:00:00'
+  total_symbols: 25
+optimized_weights:
+  market_structure: 7.906237967347756
+  order_blocks: 6.731822327174261
+  range_analysis: 49.32503582511817
+  support_resistance: 6.9545570319333425
+  trend_position: 16.686718897621205
+  volume_profile: 12.395627950805254
+baseline_weights:
+  support_resistance: 16.67
+  order_blocks: 16.67
+  trend_position: 16.67
+  volume_profile: 16.67
+  market_structure: 16.67
+  range_analysis: 16.67
+summary:
+  overall:
+    total_symbols: 25
+    optimized_sharpe_mean: 0.454175207174557
+    optimized_sharpe_median: 0.49194332617045416
+    optimized_sharpe_std: 0.4367696100936212
+    baseline_sharpe_mean: -1.2281328842895949
+    baseline_sharpe_median: -1.099636828754635
+    baseline_sharpe_std: 1.0244704185536369
+    avg_sharpe_improvement_pct: 160.3535597817122
+    symbols_improved: 24
+    symbols_degraded: 1
+    best_performer: ARBUSDT
+    worst_performer: MATICUSDT
+  by_category:
+    meme:
+      count: 3
+      optimized_sharpe_mean: 0.30518631406527513
+      baseline_sharpe_mean: -1.9045564400515367
+      avg_improvement_pct: 118.04678694901969
+      symbols_improved: 3
+    defi:
+      count: 3
+      optimized_sharpe_mean: 0.9467023513977049
+      baseline_sharpe_mean: -0.478139812015163
+      avg_improvement_pct: 286.9486320747346
+      symbols_improved: 3
+    layer1:
+      count: 6
+      optimized_sharpe_mean: 0.19446051894034908
+      baseline_sharpe_mean: -1.268611723118455
+      avg_improvement_pct: 139.91796051101633
+      symbols_improved: 6
+    other:
+      count: 6
+      optimized_sharpe_mean: 0.5941465001042024
+      baseline_sharpe_mean: -1.4040171694012742
+      avg_improvement_pct: 163.62664389767158
+      symbols_improved: 6
+    layer2:
+      count: 4
+      optimized_sharpe_mean: 0.1454648514675952
+      baseline_sharpe_mean: -0.101923284411603
+      avg_improvement_pct: 139.70804433609317
+      symbols_improved: 3
+    major:
+      count: 3
+      optimized_sharpe_mean: 0.7617375542790983
+      baseline_sharpe_mean: -2.370588952758327
+      avg_improvement_pct: 137.9176445583472
+      symbols_improved: 3
+  top_5_performers:
+  - symbol: ARBUSDT
+    optimized_sharpe: 0.2423231699380425
+    baseline_sharpe: -0.07008608330462314
+    sharpe_improvement_pct: 445.7507660754928
+  - symbol: LINKUSDT
+    optimized_sharpe: 0.999397373204798
+    baseline_sharpe: 0.19629196557525014
+    sharpe_improvement_pct: 409.1381963984007
+  - symbol: ALGOUSDT
+    optimized_sharpe: 0.49194332617045416
+    baseline_sharpe: -0.2681713588469158
+    sharpe_improvement_pct: 283.44364897344514
+  - symbol: XRPUSDT
+    optimized_sharpe: 1.277628992835538
+    baseline_sharpe: -0.7204297647838332
+    sharpe_improvement_pct: 277.3426162117127
+  - symbol: AAVEUSDT
+    optimized_sharpe: 0.9459443461769377
+    baseline_sharpe: -0.5635145102323559
+    sharpe_improvement_pct: 267.86512662946217
+  bottom_5_performers:
+  - symbol: MATICUSDT
+    optimized_sharpe: 0.5573182588790365
+    baseline_sharpe: 0.996717230644344
+    sharpe_improvement_pct: -44.08461680563613
+  - symbol: IMXUSDT
+    optimized_sharpe: -0.2053055448387212
+    baseline_sharpe: -0.4965704720726345
+    sharpe_improvement_pct: 58.65530546313058
+  - symbol: SHIBUSDT
+    optimized_sharpe: -0.2709647594862547
+    baseline_sharpe: -2.7601255023583002
+    sharpe_improvement_pct: 90.18288265317148
+  - symbol: ATOMUSDT
+    optimized_sharpe: -0.14118119333855297
+    baseline_sharpe: -1.5134362086867215
+    sharpe_improvement_pct: 90.67148040147246
+  - symbol: DOTUSDT
+    optimized_sharpe: -0.035202064632308586
+    baseline_sharpe: -1.4208738249467043
+    sharpe_improvement_pct: 97.52250593865159
+individual_results:
+- symbol: 1000PEPEUSDT
+  category: meme
+  optimized_sharpe: !!python/object/apply:numpy._core.multiarray.scalar
+  - &id001 !!python/object/apply:numpy.dtype
+    args:
+    - f8
+    - false
+    - true
+    state: !!python/tuple
+    - 3
+    - <
+    - null
+    - null
+    - null
+    - -1
+    - -1
+    - 0
+  - !!binary |
+    ogZr/WxiU78=
+  optimized_return: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    ZhqDk/xg4r8=
+  optimized_max_dd: -0.8169885166731745
+  optimized_win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    LLY3MTDf3z8=
+  optimized_num_trades: 9737
+  baseline_sharpe: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    KKePyRyY8b8=
+  baseline_return: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    id+kpI6k6r8=
+  baseline_max_dd: -0.8640771453941851
+  baseline_win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    +wltymWL3T8=
+  baseline_num_trades: 4874
+  sharpe_improvement_pct: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    3RhlMR35WEA=
+  return_improvement_pct: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    UhhW9X4EP0A=
+- symbol: AAVEUSDT
+  category: defi
+  optimized_sharpe: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    SFDVEy1F7j8=
+  optimized_return: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    7H7Gyd4N6D8=
+  optimized_max_dd: -0.5563173068134312
+  optimized_win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    lJJmE2ZA3z8=
+  optimized_num_trades: 9791
+  baseline_sharpe: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    I58IlU8I4r8=
+  baseline_return: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    l1IHer+Q478=
+  baseline_max_dd: -0.7275174163831278
+  baseline_win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    RkZGRkZG3j8=
+  baseline_num_trades: 4896
+  sharpe_improvement_pct: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    BUcFj9e9cEA=
+  return_improvement_pct: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    EbETYCfea0A=
+- symbol: ADAUSDT
+  category: layer1
+  optimized_sharpe: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    y2b7IczS1T8=
+  optimized_return: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    LOhNCb+Xw78=
+  optimized_max_dd: -0.7693487706269329
+  optimized_win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    YL6qVToZ3z8=
+  optimized_num_trades: 9975
+  baseline_sharpe: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    yOnMZPmx9b8=
+  baseline_return: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    AjVPbAKC6r8=
+  baseline_max_dd: -0.8660229950737767
+  baseline_win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    zWMBDlKd3T8=
+  baseline_num_trades: 4789
+  sharpe_improvement_pct: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    JHGIrXRJX0A=
+  return_improvement_pct: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    IzzVKmRhVEA=
+- symbol: ALGOUSDT
+  category: layer1
+  optimized_sharpe: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    z81Y3P973z8=
+  optimized_return: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    oMwCIJ6lkL8=
+  optimized_max_dd: -0.7599480013622898
+  optimized_win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    z1Jtccp83j8=
+  optimized_num_trades: 9732
+  baseline_sharpe: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    Jiv+M7gp0b8=
+  baseline_return: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    TVEd1jIU4L8=
+  baseline_max_dd: -0.7679544467473849
+  baseline_win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    NSzt7vgi3j8=
+  baseline_num_trades: 4963
+  sharpe_improvement_pct: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    nX2qLxm3cUA=
+  return_improvement_pct: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    rHNdLu8wWEA=
+- symbol: APEUSDT
+  category: other
+  optimized_sharpe: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    7she/sar4j8=
+  optimized_return: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    4AhczC/PuT8=
+  optimized_max_dd: -0.7364710133143877
+  optimized_win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    CmHYa4xF3z8=
+  optimized_num_trades: 9666
+  baseline_sharpe: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    rU4crecV6b8=
+  baseline_return: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    OSCeGJKS578=
+  baseline_max_dd: -0.8636470321303107
+  baseline_win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    5F1E3kXk3T8=
+  baseline_num_trades: 5115
+  sharpe_improvement_pct: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    yF3VnrzNZUA=
+  return_improvement_pct: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    G96zUulrXEA=
+- symbol: ARBUSDT
+  category: layer2
+  optimized_sharpe: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    bTX5FHIEzz8=
+  optimized_return: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    UIVb8FpKzr8=
+  optimized_max_dd: -0.6657364125120839
+  optimized_win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    MBdHIvmd3z8=
+  optimized_num_trades: 9694
+  baseline_sharpe: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    5bWyWynxsb8=
+  baseline_return: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    JB2zFHpd1r8=
+  baseline_max_dd: -0.6407289311389425
+  baseline_win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    hRmn8+jD3j8=
+  baseline_num_trades: 4976
+  sharpe_improvement_pct: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    AdNJIwPce0A=
+  return_improvement_pct: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    6D85CxkkQEA=
+- symbol: ATOMUSDT
+  category: layer1
+  optimized_sharpe: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    6YMZsDkSwr8=
+  optimized_return: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    liAuwtXr2r8=
+  optimized_max_dd: -0.6394452908961311
+  optimized_win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    b3TsvY2a3z8=
+  optimized_num_trades: 9771
+  baseline_sharpe: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    Z0TO4gg3+L8=
+  baseline_return: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    la3ZGVuN6L8=
+  baseline_max_dd: -0.814832374510059
+  baseline_win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    8MSYZMHV3j8=
+  baseline_num_trades: 5054
+  sharpe_improvement_pct: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    qw7viPmqVkA=
+  return_improvement_pct: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    3QF0cXWWRkA=
+- symbol: AVAXUSDT
+  category: layer1
+  optimized_sharpe: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    Jdz6CFnvzT8=
+  optimized_return: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    EIBnsXaqyb8=
+  optimized_max_dd: -0.717428155715283
+  optimized_win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    v7EoeEEM3z8=
+  optimized_num_trades: 9713
+  baseline_sharpe: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    TQKzcUZp6L8=
+  baseline_return: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    Y/6uKkmY478=
+  baseline_max_dd: -0.7331703886375346
+  baseline_win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    qkPXrUb43T8=
+  baseline_num_trades: 4839
+  sharpe_improvement_pct: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    4me8tAVVYEA=
+  return_improvement_pct: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    ZBnyGUfQUEA=
+- symbol: BNBUSDT
+  category: major
+  optimized_sharpe: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    QthX4H5q4j8=
+  optimized_return: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    2L9R98cdzT8=
+  optimized_max_dd: -0.333542395759743
+  optimized_win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    uTGEFBGL4D8=
+  optimized_num_trades: 10132
+  baseline_sharpe: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    RLf40vPYBMA=
+  baseline_return: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    kxiNaNd56L8=
+  baseline_max_dd: -0.8102951903282269
+  baseline_win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    n2dLf1QF3j8=
+  baseline_num_trades: 4899
+  sharpe_improvement_pct: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    jNaqu2OFXkA=
+  return_improvement_pct: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    RMMm/qs3YEA=
+- symbol: BTCUSDT
+  category: major
+  optimized_sharpe: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    5AfSK2nf7z8=
+  optimized_return: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    TP87z0D64D8=
+  optimized_max_dd: -0.2624690286393534
+  optimized_win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    Pnz/IrQm4D8=
+  optimized_num_trades: 9948
+  baseline_sharpe: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    ofUkwnzVCsA=
+  baseline_return: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    NkzEG1yf6L8=
+  baseline_max_dd: -0.7818863290762367
+  baseline_win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    iVqMt/FX3T8=
+  baseline_num_trades: 4445
+  sharpe_improvement_pct: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    /Nfqezg2YEA=
+  return_improvement_pct: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    ekD7pnEeZUA=
+- symbol: DOGEUSDT
+  category: meme
+  optimized_sharpe: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    EM8p4tgA8z8=
+  optimized_return: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    CD+mSCNa9T8=
+  optimized_max_dd: -0.6329835620157171
+  optimized_win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    GbQ2ZzdK4D8=
+  optimized_num_trades: 9879
+  baseline_sharpe: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    PCj8X5qp/b8=
+  baseline_return: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    ujvNdwDe678=
+  baseline_max_dd: -0.8943636330896109
+  baseline_win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    ddIEh8R+3T8=
+  baseline_num_trades: 4778
+  sharpe_improvement_pct: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    vp+cEBWCZEA=
+  return_improvement_pct: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    faLgJr2nb0A=
+- symbol: DOTUSDT
+  category: layer1
+  optimized_sharpe: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    IuSxSAEGor8=
+  optimized_return: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    Pm18J3le2L8=
+  optimized_max_dd: -0.7301570721290954
+  optimized_win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    qQuw/7id3z8=
+  optimized_num_trades: 9836
+  baseline_sharpe: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    ZTceMea79r8=
+  baseline_return: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    zBBwws5l6L8=
+  baseline_max_dd: -0.836894303862933
+  baseline_win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    fF8+Snag3j8=
+  baseline_num_trades: 4917
+  sharpe_improvement_pct: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    XJ6/vHBhWEA=
+  return_improvement_pct: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    7XZW9YMHSUA=
+- symbol: ETHUSDT
+  category: major
+  optimized_sharpe: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    0XE/Qo7W5j8=
+  optimized_return: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    UMpR+2fC1z8=
+  optimized_max_dd: -0.522536888625588
+  optimized_win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    WRwZdm414D8=
+  optimized_num_trades: 9889
+  baseline_sharpe: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    kbtV4eps8r8=
+  baseline_return: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    Qu5Qw5Z24r8=
+  baseline_max_dd: -0.6555714865511693
+  baseline_win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    uyjyc4RB3T8=
+  baseline_num_trades: 4513
+  sharpe_improvement_pct: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    SYicri0/ZEA=
+  return_improvement_pct: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    JLe7WPWKZEA=
+- symbol: FTMUSDT
+  category: other
+  optimized_sharpe: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    ged4N+ww4T8=
+  optimized_return: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    kEh61fi6pL8=
+  optimized_max_dd: -0.5900222870435794
+  optimized_win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    O8FIPx4c3z8=
+  optimized_num_trades: 3487
+  baseline_sharpe: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    ywBZ5ylLAsA=
+  baseline_return: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    TnjjoKQt5r8=
+  baseline_max_dd: -0.7632567317711756
+  baseline_win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    nfW62p7U3D8=
+  baseline_num_trades: 1676
+  sharpe_improvement_pct: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    Vl55kpLfXkA=
+  return_improvement_pct: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    YtR4Sx2KV0A=
+- symbol: IMXUSDT
+  category: layer2
+  optimized_sharpe: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    zIdivHNHyr8=
+  optimized_return: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    biPgdRl4478=
+  optimized_max_dd: -0.8453786972304113
+  optimized_win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    mjYFqbiz3T8=
+  optimized_num_trades: 9330
+  baseline_sharpe: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    EIVthM/H378=
+  baseline_return: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    AdUsi7lq478=
+  baseline_max_dd: -0.852570712029469
+  baseline_win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    5lm+xFeN3T8=
+  baseline_num_trades: 5046
+  sharpe_improvement_pct: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    m4SmDOFTTUA=
+  return_improvement_pct: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    Nopqzmw40b8=
+- symbol: LINKUSDT
+  category: defi
+  optimized_sharpe: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    6u4zMxD77z8=
+  optimized_return: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    7E/Cq82E6z8=
+  optimized_max_dd: -0.5537147120984296
+  optimized_win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    gr8vOqGI3j8=
+  optimized_num_trades: 9908
+  baseline_sharpe: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    Nn9OWhggyT8=
+  baseline_return: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    oDh3nI9xwb8=
+  baseline_max_dd: -0.6346050736327408
+  baseline_win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    Xd7Q5Q1d3j8=
+  baseline_num_trades: 5084
+  sharpe_improvement_pct: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    5ThtDTaSeUA=
+  return_improvement_pct: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    bvyr4kXYhkA=
+- symbol: LTCUSDT
+  category: other
+  optimized_sharpe: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    pbUtAW504z8=
+  optimized_return: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    yD3YuF6ozD8=
+  optimized_max_dd: -0.4836358631894935
+  optimized_win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    k11k9fG73z8=
+  optimized_num_trades: 9991
+  baseline_sharpe: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    4yLsSbchBcA=
+  baseline_return: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    p2aoVuAw7b8=
+  baseline_max_dd: -0.9244948386461741
+  baseline_win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    w3wKNDw53T8=
+  baseline_num_trades: 5175
+  sharpe_improvement_pct: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    R0z4UgjBXkA=
+  return_improvement_pct: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    o9lJ4MUiX0A=
+- symbol: MANAUSDT
+  category: other
+  optimized_sharpe: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    Wd+4vtGSyD8=
+  optimized_return: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    2kZ4VV6Z0b8=
+  optimized_max_dd: -0.7300092180192042
+  optimized_win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    iw4gh24W3z8=
+  optimized_num_trades: 9575
+  baseline_sharpe: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    WuzSIFaJ978=
+  baseline_return: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    lB21OAVZ6r8=
+  baseline_max_dd: -0.8709910560261738
+  baseline_win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    Pp/WlRuc3T8=
+  baseline_num_trades: 4900
+  sharpe_improvement_pct: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    8VT2tT9DXEA=
+  return_improvement_pct: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    bNuOdYumUEA=
+- symbol: MATICUSDT
+  category: layer2
+  optimized_sharpe: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    BSzrGY3V4T8=
+  optimized_return: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    AJfJByMGkD8=
+  optimized_max_dd: -0.3837848647942814
+  optimized_win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    spg/c9MZ4D8=
+  optimized_num_trades: 793
+  baseline_sharpe: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    yUSfiBvl7z8=
+  baseline_return: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    gKNyqQhJpz8=
+  baseline_max_dd: -0.20074421133401882
+  baseline_win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    Jirsn5Yx4D8=
+  baseline_num_trades: 413
+  sharpe_improvement_pct: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    GHM2udQKRsA=
+  return_improvement_pct: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    iDKwdORlUMA=
+- symbol: OPUSDT
+  category: layer2
+  optimized_sharpe: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    o06Li0SNib8=
+  optimized_return: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    3GW4Yc4Z3b8=
+  optimized_max_dd: -0.7752177637879667
+  optimized_win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    yhNL1a5O3j8=
+  optimized_num_trades: 9585
+  baseline_sharpe: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    RwKSFeHO6r8=
+  baseline_return: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    Z8iNmqxx5r8=
+  baseline_max_dd: -0.8185593814979811
+  baseline_win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    vlrI1Q1w3T8=
+  baseline_num_trades: 5033
+  sharpe_improvement_pct: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    m07kra+gWEA=
+  return_improvement_pct: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    Zv2xjMyVQUA=
+- symbol: SANDUSDT
+  category: other
+  optimized_sharpe: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    76PnjaJ21z8=
+  optimized_return: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    0PKgTZhDwL8=
+  optimized_max_dd: -0.7524938704075993
+  optimized_win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    YEI2F2z+3j8=
+  optimized_num_trades: 9573
+  baseline_sharpe: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    c7SCEGWo4L8=
+  baseline_return: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    xgcV0+xT478=
+  baseline_max_dd: -0.7106316420479526
+  baseline_win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    Iew56kSO3T8=
+  baseline_num_trades: 4844
+  sharpe_improvement_pct: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    tKM1KrBNZUA=
+  return_improvement_pct: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    vfx1jqC9U0A=
+- symbol: SHIBUSDT
+  category: meme
+  optimized_sharpe: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    gyoXk3xX0b8=
+  optimized_return: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    4IG7m9uK4L8=
+  optimized_max_dd: -0.7258783519061601
+  optimized_win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    toczU3FZ3j8=
+  optimized_num_trades: 9926
+  baseline_sharpe: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    MuDrrbwUBsA=
+  baseline_return: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    SFAmcbVk7b8=
+  baseline_max_dd: -0.9259704146560245
+  baseline_win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    gK8L9hEz3D8=
+  baseline_num_trades: 4732
+  sharpe_improvement_pct: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    JJhxWbSLVkA=
+  return_improvement_pct: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    wfQF+D3cRUA=
+- symbol: SOLUSDT
+  category: layer1
+  optimized_sharpe: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    CsMisKOv0T8=
+  optimized_return: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    AFAabJYnv78=
+  optimized_max_dd: -0.5795493350140466
+  optimized_win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    L/fHLQI54D8=
+  optimized_num_trades: 9987
+  baseline_sharpe: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    TFjci7ZSAsA=
+  baseline_return: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    CsKx4VTt678=
+  baseline_max_dd: -0.8767230857136675
+  baseline_win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    WG14ElYb3j8=
+  baseline_num_trades: 4851
+  sharpe_improvement_pct: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    F9xOFTAEXEA=
+  return_improvement_pct: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    9MycCouDVUA=
+- symbol: UNIUSDT
+  category: defi
+  optimized_sharpe: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    6H9T6eqh7D8=
+  optimized_return: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    3LKB0QLh5D8=
+  optimized_max_dd: -0.6625438558161579
+  optimized_win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    NK09+Xcu3z8=
+  optimized_num_trades: 9696
+  baseline_sharpe: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    2n4uDD0T8b8=
+  baseline_return: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    tK7EnlTi578=
+  baseline_max_dd: -0.8497975683304153
+  baseline_win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    d/8dcHlv3T8=
+  baseline_num_trades: 4779
+  sharpe_improvement_pct: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    pFgQXPb6ZkA=
+  return_improvement_pct: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    knhFUV5tZ0A=
+- symbol: XRPUSDT
+  category: other
+  optimized_sharpe: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    n2ZKGStx9D8=
+  optimized_return: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    RNU1nG+Q+D8=
+  optimized_max_dd: -0.5811510905572486
+  optimized_win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    qsJfvU4X4D8=
+  optimized_num_trades: 10017
+  baseline_sharpe: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    G/jZuMIN578=
+  baseline_return: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    JOIz8rKI478=
+  baseline_max_dd: -0.7803347618554464
+  baseline_win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    BbL0PU883T8=
+  baseline_num_trades: 4665
+  sharpe_improvement_pct: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    KwYjW3tVcUA=
+  return_improvement_pct: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    3HRZVQn4dUA=

@@ -100,19 +100,76 @@ def resolve_price(signal_data: Dict[str, Any], symbol: str = None) -> Optional[f
         logger.warning(f"Failed to resolve price{symbol_str} from any source")
         return None
 
+def get_price_decimals(price: float) -> int:
+    """
+    Determine appropriate number of decimal places based on price magnitude.
+
+    This ensures low-priced tokens (like memecoins) don't lose precision
+    when rounding, while high-priced assets use reasonable decimals.
+
+    Args:
+        price: Price value to check
+
+    Returns:
+        Number of decimal places to use
+    """
+    if price is None or price <= 0:
+        return 8  # Default to max precision
+
+    # Dynamic decimal places based on price magnitude
+    if price < 0.0001:
+        return 8  # Ultra low price tokens (SHIB, PEPE, etc.)
+    elif price < 0.01:
+        return 6  # Very low price tokens
+    elif price < 1:
+        return 5  # Sub-dollar tokens (MOODENG, DOGE, etc.)
+    elif price < 100:
+        return 4  # Low-mid priced assets
+    elif price < 10000:
+        return 2  # Standard crypto prices
+    else:
+        return 2  # High-priced assets (BTC, etc.)
+
+
+def round_price(price: float, reference_price: Optional[float] = None) -> float:
+    """
+    Round a price to appropriate decimal places based on magnitude.
+
+    Use this instead of hardcoded round(price, 2) to preserve precision
+    for low-priced tokens.
+
+    Args:
+        price: Price value to round
+        reference_price: Optional reference price for determining decimals
+                        (useful when rounding targets/stops relative to entry)
+
+    Returns:
+        Rounded price value
+    """
+    if price is None:
+        return 0.0
+
+    # Use reference price if provided (e.g., entry price for targets)
+    # This ensures all related prices use consistent decimals
+    ref = reference_price if reference_price is not None else price
+    decimals = get_price_decimals(abs(ref))
+
+    return round(price, decimals)
+
+
 def format_price_string(price: Optional[float]) -> str:
     """
     Format price as a readable string with appropriate decimal places.
-    
+
     Args:
         price: Price value to format
-        
+
     Returns:
         Formatted price string
     """
     if price is None:
         return "Price not available"
-        
+
     # Format based on price magnitude
     if price < 1:
         return f"${price:.5f}"

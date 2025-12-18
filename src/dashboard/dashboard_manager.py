@@ -6,7 +6,7 @@ Handles data aggregation, real-time updates, and dashboard state management
 
 import asyncio
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Any, Optional
 from pathlib import Path
 
@@ -119,7 +119,7 @@ class DashboardManager:
         try:
             # Update cached data
             self._cached_data = await self.get_dashboard_overview()
-            self._last_update = datetime.utcnow()
+            self._last_update = datetime.now(timezone.utc)
             
             self.logger.debug("Dashboard data updated successfully")
             
@@ -134,7 +134,7 @@ class DashboardManager:
         message = {
             "type": "dashboard_update",
             "data": self._cached_data,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
         
         # Send to all connected WebSockets
@@ -164,7 +164,7 @@ class DashboardManager:
         """Get comprehensive dashboard overview"""
         # Check cache first
         if (self._cached_data and self._last_update and 
-            (datetime.utcnow() - self._last_update).seconds < self._cache_ttl):
+            (datetime.now(timezone.utc) - self._last_update).seconds < self._cache_ttl):
             return self._cached_data
         
         try:
@@ -183,7 +183,7 @@ class DashboardManager:
             
             # Handle exceptions gracefully
             overview = {
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "signals": signals if not isinstance(signals, Exception) else [],
                 "market": market if not isinstance(market, Exception) else {},
                 "alerts": alerts if not isinstance(alerts, Exception) else [],
@@ -196,7 +196,7 @@ class DashboardManager:
         except Exception as e:
             self.logger.error(f"Error getting dashboard overview: {e}")
             return {
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "signals": [],
                 "market": {},
                 "alerts": [],
@@ -248,7 +248,7 @@ class DashboardManager:
                 "market_cap": 0,
                 "volatility": 0,
                 "regime": "UNKNOWN",
-                "last_updated": datetime.utcnow().isoformat()
+                "last_updated": datetime.now(timezone.utc).isoformat()
             }
             
             # Get data from top symbols manager if available
@@ -294,35 +294,35 @@ class DashboardManager:
                     "type": "SIGNAL",
                     "message": "Strong buy signal detected for BTCUSDT",
                     "priority": "high",
-                    "timestamp": (datetime.utcnow() - timedelta(minutes=2)).isoformat(),
+                    "timestamp": (datetime.now(timezone.utc) - timedelta(minutes=2)).isoformat(),
                     "source": "signal_generator"
                 },
                 {
                     "type": "ALPHA",
                     "message": "New opportunity identified in AVAXUSDT",
                     "priority": "medium",
-                    "timestamp": (datetime.utcnow() - timedelta(minutes=8)).isoformat(),
+                    "timestamp": (datetime.now(timezone.utc) - timedelta(minutes=8)).isoformat(),
                     "source": "alpha_scanner"
                 },
                 {
                     "type": "SYSTEM",
                     "message": "Market data refresh completed successfully",
                     "priority": "low",
-                    "timestamp": (datetime.utcnow() - timedelta(minutes=15)).isoformat(),
+                    "timestamp": (datetime.now(timezone.utc) - timedelta(minutes=15)).isoformat(),
                     "source": "data_processor"
                 },
                 {
                     "type": "MARKET",
                     "message": "Volume spike detected across multiple pairs",
                     "priority": "medium",
-                    "timestamp": (datetime.utcnow() - timedelta(minutes=23)).isoformat(),
+                    "timestamp": (datetime.now(timezone.utc) - timedelta(minutes=23)).isoformat(),
                     "source": "market_monitor"
                 },
                 {
                     "type": "SIGNAL",
                     "message": "Sell signal triggered for XRPUSDT",
                     "priority": "high",
-                    "timestamp": (datetime.utcnow() - timedelta(minutes=31)).isoformat(),
+                    "timestamp": (datetime.now(timezone.utc) - timedelta(minutes=31)).isoformat(),
                     "source": "signal_generator"
                 }
             ]
@@ -343,21 +343,21 @@ class DashboardManager:
                     "pattern": "Breakout Pattern",
                     "confidence": 0.892,
                     "alpha_potential": 0.124,
-                    "timestamp": datetime.utcnow().isoformat()
+                    "timestamp": datetime.now(timezone.utc).isoformat()
                 },
                 {
                     "symbol": "ADAUSDT",
                     "pattern": "Volume Spike",
                     "confidence": 0.768,
                     "alpha_potential": 0.087,
-                    "timestamp": datetime.utcnow().isoformat()
+                    "timestamp": datetime.now(timezone.utc).isoformat()
                 },
                 {
                     "symbol": "LINKUSDT",
                     "pattern": "Support Bounce",
                     "confidence": 0.821,
                     "alpha_potential": 0.153,
-                    "timestamp": datetime.utcnow().isoformat()
+                    "timestamp": datetime.now(timezone.utc).isoformat()
                 }
             ]
             
@@ -376,7 +376,7 @@ class DashboardManager:
                 "cpu_usage": 45.2,
                 "memory_usage": 68.7,
                 "active_connections": len(self._websocket_connections),
-                "last_scan": datetime.utcnow().isoformat()
+                "last_scan": datetime.now(timezone.utc).isoformat()
             }
             
             # Check exchange manager health

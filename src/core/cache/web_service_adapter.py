@@ -28,6 +28,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+import aiohttp
 from typing import Dict, Any, Optional, List, Union, Tuple
 from datetime import datetime
 
@@ -40,6 +41,49 @@ from .shared_cache_bridge import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# CoinGecko BTC Dominance Cache (module-level for sharing across instances)
+# =============================================================================
+_coingecko_cache = {
+    'btc_dominance': 57.0,
+    'last_updated': 0,
+    'ttl': 300  # 5 minutes
+}
+
+
+async def fetch_real_btc_dominance() -> float:
+    """
+    Fetch real BTC dominance from CoinGecko API.
+    Uses caching to avoid rate limits.
+    """
+    global _coingecko_cache
+
+    current_time = time.time()
+
+    # Return cached if valid
+    if current_time - _coingecko_cache['last_updated'] < _coingecko_cache['ttl']:
+        return _coingecko_cache['btc_dominance']
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                'https://api.coingecko.com/api/v3/global',
+                timeout=aiohttp.ClientTimeout(total=10)
+            ) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    btc_dom = data.get('data', {}).get('market_cap_percentage', {}).get('btc', 0)
+                    if btc_dom > 0:
+                        _coingecko_cache['btc_dominance'] = round(btc_dom, 2)
+                        _coingecko_cache['last_updated'] = current_time
+                        logger.info(f"✅ CoinGecko BTC Dominance updated: {btc_dom:.2f}%")
+                        return _coingecko_cache['btc_dominance']
+    except Exception as e:
+        logger.debug(f"CoinGecko API error: {e}")
+
+    return _coingecko_cache['btc_dominance']
 
 class WebServiceCacheAdapter:
     """
@@ -318,12 +362,39 @@ class WebServiceCacheAdapter:
         self.access_metrics['total_requests'] += 1
 
         try:
+            # Fetch real BTC dominance from CoinGecko (updates cache for fallback values)
+            await fetch_real_btc_dominance()
+
             # Get all required data components
             overview_data = await self._get_live_market_overview()
             signals_data = await self._get_live_signals()
             movers_data = await self._get_live_market_movers()
             regime_data = await self._get_live_market_regime()
             tickers_data, _ = await get_market_data('market:tickers')
+
+            # CRITICAL FIX: Check if overview_data contains valid (non-cache-warmer) data
+            # Cache warmer data has all zeros/empty values and should NOT be used
+            is_cache_warmer_data = (
+                overview_data.get('trend_strength', 0) == 0 and
+                overview_data.get('gainers', 0) == 0 and
+                overview_data.get('losers', 0) == 0 and
+                overview_data.get('total_volume_24h', 0) == 0
+            )
+
+            if is_cache_warmer_data:
+                logger.warning("⚠️ Detected cache warmer data in overview - attempting fallback to market-overview endpoint")
+                # Try the market-overview endpoint which often has real data
+                fallback_overview, _ = await get_market_data('market:overview')
+                if fallback_overview and isinstance(fallback_overview, dict):
+                    # Check if fallback has valid data
+                    fallback_has_data = (
+                        fallback_overview.get('trend_strength', 0) > 0 or
+                        fallback_overview.get('gainers', 0) > 0 or
+                        fallback_overview.get('losers', 0) > 0
+                    )
+                    if fallback_has_data:
+                        logger.info("✅ Using fallback market-overview data instead of cache warmer")
+                        overview_data = fallback_overview
 
             # Process confluence scores with live data
             confluence_scores = []
@@ -355,7 +426,8 @@ class WebServiceCacheAdapter:
                         "components": breakdown_data.get('components', signal.get('components', {})),
                         "sub_components": breakdown_data.get('sub_components', {}),
                         "interpretations": breakdown_data.get('interpretations', {}),
-                        "has_breakdown": True
+                        "has_breakdown": True,
+                        "score_history": breakdown_data.get('score_history', [])
                     })
                 else:
                     # Use signal data with ticker enhancement
@@ -370,18 +442,35 @@ class WebServiceCacheAdapter:
                         "low_24h": signal.get('low_24h', ticker.get('low', 0)),
                         "reliability": signal.get('reliability', 75),
                         "components": signal.get('components', {}),
-                        "has_breakdown": False
+                        "has_breakdown": False,
+                        "score_history": []  # No history available without breakdown
                     })
+
+            # Get perps data for Perpetuals Pulse widget
+            logger.info("📊 Getting perps data for Perpetuals Pulse widget")
+            perps_data = await self._get_live_perps_data(overview_data)
+            logger.info(f"📦 Perps data retrieved: {perps_data}")
+
+            # CRITICAL FIX: If regime_data is still "Initializing", use overview's market_regime
+            final_regime = regime_data
+            if regime_data in ('Initializing', 'unknown', 'initializing'):
+                overview_regime = overview_data.get('market_regime', '')
+                # Handle case where market_regime might be a dict
+                if isinstance(overview_regime, dict):
+                    overview_regime = overview_regime.get('regime', '')
+                if overview_regime and overview_regime not in ('Initializing', 'unknown', 'initializing'):
+                    final_regime = overview_regime
+                    logger.info(f"✅ Using overview market_regime '{final_regime}' instead of '{regime_data}'")
 
             # Build mobile response
             mobile_data = {
                 "market_overview": {
-                    "market_regime": regime_data,
+                    "market_regime": final_regime,
                     "trend_strength": overview_data.get('trend_strength', 0),
                     "volatility": overview_data.get('current_volatility', overview_data.get('volatility', 0)),
                     "current_volatility": overview_data.get('current_volatility', 0),
                     "avg_volatility": overview_data.get('avg_volatility', 0),
-                    "btc_dominance": overview_data.get('btc_dominance', 59.3),
+                    "btc_dominance": overview_data.get('btc_dominance', _coingecko_cache['btc_dominance']),
                     "btc_price": overview_data.get('btc_price', 0),
                     "btc_volatility": overview_data.get('btc_volatility', 0),
                     "btc_daily_volatility": overview_data.get('btc_daily_volatility', 0),
@@ -398,6 +487,7 @@ class WebServiceCacheAdapter:
                     "gainers": movers_data.get('gainers', [])[:5],
                     "losers": movers_data.get('losers', [])[:5]
                 },
+                "perps": perps_data,
                 "timestamp": int(time.time()),
                 "status": "success",
                 "source": "shared_cache",
@@ -435,34 +525,162 @@ class WebServiceCacheAdapter:
             return {}
 
     async def _get_live_market_movers(self) -> Dict[str, Any]:
-        """Get live market movers data"""
+        """Get live market movers data - derives from signals if cache is empty"""
         try:
+            # First try the dedicated movers cache key
             data, _ = await get_market_data('market:movers')
-            return data if isinstance(data, dict) else {}
-        except:
-            return {}
+            if data and isinstance(data, dict) and (data.get('gainers') or data.get('losers')):
+                return data
+
+            # Fallback: Derive top movers from signals data
+            logger.info("⚠️ market:movers empty, deriving from analysis:signals")
+            signals_data, _ = await get_market_data('analysis:signals')
+            if not signals_data or not isinstance(signals_data, dict):
+                return {"gainers": [], "losers": []}
+
+            signals = signals_data.get('signals', [])
+            if not signals:
+                return {"gainers": [], "losers": []}
+
+            # Sort by change_24h to get gainers and losers
+            sorted_by_change = sorted(
+                [s for s in signals if s.get('change_24h') is not None],
+                key=lambda x: x.get('change_24h', 0),
+                reverse=True
+            )
+
+            # Top gainers (positive changes, sorted highest first)
+            gainers = [
+                {
+                    "symbol": s.get('symbol', ''),
+                    "display_symbol": s.get('symbol', '').replace('USDT', ''),
+                    "change_24h": s.get('change_24h', 0),
+                    "price": s.get('price', 0),
+                    "volume_24h": s.get('volume_24h', 0)
+                }
+                for s in sorted_by_change[:10]
+                if s.get('change_24h', 0) > 0
+            ]
+
+            # Top losers (negative changes, sorted most negative first)
+            losers = [
+                {
+                    "symbol": s.get('symbol', ''),
+                    "display_symbol": s.get('symbol', '').replace('USDT', ''),
+                    "change_24h": s.get('change_24h', 0),
+                    "price": s.get('price', 0),
+                    "volume_24h": s.get('volume_24h', 0)
+                }
+                for s in reversed(sorted_by_change[-10:])
+                if s.get('change_24h', 0) < 0
+            ]
+
+            logger.info(f"✅ Derived {len(gainers)} gainers, {len(losers)} losers from signals")
+            return {"gainers": gainers, "losers": losers}
+        except Exception as e:
+            logger.error(f"Error getting market movers: {e}")
+            return {"gainers": [], "losers": []}
+
+    async def _get_live_perps_data(self, overview_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Get perpetuals market data for Perpetuals Pulse widget
+
+        Includes funding rate, long/short ratio, and advanced metrics like
+        funding z-score and L/S entropy (health indicator)
+        """
+        logger.info("🔍 _get_live_perps_data called")
+        try:
+            # Get BTC ticker for funding rate
+            logger.info("📡 Fetching BTC ticker for funding rate")
+            btc_ticker, _ = await get_market_data('ticker:BTCUSDT')
+            logger.info(f"✅ Got BTC ticker: {btc_ticker is not None}")
+
+            # Calculate funding z-score (how extreme is the current funding rate)
+            funding_rate = btc_ticker.get('funding_rate', 0) if btc_ticker else 0
+            # Typical funding rates range from -0.001 to 0.001 (0.1%)
+            # Z-score: number of standard deviations from mean
+            # Assuming mean=0, std=0.0003 (30 basis points)
+            funding_zscore = funding_rate / 0.0003 if funding_rate != 0 else 0.0
+
+            # Calculate L/S entropy (market health indicator)
+            # Entropy measures how balanced the long/short ratio is
+            # 70%+ = healthy (balanced market), <40% = unhealthy (overcrowded)
+            long_pct = overview_data.get('long_percentage', 50)
+            short_pct = 100 - long_pct
+
+            # Shannon entropy normalized to 0-1 range
+            # Maximum entropy (most balanced) = 0.5/0.5 split
+            # Minimum entropy (least balanced) = 1.0/0.0 or 0.0/1.0 split
+            import math
+            if long_pct > 0 and short_pct > 0:
+                p_long = long_pct / 100
+                p_short = short_pct / 100
+                entropy = -(p_long * math.log2(p_long) + p_short * math.log2(p_short))
+                # Normalize: max entropy for 2 outcomes is log2(2) = 1.0
+                ls_entropy = entropy / 1.0
+            else:
+                ls_entropy = 0.0  # Completely one-sided = unhealthy
+
+            perps_result = {
+                "funding_rate": funding_rate,
+                "funding_zscore": round(funding_zscore, 2),
+                "long_pct": round(long_pct, 1),
+                "short_pct": round(short_pct, 1),
+                "ls_entropy": round(ls_entropy, 2),
+                "open_interest": overview_data.get('total_open_interest', 0),
+                "volume_24h": overview_data.get('total_volume_24h', 0),
+                "cex_pct": 90,  # Default CEX dominance
+                "dex_pct": 10,
+                "basis_pct": 0.0  # Futures-spot basis
+            }
+            logger.info(f"✅ Perps data calculated successfully: funding_zscore={perps_result['funding_zscore']}, ls_entropy={perps_result['ls_entropy']}")
+            return perps_result
+        except Exception as e:
+            logger.error(f"❌ Error getting perps data: {e}", exc_info=True)
+            return {
+                "funding_rate": 0.0,
+                "funding_zscore": 0.0,
+                "long_pct": 50.0,
+                "short_pct": 50.0,
+                "ls_entropy": 0.5,
+                "open_interest": 0,
+                "volume_24h": 0,
+                "cex_pct": 90,
+                "dex_pct": 10,
+                "basis_pct": 0.0
+            }
 
     async def _get_live_market_regime(self) -> str:
-        """Get live market regime"""
+        """Get live market regime with cache_warmer placeholder detection"""
         try:
             # First try analysis:market_regime (which returns a dict)
             data, _ = await get_market_data('analysis:market_regime')
 
             if isinstance(data, dict):
-                # Extract regime field from dict
+                # Check if this is cache_warmer placeholder data
+                is_placeholder = data.get('status') == 'cache_warmer_generated'
                 regime = data.get('regime', 'unknown')
-                return regime if isinstance(regime, str) else str(regime)
-            elif isinstance(data, str):
-                # Direct string value
+
+                # Skip placeholder "Initializing" values - try fallback instead
+                if not is_placeholder and regime not in ('Initializing', 'unknown', None):
+                    return regime if isinstance(regime, str) else str(regime)
+
+            elif isinstance(data, str) and data not in ('Initializing', 'unknown', 'initializing'):
+                # Direct string value (non-placeholder)
                 return data
 
             # Fallback: Try market:overview which has market_regime as string
             overview_data, _ = await get_market_data('market:overview')
             if isinstance(overview_data, dict):
                 regime = overview_data.get('market_regime', 'unknown')
-                return regime if isinstance(regime, str) else str(regime)
+                # Handle case where market_regime is also a dict (nested placeholder)
+                if isinstance(regime, dict):
+                    regime = regime.get('regime', 'unknown')
+                if regime and regime not in ('Initializing', 'unknown', None):
+                    return regime if isinstance(regime, str) else str(regime)
 
-            return 'unknown'
+            # Last resort: return a user-friendly loading state
+            return 'Loading...'
         except Exception as e:
             logger.debug(f"Error getting market regime: {e}")
             return 'unknown'
@@ -479,7 +697,7 @@ class WebServiceCacheAdapter:
             enhanced['spot_volume_24h'] = enhanced.get('total_volume_24h', 0)
 
         if 'btc_dominance' not in enhanced or enhanced['btc_dominance'] == 0:
-            enhanced['btc_dominance'] = 59.3  # Realistic default
+            enhanced['btc_dominance'] = _coingecko_cache['btc_dominance']  # Use CoinGecko cached value
 
         if 'trend_strength' not in enhanced:
             enhanced['trend_strength'] = 50  # Neutral default
@@ -507,7 +725,7 @@ class WebServiceCacheAdapter:
             'total_volume_24h': 0,
             'average_change': 0,
             'volatility': 0,
-            'btc_dominance': 59.3,
+            'btc_dominance': _coingecko_cache['btc_dominance'],
             'trend_strength': 50,
             'timestamp': int(time.time()),
             'data_source': 'fallback'
@@ -543,7 +761,7 @@ class WebServiceCacheAdapter:
                 "volatility": 0,
                 "current_volatility": 0,
                 "avg_volatility": 0,
-                "btc_dominance": 59.3,
+                "btc_dominance": _coingecko_cache['btc_dominance'],
                 "btc_price": 0,
                 "btc_volatility": 0,
                 "btc_daily_volatility": 0,

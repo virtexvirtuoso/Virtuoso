@@ -2365,9 +2365,20 @@ class MarketMonitor:
                             liquidated_amount_usd=usd_value,
                             price_impact=0.0,  # Would need market data to calculate
                             volume_spike_ratio=1.0,  # Would need historical data to calculate
+                            bid_ask_spread_pct=0.0,  # Would need order book data
+                            order_book_imbalance=0.0,
+                            market_depth_impact=0.0,
+                            volatility_spike=1.0,  # Baseline volatility (no spike data from WebSocket)
+                            duration_seconds=0,
                             confidence_score=0.9,  # High confidence for real WebSocket data
                             suspected_triggers=['real_liquidation'],
-                            market_conditions={}
+                            market_conditions={},
+                            # Optional fields - not available from WebSocket feed
+                            rsi=None,
+                            volume_weighted_price=None,
+                            funding_rate=None,
+                            open_interest_change=None,
+                            recovery_time_seconds=None
                         )
                         
                         # Store the event via the detection engine
@@ -3519,9 +3530,10 @@ class MarketMonitor:
             # Get reliability score
             reliability = analysis_result.get('reliability', 0.5)
             
-            # Check if reliability is less than 100% (1.0), if so, log and return without generating an alert
-            if reliability < 1.0:
-                self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}] Skipping alert for {symbol} due to reliability {reliability*100:.1f}% < 100%")
+            # Only skip alerts for signals with very low reliability (< 30%)
+            # This allows most valid signals through while filtering out unreliable ones
+            if reliability < 0.3:
+                self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}] Skipping alert for {symbol} due to low reliability {reliability*100:.1f}% < 30%")
                 return
             
             # Get price information

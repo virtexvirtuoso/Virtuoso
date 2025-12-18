@@ -38,18 +38,37 @@ class TimestampValidator:
         ...     logger.warning(f"Data not synchronized: {error}")
     """
 
-    def __init__(self, max_delta_seconds: int = 60, strict_mode: bool = False):
+    # Default timeframe-aware delta thresholds (in seconds)
+    # HTF (4h candles) can naturally lag by up to 4 hours since they only close every 4h
+    DEFAULT_TIMEFRAME_DELTAS = {
+        'base': 120,      # 2 minutes - base should be fresh
+        'ltf': 300,       # 5 minutes - LTF (e.g., 5m candles) can lag slightly
+        'htf': 14400,     # 4 hours - HTF (e.g., 4h candles) only updates every 4h
+    }
+
+    def __init__(
+        self,
+        max_delta_seconds: int = 60,
+        strict_mode: bool = False,
+        timeframe_deltas: Optional[Dict[str, int]] = None
+    ):
         """Initialize the timestamp validator.
 
         Args:
-            max_delta_seconds: Maximum allowed time difference between timeframes (default: 60s).
-                              In normal markets, 60s is acceptable. For HFT, use 1-5s.
+            max_delta_seconds: Default maximum allowed time difference between timeframes (default: 60s).
+                              Used as fallback when timeframe-specific deltas aren't configured.
             strict_mode: If True, validation failures cause exceptions.
                         If False (default), validation failures are logged as warnings.
+            timeframe_deltas: Optional dict mapping timeframe names to their max allowed delta in seconds.
+                             Example: {'base': 120, 'ltf': 300, 'htf': 14400}
+                             If not provided, uses DEFAULT_TIMEFRAME_DELTAS.
         """
         self.max_delta_seconds = max_delta_seconds
         self.strict_mode = strict_mode
         self.logger = logger
+
+        # Use provided timeframe deltas or defaults
+        self.timeframe_deltas = timeframe_deltas or self.DEFAULT_TIMEFRAME_DELTAS.copy()
 
         # Statistics for monitoring
         self.validation_count = 0
@@ -121,29 +140,62 @@ class TimestampValidator:
             )
             return True, None
 
-        # Calculate time deltas
-        timestamp_values = list(timestamps.values())
-        min_time = min(timestamp_values)
-        max_time = max(timestamp_values)
-        delta_seconds = (max_time - min_time).total_seconds()
+        # Use base timeframe as the reference point (most recent)
+        if 'base' in timestamps:
+            reference_time = timestamps['base']
+            reference_tf = 'base'
+        else:
+            # Fallback to most recent timestamp as reference
+            reference_tf = max(timestamps, key=lambda k: timestamps[k])
+            reference_time = timestamps[reference_tf]
+
+        # Validate each timeframe against the reference using timeframe-specific thresholds
+        violations = []
+        max_delta_observed = 0.0
+
+        for tf, ts in timestamps.items():
+            if tf == reference_tf:
+                continue
+
+            delta_seconds = abs((reference_time - ts).total_seconds())
+
+            # Update max observed
+            if delta_seconds > max_delta_observed:
+                max_delta_observed = delta_seconds
+
+            # Get timeframe-specific threshold, fallback to global default
+            max_allowed = self.timeframe_deltas.get(tf, self.max_delta_seconds)
+
+            if delta_seconds > max_allowed:
+                violations.append({
+                    'timeframe': tf,
+                    'delta': delta_seconds,
+                    'max_allowed': max_allowed,
+                    'timestamp': ts
+                })
 
         # Update statistics
-        if delta_seconds > self.max_observed_delta:
-            self.max_observed_delta = delta_seconds
+        if max_delta_observed > self.max_observed_delta:
+            self.max_observed_delta = max_delta_observed
 
-        # Check if delta exceeds threshold
-        if delta_seconds > self.max_delta_seconds:
+        # Check for violations
+        if violations:
             self.failure_count += 1
 
-            # Format timestamps for error message
+            # Format error message with violation details
             timestamp_strs = {
                 k: v.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
                 for k, v in timestamps.items()
             }
 
+            violation_details = ', '.join(
+                f"{v['timeframe']}={v['delta']:.0f}s (max:{v['max_allowed']}s)"
+                for v in violations
+            )
+
             error_msg = (
-                f"Timeframe data not synchronized: {delta_seconds:.1f}s delta "
-                f"(max: {self.max_delta_seconds}s). "
+                f"Timeframe sync violations: {violation_details}. "
+                f"Reference: {reference_tf}={timestamp_strs[reference_tf]}. "
                 f"Timestamps: {', '.join(f'{k}={v}' for k, v in timestamp_strs.items())}"
             )
 
@@ -155,8 +207,8 @@ class TimestampValidator:
             return False, error_msg
 
         self.logger.debug(
-            f"Timeframe sync validated: {delta_seconds:.1f}s delta "
-            f"(max: {self.max_delta_seconds}s) across {len(timestamps)} timeframes"
+            f"Timeframe sync validated: max_delta={max_delta_observed:.1f}s "
+            f"across {len(timestamps)} timeframes (thresholds: {self.timeframe_deltas})"
         )
         return True, None
 
@@ -279,7 +331,7 @@ class TimestampValidator:
 
         return None
 
-    def get_statistics(self) -> Dict[str, Union[int, float]]:
+    def get_statistics(self) -> Dict[str, Union[int, float, Dict]]:
         """Get validation statistics for monitoring.
 
         Returns:
@@ -288,7 +340,8 @@ class TimestampValidator:
             - failure_count: Number of validation failures
             - failure_rate: Percentage of failures
             - max_observed_delta: Maximum observed time delta in seconds
-            - max_allowed_delta: Configured maximum delta
+            - default_max_delta: Default maximum delta (fallback)
+            - timeframe_deltas: Configured per-timeframe thresholds
         """
         failure_rate = (self.failure_count / self.validation_count * 100) if self.validation_count > 0 else 0.0
 
@@ -297,7 +350,8 @@ class TimestampValidator:
             'failure_count': self.failure_count,
             'failure_rate': round(failure_rate, 2),
             'max_observed_delta_seconds': round(self.max_observed_delta, 2),
-            'max_allowed_delta_seconds': self.max_delta_seconds
+            'default_max_delta_seconds': self.max_delta_seconds,
+            'timeframe_deltas': self.timeframe_deltas.copy()
         }
 
     def reset_statistics(self):

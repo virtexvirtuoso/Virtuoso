@@ -6,15 +6,17 @@ Simple validation script to test if monitor.py can be imported and the fix synta
 import sys
 import os
 import ast
+from pathlib import Path
 
 # Add project root to path
-sys.path.insert(0, '/Users/ffv_macmini/Desktop/Virtuoso_ccxt')
+PROJECT_ROOT = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
 
 def test_monitor_syntax():
     """Test monitor.py syntax by parsing the AST."""
     print("🔍 Testing monitor.py syntax...")
 
-    monitor_path = "/Users/ffv_macmini/Desktop/Virtuoso_ccxt/src/monitoring/monitor.py"
+    monitor_path = str(PROJECT_ROOT / 'src' / 'monitoring' / 'monitor.py')
 
     try:
         with open(monitor_path, 'r') as f:
@@ -35,7 +37,7 @@ def test_fix_implementation():
     """Test that the fix is properly implemented in the source code."""
     print("\n🔍 Testing fix implementation...")
 
-    monitor_path = "/Users/ffv_macmini/Desktop/Virtuoso_ccxt/src/monitoring/monitor.py"
+    monitor_path = str(PROJECT_ROOT / 'src' / 'monitoring' / 'monitor.py')
 
     try:
         with open(monitor_path, 'r') as f:
@@ -79,7 +81,7 @@ def test_code_structure():
     """Test that the code structure around the fix is correct."""
     print("\n🔍 Testing code structure around fix...")
 
-    monitor_path = "/Users/ffv_macmini/Desktop/Virtuoso_ccxt/src/monitoring/monitor.py"
+    monitor_path = str(PROJECT_ROOT / 'src' / 'monitoring' / 'monitor.py')
 
     try:
         with open(monitor_path, 'r') as f:

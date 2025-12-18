@@ -26,7 +26,7 @@ Three critical log warning fixes have been comprehensively validated across loca
 ## Fix Details
 
 ### Fix 1: Timeframe Synchronization (MEDIUM Priority)
-**File:** `/Users/ffv_macmini/Desktop/Virtuoso_ccxt/src/utils/data_validation.py`
+**File:** `src/utils/data_validation.py`
 
 **Problem:** 944 false-positive warnings per 2 hours due to 4h timeframe data being validated with strict 60s tolerance
 
@@ -42,7 +42,7 @@ Three critical log warning fixes have been comprehensively validated across loca
 ---
 
 ### Fix 2: Port 8004 Connection Error Handling (LOW Priority)
-**File:** `/Users/ffv_macmini/Desktop/Virtuoso_ccxt/src/dashboard/dashboard_proxy.py`
+**File:** `src/dashboard/dashboard_proxy.py`
 
 **Problem:** ERROR logs flooding when port 8004 integration service unavailable (expected condition)
 
@@ -56,7 +56,7 @@ Three critical log warning fixes have been comprehensively validated across loca
 ---
 
 ### Fix 3: Circular Import (LOW Priority)
-**File:** `/Users/ffv_macmini/Desktop/Virtuoso_ccxt/src/core/cache/shared_cache_bridge.py`
+**File:** `src/core/cache/shared_cache_bridge.py`
 
 **Problem:** Circular import warnings at module initialization
 
@@ -172,8 +172,8 @@ Critical/Fatal errors:          0
 
 ## Contacts
 
-**Validation Report:** `/Users/ffv_macmini/Desktop/Virtuoso_ccxt/LOG_WARNING_FIXES_VALIDATION_REPORT.md`
-**Test Script:** `/Users/ffv_macmini/Desktop/Virtuoso_ccxt/test_log_warning_fixes.py`
+**Validation Report:** `LOG_WARNING_FIXES_VALIDATION_REPORT.md`
+**Test Script:** `test_log_warning_fixes.py`
 **Validated By:** Claude (Senior QA Automation Agent)
 **Date:** October 28, 2025
 

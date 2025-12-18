@@ -4,7 +4,7 @@ import asyncio
 import aiohttp
 import logging
 from typing import Dict, List, Any, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 
 class DashboardIntegrationService:
@@ -54,13 +54,13 @@ class DashboardIntegrationService:
             # For now, return empty symbols until we connect to the actual data source
             return {
                 "symbols": [],
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
         except Exception as e:
             self.logger.error(f"Error getting symbols data: {e}")
             return {
                 "symbols": [],
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
     
     async def _build_confluence_signals(self, signal_data: Dict[str, Any]) -> Dict[str, Any]:

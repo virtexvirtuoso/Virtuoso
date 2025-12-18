@@ -22,7 +22,7 @@ import time
 import logging
 import json
 import hashlib
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from collections import defaultdict, deque
 import threading
 from functools import wraps
@@ -365,7 +365,7 @@ class APIGateway:
         self.backends = {
             'primary': 'http://localhost:8003',
             'monitoring': 'http://localhost:8001',
-            'fallback': 'http://localhost:8004'
+            'fallback': 'http://localhost:8002'
         }
         
         # Route configuration
@@ -561,7 +561,7 @@ class APIGateway:
         """Comprehensive gateway health check"""
         health = {
             'status': 'healthy',
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'components': {}
         }
         

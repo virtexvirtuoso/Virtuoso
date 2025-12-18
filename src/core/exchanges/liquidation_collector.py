@@ -2,7 +2,7 @@ import asyncio
 import time
 import logging
 from typing import Dict, List, Optional, Callable
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass
 from collections import defaultdict, deque
 import json
@@ -330,7 +330,7 @@ class LiquidationDataCollector:
             try:
                 self.collection_stats['total_liquidations'] += 1
                 self.collection_stats['liquidations_per_exchange'][raw_liquidation.exchange] += 1
-                self.collection_stats['last_update'] = datetime.utcnow()
+                self.collection_stats['last_update'] = datetime.now(timezone.utc)
             except Exception as e:
                 self.logger.error(f"Error updating liquidation statistics: {e}")
             
@@ -381,9 +381,16 @@ class LiquidationDataCollector:
             bid_ask_spread_pct=0.0,  # Would need order book data
             order_book_imbalance=0.0,
             market_depth_impact=0.0,
+            volatility_spike=1.0,  # Baseline volatility (no spike data from exchange feed)
             duration_seconds=0,  # Instantaneous for real liquidations
             suspected_triggers=['exchange_liquidation'],
-            market_conditions={'data_source': 'exchange_feed'}
+            market_conditions={'data_source': 'exchange_feed'},
+            # Optional fields - not available from raw exchange liquidation feed
+            rsi=None,
+            volume_weighted_price=None,
+            funding_rate=None,
+            open_interest_change=None,
+            recovery_time_seconds=None
         )
     
     async def _calculate_liquidation_severity(self, raw_liquidation: RawLiquidationData) -> LiquidationSeverity:
@@ -404,7 +411,7 @@ class LiquidationDataCollector:
     def get_recent_liquidations(self, symbol: str, exchange: str = None, minutes: int = 60) -> List[LiquidationEvent]:
         """Get recent liquidations for a symbol from memory cache."""
         
-        cutoff_time = datetime.utcnow() - timedelta(minutes=minutes)
+        cutoff_time = datetime.now(timezone.utc) - timedelta(minutes=minutes)
         recent_events = []
         
         if exchange:

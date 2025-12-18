@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, field
 from typing import Dict, List, Any, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 
 @dataclass
@@ -47,6 +47,6 @@ class BaseAnalyzer:
         return {
             'status': 'error',
             'message': error_message,
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'data': None
         } 

@@ -176,7 +176,7 @@ elif 'buy_threshold' in results:
 
 #### 3.1 config.yaml Verification
 
-**Location:** `/Users/ffv_macmini/desktop/virtuoso_ccxt/config/config.yaml`
+**Location:** `./config/config.yaml`
 
 **Threshold Configuration:**
 ```yaml

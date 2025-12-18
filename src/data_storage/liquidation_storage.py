@@ -1,10 +1,10 @@
 import asyncio
 import logging
 from typing import List, Optional, Dict, Any
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from sqlalchemy import (
     Column, Integer, String, Float, DateTime, Boolean, Text, Index,
-    BigInteger, Enum, ForeignKey, create_engine
+    BigInteger, Enum, ForeignKey, create_engine, select
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
@@ -46,7 +46,15 @@ class LiquidationEventDB(Base):
     bid_ask_spread_pct = Column(Float, default=0.0)
     order_book_imbalance = Column(Float, default=0.0)
     market_depth_impact = Column(Float, default=0.0)
-    
+    volatility_spike = Column(Float, default=1.0)
+
+    # Optional technical indicators
+    rsi = Column(Float, nullable=True)
+    volume_weighted_price = Column(Float, nullable=True)
+    funding_rate = Column(Float, nullable=True)
+    open_interest_change = Column(Float, nullable=True)
+    recovery_time_seconds = Column(Integer, nullable=True)
+
     # Duration and triggers
     duration_seconds = Column(Integer, default=0)
     suspected_triggers = Column(JSONB, default=list)  # PostgreSQL JSONB for better performance
@@ -137,8 +145,11 @@ class LiquidationStorage:
         """Store a single liquidation event."""
         try:
             async with self.AsyncSessionLocal() as session:
-                # Check if event already exists
-                existing = await session.get(LiquidationEventDB, liquidation_event.event_id)
+                # Check if event already exists (query by event_id, not primary key UUID)
+                result = await session.execute(
+                    select(LiquidationEventDB).where(LiquidationEventDB.event_id == liquidation_event.event_id)
+                )
+                existing = result.scalar_one_or_none()
                 if existing:
                     self.logger.debug(f"Liquidation event {liquidation_event.event_id} already exists")
                     return False
@@ -159,9 +170,16 @@ class LiquidationStorage:
                     bid_ask_spread_pct=liquidation_event.bid_ask_spread_pct,
                     order_book_imbalance=liquidation_event.order_book_imbalance,
                     market_depth_impact=liquidation_event.market_depth_impact,
+                    volatility_spike=liquidation_event.volatility_spike,
                     duration_seconds=liquidation_event.duration_seconds,
                     suspected_triggers=liquidation_event.suspected_triggers,
-                    market_conditions=liquidation_event.market_conditions
+                    market_conditions=liquidation_event.market_conditions,
+                    # Optional fields
+                    rsi=liquidation_event.rsi,
+                    volume_weighted_price=liquidation_event.volume_weighted_price,
+                    funding_rate=liquidation_event.funding_rate,
+                    open_interest_change=liquidation_event.open_interest_change,
+                    recovery_time_seconds=liquidation_event.recovery_time_seconds
                 )
                 
                 session.add(db_event)
@@ -203,9 +221,16 @@ class LiquidationStorage:
                         bid_ask_spread_pct=event.bid_ask_spread_pct,
                         order_book_imbalance=event.order_book_imbalance,
                         market_depth_impact=event.market_depth_impact,
+                        volatility_spike=event.volatility_spike,
                         duration_seconds=event.duration_seconds,
                         suspected_triggers=event.suspected_triggers,
-                        market_conditions=event.market_conditions
+                        market_conditions=event.market_conditions,
+                        # Optional fields
+                        rsi=event.rsi,
+                        volume_weighted_price=event.volume_weighted_price,
+                        funding_rate=event.funding_rate,
+                        open_interest_change=event.open_interest_change,
+                        recovery_time_seconds=event.recovery_time_seconds
                     )
                     
                     session.add(db_event)
@@ -274,9 +299,16 @@ class LiquidationStorage:
                         bid_ask_spread_pct=db_event.bid_ask_spread_pct,
                         order_book_imbalance=db_event.order_book_imbalance,
                         market_depth_impact=db_event.market_depth_impact,
+                        volatility_spike=db_event.volatility_spike,
                         duration_seconds=db_event.duration_seconds,
                         suspected_triggers=db_event.suspected_triggers,
-                        market_conditions=db_event.market_conditions
+                        market_conditions=db_event.market_conditions,
+                        # Optional fields
+                        rsi=db_event.rsi,
+                        volume_weighted_price=db_event.volume_weighted_price,
+                        funding_rate=db_event.funding_rate,
+                        open_interest_change=db_event.open_interest_change,
+                        recovery_time_seconds=db_event.recovery_time_seconds
                     )
                     events.append(event)
                 
@@ -295,7 +327,7 @@ class LiquidationStorage:
         """Get liquidation statistics for the specified time period."""
         
         try:
-            start_time = datetime.utcnow() - timedelta(hours=hours)
+            start_time = datetime.now(timezone.utc) - timedelta(hours=hours)
             
             async with self.AsyncSessionLocal() as session:
                 query = session.query(LiquidationEventDB).filter(
@@ -354,7 +386,7 @@ class LiquidationStorage:
         """Clean up old liquidation events to manage database size."""
         
         try:
-            cutoff_date = datetime.utcnow() - timedelta(days=days_to_keep)
+            cutoff_date = datetime.now(timezone.utc) - timedelta(days=days_to_keep)
             
             async with self.AsyncSessionLocal() as session:
                 result = await session.execute(

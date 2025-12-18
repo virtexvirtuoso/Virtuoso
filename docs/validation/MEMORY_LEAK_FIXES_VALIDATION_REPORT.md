@@ -430,7 +430,7 @@ while self.running:  # Will exit on next iteration
 
 ## Deployment Script Validation
 
-**Script Location:** `/Users/ffv_macmini/Desktop/Virtuoso_ccxt/scripts/deploy_memory_leak_fixes.sh`
+**Script Location:** `scripts/deploy_memory_leak_fixes.sh`
 
 ### Script Analysis
 

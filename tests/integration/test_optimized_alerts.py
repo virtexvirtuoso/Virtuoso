@@ -4,7 +4,8 @@ Validates Week 1 Quick Wins implementation.
 """
 
 import sys
-sys.path.insert(0, '/Users/ffv_macmini/Desktop/Virtuoso_ccxt')
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from src.monitoring.alert_formatter import OptimizedAlertFormatter
 

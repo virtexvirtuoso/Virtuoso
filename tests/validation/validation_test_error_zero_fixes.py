@@ -10,11 +10,13 @@ import time
 import json
 import sys
 import os
+from pathlib import Path
 from typing import Dict, List, Any, Optional
 from unittest.mock import Mock, AsyncMock, patch
 
 # Add src to Python path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
+project_root = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(project_root / 'src'))
 
 from core.exchanges.ccxt_exchange import CCXTExchange
 from core.market.top_symbols import TopSymbolsManager
@@ -497,7 +499,8 @@ async def main():
         print(f"  [{status}] {test_name}: {result['details']}")
 
     # Save report to file
-    with open('/Users/ffv_macmini/Desktop/Virtuoso_ccxt/validation_report.json', 'w') as f:
+    project_root = Path(__file__).parent.parent.parent
+    with open(project_root / 'validation_report.json', 'w') as f:
         json.dump(report, f, indent=2, default=str)
 
     logger.info(f"Validation complete. Report saved to validation_report.json")

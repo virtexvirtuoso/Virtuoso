@@ -1,0 +1,23 @@
+timestamp: '2025-11-16T17:23:54.196720'
+test_window:
+  start: '2025-11-01 18:00:00'
+  end: '2025-11-14 15:00:00'
+  candles: 310
+metrics:
+  composite_score: -4.1482267075584085
+  total_return: -0.019223629245696094
+  sharpe_ratio: -8.943788313054025
+  sortino_ratio: -2.2747338748170214
+  calmar_ratio: -0.899217655922981
+  max_drawdown: -0.021378171479478403
+  win_rate: 0.16666666666666666
+  profit_factor: 0.10208733966450644
+  num_trades: 6
+  consistency_score: 0.0
+comparison:
+  v4_score: -1.32
+  alternative_b_score: -1.44
+  v6_score: -4.1482267075584085
+  v6_vs_v4_pct: 214.25959905745518
+  v6_vs_altb_pct: 188.0712991360006
+verdict: DEPLOY_V4

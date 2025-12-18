@@ -5,7 +5,7 @@ import logging
 from enum import Enum
 from dataclasses import dataclass
 from typing import Optional, Dict, Any, List
-from datetime import datetime
+from datetime import datetime, timezone
 
 from src.core.state_manager import StateManager
 from src.core.models.component import ComponentState
@@ -36,7 +36,7 @@ class InitializationStateMachine:
         self._state = InitializationState.UNINITIALIZED
         self._status = InitializationStatus(
             state=self._state,
-            timestamp=datetime.utcnow()
+            timestamp=datetime.now(timezone.utc)
         )
         self._state_manager = StateManager()
     
@@ -59,7 +59,7 @@ class InitializationStateMachine:
             self._state = InitializationState.INITIALIZING
             self._status = InitializationStatus(
                 state=self._state,
-                timestamp=datetime.utcnow()
+                timestamp=datetime.now(timezone.utc)
             )
             
             # Perform initialization steps
@@ -68,14 +68,14 @@ class InitializationStateMachine:
             self._state = InitializationState.INITIALIZED
             self._status = InitializationStatus(
                 state=self._state,
-                timestamp=datetime.utcnow()
+                timestamp=datetime.now(timezone.utc)
             )
             
         except Exception as e:
             self._state = InitializationState.FAILED
             self._status = InitializationStatus(
                 state=self._state,
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(timezone.utc),
                 error=e,
                 details={"stack_trace": str(e)}
             )

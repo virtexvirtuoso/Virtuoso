@@ -9,7 +9,7 @@ import aiohttp
 import asyncio
 import logging
 from typing import Dict, Any, List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 import time
 
 logger = logging.getLogger(__name__)
@@ -20,7 +20,7 @@ class DashboardIntegrationProxyPhase2:
     Achieves <1ms latency for cached responses.
     """
     
-    def __init__(self, main_service_url: str = "http://localhost:8004"):
+    def __init__(self, main_service_url: str = "http://localhost:8002"):
         self.main_service_url = main_service_url
         self._session: Optional[aiohttp.ClientSession] = None
         
@@ -120,7 +120,7 @@ class DashboardIntegrationProxyPhase2:
         # Fallback response
         return {
             "status": "no_integration",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "signals": {"total": 0, "strong": 0, "medium": 0, "weak": 0},
             "alerts": {"total": 0, "critical": 0, "warning": 0},
             "alpha_opportunities": {"total": 0, "high_confidence": 0, "medium_confidence": 0},
@@ -209,7 +209,7 @@ class DashboardIntegrationProxyPhase2:
             
         return {
             "symbols": [],
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
         
     async def get_performance_metrics(self) -> Dict[str, Any]:
@@ -235,7 +235,7 @@ class DashboardIntegrationProxyPhase2:
             "active_connections": 0,
             "uptime": "0h 0m",
             "cache_stats": cache_stats,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
         
     async def get_cache_performance(self) -> Dict[str, Any]:
@@ -250,7 +250,7 @@ class DashboardIntegrationProxyPhase2:
             "stats": stats,
             "health": health,
             "cache_type": "Phase 2 - Memcached",
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
         
     async def close(self):

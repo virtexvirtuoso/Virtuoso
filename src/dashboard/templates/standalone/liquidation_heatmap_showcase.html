@@ -1,0 +1,1468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Liquidation Heatmap Showcase - Charting Libraries Comparison</title>
+    <meta name="description" content="Compare liquidation heatmap implementations across different charting libraries">
+    <meta name="theme-color" content="#0a0a0a">
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- Vue 3 -->
+    <script src="/static/js/vue3.global.prod.js"></script>
+
+    <!-- Charting Libraries -->
+    <!-- Highcharts -->
+    <script src="https://unpkg.com/highcharts@11.2.0/highcharts.js"></script>
+    <script src="https://unpkg.com/highcharts@11.2.0/modules/heatmap.js"></script>
+
+    <!-- D3.js -->
+    <script src="https://unpkg.com/d3@7.8.5/dist/d3.min.js"></script>
+
+    <!-- Apache ECharts -->
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+
+    <!-- ApexCharts -->
+    <script src="https://cdn.jsdelivr.net/npm/apexcharts@3.45.1/dist/apexcharts.min.js"></script>
+
+    <!-- Plotly.js -->
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+
+    <!-- Lucide Icons -->
+    <script src="/static/js/lucide.min.js"></script>
+
+    <style>
+        :root {
+            --neon-amber: #fbbf24;
+            --neon-cyan: #06B6D4;
+            --neon-red: #ff0066;
+            --neon-green: #22c55e;
+
+            --bg-primary: #0a0a0a;
+            --bg-secondary: #111111;
+            --bg-panel: #161616;
+            --bg-card: #1a1a1a;
+
+            --border-light: #222222;
+            --border-glow: rgba(251, 191, 36, 0.3);
+
+            --text-primary: #f5f5f5;
+            --text-secondary: #a8a8a8;
+            --text-muted: #7a7a7a;
+            --text-accent: #fbbf24;
+
+            --accent-positive: #00d68f;
+            --accent-negative: #ff5252;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1800px;
+            margin: 0 auto;
+        }
+
+        /* Header */
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 24px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid var(--border-light);
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            text-decoration: none;
+        }
+
+        .logo-icon {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, var(--neon-amber) 0%, #f59e0b 100%);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .logo-text {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .logo-text span {
+            color: var(--neon-amber);
+        }
+
+        .page-title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 1.25rem;
+            color: var(--text-secondary);
+        }
+
+        .badge {
+            background: linear-gradient(135deg, #9333ea 0%, #7c3aed 100%);
+            color: white;
+            font-size: 0.65rem;
+            font-weight: 700;
+            padding: 4px 10px;
+            border-radius: 20px;
+            letter-spacing: 0.5px;
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .back-link {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--text-secondary);
+            text-decoration: none;
+            padding: 8px 16px;
+            border: 1px solid var(--border-light);
+            border-radius: 8px;
+            transition: all 0.2s;
+        }
+
+        .back-link:hover {
+            color: var(--neon-amber);
+            border-color: var(--neon-amber);
+        }
+
+        /* Controls */
+        .controls-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 20px;
+            padding: 16px 20px;
+            background: var(--bg-panel);
+            border: 1px solid var(--border-light);
+            border-radius: 12px;
+            margin-bottom: 24px;
+        }
+
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .control-label {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+        }
+
+        .symbol-selector {
+            background: var(--bg-card);
+            border: 1px solid var(--border-light);
+            border-radius: 8px;
+            padding: 8px 16px;
+            color: var(--text-primary);
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .timeframe-btns {
+            display: flex;
+            gap: 4px;
+        }
+
+        .tf-btn {
+            background: transparent;
+            border: 1px solid var(--border-light);
+            border-radius: 6px;
+            padding: 8px 16px;
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .tf-btn:hover {
+            border-color: var(--neon-amber);
+            color: var(--neon-amber);
+        }
+
+        .tf-btn.active {
+            background: var(--neon-amber);
+            border-color: var(--neon-amber);
+            color: #000;
+            font-weight: 600;
+        }
+
+        .stats-display {
+            display: flex;
+            gap: 24px;
+        }
+
+        .stat-item {
+            text-align: right;
+        }
+
+        .stat-label {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+            margin-bottom: 2px;
+        }
+
+        .stat-value {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 1.1rem;
+            font-weight: 600;
+        }
+
+        .stat-value.long { color: var(--neon-green); }
+        .stat-value.short { color: var(--accent-negative); }
+        .stat-value.price { color: var(--neon-cyan); }
+
+        /* Chart Grid */
+        .chart-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+            margin-bottom: 24px;
+        }
+
+        @media (max-width: 1600px) {
+            .chart-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (max-width: 1000px) {
+            .chart-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .chart-panel {
+            background: var(--bg-panel);
+            border: 1px solid var(--border-light);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        .chart-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border-light);
+        }
+
+        .chart-title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .chart-title h3 {
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .lib-badge {
+            font-size: 0.65rem;
+            font-weight: 600;
+            padding: 4px 8px;
+            border-radius: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .lib-badge.highcharts { background: #058dc7; color: white; }
+        .lib-badge.d3 { background: #f9a03c; color: #000; }
+        .lib-badge.chartjs { background: #ff6384; color: white; }
+        .lib-badge.canvas { background: #22c55e; color: white; }
+
+        .chart-meta {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .render-time {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        .chart-container {
+            height: 400px;
+            padding: 10px;
+            position: relative;
+        }
+
+        .chart-container canvas,
+        .chart-container svg {
+            width: 100% !important;
+            height: 100% !important;
+        }
+
+        /* Loading & Error States */
+        .loading-state, .error-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: var(--text-muted);
+            gap: 12px;
+        }
+
+        .loading-state i {
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        .error-state {
+            color: var(--accent-negative);
+        }
+
+        /* Legend */
+        .legend-bar {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 40px;
+            padding: 16px;
+            background: var(--bg-panel);
+            border: 1px solid var(--border-light);
+            border-radius: 12px;
+            margin-bottom: 24px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            border-radius: 4px;
+        }
+
+        .legend-color.long { background: linear-gradient(135deg, #166534, #22c55e); }
+        .legend-color.short { background: linear-gradient(135deg, #991b1b, #ef4444); }
+
+        .legend-gradient {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .gradient-bar {
+            width: 150px;
+            height: 12px;
+            border-radius: 6px;
+            background: linear-gradient(90deg,
+                rgba(251, 191, 36, 0.1) 0%,
+                rgba(251, 191, 36, 0.5) 50%,
+                rgba(251, 191, 36, 1) 100%
+            );
+        }
+
+        .gradient-label {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+        }
+
+        /* Info Cards */
+        .info-section {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+        }
+
+        @media (max-width: 1200px) {
+            .info-section {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        .info-card {
+            background: var(--bg-panel);
+            border: 1px solid var(--border-light);
+            border-radius: 12px;
+            padding: 20px;
+        }
+
+        .info-card h4 {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.9rem;
+            color: var(--neon-amber);
+            margin-bottom: 12px;
+        }
+
+        .info-card p {
+            font-size: 0.85rem;
+            line-height: 1.6;
+            color: var(--text-secondary);
+        }
+
+        .info-card .pros-cons {
+            margin-top: 12px;
+        }
+
+        .info-card .pros, .info-card .cons {
+            font-size: 0.8rem;
+            margin-top: 8px;
+        }
+
+        .info-card .pros span { color: var(--neon-green); }
+        .info-card .cons span { color: var(--accent-negative); }
+    </style>
+</head>
+<body>
+    <div id="app" class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-left">
+                <a href="/" class="logo">
+                    <div class="logo-icon">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#0a0a0a" stroke-width="2.5">
+                            <path d="m3 17 6-6 4 4 8-8"/>
+                            <path d="m17 7 4 0 0 4"/>
+                        </svg>
+                    </div>
+                    <span class="logo-text">Virtuoso<span>Trading</span></span>
+                </a>
+                <div class="page-title">
+                    <i data-lucide="layers"></i>
+                    Heatmap Library Showcase
+                    <span class="badge">COMPARISON</span>
+                </div>
+            </div>
+            <div class="header-right">
+                <a href="/liquidation-heatmap" class="back-link">
+                    <i data-lucide="arrow-left"></i>
+                    Back to Heatmap
+                </a>
+            </div>
+        </header>
+
+        <!-- Controls -->
+        <div class="controls-bar">
+            <div class="control-group">
+                <span class="control-label">Symbol</span>
+                <select v-model="selectedSymbol" @change="loadAllHeatmaps()" class="symbol-selector">
+                    <option v-for="sym in symbols" :key="sym" :value="sym">
+                        {{ sym.replace('USDT', '/USDT') }}
+                    </option>
+                </select>
+            </div>
+
+            <div class="control-group">
+                <span class="control-label">Timeframe</span>
+                <div class="timeframe-btns">
+                    <button
+                        v-for="tf in timeframes"
+                        :key="tf.value"
+                        @click="selectedTimeframe = tf.value; loadAllHeatmaps()"
+                        :class="{ active: selectedTimeframe === tf.value }"
+                        class="tf-btn">
+                        {{ tf.label }}
+                    </button>
+                </div>
+            </div>
+
+            <div class="stats-display">
+                <div class="stat-item">
+                    <div class="stat-label">Long Liquidations</div>
+                    <div class="stat-value long">{{ formatUSD(apiData?.long_liquidations_usd) }}</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Short Liquidations</div>
+                    <div class="stat-value short">{{ formatUSD(apiData?.short_liquidations_usd) }}</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Current Price</div>
+                    <div class="stat-value price">{{ formatPrice(apiData?.current_price) }}</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Chart Grid -->
+        <div class="chart-grid">
+            <!-- Highcharts Panel -->
+            <div class="chart-panel">
+                <div class="chart-header">
+                    <div class="chart-title">
+                        <h3>Highcharts Heatmap</h3>
+                        <span class="lib-badge highcharts">Highcharts</span>
+                    </div>
+                    <div class="chart-meta">
+                        <span class="render-time">{{ renderTimes.highcharts }}ms</span>
+                    </div>
+                </div>
+                <div class="chart-container">
+                    <div v-if="loading" class="loading-state">
+                        <i data-lucide="loader-2" style="width: 32px; height: 32px;"></i>
+                        Loading...
+                    </div>
+                    <div v-else id="highchartsHeatmap" style="width: 100%; height: 100%;"></div>
+                </div>
+            </div>
+
+            <!-- D3.js Panel -->
+            <div class="chart-panel">
+                <div class="chart-header">
+                    <div class="chart-title">
+                        <h3>D3.js Heatmap</h3>
+                        <span class="lib-badge d3">D3.js</span>
+                    </div>
+                    <div class="chart-meta">
+                        <span class="render-time">{{ renderTimes.d3 }}ms</span>
+                    </div>
+                </div>
+                <div class="chart-container">
+                    <div v-if="loading" class="loading-state">
+                        <i data-lucide="loader-2" style="width: 32px; height: 32px;"></i>
+                        Loading...
+                    </div>
+                    <div v-else id="d3Heatmap" style="width: 100%; height: 100%;"></div>
+                </div>
+            </div>
+
+            <!-- ECharts Panel -->
+            <div class="chart-panel">
+                <div class="chart-header">
+                    <div class="chart-title">
+                        <h3>Apache ECharts</h3>
+                        <span class="lib-badge echarts" style="background: #e43961;">ECharts</span>
+                    </div>
+                    <div class="chart-meta">
+                        <span class="render-time">{{ renderTimes.echarts }}ms</span>
+                    </div>
+                </div>
+                <div class="chart-container">
+                    <div v-if="loading" class="loading-state">
+                        <i data-lucide="loader-2" style="width: 32px; height: 32px;"></i>
+                        Loading...
+                    </div>
+                    <div v-else id="echartsHeatmap" style="width: 100%; height: 100%;"></div>
+                </div>
+            </div>
+
+            <!-- Canvas Panel (OPTIMIZED) -->
+            <div class="chart-panel">
+                <div class="chart-header">
+                    <div class="chart-title">
+                        <h3>Native Canvas</h3>
+                        <span class="lib-badge canvas">OPTIMIZED</span>
+                    </div>
+                    <div class="chart-meta">
+                        <span class="render-time">{{ renderTimes.canvas }}ms</span>
+                    </div>
+                </div>
+                <div class="chart-container">
+                    <div v-if="loading" class="loading-state">
+                        <i data-lucide="loader-2" style="width: 32px; height: 32px;"></i>
+                        Loading...
+                    </div>
+                    <canvas v-else id="canvasHeatmap"></canvas>
+                </div>
+            </div>
+
+            <!-- ApexCharts Panel -->
+            <div class="chart-panel">
+                <div class="chart-header">
+                    <div class="chart-title">
+                        <h3>ApexCharts</h3>
+                        <span class="lib-badge" style="background: #008ffb;">ApexCharts</span>
+                    </div>
+                    <div class="chart-meta">
+                        <span class="render-time">{{ renderTimes.apex }}ms</span>
+                    </div>
+                </div>
+                <div class="chart-container">
+                    <div v-if="loading" class="loading-state">
+                        <i data-lucide="loader-2" style="width: 32px; height: 32px;"></i>
+                        Loading...
+                    </div>
+                    <div v-else id="apexHeatmap" style="width: 100%; height: 100%;"></div>
+                </div>
+            </div>
+
+            <!-- Plotly.js Panel -->
+            <div class="chart-panel">
+                <div class="chart-header">
+                    <div class="chart-title">
+                        <h3>Plotly.js</h3>
+                        <span class="lib-badge" style="background: #3f4f75;">Plotly</span>
+                    </div>
+                    <div class="chart-meta">
+                        <span class="render-time">{{ renderTimes.plotly }}ms</span>
+                    </div>
+                </div>
+                <div class="chart-container">
+                    <div v-if="loading" class="loading-state">
+                        <i data-lucide="loader-2" style="width: 32px; height: 32px;"></i>
+                        Loading...
+                    </div>
+                    <div v-else id="plotlyHeatmap" style="width: 100%; height: 100%;"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Legend -->
+        <div class="legend-bar">
+            <div class="legend-item">
+                <div class="legend-color long"></div>
+                <span>Long Liquidation Zones (price drops)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color short"></div>
+                <span>Short Liquidation Zones (price rises)</span>
+            </div>
+            <div class="legend-gradient">
+                <span class="gradient-label">Low</span>
+                <div class="gradient-bar"></div>
+                <span class="gradient-label">High</span>
+            </div>
+        </div>
+
+        <!-- Info Cards -->
+        <div class="info-section" style="grid-template-columns: repeat(6, 1fr);">
+            <div class="info-card">
+                <h4><i data-lucide="bar-chart-3"></i> Highcharts</h4>
+                <p>Commercial-grade charting with built-in heatmap module.</p>
+                <div class="pros-cons">
+                    <div class="pros"><span>+</span> Rich features</div>
+                    <div class="cons"><span>-</span> License required</div>
+                </div>
+            </div>
+            <div class="info-card">
+                <h4><i data-lucide="git-branch"></i> D3.js</h4>
+                <p>Low-level visualization. Maximum flexibility.</p>
+                <div class="pros-cons">
+                    <div class="pros"><span>+</span> Full control</div>
+                    <div class="cons"><span>-</span> Steep curve</div>
+                </div>
+            </div>
+            <div class="info-card">
+                <h4><i data-lucide="pie-chart"></i> ECharts</h4>
+                <p>Apache's powerful visualization library.</p>
+                <div class="pros-cons">
+                    <div class="pros"><span>+</span> Full-featured</div>
+                    <div class="cons"><span>-</span> Large bundle</div>
+                </div>
+            </div>
+            <div class="info-card">
+                <h4><i data-lucide="zap"></i> Canvas <span style="background: var(--neon-green); color: #000; font-size: 0.6rem; padding: 2px 6px; border-radius: 4px; margin-left: 6px;">OPTIMIZED</span></h4>
+                <p>ImageData pixel manipulation. Zero dependencies.</p>
+                <div class="pros-cons">
+                    <div class="pros"><span>+</span> Sub-ms render</div>
+                    <div class="cons"><span>-</span> Manual work</div>
+                </div>
+            </div>
+            <div class="info-card">
+                <h4><i data-lucide="activity"></i> ApexCharts</h4>
+                <p>Modern charts for dashboards. Great animations.</p>
+                <div class="pros-cons">
+                    <div class="pros"><span>+</span> Easy to use</div>
+                    <div class="cons"><span>-</span> Less flexible</div>
+                </div>
+            </div>
+            <div class="info-card">
+                <h4><i data-lucide="flask-conical"></i> Plotly</h4>
+                <p>Scientific-grade D3-based charts.</p>
+                <div class="pros-cons">
+                    <div class="pros"><span>+</span> Great tooltips</div>
+                    <div class="cons"><span>-</span> ~3MB bundle</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp } = Vue;
+
+        createApp({
+            data() {
+                return {
+                    symbols: ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'BNBUSDT'],
+                    selectedSymbol: 'BTCUSDT',
+                    timeframes: [
+                        { label: '1H', value: '1h' },
+                        { label: '4H', value: '4h' },
+                        { label: '12H', value: '12h' },
+                        { label: '24H', value: '24h' }
+                    ],
+                    selectedTimeframe: '4h',
+                    loading: true,
+                    apiData: null,
+                    renderTimes: {
+                        highcharts: 0,
+                        d3: 0,
+                        echarts: 0,
+                        canvas: 0,
+                        apex: 0,
+                        plotly: 0
+                    },
+                    chartInstances: {
+                        highcharts: null,
+                        echarts: null,
+                        apex: null
+                    }
+                };
+            },
+            mounted() {
+                lucide.createIcons();
+                this.loadAllHeatmaps();
+            },
+            methods: {
+                formatUSD(value) {
+                    if (!value) return '$0';
+                    if (value >= 1e9) return '$' + (value / 1e9).toFixed(1) + 'B';
+                    if (value >= 1e6) return '$' + (value / 1e6).toFixed(1) + 'M';
+                    if (value >= 1e3) return '$' + (value / 1e3).toFixed(1) + 'K';
+                    return '$' + value.toFixed(0);
+                },
+                formatPrice(value) {
+                    if (!value) return '$0';
+                    return '$' + value.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+                },
+                async loadAllHeatmaps() {
+                    this.loading = true;
+
+                    try {
+                        const url = `/api/liquidation/heatmap?symbol=${this.selectedSymbol}&timeframe=${this.selectedTimeframe}`;
+                        const response = await fetch(url);
+
+                        if (!response.ok) throw new Error(`API error: ${response.status}`);
+
+                        this.apiData = await response.json();
+                        this.loading = false;
+
+                        // Wait for DOM to update, then render all charts
+                        this.$nextTick(() => {
+                            this.$nextTick(() => {
+                                this.renderHighcharts();
+                                this.renderD3();
+                                this.renderECharts();
+                                this.renderCanvas();
+                                this.renderApexCharts();
+                                this.renderPlotly();
+                                lucide.createIcons();
+                            });
+                        });
+                    } catch (error) {
+                        console.error('Error loading data:', error);
+                        this.loading = false;
+                    }
+                },
+
+                // ==================== HIGHCHARTS ====================
+                renderHighcharts() {
+                    const startTime = performance.now();
+                    const { heatmap_data, price_levels, time_labels, current_price, current_price_index } = this.apiData;
+
+                    const priceLabels = price_levels.map(p => {
+                        if (p >= 1000) return '$' + (p / 1000).toFixed(1) + 'K';
+                        return '$' + p.toFixed(2);
+                    });
+
+                    const combinedData = heatmap_data.map(d => ({
+                        x: d.x,
+                        y: d.y,
+                        value: d.value,
+                        color: d.type === 'long'
+                            ? `rgba(34, 197, 94, ${Math.min(1, d.value + 0.15)})`
+                            : `rgba(239, 68, 68, ${Math.min(1, d.value + 0.15)})`
+                    }));
+
+                    if (this.chartInstances.highcharts) {
+                        this.chartInstances.highcharts.destroy();
+                    }
+
+                    this.chartInstances.highcharts = Highcharts.chart('highchartsHeatmap', {
+                        chart: {
+                            type: 'heatmap',
+                            backgroundColor: 'transparent',
+                            style: { fontFamily: 'Inter, sans-serif' }
+                        },
+                        title: { text: null },
+                        credits: { enabled: false },
+                        xAxis: {
+                            categories: time_labels,
+                            labels: { style: { color: '#7a7a7a', fontSize: '10px' } },
+                            lineColor: '#333',
+                            tickColor: '#333'
+                        },
+                        yAxis: {
+                            categories: priceLabels,
+                            title: { text: null },
+                            labels: { style: { color: '#7a7a7a', fontSize: '10px' } },
+                            gridLineColor: '#222',
+                            plotLines: [{
+                                value: current_price_index,
+                                color: '#06B6D4',
+                                width: 2,
+                                dashStyle: 'Dash',
+                                zIndex: 5,
+                                label: {
+                                    text: 'Current',
+                                    style: { color: '#06B6D4', fontSize: '10px' }
+                                }
+                            }]
+                        },
+                        colorAxis: { visible: false },
+                        legend: { enabled: false },
+                        tooltip: {
+                            backgroundColor: '#1a1a1a',
+                            borderColor: '#333',
+                            style: { color: '#f5f5f5' },
+                            formatter: function() {
+                                const d = heatmap_data.find(item => item.x === this.point.x && item.y === this.point.y);
+                                return `<b>${d?.type?.toUpperCase()} Zone</b><br/>
+                                        Price: $${d?.price?.toLocaleString()}<br/>
+                                        Intensity: ${(d?.value * 100).toFixed(1)}%`;
+                            }
+                        },
+                        series: [{
+                            name: 'Liquidations',
+                            data: combinedData,
+                            borderWidth: 0,
+                            colsize: 1,
+                            rowsize: 1
+                        }]
+                    });
+
+                    this.renderTimes.highcharts = Math.round(performance.now() - startTime);
+                },
+
+                // ==================== D3.js ====================
+                renderD3() {
+                    const startTime = performance.now();
+                    const { heatmap_data, price_levels, time_labels, current_price_index } = this.apiData;
+
+                    // Clear previous
+                    d3.select('#d3Heatmap').selectAll('*').remove();
+
+                    const container = document.getElementById('d3Heatmap');
+                    const width = container.clientWidth;
+                    const height = container.clientHeight;
+                    const margin = { top: 20, right: 30, bottom: 40, left: 60 };
+                    const innerWidth = width - margin.left - margin.right;
+                    const innerHeight = height - margin.top - margin.bottom;
+
+                    const svg = d3.select('#d3Heatmap')
+                        .append('svg')
+                        .attr('width', width)
+                        .attr('height', height);
+
+                    const g = svg.append('g')
+                        .attr('transform', `translate(${margin.left},${margin.top})`);
+
+                    // Scales
+                    const xScale = d3.scaleBand()
+                        .domain(time_labels)
+                        .range([0, innerWidth])
+                        .padding(0.02);
+
+                    const yScale = d3.scaleBand()
+                        .domain(price_levels.map((_, i) => i))
+                        .range([innerHeight, 0])
+                        .padding(0.02);
+
+                    // Draw heatmap cells
+                    g.selectAll('rect')
+                        .data(heatmap_data)
+                        .enter()
+                        .append('rect')
+                        .attr('x', d => xScale(time_labels[d.x]))
+                        .attr('y', d => yScale(d.y))
+                        .attr('width', xScale.bandwidth())
+                        .attr('height', yScale.bandwidth())
+                        .attr('fill', d => {
+                            const alpha = Math.min(1, d.value + 0.15);
+                            return d.type === 'long'
+                                ? `rgba(34, 197, 94, ${alpha})`
+                                : `rgba(239, 68, 68, ${alpha})`;
+                        });
+
+                    // Current price line
+                    const currentY = yScale(current_price_index) + yScale.bandwidth() / 2;
+                    g.append('line')
+                        .attr('x1', 0)
+                        .attr('x2', innerWidth)
+                        .attr('y1', currentY)
+                        .attr('y2', currentY)
+                        .attr('stroke', '#06B6D4')
+                        .attr('stroke-width', 2)
+                        .attr('stroke-dasharray', '5,5');
+
+                    // X Axis
+                    g.append('g')
+                        .attr('transform', `translate(0,${innerHeight})`)
+                        .call(d3.axisBottom(xScale).tickValues(time_labels.filter((_, i) => i % 3 === 0)))
+                        .selectAll('text')
+                        .style('fill', '#7a7a7a')
+                        .style('font-size', '10px');
+
+                    // Y Axis
+                    const priceLabels = price_levels.map(p => p >= 1000 ? '$' + (p / 1000).toFixed(1) + 'K' : '$' + p.toFixed(0));
+                    const yAxisScale = d3.scaleBand()
+                        .domain(priceLabels)
+                        .range([innerHeight, 0]);
+
+                    g.append('g')
+                        .call(d3.axisLeft(yAxisScale).tickValues(priceLabels.filter((_, i) => i % 5 === 0)))
+                        .selectAll('text')
+                        .style('fill', '#7a7a7a')
+                        .style('font-size', '10px');
+
+                    // Style axis lines
+                    svg.selectAll('.domain, .tick line').attr('stroke', '#333');
+
+                    this.renderTimes.d3 = Math.round(performance.now() - startTime);
+                },
+
+                // ==================== Apache ECharts ====================
+                renderECharts() {
+                    const startTime = performance.now();
+                    const { heatmap_data, price_levels, time_labels, current_price_index } = this.apiData;
+
+                    const container = document.getElementById('echartsHeatmap');
+                    if (!container) {
+                        console.error('ECharts container not found');
+                        return;
+                    }
+
+                    // Dispose existing instance
+                    if (this.chartInstances.echarts) {
+                        this.chartInstances.echarts.dispose();
+                    }
+
+                    // Initialize ECharts
+                    this.chartInstances.echarts = echarts.init(container);
+
+                    // Separate data by type for two visual maps
+                    const longData = heatmap_data
+                        .filter(d => d.type === 'long')
+                        .map(d => [d.x, d.y, d.value]);
+
+                    const shortData = heatmap_data
+                        .filter(d => d.type === 'short')
+                        .map(d => [d.x, d.y, d.value]);
+
+                    // Format price labels
+                    const priceLabels = price_levels.map(p =>
+                        p >= 1000 ? '$' + (p / 1000).toFixed(1) + 'K' : '$' + p.toFixed(0)
+                    );
+
+                    const option = {
+                        backgroundColor: 'transparent',
+                        tooltip: {
+                            position: 'top',
+                            backgroundColor: '#1a1a1a',
+                            borderColor: '#333',
+                            textStyle: { color: '#f5f5f5' },
+                            formatter: function(params) {
+                                const type = params.seriesName;
+                                const intensity = (params.value[2] * 100).toFixed(1);
+                                return `<b>${type} Zone</b><br/>Intensity: ${intensity}%`;
+                            }
+                        },
+                        grid: {
+                            top: 20,
+                            right: 30,
+                            bottom: 40,
+                            left: 60
+                        },
+                        xAxis: {
+                            type: 'category',
+                            data: time_labels,
+                            splitArea: { show: false },
+                            axisLine: { lineStyle: { color: '#333' } },
+                            axisLabel: { color: '#7a7a7a', fontSize: 10 }
+                        },
+                        yAxis: {
+                            type: 'category',
+                            data: priceLabels,
+                            splitArea: { show: false },
+                            axisLine: { lineStyle: { color: '#333' } },
+                            axisLabel: { color: '#7a7a7a', fontSize: 10 }
+                        },
+                        visualMap: [
+                            {
+                                min: 0,
+                                max: 1,
+                                show: false,
+                                seriesIndex: 0,
+                                inRange: {
+                                    color: ['rgba(34, 197, 94, 0.15)', 'rgba(34, 197, 94, 1)']
+                                }
+                            },
+                            {
+                                min: 0,
+                                max: 1,
+                                show: false,
+                                seriesIndex: 1,
+                                inRange: {
+                                    color: ['rgba(239, 68, 68, 0.15)', 'rgba(239, 68, 68, 1)']
+                                }
+                            }
+                        ],
+                        series: [
+                            {
+                                name: 'LONG',
+                                type: 'heatmap',
+                                data: longData,
+                                emphasis: {
+                                    itemStyle: { borderColor: '#fff', borderWidth: 1 }
+                                }
+                            },
+                            {
+                                name: 'SHORT',
+                                type: 'heatmap',
+                                data: shortData,
+                                emphasis: {
+                                    itemStyle: { borderColor: '#fff', borderWidth: 1 }
+                                }
+                            },
+                            {
+                                name: 'Current Price',
+                                type: 'line',
+                                markLine: {
+                                    silent: true,
+                                    symbol: 'none',
+                                    lineStyle: {
+                                        color: '#06B6D4',
+                                        type: 'dashed',
+                                        width: 2
+                                    },
+                                    data: [{ yAxis: current_price_index }],
+                                    label: {
+                                        show: true,
+                                        formatter: 'Current',
+                                        color: '#06B6D4',
+                                        fontSize: 10
+                                    }
+                                }
+                            }
+                        ]
+                    };
+
+                    this.chartInstances.echarts.setOption(option);
+                    this.renderTimes.echarts = Math.round(performance.now() - startTime);
+                },
+
+                // ==================== Native Canvas (OPTIMIZED) ====================
+                // Hybrid approach: Batched fillRect with pre-computed colors for best performance
+                renderCanvas() {
+                    const startTime = performance.now();
+                    const { heatmap_data, price_levels, time_labels, current_price_index } = this.apiData;
+
+                    const canvas = document.getElementById('canvasHeatmap');
+                    if (!canvas) {
+                        console.error('Canvas element not found');
+                        return;
+                    }
+
+                    // ============ OPTIMIZATION 1: Optimal context settings ============
+                    const ctx = canvas.getContext('2d', {
+                        alpha: false,           // No transparency = faster compositing
+                        desynchronized: true,   // Reduce latency to display
+                        willReadFrequently: false  // Hint: we won't read pixels back
+                    });
+
+                    // Set canvas size with fallback
+                    const container = canvas.parentElement;
+                    const containerWidth = container.clientWidth || container.offsetWidth || 800;
+                    const containerHeight = container.clientHeight || container.offsetHeight || 380;
+
+                    canvas.width = containerWidth;
+                    canvas.height = containerHeight;
+                    canvas.style.width = containerWidth + 'px';
+                    canvas.style.height = containerHeight + 'px';
+
+                    const width = canvas.width;
+                    const height = canvas.height;
+                    const margin = { top: 20, right: 30, bottom: 40, left: 60 };
+                    const innerWidth = width - margin.left - margin.right;
+                    const innerHeight = height - margin.top - margin.bottom;
+
+                    // Clear with brand background
+                    ctx.fillStyle = '#161616';  // --bg-panel
+                    ctx.fillRect(0, 0, width, height);
+
+                    // Cell dimensions
+                    const cellWidth = innerWidth / time_labels.length;
+                    const cellHeight = innerHeight / price_levels.length;
+
+                    // ============ OPTIMIZATION 2: Pre-computed RGBA color cache ============
+                    // Brand colors: Long = #22c55e, Short = #ef4444, Cyan = #06B6D4
+                    const colorCache = new Map();
+                    const getColor = (type, alpha) => {
+                        const key = `${type}-${Math.round(alpha * 100)}`;
+                        if (!colorCache.has(key)) {
+                            if (type === 'long') {
+                                colorCache.set(key, `rgba(34, 197, 94, ${alpha.toFixed(2)})`);
+                            } else {
+                                colorCache.set(key, `rgba(239, 68, 68, ${alpha.toFixed(2)})`);
+                            }
+                        }
+                        return colorCache.get(key);
+                    };
+
+                    // ============ OPTIMIZATION 3: Batch by color to minimize state changes ============
+                    // Group cells by their computed color string
+                    const cellsByColor = new Map();
+
+                    heatmap_data.forEach(d => {
+                        const alpha = Math.min(1, d.value + 0.15);
+                        const color = getColor(d.type, alpha);
+
+                        if (!cellsByColor.has(color)) {
+                            cellsByColor.set(color, []);
+                        }
+                        cellsByColor.get(color).push(d);
+                    });
+
+                    // ============ OPTIMIZATION 4: Single fillStyle per color batch ============
+                    // Draw all cells of the same color together (minimizes ctx state changes)
+                    cellsByColor.forEach((cells, color) => {
+                        ctx.fillStyle = color;  // Set once per color group
+
+                        cells.forEach(d => {
+                            const x = margin.left + d.x * cellWidth;
+                            const y = margin.top + (price_levels.length - 1 - d.y) * cellHeight;
+                            ctx.fillRect(x, y, cellWidth - 0.5, cellHeight - 0.5);
+                        });
+                    });
+
+                    // ============ Draw overlays (current price line, axes) ============
+                    // Current price line - brand cyan #06B6D4
+                    const currentY = margin.top + (price_levels.length - 1 - current_price_index) * cellHeight + cellHeight / 2;
+                    ctx.strokeStyle = '#06B6D4';  // --neon-cyan
+                    ctx.lineWidth = 2;
+                    ctx.setLineDash([5, 5]);
+                    ctx.beginPath();
+                    ctx.moveTo(margin.left, currentY);
+                    ctx.lineTo(width - margin.right, currentY);
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+
+                    // "Current" label
+                    ctx.fillStyle = '#06B6D4';
+                    ctx.font = '10px Inter, sans-serif';
+                    ctx.textAlign = 'left';
+                    ctx.fillText('Current', width - margin.right + 5, currentY + 3);
+
+                    // Draw axes labels - brand text colors
+                    ctx.fillStyle = '#7a7a7a';  // --text-muted
+                    ctx.font = '10px Inter, sans-serif';
+                    ctx.textAlign = 'center';
+
+                    // X axis labels
+                    time_labels.forEach((label, i) => {
+                        if (i % 3 === 0) {
+                            const x = margin.left + i * cellWidth + cellWidth / 2;
+                            ctx.fillText(label, x, height - 10);
+                        }
+                    });
+
+                    // Y axis labels
+                    ctx.textAlign = 'right';
+                    price_levels.forEach((price, i) => {
+                        if (i % 5 === 0) {
+                            const y = margin.top + (price_levels.length - 1 - i) * cellHeight + cellHeight / 2 + 3;
+                            const label = price >= 1000 ? '$' + (price / 1000).toFixed(1) + 'K' : '$' + price.toFixed(0);
+                            ctx.fillText(label, margin.left - 5, y);
+                        }
+                    });
+
+                    this.renderTimes.canvas = Math.round(performance.now() - startTime);
+                },
+
+                // ==================== ApexCharts ====================
+                renderApexCharts() {
+                    const startTime = performance.now();
+                    const { heatmap_data, price_levels, time_labels, current_price_index } = this.apiData;
+
+                    const container = document.getElementById('apexHeatmap');
+                    if (!container) {
+                        console.error('ApexCharts container not found');
+                        return;
+                    }
+
+                    // Destroy existing instance
+                    if (this.chartInstances.apex) {
+                        this.chartInstances.apex.destroy();
+                    }
+
+                    // Format price labels
+                    const priceLabels = price_levels.map(p =>
+                        p >= 1000 ? '$' + (p / 1000).toFixed(1) + 'K' : '$' + p.toFixed(0)
+                    );
+
+                    // ApexCharts needs data in series format: each series is a row (price level)
+                    // Create separate series for long and short liquidations
+                    const seriesData = [];
+
+                    // Group data by y (price level)
+                    for (let y = price_levels.length - 1; y >= 0; y--) {
+                        const rowData = time_labels.map((_, x) => {
+                            const point = heatmap_data.find(d => d.x === x && d.y === y);
+                            if (point) {
+                                return {
+                                    x: time_labels[x],
+                                    y: Math.round(point.value * 100),
+                                    fillColor: point.type === 'long'
+                                        ? `rgba(34, 197, 94, ${Math.min(1, point.value + 0.15)})`
+                                        : `rgba(239, 68, 68, ${Math.min(1, point.value + 0.15)})`
+                                };
+                            }
+                            return { x: time_labels[x], y: 0 };
+                        });
+
+                        seriesData.push({
+                            name: priceLabels[y],
+                            data: rowData
+                        });
+                    }
+
+                    const options = {
+                        series: seriesData,
+                        chart: {
+                            type: 'heatmap',
+                            height: '100%',
+                            background: 'transparent',
+                            toolbar: { show: false },
+                            animations: { enabled: false }
+                        },
+                        plotOptions: {
+                            heatmap: {
+                                shadeIntensity: 0,
+                                colorScale: {
+                                    ranges: []
+                                },
+                                distributed: true
+                            }
+                        },
+                        dataLabels: { enabled: false },
+                        stroke: { width: 0 },
+                        xaxis: {
+                            labels: {
+                                style: { colors: '#7a7a7a', fontSize: '10px' },
+                                rotate: 0,
+                                hideOverlappingLabels: true
+                            },
+                            axisBorder: { color: '#333' },
+                            axisTicks: { color: '#333' }
+                        },
+                        yaxis: {
+                            labels: {
+                                style: { colors: '#7a7a7a', fontSize: '9px' },
+                                offsetX: -5
+                            },
+                            reversed: true
+                        },
+                        grid: {
+                            borderColor: '#222',
+                            xaxis: { lines: { show: false } },
+                            yaxis: { lines: { show: false } }
+                        },
+                        tooltip: {
+                            theme: 'dark',
+                            y: {
+                                formatter: (val) => val + '% intensity'
+                            }
+                        },
+                        legend: { show: false },
+                        annotations: {
+                            yaxis: [{
+                                y: priceLabels[price_levels.length - 1 - current_price_index],
+                                borderColor: '#06B6D4',
+                                strokeDashArray: 5,
+                                label: {
+                                    text: 'Current',
+                                    style: { color: '#06B6D4', background: 'transparent' }
+                                }
+                            }]
+                        }
+                    };
+
+                    this.chartInstances.apex = new ApexCharts(container, options);
+                    this.chartInstances.apex.render();
+
+                    this.renderTimes.apex = Math.round(performance.now() - startTime);
+                },
+
+                // ==================== Plotly.js ====================
+                renderPlotly() {
+                    const startTime = performance.now();
+                    const { heatmap_data, price_levels, time_labels, current_price_index } = this.apiData;
+
+                    const container = document.getElementById('plotlyHeatmap');
+                    if (!container) {
+                        console.error('Plotly container not found');
+                        return;
+                    }
+
+                    // Format price labels
+                    const priceLabels = price_levels.map(p =>
+                        p >= 1000 ? '$' + (p / 1000).toFixed(1) + 'K' : '$' + p.toFixed(0)
+                    );
+
+                    // Separate data by type
+                    const longData = heatmap_data.filter(d => d.type === 'long');
+                    const shortData = heatmap_data.filter(d => d.type === 'short');
+
+                    // Create z matrices for each type
+                    const createZMatrix = (data) => {
+                        const z = Array(price_levels.length).fill(null).map(() =>
+                            Array(time_labels.length).fill(null)
+                        );
+                        data.forEach(d => {
+                            z[d.y][d.x] = d.value;
+                        });
+                        return z;
+                    };
+
+                    const longZ = createZMatrix(longData);
+                    const shortZ = createZMatrix(shortData);
+
+                    // Green colorscale for longs
+                    const greenScale = [
+                        [0, 'rgba(34, 197, 94, 0.1)'],
+                        [0.5, 'rgba(34, 197, 94, 0.5)'],
+                        [1, 'rgba(34, 197, 94, 1)']
+                    ];
+
+                    // Red colorscale for shorts
+                    const redScale = [
+                        [0, 'rgba(239, 68, 68, 0.1)'],
+                        [0.5, 'rgba(239, 68, 68, 0.5)'],
+                        [1, 'rgba(239, 68, 68, 1)']
+                    ];
+
+                    const traces = [
+                        {
+                            z: longZ,
+                            x: time_labels,
+                            y: priceLabels,
+                            type: 'heatmap',
+                            colorscale: greenScale,
+                            showscale: false,
+                            hovertemplate: 'LONG Zone<br>%{y}<br>Intensity: %{z:.1%}<extra></extra>',
+                            zmin: 0,
+                            zmax: 1
+                        },
+                        {
+                            z: shortZ,
+                            x: time_labels,
+                            y: priceLabels,
+                            type: 'heatmap',
+                            colorscale: redScale,
+                            showscale: false,
+                            hovertemplate: 'SHORT Zone<br>%{y}<br>Intensity: %{z:.1%}<extra></extra>',
+                            zmin: 0,
+                            zmax: 1
+                        }
+                    ];
+
+                    const layout = {
+                        paper_bgcolor: 'transparent',
+                        plot_bgcolor: 'transparent',
+                        margin: { t: 20, r: 30, b: 40, l: 60 },
+                        xaxis: {
+                            tickfont: { color: '#7a7a7a', size: 10 },
+                            gridcolor: '#222',
+                            linecolor: '#333'
+                        },
+                        yaxis: {
+                            tickfont: { color: '#7a7a7a', size: 10 },
+                            gridcolor: '#222',
+                            linecolor: '#333'
+                        },
+                        shapes: [{
+                            type: 'line',
+                            x0: 0,
+                            x1: 1,
+                            xref: 'paper',
+                            y0: priceLabels[current_price_index],
+                            y1: priceLabels[current_price_index],
+                            line: {
+                                color: '#06B6D4',
+                                width: 2,
+                                dash: 'dash'
+                            }
+                        }],
+                        annotations: [{
+                            x: 1,
+                            xref: 'paper',
+                            y: priceLabels[current_price_index],
+                            text: 'Current',
+                            font: { color: '#06B6D4', size: 10 },
+                            showarrow: false,
+                            xanchor: 'left'
+                        }]
+                    };
+
+                    const config = {
+                        displayModeBar: false,
+                        responsive: true
+                    };
+
+                    Plotly.newPlot(container, traces, layout, config);
+
+                    this.renderTimes.plotly = Math.round(performance.now() - startTime);
+                }
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>

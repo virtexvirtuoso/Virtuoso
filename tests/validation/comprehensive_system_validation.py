@@ -24,12 +24,15 @@ from typing import Dict, List, Any, Optional
 import importlib.util
 import logging
 
+# Determine project root
+PROJECT_ROOT = Path(__file__).parent.parent.parent
+
 # Setup comprehensive logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('/Users/ffv_macmini/desktop/virtuoso_ccxt/logs/comprehensive_validation.log'),
+        logging.FileHandler(str(PROJECT_ROOT / 'logs' / 'comprehensive_validation.log')),
         logging.StreamHandler()
     ]
 )
@@ -53,7 +56,7 @@ class ComprehensiveValidationSuite:
             'recommendations': []
         }
         self.start_time = time.time()
-        self.base_path = Path('/Users/ffv_macmini/desktop/virtuoso_ccxt')
+        self.base_path = PROJECT_ROOT
 
     def log_test_result(self, test_name: str, passed: bool, details: Dict[str, Any],
                        critical: bool = False, warning: bool = False):
@@ -1131,7 +1134,7 @@ async def main():
     """Main execution function"""
     try:
         # Change to the project directory
-        os.chdir('/Users/ffv_macmini/desktop/virtuoso_ccxt')
+        os.chdir(PROJECT_ROOT)
 
         # Create and run validation suite
         validator = ComprehensiveValidationSuite()

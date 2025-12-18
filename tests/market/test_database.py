@@ -1,5 +1,5 @@
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import pandas as pd
 from src.data_storage.database import DatabaseClient, DatabaseConfig
 from unittest.mock import Mock, patch, call
@@ -87,7 +87,7 @@ async def test_store_market_data_with_connection_check(db_client):
     data = {
         'price': 100.0,
         'volume': 1.0,
-        'timestamp': datetime.utcnow().timestamp()
+        'timestamp': datetime.now(timezone.utc).timestamp()
     }
     
     # Test successful connection
@@ -126,7 +126,7 @@ async def test_write_dataframe_with_validation(db_client):
     df = pd.DataFrame({
         'price': [100.0, 101.0, float('nan')],  # Include NaN value
         'volume': [1.0, 2.0, 3.0]
-    }, index=[datetime.utcnow() + timedelta(minutes=i) for i in range(3)])
+    }, index=[datetime.now(timezone.utc) + timedelta(minutes=i) for i in range(3)])
     
     await db_client.write_dataframe(df, 'test_measurement')
     # Should only write non-NaN values
@@ -186,7 +186,7 @@ async def test_write_batch(db_client):
     """Test batch writing of points."""
     # Create test points
     points = [
-        Point("test_measurement").field("value", i).time(datetime.utcnow())
+        Point("test_measurement").field("value", i).time(datetime.now(timezone.utc))
         for i in range(5)
     ]
     
@@ -205,7 +205,7 @@ async def test_write_dataframe_batch(db_client):
     # Create test DataFrame
     df = pd.DataFrame({
         'value': range(1500),  # More than batch_size to test batching
-        'timestamp': [datetime.utcnow() + timedelta(minutes=i) for i in range(1500)]
+        'timestamp': [datetime.now(timezone.utc) + timedelta(minutes=i) for i in range(1500)]
     }).set_index('timestamp')
     
     # Test successful batch write
@@ -219,7 +219,7 @@ async def test_write_dataframe_batch(db_client):
 async def test_batch_context(db_client):
     """Test batch context manager."""
     points = [
-        Point("test_measurement").field("value", i).time(datetime.utcnow())
+        Point("test_measurement").field("value", i).time(datetime.now(timezone.utc))
         for i in range(3)
     ]
     
@@ -253,7 +253,7 @@ async def test_performance_monitoring(db_client):
     # Create large DataFrame to test performance
     df = pd.DataFrame({
         'value': range(100),
-        'timestamp': [datetime.utcnow() + timedelta(minutes=i) for i in range(100)]
+        'timestamp': [datetime.now(timezone.utc) + timedelta(minutes=i) for i in range(100)]
     }).set_index('timestamp')
     
     # Test write operation with performance monitoring
@@ -267,7 +267,7 @@ async def test_performance_monitoring(db_client):
 async def test_error_handling_in_batch_operations(db_client):
     """Test error handling in batch operations."""
     points = [
-        Point("test_measurement").field("value", i).time(datetime.utcnow())
+        Point("test_measurement").field("value", i).time(datetime.now(timezone.utc))
         for i in range(5)
     ]
     
@@ -289,7 +289,7 @@ async def test_batch_size_configuration(db_client):
     # Create DataFrame larger than batch size
     df = pd.DataFrame({
         'value': range(2500),  # More than 2 batches
-        'timestamp': [datetime.utcnow() + timedelta(minutes=i) for i in range(2500)]
+        'timestamp': [datetime.now(timezone.utc) + timedelta(minutes=i) for i in range(2500)]
     }).set_index('timestamp')
     
     # Set smaller batch size

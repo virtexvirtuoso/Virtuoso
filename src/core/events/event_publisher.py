@@ -25,7 +25,7 @@ import asyncio
 import logging
 import time
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from dataclasses import asdict
 
 from .event_bus import EventBus, Event, EventPriority
@@ -580,7 +580,7 @@ class EventPublisher(IAsyncDisposable):
             if 'publisher' not in event.metadata:
                 event.metadata['publisher'] = 'EventPublisher'
             if 'published_at' not in event.metadata:
-                event.metadata['published_at'] = datetime.utcnow().isoformat()
+                event.metadata['published_at'] = datetime.now(timezone.utc).isoformat()
                 
             # Run enrichment callbacks
             if event.event_type in self._enrichment_callbacks:

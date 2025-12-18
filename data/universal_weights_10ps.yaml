@@ -1,0 +1,136 @@
+timestamp: '2025-11-13T23:10:00'
+optimization_info:
+  mode: universal
+  config_type: price_structure_corrected
+  description: Universal configuration with 10% price structure
+  reason: Best average performance (2.432) across all 7 tested assets
+  wins: 3/7 assets (BTCUSDT, ADAUSDT, LINKUSDT)
+  improvement_vs_0ps: +12.4%
+  based_on: BTC-optimized weights with 10% price structure added back
+
+confluence:
+  weights:
+    components:
+      # 10% price structure (optimal universal weight)
+      price_structure: 0.10
+
+      # Scaled down from BTC-optimized to accommodate 10% PS
+      # Scaling factor: 0.90 / 0.99985 = 0.900135
+      orderbook: 0.37188304824903873        # was 41.32%
+      technical: 0.37104681519401393        # was 41.22%
+      orderflow: 0.08204310559904547        # was 9.12%
+      volume: 0.06469786932195372           # was 7.19%
+      sentiment: 0.010327161635948141       # was 1.14%
+
+    sub_components:
+      # Sub-component weights remain unchanged from BTC optimization
+      technical:
+        rsi: 0.05868295479403043
+        ao: 0.4881885436347753
+        macd: 0.11423034815262348
+        williams_r: 0.10450397594592371
+        atr: 0.2025410345880367
+        cci: 0.031853142884610296
+
+      orderbook:
+        depth: 0.34515462919348305
+        imbalance: 0.22172463147364768
+        oir: 0.18760518895881395
+        liquidity: 0.002162723731062343
+        mpi: 0.13486829055985805
+        manipulation: 0.023572693573778055
+        absorption_exhaustion: 0.013445918150090812
+        di: 2.3518510564751997e-05
+        retail: 0.07144240584870123
+
+      volume:
+        volume_delta: 0.02771362972549866
+        adl: 0.06544183545049426
+        cmf: 0.31960053468514343
+        relative_volume: 0.005197254791231798
+        obv: 0.12684595876981294
+        volume_profile: 0.18516250010960814
+        vwap: 0.2700382864682109
+
+      orderflow:
+        cvd: 0.07728752959393816
+        imbalance: 0.007336492828527162
+        trade_flow: 0.18549060779897705
+        open_interest: 0.14344470658791955
+        pressure: 0.024606733209941584
+        liquidity: 0.5029876726626262
+        smart_money_flow: 0.0588462573180703
+
+      price_structure:
+        support_resistance: 0.2685308081944969
+        order_blocks: 0.3176574896836024
+        trend_position: 0.18136986482830805
+        volume_profile: 0.21078715388429967
+        market_structure: 0.01665902298660005
+        range_analysis: 0.004995660422692949
+
+      sentiment:
+        funding_rate: 0.42900491234271704
+        liquidations: 0.05011974905553829
+        long_short_ratio: 0.05250673638113679
+        market_activity: 0.07745579299192096
+        risk: 0.23890944710202858
+        volatility: 0.15200336212665835
+
+# Performance expectations (from testing)
+performance_by_asset:
+  BTCUSDT:
+    expected_score: 3.533
+    improvement_vs_manual: +27%
+    improvement_vs_0ps: +162%
+
+  ETHUSDT:
+    expected_score: 1.435
+    note: "Suboptimal (5% PS is better at 2.918), but acceptable for universal config"
+
+  SOLUSDT:
+    expected_score: 2.327
+    note: "Slightly below 15% PS (2.694), but acceptable"
+
+  BNBUSDT:
+    expected_score: 1.266
+    note: "Suboptimal (5% PS is better at 2.496), trade-off for universal simplicity"
+
+  ADAUSDT:
+    expected_score: 2.697
+    improvement_vs_manual: +34%
+
+  AVAXUSDT:
+    expected_score: 2.341
+    note: "Slightly below 15% PS (2.853), acceptable"
+
+  LINKUSDT:
+    expected_score: 3.422
+    improvement_vs_manual: +39%
+
+  average:
+    expected_score: 2.432
+    improvement_vs_0ps: +12.4%
+    improvement_vs_manual: +14.6%
+
+# Deployment notes
+deployment:
+  status: READY_FOR_PRODUCTION
+  confidence: HIGH
+  tested_on: 7 major cryptocurrencies, 90 days historical data
+
+  advantages:
+    - Single configuration for all assets (operational simplicity)
+    - Best average performance across all tested assets
+    - Wins on 43% of assets (3/7)
+    - Significantly better than 0% PS optimizer config
+
+  trade_offs:
+    - Not optimal for ETH (1.435 vs 2.918 with 5% PS)
+    - Not optimal for BNB (1.266 vs 2.496 with 5% PS)
+    - Acceptable for universal deployment given simplicity benefits
+
+  future_improvements:
+    - Run multi-asset optimization on all 7 assets combined
+    - May find even better universal weights
+    - Consider regime-adaptive price structure (5-15% based on market conditions)

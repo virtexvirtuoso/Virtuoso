@@ -18,7 +18,8 @@ from unittest.mock import Mock, MagicMock
 from typing import Dict, Any
 
 # Add project root to path
-sys.path.insert(0, '/Users/ffv_macmini/Desktop/Virtuoso_ccxt')
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 class TestMetricsTracker:
     """Test version of MetricsTracker with update_analysis_metrics method."""

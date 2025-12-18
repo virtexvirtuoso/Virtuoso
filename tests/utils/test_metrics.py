@@ -1,6 +1,6 @@
 import pytest
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from src.monitoring.metrics import (
     MetricsCollector,
     MetricPoint,
@@ -54,7 +54,7 @@ def test_record_memory(metrics_collector):
 
 def test_get_metrics_with_time_filter(metrics_collector):
     """Test getting metrics with time filter."""
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     old_time = now - timedelta(hours=1)
     
     # Record metrics at different times

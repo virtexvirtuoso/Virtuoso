@@ -42,7 +42,7 @@ import time
 import threading
 from typing import Dict, List, Any, Optional, Callable, Awaitable, Set, Union, Tuple
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from collections import defaultdict, deque
 import uuid
@@ -206,7 +206,7 @@ class MemoryPool:
         """Reset event object for reuse."""
         event.event_id = str(uuid.uuid4())
         event.event_type = ""
-        event.timestamp = datetime.utcnow()
+        event.timestamp = datetime.now(timezone.utc)
         event.source = ""
         event.priority = EventPriority.NORMAL
         event.data.clear()

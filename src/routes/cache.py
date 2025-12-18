@@ -8,7 +8,7 @@ But to your name give glory
 
 from fastapi import APIRouter, HTTPException, Depends
 from typing import Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 from src.core.cache.unified_cache import get_cache
 
@@ -32,7 +32,7 @@ async def get_cache_metrics() -> Dict[str, Any]:
         
         return {
             "status": "success",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "metrics": metrics,
             "cache_config": {
                 "host": cache.host,
@@ -57,7 +57,7 @@ async def cache_health_check() -> Dict[str, Any]:
         
         # Test Memcached connectivity
         test_key = "health:check"
-        test_value = {"timestamp": datetime.utcnow().isoformat()}
+        test_value = {"timestamp": datetime.now(timezone.utc).isoformat()}
         
         # Try to set and get
         await cache.set(test_key, test_value, ttl=5)
@@ -67,7 +67,7 @@ async def cache_health_check() -> Dict[str, Any]:
         
         return {
             "status": "healthy" if memcached_healthy else "degraded",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "memcached": {
                 "connected": cache.memcached_available,
                 "healthy": memcached_healthy,
@@ -82,7 +82,7 @@ async def cache_health_check() -> Dict[str, Any]:
         logger.error(f"Cache health check failed: {e}")
         return {
             "status": "unhealthy",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "error": str(e)
         }
 
@@ -116,7 +116,7 @@ async def clear_cache(pattern: Optional[str] = None) -> Dict[str, Any]:
         return {
             "status": "success",
             "message": message,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
     except Exception as e:
         logger.error(f"Error clearing cache: {e}")
@@ -146,7 +146,7 @@ async def get_cache_statistics() -> Dict[str, Any]:
         
         return {
             "status": "success",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "summary": {
                 "total_requests": metrics['total_requests'],
                 "hit_rate": f"{metrics['hit_rate_percent']}%",
@@ -213,7 +213,7 @@ async def warmup_cache() -> Dict[str, Any]:
         return {
             "status": "success",
             "message": f"Cache warmup completed with {count} entries",
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
     except Exception as e:
         logger.error(f"Cache warmup failed: {e}")

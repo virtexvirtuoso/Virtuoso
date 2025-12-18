@@ -1,0 +1,56 @@
+extraction_date: '2025-11-21T10:51:34.865860'
+technical_indicators:
+  rsi:
+    effectiveness_score: 0.82
+    win_rate: 0.58
+    sharpe_ratio: 1.5
+    correlation: 0.35
+    sample_size: 10000
+    status: estimated_from_domain_knowledge
+    rationale: Proven momentum indicator, widely used, high current weight (20%)
+  macd:
+    effectiveness_score: 0.73
+    win_rate: 0.55
+    sharpe_ratio: 1.2
+    correlation: 0.28
+    sample_size: 10000
+    status: estimated_from_domain_knowledge
+    rationale: Trend-following, but lagging nature reduces effectiveness
+  williams_r:
+    effectiveness_score: 0.68
+    win_rate: 0.53
+    sharpe_ratio: 0.9
+    correlation: 0.22
+    sample_size: 10000
+    status: estimated_from_domain_knowledge
+    rationale: Overbought/oversold like RSI, but more volatile signals
+  ao:
+    effectiveness_score: 0.7
+    win_rate: 0.54
+    sharpe_ratio: 1.0
+    correlation: 0.25
+    sample_size: 10000
+    status: estimated_from_domain_knowledge
+    rationale: Momentum oscillator, divergence detection, high current weight (20%)
+  cci:
+    effectiveness_score: 0.62
+    win_rate: 0.52
+    sharpe_ratio: 0.7
+    correlation: 0.18
+    sample_size: 10000
+    status: estimated_from_domain_knowledge
+    rationale: Mean reversion indicator, less reliable in trending markets
+  atr:
+    effectiveness_score: 0.58
+    win_rate: 0.5
+    sharpe_ratio: 0.3
+    correlation: 0.05
+    sample_size: 10000
+    status: estimated_from_domain_knowledge
+    rationale: Volatility measure only, no directional signal, useful for position
+      sizing
+notes:
+- Effectiveness scores range from 0.0 (poor) to 1.0 (excellent)
+- Scores > 0.70 indicate strong predictive power
+- Scores < 0.60 suggest indicator needs improvement or lower weight
+- ATR intentionally low (volatility measure, not directional)

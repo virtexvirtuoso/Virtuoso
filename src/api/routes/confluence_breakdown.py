@@ -1,4 +1,18 @@
-"""API routes for detailed confluence breakdown data."""
+"""
+API routes for detailed confluence breakdown data.
+
+NAMING CONVENTION NOTE:
+"Confluence" terminology is retained in API endpoints for backward compatibility.
+User-facing branding uses "Alpha Analysis" / "Alpha Score".
+
+Endpoints (DO NOT RENAME):
+- /confluence/breakdown/{symbol} -> Alpha Analysis breakdown
+- /confluence/latest -> Latest Alpha scores
+- /confluence/all -> All Alpha analyses
+- /confluence/components/{symbol} -> Alpha component details
+
+See docs/07-technical/CONFLUENCE_TO_ALPHA_MIGRATION_PLAN.md
+"""
 
 from fastapi import APIRouter, HTTPException
 from typing import Dict, Any, Optional

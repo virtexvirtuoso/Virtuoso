@@ -2,9 +2,10 @@ import json
 import sys
 import logging
 import time
+from pathlib import Path
 
 # Path to our implementation
-sys.path.append('/Users/ffv_macmini/Desktop/Virtuoso_ccxt')
+sys.path.append(str(Path(__file__).parent.parent.parent))
 
 from src.core.market.market_data_manager import MarketDataManager
 

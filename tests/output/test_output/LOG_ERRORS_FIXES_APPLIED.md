@@ -12,7 +12,7 @@ Generated: 2025-07-23 12:40:00
 ### 2. ✅ Environment File Path
 **Status**: FIXED
 - Updated `src/main.py` to load `.env` from project root
-- Application will now correctly find `.env` at `/Users/ffv_macmini/Desktop/Virtuoso_ccxt/.env`
+- Application will now correctly find `.env` at `.env`
 
 ### 3. ✅ HTML Report Jinja2 Error
 **Status**: FIXED

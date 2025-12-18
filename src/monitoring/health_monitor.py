@@ -77,6 +77,18 @@ class HealthMetric:
             return False
         return latest >= self.thresholds['critical']
 
+    def get_status(self) -> str:
+        """Get current status based on thresholds.
+
+        Returns:
+            'critical', 'warning', or 'healthy'
+        """
+        if self.is_critical():
+            return "critical"
+        elif self.is_warning():
+            return "warning"
+        return "healthy"
+
 
 @dataclass
 class ApiHealth:
@@ -554,7 +566,101 @@ class HealthMonitor:
         )
         
         return health_status
-    
+
+    async def get_health_status(self) -> Dict[str, Any]:
+        """Get overall system health status (public async wrapper).
+
+        Returns:
+            Dict containing health status information
+        """
+        status = self._get_health_status()
+        return status.to_dict()
+
+    async def get_system_metrics(self) -> Dict[str, Any]:
+        """Get detailed system performance metrics.
+
+        Returns:
+            Dict containing CPU, memory, disk, network, and process metrics
+        """
+        # CPU metrics
+        cpu_percent = psutil.cpu_percent(interval=0.1)
+        cpu_count = psutil.cpu_count()
+        cpu_freq = psutil.cpu_freq()
+
+        # Memory metrics
+        memory = psutil.virtual_memory()
+        swap = psutil.swap_memory()
+
+        # Disk metrics
+        disk = psutil.disk_usage('/')
+
+        # Network metrics
+        net_io = psutil.net_io_counters()
+
+        # System uptime
+        boot_time = psutil.boot_time()
+        uptime_seconds = int(time.time() - boot_time)
+        uptime_hours = uptime_seconds // 3600
+        uptime_minutes = (uptime_seconds % 3600) // 60
+
+        # Get load average (Unix only)
+        try:
+            load_avg = psutil.getloadavg()
+        except (AttributeError, OSError):
+            load_avg = (0.0, 0.0, 0.0)
+
+        return {
+            "timestamp": time.time(),
+            "uptime": {
+                "seconds": uptime_seconds,
+                "formatted": f"{uptime_hours}h {uptime_minutes}m"
+            },
+            "cpu": {
+                "percent": round(cpu_percent, 1),
+                "count": cpu_count,
+                "frequency_mhz": round(cpu_freq.current, 0) if cpu_freq else None,
+                "load_average": {
+                    "1min": round(load_avg[0], 2),
+                    "5min": round(load_avg[1], 2),
+                    "15min": round(load_avg[2], 2)
+                }
+            },
+            "memory": {
+                "percent": round(memory.percent, 1),
+                "total_gb": round(memory.total / (1024**3), 2),
+                "used_gb": round(memory.used / (1024**3), 2),
+                "available_gb": round(memory.available / (1024**3), 2),
+                "cached_gb": round(getattr(memory, 'cached', 0) / (1024**3), 2)
+            },
+            "swap": {
+                "percent": round(swap.percent, 1),
+                "total_gb": round(swap.total / (1024**3), 2),
+                "used_gb": round(swap.used / (1024**3), 2),
+                "free_gb": round(swap.free / (1024**3), 2)
+            },
+            "disk": {
+                "percent": round(disk.percent, 1),
+                "total_gb": round(disk.total / (1024**3), 2),
+                "used_gb": round(disk.used / (1024**3), 2),
+                "free_gb": round(disk.free / (1024**3), 2)
+            },
+            "network": {
+                "bytes_sent": net_io.bytes_sent,
+                "bytes_recv": net_io.bytes_recv,
+                "packets_sent": net_io.packets_sent,
+                "packets_recv": net_io.packets_recv,
+                "errin": net_io.errin,
+                "errout": net_io.errout,
+                "dropin": net_io.dropin,
+                "dropout": net_io.dropout
+            },
+            "health_metrics": {
+                "cpu_status": self.metrics['cpu'].get_status(),
+                "memory_status": self.metrics['memory'].get_status(),
+                "disk_status": self.metrics['disk'].get_status()
+            }
+        }
+
     def register_api(self, exchange_id: str) -> None:
         """Register an API for health monitoring."""
         if exchange_id not in self.api_health:

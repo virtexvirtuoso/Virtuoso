@@ -1,0 +1,833 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Liquidation Heatmap - Virtuoso Trading</title>
+    <meta name="description" content="CoinGlass-style liquidation heatmap visualization">
+    <meta name="theme-color" content="#0a0a0a">
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- Vue 3 -->
+    <script src="/static/js/vue3.global.prod.js"></script>
+
+    <!-- Highcharts -->
+    <script src="https://unpkg.com/highcharts@11.2.0/highcharts.js"></script>
+    <script src="https://unpkg.com/highcharts@11.2.0/modules/heatmap.js"></script>
+
+    <!-- Lucide Icons -->
+    <script src="/static/js/lucide.min.js"></script>
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICA8cmVjdCB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHJ4PSI0IiBmaWxsPSIjMGEwYTBhIi8+CiAgPHBhdGggZD0ibTMgMTcgNi02IDQgNCA4LTgiIHN0cm9rZT0iI2ZiYmYyNCIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiLz4KICA8cGF0aCBkPSJtMjEgNy00IDRWN2g0eiIgZmlsbD0iI2ZiYmYyNCIgc3Ryb2tlPSIjZmJiZjI0IiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPgo8L3N2Zz4=">
+
+    <style>
+        :root {
+            --neon-amber: #fbbf24;
+            --neon-cyan: #06B6D4;
+            --neon-red: #ff0066;
+
+            --bg-primary: #0a0a0a;
+            --bg-secondary: #111111;
+            --bg-panel: #161616;
+            --bg-card: #1a1a1a;
+
+            --border-light: #222222;
+            --border-glow: rgba(251, 191, 36, 0.3);
+
+            --text-primary: #f5f5f5;
+            --text-secondary: #a8a8a8;
+            --text-muted: #7a7a7a;
+            --text-accent: #fbbf24;
+
+            --accent-positive: #00d68f;
+            --accent-negative: #ff5252;
+            --accent-warning: #ffb800;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+
+        /* Header */
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 24px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid var(--border-light);
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            text-decoration: none;
+        }
+
+        .logo-icon {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, var(--neon-amber) 0%, #f59e0b 100%);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .logo-icon i {
+            color: #000;
+            width: 24px;
+            height: 24px;
+        }
+
+        .logo-text {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .logo-text span {
+            color: var(--neon-amber);
+        }
+
+        .page-title {
+            font-size: 24px;
+            font-weight: 600;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .page-title i {
+            color: var(--neon-amber);
+            width: 28px;
+            height: 28px;
+        }
+
+        .badge {
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            background: rgba(251, 191, 36, 0.2);
+            color: var(--neon-amber);
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .back-link {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 14px;
+            padding: 8px 16px;
+            border: 1px solid var(--border-light);
+            border-radius: 8px;
+            transition: all 0.2s;
+        }
+
+        .back-link:hover {
+            color: var(--neon-amber);
+            border-color: var(--border-glow);
+        }
+
+        .back-link i {
+            width: 16px;
+            height: 16px;
+        }
+
+        /* Main Panel */
+        .main-panel {
+            background: var(--bg-panel);
+            border: 1px solid var(--border-light);
+            border-radius: 16px;
+            overflow: hidden;
+        }
+
+        /* Controls */
+        .controls {
+            display: flex;
+            align-items: center;
+            gap: 24px;
+            padding: 20px 24px;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-light);
+            flex-wrap: wrap;
+        }
+
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .control-label {
+            font-size: 12px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-weight: 600;
+        }
+
+        .symbol-selector {
+            padding: 10px 16px;
+            background: var(--bg-card);
+            border: 1px solid var(--border-light);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-size: 14px;
+            font-family: 'IBM Plex Mono', monospace;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            min-width: 140px;
+        }
+
+        .symbol-selector:hover {
+            border-color: var(--border-glow);
+        }
+
+        .symbol-selector:focus {
+            outline: none;
+            border-color: var(--neon-amber);
+        }
+
+        .timeframe-buttons {
+            display: flex;
+            gap: 4px;
+        }
+
+        .tf-btn {
+            padding: 10px 16px;
+            background: var(--bg-card);
+            border: 1px solid var(--border-light);
+            border-radius: 8px;
+            color: var(--text-secondary);
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .tf-btn:hover {
+            background: var(--bg-panel);
+            border-color: var(--border-glow);
+            color: var(--text-primary);
+        }
+
+        .tf-btn.active {
+            background: rgba(251, 191, 36, 0.2);
+            border-color: var(--neon-amber);
+            color: var(--neon-amber);
+        }
+
+        .stats-group {
+            display: flex;
+            gap: 32px;
+            margin-left: auto;
+        }
+
+        .stat-item {
+            text-align: right;
+        }
+
+        .stat-label {
+            font-size: 10px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
+        }
+
+        .stat-value {
+            font-size: 18px;
+            font-weight: 700;
+            font-family: 'IBM Plex Mono', monospace;
+        }
+
+        .stat-value.long {
+            color: var(--accent-positive);
+        }
+
+        .stat-value.short {
+            color: var(--accent-negative);
+        }
+
+        .stat-value.price {
+            color: var(--neon-cyan);
+        }
+
+        /* Heatmap Container */
+        .heatmap-wrapper {
+            padding: 24px;
+        }
+
+        .heatmap-container {
+            background: var(--bg-card);
+            border: 1px solid var(--border-light);
+            border-radius: 12px;
+            padding: 16px;
+        }
+
+        .loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 500px;
+            color: var(--text-secondary);
+            font-size: 14px;
+        }
+
+        .loading i {
+            width: 24px;
+            height: 24px;
+            margin-right: 12px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        /* Legend */
+        .legend {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 20px 24px;
+            background: rgba(0, 0, 0, 0.3);
+            border-top: 1px solid var(--border-light);
+            flex-wrap: wrap;
+            gap: 16px;
+        }
+
+        .legend-left {
+            display: flex;
+            align-items: center;
+            gap: 32px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            border-radius: 4px;
+        }
+
+        .legend-color.long-liq {
+            background: linear-gradient(180deg, #22c55e 0%, #16a34a 100%);
+        }
+
+        .legend-color.short-liq {
+            background: linear-gradient(180deg, #ef4444 0%, #dc2626 100%);
+        }
+
+        .legend-text {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        .legend-gradient {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            width: 240px;
+        }
+
+        .legend-gradient-title {
+            font-size: 10px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            text-align: center;
+        }
+
+        .legend-gradient-bar {
+            height: 14px;
+            border-radius: 7px;
+            background: linear-gradient(to right,
+                rgba(251, 191, 36, 0.1) 0%,
+                rgba(251, 191, 36, 0.3) 25%,
+                rgba(251, 191, 36, 0.5) 50%,
+                rgba(251, 191, 36, 0.7) 75%,
+                rgba(251, 191, 36, 1) 100%
+            );
+        }
+
+        .legend-gradient-labels {
+            display: flex;
+            justify-content: space-between;
+            font-size: 10px;
+            color: var(--text-muted);
+        }
+
+        /* Info Cards */
+        .info-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 16px;
+            margin-top: 24px;
+        }
+
+        .info-card {
+            background: var(--bg-panel);
+            border: 1px solid var(--border-light);
+            border-radius: 12px;
+            padding: 20px;
+        }
+
+        .info-card-title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--neon-amber);
+            margin-bottom: 12px;
+        }
+
+        .info-card-title i {
+            width: 18px;
+            height: 18px;
+        }
+
+        .info-card-text {
+            font-size: 13px;
+            color: var(--text-secondary);
+            line-height: 1.6;
+        }
+
+        .info-card-text strong {
+            color: var(--text-primary);
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            body {
+                padding: 12px;
+            }
+
+            .header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 16px;
+            }
+
+            .header-right {
+                width: 100%;
+                justify-content: flex-end;
+            }
+
+            .controls {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 16px;
+            }
+
+            .stats-group {
+                margin-left: 0;
+                width: 100%;
+                justify-content: space-between;
+            }
+
+            .legend {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .legend-left {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="app" class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-left">
+                <a href="/" class="logo">
+                    <div class="logo-icon">
+                        <i data-lucide="trending-up"></i>
+                    </div>
+                    <div class="logo-text">Virtuoso<span>Trading</span></div>
+                </a>
+                <div class="page-title">
+                    <i data-lucide="flame"></i>
+                    Liquidation Heatmap
+                    <span class="badge">LIVE</span>
+                </div>
+            </div>
+            <div class="header-right">
+                <a href="/desktop-v2" class="back-link">
+                    <i data-lucide="arrow-left"></i>
+                    Back to Dashboard
+                </a>
+            </div>
+        </header>
+
+        <!-- Main Panel -->
+        <div class="main-panel">
+            <!-- Controls -->
+            <div class="controls">
+                <div class="control-group">
+                    <span class="control-label">Symbol</span>
+                    <select v-model="selectedSymbol" @change="loadHeatmap()" class="symbol-selector">
+                        <option v-for="sym in symbols" :key="sym" :value="sym">
+                            {{ sym.replace('USDT', '/USDT') }}
+                        </option>
+                    </select>
+                </div>
+
+                <div class="control-group">
+                    <span class="control-label">Timeframe</span>
+                    <div class="timeframe-buttons">
+                        <button
+                            v-for="tf in timeframes"
+                            :key="tf.value"
+                            @click="selectedTimeframe = tf.value; loadHeatmap()"
+                            :class="{ active: selectedTimeframe === tf.value }"
+                            class="tf-btn">
+                            {{ tf.label }}
+                        </button>
+                    </div>
+                </div>
+
+                <div class="stats-group">
+                    <div class="stat-item">
+                        <div class="stat-label">Long Liquidations</div>
+                        <div class="stat-value long">${{ formatNumber(heatmapData.longLiquidations) }}</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">Short Liquidations</div>
+                        <div class="stat-value short">${{ formatNumber(heatmapData.shortLiquidations) }}</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">Current Price</div>
+                        <div class="stat-value price">${{ heatmapData.currentPrice.toLocaleString() }}</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Heatmap -->
+            <div class="heatmap-wrapper">
+                <div v-if="loading" class="loading">
+                    <i data-lucide="loader-2"></i>
+                    Loading liquidation heatmap...
+                </div>
+                <div v-else class="heatmap-container">
+                    <div id="liquidationHeatmap" style="width: 100%; height: 500px;"></div>
+                </div>
+            </div>
+
+            <!-- Legend -->
+            <div class="legend">
+                <div class="legend-left">
+                    <div class="legend-item">
+                        <div class="legend-color long-liq"></div>
+                        <div class="legend-text">Long Liquidation Zones (triggered by price drops)</div>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color short-liq"></div>
+                        <div class="legend-text">Short Liquidation Zones (triggered by price rises)</div>
+                    </div>
+                </div>
+                <div class="legend-gradient">
+                    <div class="legend-gradient-title">Liquidation Intensity</div>
+                    <div class="legend-gradient-bar"></div>
+                    <div class="legend-gradient-labels">
+                        <span>Low Volume</span>
+                        <span>High Volume</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Info Cards -->
+        <div class="info-cards">
+            <div class="info-card">
+                <div class="info-card-title">
+                    <i data-lucide="info"></i>
+                    How to Read This Chart
+                </div>
+                <div class="info-card-text">
+                    The heatmap shows <strong>predicted liquidation levels</strong> based on estimated positions at various leverage levels.
+                    <strong>Green zones</strong> below current price indicate long positions that would be liquidated if price drops.
+                    <strong>Red zones</strong> above current price indicate short positions liquidated if price rises.
+                    Brighter colors = higher liquidation volume.
+                </div>
+            </div>
+            <div class="info-card">
+                <div class="info-card-title">
+                    <i data-lucide="target"></i>
+                    Trading Applications
+                </div>
+                <div class="info-card-text">
+                    Use liquidation clusters as <strong>potential support/resistance</strong> levels. Large liquidation zones often act as magnets
+                    for price action. <strong>Cascade risk</strong> increases when price approaches dense liquidation clusters, as triggered
+                    liquidations can cause rapid price movements.
+                </div>
+            </div>
+            <div class="info-card">
+                <div class="info-card-title">
+                    <i data-lucide="alert-triangle"></i>
+                    Demo Data Notice
+                </div>
+                <div class="info-card-text">
+                    This visualization uses <strong>live market data</strong> from exchanges. Liquidation levels are calculated based on
+                    current price and typical leverage distributions (5x, 10x, 20x, 50x, 100x). Data refreshes when you change symbol
+                    or timeframe.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp } = Vue;
+
+        createApp({
+            data() {
+                return {
+                    symbols: ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'BNBUSDT', 'DOGEUSDT', 'ADAUSDT', 'AVAXUSDT'],
+                    selectedSymbol: 'BTCUSDT',
+                    timeframes: [
+                        { label: '1H', value: '1h' },
+                        { label: '4H', value: '4h' },
+                        { label: '12H', value: '12h' },
+                        { label: '24H', value: '24h' }
+                    ],
+                    selectedTimeframe: '4h',
+                    loading: false,
+                    heatmapData: {
+                        currentPrice: 0,
+                        longLiquidations: 0,
+                        shortLiquidations: 0,
+                        heatmapData: [],
+                        priceLevels: [],
+                        timeLabels: [],
+                        currentPriceIndex: 0
+                    }
+                };
+            },
+            methods: {
+                formatNumber(num) {
+                    if (num >= 1e9) return (num / 1e9).toFixed(1) + 'B';
+                    if (num >= 1e6) return (num / 1e6).toFixed(1) + 'M';
+                    if (num >= 1e3) return (num / 1e3).toFixed(1) + 'K';
+                    return num.toFixed(0);
+                },
+                async loadHeatmap() {
+                    this.loading = true;
+                    this.error = null;
+
+                    try {
+                        // Fetch live data from API
+                        const url = `/api/liquidation/heatmap?symbol=${this.selectedSymbol}&timeframe=${this.selectedTimeframe}`;
+                        const response = await fetch(url);
+
+                        if (!response.ok) {
+                            throw new Error(`API error: ${response.status}`);
+                        }
+
+                        const apiData = await response.json();
+
+                        // Transform API response to frontend format
+                        this.heatmapData = {
+                            currentPrice: apiData.current_price,
+                            longLiquidations: apiData.long_liquidations_usd,
+                            shortLiquidations: apiData.short_liquidations_usd,
+                            heatmapData: apiData.heatmap_data.map(d => [d.x, d.y, d.value, d.type]),
+                            priceLevels: apiData.price_levels,
+                            timeLabels: apiData.time_labels,
+                            currentPriceIndex: apiData.current_price_index,
+                            leverageLevels: apiData.leverage_levels
+                        };
+
+                        // Set loading=false FIRST so #liquidationHeatmap element is rendered
+                        this.loading = false;
+
+                        // Then wait for DOM to update before rendering chart
+                        this.$nextTick(() => {
+                            this.$nextTick(() => {
+                                this.renderHeatmap();
+                            });
+                        });
+                    } catch (error) {
+                        console.error('Error loading heatmap:', error);
+                        this.error = error.message;
+                        this.loading = false;
+                    }
+                },
+                renderHeatmap() {
+                    const { heatmapData, priceLevels, timeLabels, currentPrice, currentPriceIndex } = this.heatmapData;
+
+                    if (!heatmapData || heatmapData.length === 0) return;
+
+                    const priceLabels = priceLevels.map(p => {
+                        if (p >= 1000) return '$' + (p / 1000).toFixed(1) + 'K';
+                        if (p >= 1) return '$' + p.toFixed(2);
+                        return '$' + p.toFixed(4);
+                    });
+
+                    const combinedData = heatmapData.map(d => ({
+                        x: d[0],
+                        y: d[1],
+                        value: d[2],
+                        type: d[3],
+                        color: d[3] === 'long'
+                            ? `rgba(34, 197, 94, ${Math.min(1, d[2] + 0.15)})`
+                            : `rgba(239, 68, 68, ${Math.min(1, d[2] + 0.15)})`
+                    }));
+
+                    Highcharts.chart('liquidationHeatmap', {
+                        chart: {
+                            type: 'heatmap',
+                            backgroundColor: 'transparent',
+                            height: 500,
+                            marginTop: 20,
+                            marginBottom: 100,
+                            marginLeft: 90,
+                            marginRight: 20
+                        },
+                        title: { text: null },
+                        xAxis: {
+                            categories: timeLabels,
+                            labels: {
+                                rotation: -45,
+                                style: { color: '#a8a8a8', fontSize: '10px', fontFamily: 'IBM Plex Mono, monospace' }
+                            },
+                            lineColor: '#222222',
+                            tickColor: '#222222',
+                            title: { text: 'Time', style: { color: '#7a7a7a', fontSize: '11px' } }
+                        },
+                        yAxis: {
+                            categories: priceLabels,
+                            title: { text: 'Price Level', style: { color: '#7a7a7a', fontSize: '11px' } },
+                            labels: { style: { color: '#a8a8a8', fontSize: '10px', fontFamily: 'IBM Plex Mono, monospace' } },
+                            lineColor: '#222222',
+                            gridLineColor: '#1a1a1a',
+                            plotLines: [{
+                                value: currentPriceIndex,
+                                color: '#06B6D4',
+                                width: 2,
+                                dashStyle: 'Dash',
+                                label: {
+                                    text: 'Current: $' + currentPrice.toLocaleString(),
+                                    align: 'right',
+                                    style: { color: '#06B6D4', fontSize: '11px', fontWeight: 'bold' }
+                                },
+                                zIndex: 5
+                            }]
+                        },
+                        colorAxis: {
+                            min: 0,
+                            max: 1,
+                            stops: [
+                                [0, 'rgba(251, 191, 36, 0.1)'],
+                                [0.25, 'rgba(251, 191, 36, 0.3)'],
+                                [0.5, 'rgba(251, 191, 36, 0.5)'],
+                                [0.75, 'rgba(251, 191, 36, 0.7)'],
+                                [1, 'rgba(251, 191, 36, 1)']
+                            ],
+                            labels: { enabled: false }
+                        },
+                        legend: { enabled: false },
+                        tooltip: {
+                            backgroundColor: '#1a1a1a',
+                            borderColor: '#333333',
+                            style: { color: '#f5f5f5', fontSize: '12px' },
+                            formatter: function() {
+                                const price = priceLevels[this.point.y];
+                                const time = timeLabels[this.point.x];
+                                const type = this.point.type;
+                                const intensity = (this.point.value * 100).toFixed(0);
+                                const estValue = '$' + (this.point.value * 8).toFixed(1) + 'M';
+
+                                return `<b>${time}</b><br/>` +
+                                       `Price: $${price.toLocaleString()}<br/>` +
+                                       `Type: <span style="color: ${type === 'long' ? '#22c55e' : '#ef4444'}">${type.toUpperCase()} Liquidations</span><br/>` +
+                                       `Intensity: ${intensity}%<br/>` +
+                                       `Est. Volume: ${estValue}`;
+                            }
+                        },
+                        series: [{
+                            name: 'Liquidations',
+                            borderWidth: 0,
+                            data: combinedData,
+                            turboThreshold: 10000,
+                            dataLabels: { enabled: false }
+                        }],
+                        credits: { enabled: false },
+                        exporting: {
+                            enabled: true,
+                            buttons: {
+                                contextButton: {
+                                    menuItems: ['downloadPNG', 'downloadJPEG', 'downloadPDF'],
+                                    theme: { fill: '#1a1a1a', states: { hover: { fill: '#333333' } } }
+                                }
+                            }
+                        }
+                    });
+                },
+                initIcons() {
+                    if (typeof lucide !== 'undefined') {
+                        lucide.createIcons();
+                    }
+                }
+            },
+            mounted() {
+                this.loadHeatmap();
+                this.$nextTick(() => {
+                    this.initIcons();
+                    setInterval(() => this.initIcons(), 500);
+                });
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>

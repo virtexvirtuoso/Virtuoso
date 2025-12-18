@@ -5,7 +5,7 @@ import hmac
 import hashlib
 import base64
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 import aiohttp
 from .base import BaseExchange
 import decimal
@@ -242,7 +242,7 @@ class CoinbaseExchange(BaseExchange):
                 'bids': [[float(bid[0]), float(bid[1])] for bid in response.get('bids', [])],
                 'asks': [[float(ask[0]), float(ask[1])] for ask in response.get('asks', [])],
                 'timestamp': int(time.time() * 1000),
-                'datetime': datetime.utcnow().isoformat(),
+                'datetime': datetime.now(timezone.utc).isoformat(),
                 'nonce': response.get('sequence')
             }
         except Exception as e:
@@ -574,7 +574,7 @@ class CoinbaseExchange(BaseExchange):
                 'symbol': response.get('product_id'),
                 'status': 'canceled',
                 'timestamp': int(time.time() * 1000),
-                'datetime': datetime.utcnow().isoformat()
+                'datetime': datetime.now(timezone.utc).isoformat()
             }
         except Exception as e:
             logger.error(f"Error canceling Coinbase order: {str(e)}")

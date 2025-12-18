@@ -1,6 +1,6 @@
 """Optimized market routes with parallel API calls and caching."""
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, List, Optional
 from fastapi import APIRouter, HTTPException, Depends, Query, Request
 import logging
@@ -144,7 +144,7 @@ async def get_market_overview_optimized(
         
         response_data = {
             "status": "active",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "regime": regime,
             "trend_strength": round(trend_strength, 1),
             "volatility": round(volatility, 2),
@@ -181,7 +181,7 @@ async def get_market_overview_optimized(
         # Return default values on error
         return {
             "status": "error",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "regime": "NEUTRAL",
             "trend_strength": 50.0,
             "volatility": 0.0,
@@ -233,7 +233,7 @@ async def get_market_movers_optimized(
         losers = sorted_tickers[-limit:][::-1]  # Reverse to get worst first
         
         response_data = {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "gainers": gainers,
             "losers": losers,
             "total_symbols": len(processed_tickers),
@@ -248,7 +248,7 @@ async def get_market_movers_optimized(
     except Exception as e:
         logger.error(f"Error getting market movers: {e}")
         return {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "gainers": [],
             "losers": [],
             "error": str(e),

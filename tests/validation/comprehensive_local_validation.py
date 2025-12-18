@@ -25,7 +25,8 @@ from datetime import datetime
 import logging
 
 # Add src to path for imports
-sys.path.insert(0, '/Users/ffv_macmini/Desktop/Virtuoso_ccxt/src')
+project_root = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(project_root / 'src'))
 
 # Configure logging
 logging.basicConfig(
@@ -33,7 +34,7 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
         logging.StreamHandler(),
-        logging.FileHandler('/Users/ffv_macmini/Desktop/Virtuoso_ccxt/validation_results.log')
+        logging.FileHandler(str(project_root / 'validation_results.log'))
     ]
 )
 logger = logging.getLogger(__name__)
@@ -128,7 +129,7 @@ def test_config_validation():
     logger.info("Testing configuration validation...")
 
     try:
-        config_path = '/Users/ffv_macmini/Desktop/Virtuoso_ccxt/config/config.yaml'
+        config_path = str(project_root / 'config' / 'config.yaml')
 
         if not os.path.exists(config_path):
             return {
@@ -276,8 +277,8 @@ def test_open_interest_none_fix():
 
         # Load the actual configuration file to get the full structure
         try:
-            config_path = '/Users/ffv_macmini/Desktop/Virtuoso_ccxt/config/config.yaml'
-            with open(config_path, 'r') as f:
+            config_file = project_root / 'config' / 'config.yaml'
+            with open(config_file, 'r') as f:
                 config = yaml.safe_load(f)
         except Exception as e:
             # Fallback to minimal config if loading fails
@@ -603,10 +604,10 @@ def test_syntax_validation():
     logger.info("Testing Python syntax validation...")
 
     modified_files = [
-        '/Users/ffv_macmini/Desktop/Virtuoso_ccxt/src/core/error/models.py',
-        '/Users/ffv_macmini/Desktop/Virtuoso_ccxt/src/indicators/orderflow_indicators.py',
-        '/Users/ffv_macmini/Desktop/Virtuoso_ccxt/src/core/formatting/formatter.py',
-        '/Users/ffv_macmini/Desktop/Virtuoso_ccxt/src/core/market/market_data_manager.py'
+        str(project_root / 'src/core/error/models.py'),
+        str(project_root / 'src/indicators/orderflow_indicators.py'),
+        str(project_root / 'src/core/formatting/formatter.py'),
+        str(project_root / 'src/core/market/market_data_manager.py')
     ]
 
     syntax_errors = []
@@ -683,12 +684,12 @@ def run_comprehensive_validation():
 
     # Save results to file
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    report_file = f'/Users/ffv_macmini/Desktop/Virtuoso_ccxt/validation_report_{timestamp}.txt'
+    report_file = str(project_root / f'validation_report_{timestamp}.txt')
     with open(report_file, 'w') as f:
         f.write(report)
 
     # Save machine-readable results
-    json_file = f'/Users/ffv_macmini/Desktop/Virtuoso_ccxt/validation_results_{timestamp}.json'
+    json_file = str(project_root / f'validation_results_{timestamp}.json')
     with open(json_file, 'w') as f:
         json.dump(results.results, f, indent=2)
 
