@@ -58,7 +58,8 @@ def main():
         'src/analysis/session_analyzer.py',
     ]
     
-    project_root = Path('/Users/ffv_macmini/Desktop/Virtuoso_ccxt')
+    # Use relative path from script location
+    project_root = Path(__file__).parent.parent.parent
     
     updated_files = []
     for file_path in files_to_update:

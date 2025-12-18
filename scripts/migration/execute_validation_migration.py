@@ -12,8 +12,10 @@ from datetime import datetime
 class ValidationMigrationExecutor:
     def __init__(self, dry_run: bool = True):
         self.dry_run = dry_run
-        self.src_path = Path('/Users/ffv_macmini/Desktop/Virtuoso_ccxt/src')
-        self.scripts_path = Path('/Users/ffv_macmini/Desktop/Virtuoso_ccxt/scripts/migration')
+        # Use relative path from script location
+        project_root = Path(__file__).parent.parent.parent
+        self.src_path = project_root / 'src'
+        self.scripts_path = project_root / 'scripts' / 'migration'
         self.logs = []
         self.timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         

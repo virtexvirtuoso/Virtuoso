@@ -159,11 +159,15 @@ class ValidationAnalyzer:
         return report
 
 def main():
-    analyzer = ValidationAnalyzer('/Users/ffv_macmini/Desktop/Virtuoso_ccxt/src')
+    # Use relative path from script location
+    project_root = Path(__file__).parent.parent.parent
+    script_dir = Path(__file__).parent
+
+    analyzer = ValidationAnalyzer(str(project_root / 'src'))
     report = analyzer.generate_report()
-    
+
     # Save report
-    with open('/Users/ffv_macmini/Desktop/Virtuoso_ccxt/scripts/migration/validation_analysis_report.json', 'w') as f:
+    with open(script_dir / 'validation_analysis_report.json', 'w') as f:
         json.dump(report, f, indent=2)
     
     # Print summary

@@ -218,6 +218,7 @@ reports/json/
 reports/charts/
 reports/session_reports/
 src/reports/session_reports/
+src/reports/html/
 reports/analysis/cache_rationalization/
 reports/analysis/performance/
 reports/analysis/talib_optimization/
@@ -329,6 +330,10 @@ scripts/final_*_test.py
 /crisis_cleanup_*/
 /temp_cleanup_*/
 
+# Validation artifacts
+validation_screenshots/
+/validation_screenshots/
+
 # Validation result files in root
 /*validation_results*.json
 /*_validation_report*.json
@@ -365,6 +370,9 @@ archives/
 .cleanup_backups/
 backup_*_*/
 backups/
+
+# AI competition directory
+ai-competition/
 
 # BFG Repo-Cleaner reports
 .bfg-report/

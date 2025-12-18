@@ -157,7 +157,9 @@ class UtilsAnalyzer:
         print(f"True utilities to keep: {len(categories['true_utilities'])}")
 
 def main():
-    analyzer = UtilsAnalyzer('/Users/ffv_macmini/Desktop/Virtuoso_ccxt/src')
+    # Use relative path from script location
+    project_root = Path(__file__).parent.parent.parent
+    analyzer = UtilsAnalyzer(str(project_root / 'src'))
     analyzer.generate_report()
 
 if __name__ == "__main__":
