@@ -22,7 +22,7 @@ Performance Characteristics:
 
 from typing import Dict, List, Optional, Any, Type, Callable, Awaitable, Set, Union
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 import asyncio
 import logging
@@ -83,7 +83,7 @@ class Event:
         return cls(
             event_id=data.get('event_id', str(uuid.uuid4())),
             event_type=data.get('event_type', ''),
-            timestamp=datetime.fromisoformat(data.get('timestamp', datetime.utcnow().isoformat())),
+            timestamp=datetime.fromisoformat(data.get('timestamp', datetime.now(timezone.utc).isoformat())),
             source=data.get('source', ''),
             priority=EventPriority(data.get('priority', EventPriority.NORMAL.value)),
             data=data.get('data', {}),
@@ -623,7 +623,7 @@ class EventBus(IAsyncDisposable):
         """Add event to dead letter queue."""
         if self._dead_letter_queue:
             event.metadata['dead_letter_reason'] = error
-            event.metadata['dead_letter_time'] = datetime.utcnow().isoformat()
+            event.metadata['dead_letter_time'] = datetime.now(timezone.utc).isoformat()
             self._dead_letter_queue.append(event)
             
             if self._metrics:

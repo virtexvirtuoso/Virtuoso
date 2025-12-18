@@ -19,6 +19,7 @@ import time
 import sys
 import traceback
 from datetime import datetime
+from pathlib import Path
 from typing import Dict, Any, List
 
 def log_test_result(test_name: str, success: bool, duration: float, details: str = ""):
@@ -87,7 +88,8 @@ async def test_removed_test_files():
     remaining_files = []
 
     for file_path in dangerous_files:
-        full_path = f"/Users/ffv_macmini/Desktop/Virtuoso_ccxt/{file_path}"
+        project_root = Path(__file__).parent.parent.parent
+        full_path = str(project_root / file_path)
         if os.path.exists(full_path):
             remaining_files.append(file_path)
         else:

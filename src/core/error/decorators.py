@@ -5,7 +5,7 @@ import logging
 import functools
 import asyncio
 from typing import Any, Callable, Optional, Type, Union, TypeVar
-from datetime import datetime
+from datetime import datetime, timezone
 
 from .models import ErrorSeverity
 from .exceptions import (
@@ -127,24 +127,24 @@ def measure_execution(logger: logging.Logger) -> Callable[[F], F]:
     def decorator(func: F) -> F:
         @functools.wraps(func)
         async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
-            start_time = datetime.utcnow()
+            start_time = datetime.now(timezone.utc)
             try:
                 result = await func(*args, **kwargs)
                 return result
             finally:
-                execution_time = (datetime.utcnow() - start_time).total_seconds()
+                execution_time = (datetime.now(timezone.utc) - start_time).total_seconds()
                 logger.debug(
                     f"{func.__name__} executed in {execution_time:.3f} seconds"
                 )
         
         @functools.wraps(func)
         def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
-            start_time = datetime.utcnow()
+            start_time = datetime.now(timezone.utc)
             try:
                 result = func(*args, **kwargs)
                 return result
             finally:
-                execution_time = (datetime.utcnow() - start_time).total_seconds()
+                execution_time = (datetime.now(timezone.utc) - start_time).total_seconds()
                 logger.debug(
                     f"{func.__name__} executed in {execution_time:.3f} seconds"
                 )

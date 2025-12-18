@@ -3,7 +3,7 @@ from typing import Dict, List, Optional, Any
 from ..models.market import MarketData, OrderBook, Trade, MarketComparison, TechnicalAnalysis
 from src.core.exchanges.manager import ExchangeManager
 from fastapi import Request
-from datetime import datetime
+from datetime import datetime, timezone
 import time
 import logging
 import asyncio
@@ -145,7 +145,7 @@ async def get_ticker(
             "ask_volume": ticker_data.get('askVolume', 0),
             "open_24h": ticker_data.get('open', 0),
             "timestamp": ticker_data.get('timestamp', int(time.time() * 1000)),
-            "datetime": datetime.fromtimestamp(ticker_data.get('timestamp', time.time() * 1000) / 1000).isoformat() if ticker_data.get('timestamp') else datetime.utcnow().isoformat(),
+            "datetime": datetime.fromtimestamp(ticker_data.get('timestamp', time.time() * 1000) / 1000).isoformat() if ticker_data.get('timestamp') else datetime.now(timezone.utc).isoformat(),
             "status": "success"
         }
         
@@ -253,7 +253,7 @@ async def get_ticker_batch(
                     "ask_volume": ticker_data.get('askVolume', 0),
                     "open_24h": ticker_data.get('open', 0),
                     "timestamp": ticker_data.get('timestamp', int(time.time() * 1000)),
-                    "datetime": datetime.fromtimestamp(ticker_data.get('timestamp', time.time() * 1000) / 1000).isoformat() if ticker_data.get('timestamp') else datetime.utcnow().isoformat(),
+                    "datetime": datetime.fromtimestamp(ticker_data.get('timestamp', time.time() * 1000) / 1000).isoformat() if ticker_data.get('timestamp') else datetime.now(timezone.utc).isoformat(),
                     "status": "success"
                 }
                 
@@ -486,7 +486,7 @@ async def get_market_overview(
             
         return {
             "status": "active",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "regime": regime,
             "trend_strength": round(trend_strength, 1),
             "volatility": round(current_volatility, 1),
@@ -512,7 +512,7 @@ async def get_market_overview(
         # Return default values on error
         return {
             "status": "active",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "regime": "NEUTRAL",
             "trend_strength": 50.0,
             "volatility": 0.0,
@@ -609,7 +609,7 @@ async def get_market_movers(
         losers.reverse()  # Make losers show biggest loss first
         
         return {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "total_markets": len(linear_symbols),
             "markets_analyzed": len(market_data),
             "gainers": gainers,
@@ -627,7 +627,7 @@ async def get_market_movers(
         logger.error(f"Error getting market movers: {e}")
         # Return empty movers on error
         return {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "total_markets": 0,
             "markets_analyzed": 0,
             "gainers": [],
@@ -813,7 +813,7 @@ async def get_futures_premium_analysis(
         
         return {
             "status": "success",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "data": futures_analysis,
             "metadata": {
                 "symbols_analyzed": len(symbol_list),
@@ -861,7 +861,7 @@ async def get_contango_status(
         
         return {
             "status": "success",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "contango_status": contango_status,
             "average_premium": f"{average_premium:.4f}%",
             "market_sentiment": sentiment,
@@ -902,7 +902,7 @@ async def get_term_structure_analysis(
         
         return {
             "status": "success", 
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "symbol": symbol,
             "spot_price": symbol_data.get('index_price', 0),
             "perpetual_price": symbol_data.get('mark_price', 0),
@@ -986,7 +986,7 @@ async def get_single_futures_premium(
         
         return {
             "status": "success",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "symbol": symbol_formatted,
             "contango_analysis": {
                 "spot_premium": f"{spot_premium:.4f}%",
@@ -1066,7 +1066,7 @@ async def get_comprehensive_symbol_analysis(
         # Initialize response structure
         analysis = {
             "status": "success",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "symbol": symbol_formatted,
             "symbol_clean": symbol_clean,
             "exchange": exchange_id,

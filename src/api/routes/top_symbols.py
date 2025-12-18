@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Query
 from typing import Dict, Any, List
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 import asyncio
 import time
@@ -98,7 +98,7 @@ async def get_trending_symbols(
                 "trend_score": 100 - (i * 5),  # Decreasing trend scores
                 "volume_increase": f"{50 + (i * 10)}%",
                 "timeframe": timeframe,
-                "last_update": datetime.utcnow().isoformat()
+                "last_update": datetime.now(timezone.utc).isoformat()
             })
         
         return trending_symbols
@@ -122,7 +122,7 @@ async def get_top_gainers(
                 "price_change_24h": 1000.0 - (i * 50),
                 "volume_24h": 1000000000.0 - (i * 50000000),
                 "timeframe": timeframe,
-                "last_update": datetime.utcnow().isoformat()
+                "last_update": datetime.now(timezone.utc).isoformat()
             })
         
         return gainers
@@ -146,7 +146,7 @@ async def get_top_losers(
                 "price_change_24h": -100.0 - (i * 25),
                 "volume_24h": 500000000.0 - (i * 25000000),
                 "timeframe": timeframe,
-                "last_update": datetime.utcnow().isoformat()
+                "last_update": datetime.now(timezone.utc).isoformat()
             })
         
         return losers
@@ -170,7 +170,7 @@ async def get_top_volume_symbols(
                 "volume_change_percent": 25.0 - (i * 1.0),
                 "turnover_rate": 0.8 - (i * 0.02),
                 "timeframe": timeframe,
-                "last_update": datetime.utcnow().isoformat()
+                "last_update": datetime.now(timezone.utc).isoformat()
             })
         
         return volume_leaders
@@ -184,7 +184,7 @@ async def top_symbols_health() -> Dict[str, Any]:
     """Health check for top symbols service."""
     return {
         "status": "healthy",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "service": "top_symbols",
         "version": "1.0.0",
         "symbols_available": len(DEFAULT_SYMBOLS),

@@ -8,7 +8,7 @@ import sys
 import os
 import time
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from collections import deque
 from typing import Dict, Any, List
 
@@ -93,7 +93,7 @@ class MockLiquidationCache:
 
     def get_recent_liquidations(self, symbol: str, exchange: str = None, minutes: int = 60) -> List[LiquidationEvent]:
         """Get recent liquidations (mock implementation)"""
-        cutoff_time = datetime.utcnow() - timedelta(minutes=minutes)
+        cutoff_time = datetime.now(timezone.utc) - timedelta(minutes=minutes)
         return [liq for liq in self.liquidations
                 if liq.symbol == symbol and liq.timestamp >= cutoff_time]
 
@@ -201,7 +201,7 @@ def test_liquidation_correlation(results: TestResults):
     # Test 2.1: Detect significant liquidation spike
     try:
         # Add $2M in liquidations
-        current_time = datetime.utcnow()
+        current_time = datetime.now(timezone.utc)
         mock_cache.add_liquidation(symbol, 'buy', 10.0, 100000, current_time)
         mock_cache.add_liquidation(symbol, 'buy', 5.0, 100000, current_time)
         mock_cache.add_liquidation(symbol, 'buy', 5.0, 100000, current_time)
@@ -222,7 +222,7 @@ def test_liquidation_correlation(results: TestResults):
         mock_cache.liquidations = []
 
         # Add mostly long liquidations
-        current_time = datetime.utcnow()
+        current_time = datetime.now(timezone.utc)
         for i in range(15):  # 15 long liquidations
             mock_cache.add_liquidation(symbol, 'buy', 5.0, 100000, current_time)
         for i in range(3):   # 3 short liquidations
@@ -254,7 +254,7 @@ def test_liquidation_correlation(results: TestResults):
     try:
         # Clear and add small liquidations (<$1M)
         mock_cache.liquidations = []
-        current_time = datetime.utcnow()
+        current_time = datetime.now(timezone.utc)
         mock_cache.add_liquidation(symbol, 'buy', 1.0, 50000, current_time)  # $50k
 
         liq_data = alert_manager._check_liquidation_correlation(symbol, timeframe=300)
@@ -350,7 +350,7 @@ def test_integration(results: TestResults):
         alert_manager._track_oi_change(symbol, 110_000_000)
 
         # Setup: Liquidations
-        current_time = datetime.utcnow()
+        current_time = datetime.now(timezone.utc)
         for i in range(20):
             mock_cache.add_liquidation(symbol, 'buy', 5.0, 100000, current_time)
 

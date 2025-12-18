@@ -147,15 +147,17 @@ logger = logging.getLogger(__name__)
 class AlertManager:
     """Alert manager for monitoring system."""
 
-    def __init__(self, config: Dict[str, Any], database: Optional[Any] = None):
+    def __init__(self, config: Dict[str, Any], database: Optional[Any] = None, cache_adapter: Optional[Any] = None):
         """Initialize AlertManager.
-        
+
         Args:
             config: Configuration dictionary
             database: Optional database client
+            cache_adapter: Optional async cache adapter for dashboard caching
         """
         self.config = config
         self.database = database
+        self.cache_adapter = cache_adapter  # Async cache for dashboard alerts
         self.alerts = []
         self.logger = logging.getLogger(__name__)
         self.handlers = []
@@ -226,7 +228,7 @@ class AlertManager:
         # Alert configuration
         self.alert_levels = ['INFO', 'WARNING', 'ERROR', 'CRITICAL']
         self.alert_throttle = 60  # Default throttle of 60 seconds
-        self.liquidation_threshold = 250000  # Default $250k threshold for liquidation alerts (matches config.yaml)
+        self.liquidation_threshold = 500000  # Default $500k threshold for liquidation alerts (matches config.yaml)
         self.liquidation_cooldown = 300  # Default 5 minutes cooldown between liquidation alerts for the same symbol
         self.large_order_cooldown = 300  # Default 5 minutes cooldown between large order alerts for the same symbol
 
@@ -235,10 +237,10 @@ class AlertManager:
         self._liquidation_buffer_global = []  # Global list of (timestamp, symbol, usd_value, side, price, size) for cross-symbol aggregation
         self._last_aggregate_alert = {}  # Symbol -> timestamp of last aggregate alert
         self._last_global_aggregate_alert = 0  # Timestamp of last global aggregate alert
-        self.aggregate_liquidation_threshold = 200000  # $200k aggregate threshold (lower than single liquidation)
+        self.aggregate_liquidation_threshold = 1000000  # $1M aggregate threshold (Conservative - filters bottom 28% noise)
         self.aggregate_liquidation_window = 300  # 5 minute window for aggregation
         self.aggregate_liquidation_cooldown = 600  # 10 minute cooldown between aggregate alerts
-        self.global_aggregate_threshold = 500000  # $500k for cross-symbol aggregate alerts
+        self.global_aggregate_threshold = 2000000  # $2M for cross-symbol aggregate alerts (Conservative)
         self.global_aggregate_cooldown = 900  # 15 minute cooldown for global alerts
         self.whale_activity_cooldown = 900  # Default 15 minutes cooldown between whale activity alerts for the same symbol
 
@@ -310,8 +312,9 @@ class AlertManager:
         self.alert_persistence = None
         if AlertPersistence:
             try:
-                # Use a dedicated database for alerts
-                alerts_db_path = config.get('monitoring', {}).get('alerts', {}).get('db_path', 'data/alerts.db')
+                # MIGRATION 2025-12-06: Consolidated to virtuoso.db (was alerts.db)
+                # All alerts now go to a single database for unified dashboard access
+                alerts_db_path = config.get('monitoring', {}).get('alerts', {}).get('db_path', 'data/virtuoso.db')
                 self.alert_persistence = AlertPersistence(alerts_db_path, logger=self.logger)
                 self.logger.info(f"Alert persistence system initialized at {alerts_db_path}")
             except Exception as e:
@@ -353,6 +356,9 @@ class AlertManager:
 
         # Liquidation alerts webhook URL (dedicated channel for liquidation alerts)
         self.liquidation_webhook_url = ""
+
+        # Predictive alerts webhook URL (dedicated channel for predictive liquidation alerts)
+        self.predictive_webhook_url = ""
 
         # Development webhook URL (for testing alerts before production)
         self.development_webhook_url = ""
@@ -454,6 +460,17 @@ class AlertManager:
                     self.logger.debug("Liquidation alerts webhook URL empty after cleaning")
             else:
                 self.logger.info("ℹ️  No dedicated liquidation webhook URL - liquidation alerts will use main webhook")
+
+            # Load predictive alerts webhook URL from environment
+            predictive_webhook_url = os.getenv('DISCORD_PREDICTIVE_WEBHOOK_URL', '')
+            if predictive_webhook_url:
+                self.predictive_webhook_url = predictive_webhook_url.strip().replace('\n', '')
+                if self.predictive_webhook_url:
+                    self.logger.info(f"✅ Predictive alerts webhook URL loaded: {self.predictive_webhook_url[:30]}...{self.predictive_webhook_url[-15:]}")
+                else:
+                    self.logger.debug("Predictive alerts webhook URL empty after cleaning")
+            else:
+                self.logger.info("ℹ️  No dedicated predictive webhook URL - predictive alerts will use main webhook")
 
             # Load development webhook URL from environment
             development_webhook_url = os.getenv('DEVELOPMENT_WEBHOOK_URL', '')
@@ -1277,7 +1294,10 @@ class AlertManager:
             
             # Cache signal for dashboard display
             await self._cache_signal_for_dashboard(message, details)
-            
+
+            # Cache alert for dashboard alerts endpoint
+            await self._cache_alert_for_dashboard(level, message, details)
+
         except Exception as e:
             self.logger.error(f"Error sending alert: {str(e)}")
             self.logger.error(traceback.format_exc())
@@ -1344,10 +1364,150 @@ class AlertManager:
             cache.close()
             
             self.logger.debug(f"Cached signal for {symbol} in dashboard signals (score: {score}, direction: {direction})")
-            
+
         except Exception as e:
             self.logger.debug(f"Failed to cache signal for dashboard: {e}")
-    
+
+    async def _cache_alert_for_dashboard(self, level: str, message: str, details: Optional[Dict[str, Any]]) -> None:
+        """Cache alert for dashboard display when alerts are sent.
+
+        This method populates the 'dashboard:alerts' cache key that is read by
+        the /api/dashboard/alerts endpoint.
+
+        FIXED: Now uses async cache_adapter instead of synchronous pymemcache
+        to avoid blocking the event loop and connection exhaustion issues.
+        """
+        try:
+            # Create alert object for dashboard
+            symbol = details.get('symbol', 'SYSTEM') if details else 'SYSTEM'
+            alert_type = details.get('type', 'general') if details else 'general'
+
+            alert = {
+                'id': str(uuid.uuid4()),
+                'type': alert_type,
+                'level': level.lower(),
+                'symbol': symbol,
+                'message': message[:500] if len(message) > 500 else message,
+                'timestamp': datetime.now(timezone.utc).isoformat(),
+                'unix_timestamp': time.time(),
+                'details': {
+                    'price': details.get('price', details.get('current_price', 0)) if details else 0,
+                    'change': details.get('change_24h', details.get('price_change', 0)) if details else 0,
+                    'score': details.get('confluence_score', details.get('score', 0)) if details else 0,
+                    'volume': details.get('volume', details.get('volume_24h', 0)) if details else 0
+                }
+            }
+
+            # PRIMARY: Use async cache adapter if available (recommended)
+            if self.cache_adapter:
+                try:
+                    existing = await self.cache_adapter.get('dashboard:alerts', [])
+                    if not isinstance(existing, list):
+                        existing = []
+
+                    existing.insert(0, alert)
+                    existing = existing[:100]  # Keep last 100 alerts
+
+                    await self.cache_adapter.set('dashboard:alerts', existing, ttl=600)
+                    self.logger.info(f"✅ Cached alert for dashboard via async adapter: {alert_type} - {symbol}")
+                    return
+                except Exception as adapter_error:
+                    self.logger.warning(f"Async cache adapter failed: {adapter_error}")
+
+            # FALLBACK: Use pymemcache with proper error handling
+            try:
+                from pymemcache.client.base import Client
+                from pymemcache import serde
+
+                cache = Client(('localhost', 11211), serde=serde.pickle_serde, connect_timeout=2, timeout=2)
+                try:
+                    existing = cache.get('dashboard:alerts')
+                    if not existing or not isinstance(existing, list):
+                        existing = []
+
+                    existing.insert(0, alert)
+                    existing = existing[:100]
+
+                    cache.set('dashboard:alerts', existing, expire=600)
+                    self.logger.info(f"✅ Cached alert for dashboard via pymemcache: {alert_type} - {symbol}")
+                finally:
+                    cache.close()
+
+            except ImportError:
+                self.logger.warning("pymemcache not available for alert caching fallback")
+            except Exception as memcache_error:
+                self.logger.warning(f"Memcache fallback failed: {memcache_error}")
+
+        except Exception as e:
+            # FIXED: Log at WARNING level for visibility, not DEBUG
+            self.logger.warning(f"Failed to cache alert for dashboard: {e}", exc_info=True)
+
+    async def _store_and_cache_alert_direct(
+        self,
+        alert_type: str,
+        symbol: str,
+        message: str,
+        level: str = "INFO",
+        details: Optional[Dict[str, Any]] = None
+    ) -> Optional[str]:
+        """Store alert in SQLite and cache for dashboard - for methods bypassing send_alert().
+
+        This helper enables any alert method to persist alerts without going through
+        the main send_alert() flow. Use this for aggregate alerts, signal alerts, etc.
+
+        Args:
+            alert_type: Type of alert (e.g., 'liquidation_cascade', 'signal', 'retail_pressure')
+            symbol: Trading symbol or 'GLOBAL' for market-wide alerts
+            message: Alert message/title
+            level: Severity level (INFO, WARNING, ERROR, CRITICAL)
+            details: Additional alert details
+
+        Returns:
+            alert_id if stored successfully, None otherwise
+        """
+        alert_id = None
+        try:
+            alert_id = f"alert_{int(time.time() * 1000)}_{hash(message) & 0xFFFF}"
+            timestamp_ms = int(time.time() * 1000)
+
+            # Store in SQLite if available
+            if self.alert_storage:
+                try:
+                    alert_data = {
+                        'alert_id': alert_id,
+                        'alert_type': alert_type,
+                        'symbol': symbol,
+                        'severity': level,
+                        'title': message[:100],
+                        'message': message,
+                        'description': details.get('description', '') if details else '',
+                        'confluence_score': details.get('confluence_score', details.get('score')) if details else None,
+                        'price': details.get('price', details.get('current_price')) if details else None,
+                        'volume': details.get('volume', details.get('total_value')) if details else None,
+                        'change_24h': details.get('change_24h') if details else None,
+                        'timestamp': timestamp_ms,
+                        'details': details,
+                        'sent_to_discord': True  # These are sent directly to Discord
+                    }
+                    stored = self.alert_storage.store_alert(alert_data)
+                    if stored:
+                        self.logger.debug(f"✅ Alert stored in SQLite: {alert_type} - {symbol}")
+                except Exception as e:
+                    self.logger.warning(f"Failed to store alert in SQLite: {e}")
+
+            # Cache for dashboard display
+            await self._cache_alert_for_dashboard(level, message, {
+                'type': alert_type,
+                'symbol': symbol,
+                **(details or {})
+            })
+
+            return alert_id
+
+        except Exception as e:
+            self.logger.warning(f"Failed to store/cache direct alert: {e}")
+            return alert_id
+
     def _mark_alert_sent_to_discord(self, alert_id: str, response: Any = None) -> None:
         """Mark an alert as successfully sent to Discord in the database.
         
@@ -1783,21 +1943,30 @@ class AlertManager:
 
             # Check threshold
             if total_value >= self.aggregate_liquidation_threshold:
+                # CRITICAL: Set cooldown IMMEDIATELY to prevent async race condition
+                # Before this fix, the cooldown was set AFTER await _send_aggregate_liquidation_alert()
+                # which allowed multiple concurrent calls to pass the cooldown check
+                self._last_aggregate_alert[symbol] = current_time
+
+                # Clear buffer IMMEDIATELY to prevent duplicate alerts with stale data
+                buffer_copy = list(buffer)  # Copy for processing
+                self._liquidation_buffer[symbol] = []
+
                 # Extract additional metrics for improved alert
                 # Find largest liquidation
-                largest = max(buffer, key=lambda x: x[1])
+                largest = max(buffer_copy, key=lambda x: x[1])
                 largest_value = largest[1]
                 largest_side = "LONG" if largest[2] == 'BUY' else "SHORT"
                 largest_price = largest[3]
 
                 # Calculate average liquidation price (weighted by value)
-                total_weighted_price = sum(entry[1] * entry[3] for entry in buffer)
+                total_weighted_price = sum(entry[1] * entry[3] for entry in buffer_copy)
                 avg_liq_price = total_weighted_price / total_value if total_value > 0 else 0
 
                 # Calculate time span and rate
-                first_timestamp = min(entry[0] for entry in buffer)
+                first_timestamp = min(entry[0] for entry in buffer_copy)
                 time_span_seconds = current_time - first_timestamp
-                rate_per_minute = (len(buffer) / time_span_seconds * 60) if time_span_seconds > 0 else 0
+                rate_per_minute = (len(buffer_copy) / time_span_seconds * 60) if time_span_seconds > 0 else 0
 
                 # Get current price from cache if available
                 current_price = self._price_cache.get(symbol, avg_liq_price)
@@ -1807,7 +1976,7 @@ class AlertManager:
                     total_value=total_value,
                     long_value=long_value,
                     short_value=short_value,
-                    count=len(buffer),
+                    count=len(buffer_copy),
                     window_minutes=self.aggregate_liquidation_window // 60,
                     is_global=False,
                     largest_value=largest_value,
@@ -1817,9 +1986,8 @@ class AlertManager:
                     current_price=current_price,
                     rate_per_minute=rate_per_minute
                 )
-                self._last_aggregate_alert[symbol] = current_time
-                # Clear buffer after alert
-                self._liquidation_buffer[symbol] = []
+                # NOTE: Cooldown and buffer clear now done at the start of this block
+                # to prevent async race conditions
 
         except Exception as e:
             self.logger.error(f"Error checking symbol aggregate alert: {str(e)}")
@@ -1846,21 +2014,28 @@ class AlertManager:
 
             # Check threshold
             if total_value >= self.global_aggregate_threshold:
+                # CRITICAL: Set cooldown IMMEDIATELY to prevent async race condition
+                self._last_global_aggregate_alert = current_time
+
+                # Clear buffer IMMEDIATELY and take a copy for processing
+                buffer_copy = list(buffer)
+                self._liquidation_buffer_global = []
+
                 # Find largest liquidation across all symbols
-                largest = max(buffer, key=lambda x: x[2])
+                largest = max(buffer_copy, key=lambda x: x[2])
                 largest_value = largest[2]
                 largest_symbol = largest[1]
                 largest_side = "LONG" if largest[3] == 'BUY' else "SHORT"
                 largest_price = largest[4]
 
                 # Calculate time span and rate
-                first_timestamp = min(entry[0] for entry in buffer)
+                first_timestamp = min(entry[0] for entry in buffer_copy)
                 time_span_seconds = current_time - first_timestamp
-                rate_per_minute = (len(buffer) / time_span_seconds * 60) if time_span_seconds > 0 else 0
+                rate_per_minute = (len(buffer_copy) / time_span_seconds * 60) if time_span_seconds > 0 else 0
 
                 # Get symbol-wise breakdown for top symbols
                 symbol_values = {}
-                for entry in buffer:
+                for entry in buffer_copy:
                     sym = entry[1]
                     symbol_values[sym] = symbol_values.get(sym, 0) + entry[2]
 
@@ -1869,7 +2044,7 @@ class AlertManager:
                     total_value=total_value,
                     long_value=long_value,
                     short_value=short_value,
-                    count=len(buffer),
+                    count=len(buffer_copy),
                     window_minutes=self.aggregate_liquidation_window // 60,
                     is_global=True,
                     affected_symbols=affected_symbols,
@@ -1880,9 +2055,8 @@ class AlertManager:
                     rate_per_minute=rate_per_minute,
                     symbol_breakdown=symbol_values
                 )
-                self._last_global_aggregate_alert = current_time
-                # Clear global buffer after alert
-                self._liquidation_buffer_global = []
+                # NOTE: Cooldown and buffer clear now done at the start of this block
+                # to prevent async race conditions
 
         except Exception as e:
             self.logger.error(f"Error checking global aggregate alert: {str(e)}")
@@ -2030,6 +2204,28 @@ class AlertManager:
 
             # Send to Discord (use liquidation alert type for routing)
             await self._send_discord_embed(embed, alert_type="liquidation")
+
+            # Store in SQLite and cache for dashboard (CRITICAL FIX: was bypassing storage)
+            await self._store_and_cache_alert_direct(
+                alert_type='liquidation_cascade',
+                symbol='GLOBAL' if is_global else symbol,
+                message=title,
+                level='CRITICAL' if total_value >= 1_000_000 else 'WARNING',
+                details={
+                    'total_value': total_value,
+                    'long_value': long_value,
+                    'short_value': short_value,
+                    'count': count,
+                    'dominant': dominant,
+                    'window_minutes': window_minutes,
+                    'rate_per_minute': rate_per_minute,
+                    'is_global': is_global,
+                    'affected_symbols': affected_symbols,
+                    'largest_value': largest_value,
+                    'largest_side': largest_side,
+                    'current_price': current_price
+                }
+            )
 
             # Log the alert
             self.logger.warning(
@@ -2256,9 +2452,12 @@ class AlertManager:
         sig_id = signal_id or str(uuid.uuid4())[:8]
         
         # IMPROVED THROTTLING: Generate alert key for throttling
+        # Key includes symbol and signal type (LONG/SHORT/NEUTRAL)
         alert_key = f"{symbol}_{signal_type or 'confluence'}_alert"
-        content_for_dedup = f"{symbol}_{confluence_score:.2f}_{str(components)}"
-        
+        # Use rounded score for deduplication - prevents duplicates from tiny score fluctuations
+        # Note: Previously used str(components) which caused duplicates when sub-scores changed slightly
+        content_for_dedup = f"{symbol}_{signal_type}_{int(confluence_score)}"
+
         # Check improved throttling
         if not self._check_improved_throttling(alert_key, 'confluence', content_for_dedup):
             self.logger.info(f"[TXN:{txn_id}][SIG:{sig_id}] Confluence alert for {symbol} throttled")
@@ -2320,9 +2519,10 @@ class AlertManager:
             # Debug: Log components received
             self.logger.debug(f"[TXN:{txn_id}][SIG:{sig_id}][ALERT:{alert_id}] Components received: {components}")
             
-            # Check if reliability is less than 100% (1.0), if so, skip alert
-            if reliability < 1.0:
-                self.logger.info(f"[TXN:{txn_id}][SIG:{sig_id}][ALERT:{alert_id}] Skipping alert for {symbol} due to reliability {reliability*100:.1f}% < 100%")
+            # Only skip alerts for signals with very low reliability (< 30%)
+            # This allows most valid signals through while filtering out unreliable ones
+            if reliability < 0.3:
+                self.logger.info(f"[TXN:{txn_id}][SIG:{sig_id}][ALERT:{alert_id}] Skipping alert for {symbol} due to low reliability {reliability*100:.1f}% < 30%")
                 return
                 
             # Use explicit signal_type if provided, otherwise determine based on score and thresholds
@@ -2767,15 +2967,32 @@ class AlertManager:
                     
                     if response and response.status_code in [200, 204]:
                         self.logger.info(f"[TXN:{txn_id}][SIG:{sig_id}][ALERT:{alert_id}] Successfully sent confluence alert for {symbol} (status: {response.status_code})")
-                        
+
                         # IMPROVED THROTTLING: Mark alert as sent
                         self._mark_alert_sent_improved(alert_key, 'confluence', content_for_dedup)
-                        
+
+                        # Store in SQLite and cache for dashboard (CRITICAL FIX: was bypassing storage)
+                        await self._store_and_cache_alert_direct(
+                            alert_type='confluence',
+                            symbol=symbol,
+                            message=title,
+                            level='WARNING' if signal_type in ['LONG', 'SHORT'] else 'INFO',
+                            details={
+                                'confluence_score': confluence_score,
+                                'signal_type': signal_type,
+                                'price': price,  # Fixed: was 'current_price' which was undefined
+                                'reliability': reliability,
+                                'components': components,
+                                'transaction_id': txn_id,
+                                'signal_id': sig_id
+                            }
+                        )
+
                         # Note: PDF attachment is handled by send_signal_alert() workflow
                         # Skip PDF attachment here to avoid duplicate PDF messages
                         if pdf_path and os.path.exists(pdf_path):
                             self.logger.info(f"[TXN:{txn_id}][SIG:{sig_id}][ALERT:{alert_id}] 📎 PDF attachment will be handled by send_signal_alert() workflow")
-                        
+
                         break
                     else:
                         status_code = response.status_code if response else "N/A"
@@ -4217,7 +4434,68 @@ class AlertManager:
                 ohlcv_data=signal_data.get('ohlcv_data')
             )
             self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}][ALERT:{alert_id}] Successfully sent confluence alert for {symbol}")
-            
+
+            # ═══════════════════════════════════════════════════════════════════
+            # SIGNAL TRACKING: Record signal for performance validation
+            # ═══════════════════════════════════════════════════════════════════
+            try:
+                from src.database.signal_performance import SignalPerformanceTracker
+                from src.database.signal_tracking_helpers import determine_signal_pattern
+
+                # Initialize tracker
+                tracker = SignalPerformanceTracker()
+
+                # Determine signal pattern (divergence vs confirmation)
+                component_scores = signal_data.get('components', {})
+                pattern = determine_signal_pattern(component_scores, signal_type)
+
+                # Extract trade parameters
+                trade_params = signal_data.get('trade_params', {})
+                entry_price = trade_params.get('entry_price') or signal_data.get('entry_price') or signal_data.get('price')
+                stop_loss = trade_params.get('stop_loss') or signal_data.get('stop_loss')
+                targets = trade_params.get('targets') or signal_data.get('targets', [])
+
+                # Open signal for tracking
+                tracking_id = tracker.open_signal(
+                    symbol=symbol,
+                    signal_type=signal_type,
+                    confluence_score=score,
+                    entry_price=entry_price,
+                    stop_loss=stop_loss,
+                    targets=targets,
+                    signal_pattern=pattern,
+                    component_scores=component_scores,
+                    metadata={
+                        'transaction_id': transaction_id,
+                        'signal_id': signal_id,
+                        'alert_id': alert_id,
+                        'reliability': signal_data.get('reliability', 0.8),
+                        'market_interpretations': signal_data.get('market_interpretations'),
+                        'actionable_insights': signal_data.get('actionable_insights')
+                    }
+                )
+
+                if tracking_id:
+                    self.logger.info(
+                        f"[TXN:{transaction_id}][SIG:{signal_id}][TRACK:{tracking_id}] "
+                        f"Opened {signal_type} signal tracking for {symbol} "
+                        f"(pattern: {pattern}, score: {score:.2f})"
+                    )
+                else:
+                    self.logger.warning(
+                        f"[TXN:{transaction_id}][SIG:{signal_id}] "
+                        f"Failed to open signal tracking for {symbol}"
+                    )
+
+            except Exception as track_error:
+                # Don't let tracking errors break alert sending
+                self.logger.error(
+                    f"[TXN:{transaction_id}][SIG:{signal_id}] "
+                    f"Error recording signal for tracking: {track_error}"
+                )
+                self.logger.debug(traceback.format_exc())
+            # ═══════════════════════════════════════════════════════════════════
+
             # IMPROVED THROTTLING: Mark alert as sent (using different variable names for this context)
             alert_key_2 = f"{symbol}_{signal_data.get('signal_type', 'signal')}_alert" 
             content_for_dedup_2 = f"{symbol}_{signal_data.get('confluence_score', 0):.2f}"
@@ -4310,7 +4588,24 @@ class AlertManager:
                     self.logger.error(traceback.format_exc())
             else:
                 self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}][PDF] No valid PDF to attach")
-            
+
+            # Store in SQLite and cache for dashboard (CRITICAL FIX: was bypassing storage)
+            await self._store_and_cache_alert_direct(
+                alert_type='signal',
+                symbol=symbol,
+                message=f"{signal_type} Signal: {symbol} (Score: {score:.1f})",
+                level='INFO' if signal_type == 'NEUTRAL' else 'WARNING',
+                details={
+                    'confluence_score': score,
+                    'signal_type': signal_type,
+                    'price': signal_data.get('price'),
+                    'components': signal_data.get('components', {}),
+                    'reliability': signal_data.get('reliability'),
+                    'transaction_id': transaction_id,
+                    'signal_id': signal_id
+                }
+            )
+
             self.logger.info(f"[TXN:{transaction_id}][SIG:{signal_id}] Successfully sent signal alert for {symbol}")
             
         except Exception as e:
@@ -4582,6 +4877,24 @@ class AlertManager:
             if response and response.status_code in [200, 204]:
                 self._alert_stats['total'] = int(self._alert_stats.get('total', 0)) + 1
                 self._alert_stats['sent'] = int(self._alert_stats.get('sent', 0)) + 1
+
+                # Store in SQLite and cache for dashboard (CRITICAL FIX: was bypassing storage)
+                await self._store_and_cache_alert_direct(
+                    alert_type='alpha_opportunity',
+                    symbol=symbol,
+                    message=alert_title,
+                    level='WARNING',
+                    details={
+                        'alpha_estimate': alpha_estimate,
+                        'confidence_score': confidence_score,
+                        'divergence_type': divergence_str,
+                        'risk_level': risk_level,
+                        'trading_insight': trading_insight,
+                        'price': market_data.get('current_price'),
+                        'bitcoin_price': market_data.get('bitcoin_price'),
+                        'transaction_id': transaction_id
+                    }
+                )
             else:
                 self._alert_stats['total'] = int(self._alert_stats.get('total', 0)) + 1
                 self._alert_stats['errors'] = int(self._alert_stats.get('errors', 0)) + 1
@@ -4742,10 +5055,25 @@ class AlertManager:
                     else:
                         raise
 
-            # Update alert statistics
+            # Update alert statistics and store
             if response and response.status_code in [200, 204]:
                 self._alert_stats['total'] = int(self._alert_stats.get('total', 0)) + 1
                 self._alert_stats['sent'] = int(self._alert_stats.get('sent', 0)) + 1
+
+                # Store in SQLite and cache for dashboard (CRITICAL FIX: was bypassing storage)
+                await self._store_and_cache_alert_direct(
+                    alert_type='manipulation',
+                    symbol=symbol,
+                    message=title,
+                    level=severity.upper(),
+                    details={
+                        'manipulation_type': manipulation_type,
+                        'confidence_score': confidence_score,
+                        'severity': severity,
+                        'price': current_price,
+                        'metrics': metrics
+                    }
+                )
             else:
                 self._alert_stats['total'] = int(self._alert_stats.get('total', 0)) + 1
                 self._alert_stats['errors'] = int(self._alert_stats.get('errors', 0)) + 1
@@ -4889,6 +5217,23 @@ class AlertManager:
 
             if success:
                 self.logger.info(f"Retail pressure alert sent for {symbol}: {interpretation}")
+
+                # Store in SQLite and cache for dashboard (CRITICAL FIX: was bypassing storage)
+                await self._store_and_cache_alert_direct(
+                    alert_type='retail_pressure',
+                    symbol=symbol,
+                    message=title,
+                    level='WARNING' if retail_score >= 75 or retail_score <= 25 else 'INFO',
+                    details={
+                        'retail_score': retail_score,
+                        'retail_imbalance': retail_imbalance,
+                        'retail_participation': retail_participation,
+                        'interpretation': interpretation,
+                        'price': current_price,
+                        'signal_strength': signal_strength,
+                        'direction': direction
+                    }
+                )
             else:
                 self.logger.error(f"Failed to send retail pressure alert for {symbol}")
 
@@ -5010,6 +5355,23 @@ class AlertManager:
 
             if success:
                 self.logger.info(f"Extreme retail alert sent for {symbol}: {title_action}")
+
+                # Store in SQLite and cache for dashboard (CRITICAL FIX: was bypassing storage)
+                await self._store_and_cache_alert_direct(
+                    alert_type='retail_extreme',
+                    symbol=symbol,
+                    message=title,
+                    level='CRITICAL' if retail_score >= 90 or retail_score <= 10 else 'WARNING',
+                    details={
+                        'retail_score': retail_score,
+                        'extreme_type': alert_type,
+                        'description': description,
+                        'price': current_price,
+                        'participation': retail_metrics.get('participation'),
+                        'imbalance': retail_metrics.get('imbalance'),
+                        'total_volume': retail_metrics.get('total_volume')
+                    }
+                )
             else:
                 self.logger.error(f"Failed to send extreme retail alert for {symbol}")
 
@@ -5768,6 +6130,7 @@ class AlertManager:
                 - 'liquidation': Routes to liquidation webhook
                 - 'whale', 'whale_trade', 'whale_activity': Routes to whale webhook
                 - 'smart_money': Routes to whale webhook (related alerts)
+                - 'predictive': Routes to predictive webhook (predictive liquidation alerts)
                 - 'system': Routes to system webhook
                 - 'alpha': Routes to main webhook (alpha detection alerts)
                 - 'manipulation': Routes to main webhook (market manipulation alerts)
@@ -5789,6 +6152,8 @@ class AlertManager:
             return self.whale_webhook_url, "dedicated whale"
         elif alert_type == "smart_money" and self.whale_webhook_url:
             return self.whale_webhook_url, "dedicated whale (smart money)"
+        elif alert_type == "predictive" and self.predictive_webhook_url:
+            return self.predictive_webhook_url, "dedicated predictive"
         elif alert_type == "system" and self.system_webhook_url:
             return self.system_webhook_url, "dedicated system"
 
@@ -5932,7 +6297,7 @@ class AlertManager:
     def _get_market_session(self) -> str:
         """Determine current market session based on UTC time."""
         import datetime
-        utc_hour = datetime.datetime.utcnow().hour
+        utc_hour = datetime.datetime.now(timezone.utc).hour
         
         # Market sessions (UTC):
         # Asian: 00:00-09:00 UTC
@@ -5955,7 +6320,7 @@ class AlertManager:
         # This could be enhanced with actual volatility calculations
         # For now, return a basic assessment
         import datetime
-        current_hour = datetime.datetime.utcnow().hour
+        current_hour = datetime.datetime.now(timezone.utc).hour
         
         # Higher volatility during session opens and closes
         if current_hour in [0, 1, 7, 8, 13, 14, 22, 23]:

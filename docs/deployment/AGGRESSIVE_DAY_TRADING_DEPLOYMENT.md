@@ -259,7 +259,7 @@ After 1 week, review:
 ### Configuration Location
 
 ```
-Local:  /Users/ffv_macmini/Desktop/Virtuoso_ccxt/config/config.yaml
+Local:  config/config.yaml
 VPS:    ~/trading/Virtuoso_ccxt/config/config.yaml
 Backup: backups/aggressive_day_trading_20251030_105225/
 ```

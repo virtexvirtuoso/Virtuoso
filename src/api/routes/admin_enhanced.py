@@ -10,7 +10,7 @@ import json
 import logging
 import yaml
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import aiofiles
 from collections import deque
@@ -74,7 +74,7 @@ class AdminWebSocketManager:
         message = {
             "type": update_type,
             "data": data,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
         
         disconnected = []
@@ -132,7 +132,7 @@ async def get_live_metrics(session_token: str = Depends(get_current_session)):
             },
             "market": market_stats,
             "trading": trading_stats,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
         
     except Exception as e:
@@ -169,7 +169,7 @@ async def get_active_positions(session_token: str = Depends(get_current_session)
         return {
             "positions": positions,
             "signals": signals,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
         
     except Exception as e:
@@ -302,7 +302,7 @@ async def test_alert_system(
             "status": "success",
             "alert_type": alert_type,
             "message": f"Test {alert_type} alert sent successfully",
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
         
     except Exception as e:
@@ -431,7 +431,7 @@ async def get_optimization_suggestions(session_token: str = Depends(get_current_
                 "memory_ok": mem_avg < 80,
                 "overall": "healthy" if cpu_avg < 70 and mem_avg < 80 else "needs_attention"
             },
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
         
     except Exception as e:

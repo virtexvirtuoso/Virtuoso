@@ -66,6 +66,13 @@ try:
     gateway_available = True
 except ImportError:
     gateway_available = False
+
+# Regime monitoring routes
+try:
+    from .routes import regime
+    regime_available = True
+except ImportError:
+    regime_available = False
 # Cache dashboard routes archived
 # try:
 #     from .routes import cache_dashboard
@@ -312,6 +319,15 @@ def init_api_routes(app: FastAPI):
         app.include_router(health.router, prefix="/api/health", tags=["health"])
     except ImportError:
         pass
+
+    # Regime monitoring routes - registered directly in main.py to ensure proper loading order
+    # if regime_available:
+    #     app.include_router(
+    #         regime.router,
+    #         prefix=f"{api_prefix}/regime",
+    #         tags=["regime"]
+    #     )
+    #     logger.info("✅ Regime monitoring routes enabled")
 
     # Include configuration wizard routes
     try:

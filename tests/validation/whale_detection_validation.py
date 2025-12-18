@@ -21,7 +21,8 @@ from typing import Dict, Any, List
 import traceback
 
 # Add src to path for imports
-sys.path.insert(0, '/Users/ffv_macmini/Desktop/Virtuoso_ccxt/src')
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'src'))
 
 from monitoring.monitor import MarketMonitor
 from monitoring.utils.decorators import handle_monitoring_error

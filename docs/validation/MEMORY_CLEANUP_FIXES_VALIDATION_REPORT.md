@@ -2,7 +2,7 @@
 
 **Date:** 2025-10-30
 **Validator:** QA Automation Agent
-**Environment:** Production VPS (45.77.40.77)
+**Environment:** Production VPS (<vps-ip>)
 **Service:** virtuoso-trading.service
 **Deployment Time:** 2025-10-30 18:34:49 UTC
 **Validation Time:** 2025-10-30 18:43:00 - 18:51:00 UTC
@@ -30,7 +30,7 @@ The system is operating normally with:
 ## Context
 
 ### Fix 1: market_data_manager None Error
-- **File:** `/Users/ffv_macmini/Desktop/Virtuoso_ccxt/src/main.py`
+- **File:** `src/main.py`
 - **Issue:** `market_data_manager` was not extracted from components dict, causing AttributeError
 - **Changes Applied:**
   - Line 4288: Added `market_data_manager` to global variable declarations
@@ -38,7 +38,7 @@ The system is operating normally with:
 - **Expected Result:** No more `'NoneType' object has no attribute 'periodic_memory_cleanup'` errors
 
 ### Fix 2: Memory Cleanup Task Stopping Prematurely
-- **File:** `/Users/ffv_macmini/Desktop/Virtuoso_ccxt/src/core/market/market_data_manager.py`
+- **File:** `src/core/market/market_data_manager.py`
 - **Issue:** Memory cleanup task was stopping after initial cleanup, never entering periodic loop
 - **Changes Applied:**
   - Line 2071: Changed `while self.running:` to `while True:`

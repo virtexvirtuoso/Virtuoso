@@ -9,7 +9,7 @@ import time
 import psutil
 import aiohttp
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Any
 from enum import Enum
@@ -107,7 +107,7 @@ class CriticalHealthMonitor:
         """
         Comprehensive system health check
         """
-        timestamp = datetime.utcnow()
+        timestamp = datetime.now(timezone.utc)
         checks = []
         
         # Run all health checks concurrently
@@ -186,7 +186,7 @@ class CriticalHealthMonitor:
                         value=round(latency_ms, 2),
                         threshold=self.thresholds['api_response_time'],
                         message=f"{name} response time: {latency_ms:.2f}ms (status: {response.status})",
-                        timestamp=datetime.utcnow()
+                        timestamp=datetime.now(timezone.utc)
                     ))
                     
             except Exception as e:
@@ -196,7 +196,7 @@ class CriticalHealthMonitor:
                     value=str(e),
                     threshold="reachable",
                     message=f"{name} unreachable: {str(e)}",
-                    timestamp=datetime.utcnow()
+                    timestamp=datetime.now(timezone.utc)
                 ))
         
         return checks
@@ -246,7 +246,7 @@ class CriticalHealthMonitor:
                     value=round(hit_rate, 2),
                     threshold=self.thresholds['cache_hit_rate'],
                     message=f"Memcached hit rate: {hit_rate:.2f}% (hits: {hits}, misses: {misses})",
-                    timestamp=datetime.utcnow(),
+                    timestamp=datetime.now(timezone.utc),
                     details={"hits": hits, "misses": misses}
                 ))
             else:
@@ -256,7 +256,7 @@ class CriticalHealthMonitor:
                     value=0,
                     threshold=">0",
                     message="Memcached has no activity (no hits or misses)",
-                    timestamp=datetime.utcnow()
+                    timestamp=datetime.now(timezone.utc)
                 ))
                 
         except Exception as e:
@@ -266,7 +266,7 @@ class CriticalHealthMonitor:
                 value=str(e),
                 threshold="connected",
                 message=f"Memcached connection failed: {str(e)}",
-                timestamp=datetime.utcnow()
+                timestamp=datetime.now(timezone.utc)
             ))
         
         # Check Redis (basic connectivity)
@@ -286,7 +286,7 @@ class CriticalHealthMonitor:
                     value="connected",
                     threshold="connected",
                     message="Redis is responding to PING",
-                    timestamp=datetime.utcnow()
+                    timestamp=datetime.now(timezone.utc)
                 ))
             else:
                 checks.append(HealthCheck(
@@ -295,7 +295,7 @@ class CriticalHealthMonitor:
                     value=response.decode(),
                     threshold="PONG",
                     message=f"Redis unexpected response: {response.decode()}",
-                    timestamp=datetime.utcnow()
+                    timestamp=datetime.now(timezone.utc)
                 ))
                 
         except Exception as e:
@@ -305,7 +305,7 @@ class CriticalHealthMonitor:
                 value=str(e),
                 threshold="connected",
                 message=f"Redis connection failed: {str(e)}",
-                timestamp=datetime.utcnow()
+                timestamp=datetime.now(timezone.utc)
             ))
         
         return checks
@@ -332,7 +332,7 @@ class CriticalHealthMonitor:
                             value=f"{response.status} ({latency_ms:.0f}ms)",
                             threshold="200",
                             message=f"{name} API responding: {response.status} in {latency_ms:.0f}ms",
-                            timestamp=datetime.utcnow()
+                            timestamp=datetime.now(timezone.utc)
                         ))
                     else:
                         checks.append(HealthCheck(
@@ -341,7 +341,7 @@ class CriticalHealthMonitor:
                             value=response.status,
                             threshold="200",
                             message=f"{name} API returned status {response.status}",
-                            timestamp=datetime.utcnow()
+                            timestamp=datetime.now(timezone.utc)
                         ))
                         
             except Exception as e:
@@ -353,7 +353,7 @@ class CriticalHealthMonitor:
                     value=str(e),
                     threshold="reachable",
                     message=f"{name} API unreachable: {str(e)}",
-                    timestamp=datetime.utcnow()
+                    timestamp=datetime.now(timezone.utc)
                 ))
         
         return checks
@@ -376,7 +376,7 @@ class CriticalHealthMonitor:
             value=memory_percent,
             threshold=self.thresholds['memory_usage'],
             message=f"Memory usage: {memory_percent:.1f}% ({memory.used // 1024**3}GB/{memory.total // 1024**3}GB)",
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             details={
                 "used_gb": memory.used // 1024**3,
                 "total_gb": memory.total // 1024**3,
@@ -402,7 +402,7 @@ class CriticalHealthMonitor:
             value=disk_percent,
             threshold=self.thresholds['disk_usage'],
             message=f"Disk usage: {disk_percent:.1f}% ({disk.used // 1024**3}GB/{disk.total // 1024**3}GB)",
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             details={
                 "used_gb": disk.used // 1024**3,
                 "total_gb": disk.total // 1024**3,
@@ -428,7 +428,7 @@ class CriticalHealthMonitor:
             value=cpu_percent,
             threshold=self.thresholds['cpu_usage'],
             message=f"CPU usage: {cpu_percent:.1f}%",
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             details={
                 "cpu_count": psutil.cpu_count(),
                 "load_average": psutil.getloadavg() if hasattr(psutil, 'getloadavg') else None
@@ -448,7 +448,7 @@ class CriticalHealthMonitor:
                 value=error_count,
                 threshold=self.thresholds['error_rate'],
                 message=f"Recent errors: {error_count} (monitoring not fully implemented)",
-                timestamp=datetime.utcnow()
+                timestamp=datetime.now(timezone.utc)
             )
             
         except Exception as e:
@@ -458,7 +458,7 @@ class CriticalHealthMonitor:
                 value=str(e),
                 threshold="working",
                 message=f"Error monitoring failed: {str(e)}",
-                timestamp=datetime.utcnow()
+                timestamp=datetime.now(timezone.utc)
             )
     
     async def check_process_health(self) -> List[HealthCheck]:
@@ -479,7 +479,7 @@ class CriticalHealthMonitor:
                             value=f"PID {proc.info['pid']}",
                             threshold="running",
                             message=f"{process_name} is running (PID: {proc.info['pid']})",
-                            timestamp=datetime.utcnow()
+                            timestamp=datetime.now(timezone.utc)
                         ))
                         break
                 except (psutil.NoSuchProcess, psutil.AccessDenied):
@@ -492,7 +492,7 @@ class CriticalHealthMonitor:
                     value="not running",
                     threshold="running",
                     message=f"{process_name} is not running",
-                    timestamp=datetime.utcnow()
+                    timestamp=datetime.now(timezone.utc)
                 ))
         
         return checks

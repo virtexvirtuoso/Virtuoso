@@ -14,7 +14,7 @@ project_root = Path(__file__).parent
 sys.path.insert(0, str(project_root))
 
 from src.data_storage.database import DatabaseClient
-from datetime import datetime
+from datetime import datetime, timezone
 import yaml
 
 
@@ -44,7 +44,7 @@ async def test_json_serialization():
         # Primitive types (already supported)
         "symbol": "BTCUSDT",
         "confluence_score": 75.5,
-        "timestamp": datetime.utcnow().timestamp(),
+        "timestamp": datetime.now(timezone.utc).timestamp(),
 
         # Complex types (previously skipped, now should be serialized)
         "components": {

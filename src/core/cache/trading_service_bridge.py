@@ -29,7 +29,7 @@ import logging
 import time
 import json
 from typing import Dict, Any, Optional, List
-from datetime import datetime
+from datetime import datetime, timezone
 
 # Import shared cache bridge
 from .shared_cache_bridge import (
@@ -97,7 +97,7 @@ class TradingServiceCacheBridge:
                 **overview_data,
                 'timestamp': int(time.time()),
                 'source': 'trading_service',
-                'last_update': datetime.utcnow().isoformat()
+                'last_update': datetime.now(timezone.utc).isoformat()
             }
 
             # Publish to shared cache
@@ -161,7 +161,7 @@ class TradingServiceCacheBridge:
                 'count': len(signals_data.get('signals', [])),
                 'timestamp': int(time.time()),
                 'source': 'trading_service',
-                'last_analysis': datetime.utcnow().isoformat()
+                'last_analysis': datetime.now(timezone.utc).isoformat()
             }
 
             # Add signal metadata if available
@@ -266,7 +266,7 @@ class TradingServiceCacheBridge:
                 **dashboard_data,
                 'timestamp': int(time.time()),
                 'source': 'trading_service',
-                'last_update': datetime.utcnow().isoformat(),
+                'last_update': datetime.now(timezone.utc).isoformat(),
                 'cache_bridge_version': '1.0.0'
             }
 

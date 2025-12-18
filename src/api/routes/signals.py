@@ -25,7 +25,7 @@ def is_signal_tracking_enabled() -> bool:
             Path("config/config.yaml"),
             Path("../config/config.yaml"),
             Path("../../config/config.yaml"),
-            Path("/Users/ffv_macmini/Desktop/Virtuoso_ccxt/config/config.yaml")
+            Path(__file__).parent.parent.parent.parent / "config" / "config.yaml"
         ]
         
         config_path = None

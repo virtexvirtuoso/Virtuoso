@@ -8,7 +8,7 @@ import sys
 import json
 import time
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import numpy as np
 import pandas as pd
 
@@ -24,7 +24,7 @@ def create_test_data():
     """Create test OHLCV data."""
     periods = 100
     base_price = 50000.0
-    timestamps = [datetime.utcnow() - timedelta(minutes=5 * i) for i in range(periods)][::-1]
+    timestamps = [datetime.now(timezone.utc) - timedelta(minutes=5 * i) for i in range(periods)][::-1]
 
     rng = np.random.default_rng(42)
     prices = [base_price]

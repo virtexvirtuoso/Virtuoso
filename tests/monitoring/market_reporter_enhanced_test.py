@@ -6,7 +6,7 @@ import math
 import time
 import random
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import logging
 import sys
 import os
@@ -22,7 +22,7 @@ from src.core.reporting.report_manager import ReportManager
 from src.core.reporting.pdf_generator import ReportGenerator
 
 # Enhanced premium calculation imports
-from datetime import timedelta
+from datetime import timedelta, timezone
 
 # Configure logging
 logging.basicConfig(
@@ -2503,7 +2503,7 @@ class MarketReporter(EnhancedFuturesPremiumMixin):
         try:
             while True:
                 try:
-                    current_time = datetime.utcnow()
+                    current_time = datetime.now(timezone.utc)
                     current_hhmm = current_time.strftime("%H:%M")
                     self.logger.debug(f"Current time (UTC): {current_hhmm}, Scheduled times: {self.report_times}")
                     
@@ -2690,7 +2690,7 @@ class MarketReporter(EnhancedFuturesPremiumMixin):
         try:
             self.logger.info("Starting optimized market report formatting")
             # Get current time for timestamps
-            utc_now = datetime.utcnow()
+            utc_now = datetime.now(timezone.utc)
             
             # Base URL for dashboard links
             dashboard_base_url = "https://virtuoso.internal-dashboard.com"

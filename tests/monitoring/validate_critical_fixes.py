@@ -14,7 +14,7 @@ import asyncio
 import logging
 import sys
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, List
 import traceback
 
@@ -153,7 +153,7 @@ class FixValidator:
             result['edge_cases_tested'].append("metrics.copy() prevents reference leaks")
 
             # VALIDATION 5: Check get_recent_alerts() works with persisted data
-            since = datetime.utcnow() - timedelta(hours=1)
+            since = datetime.now(timezone.utc) - timedelta(hours=1)
             recent_alerts = await detector.get_recent_alerts(since, limit=10)
 
             if len(recent_alerts) == 0:
@@ -561,7 +561,7 @@ class FixValidator:
                 result['edge_cases_tested'].append("FIX #3: Alert description created successfully")
 
             # Check get_recent_alerts works end-to-end
-            since = datetime.utcnow() - timedelta(hours=1)
+            since = datetime.now(timezone.utc) - timedelta(hours=1)
             recent = await detector.get_recent_alerts(since, limit=10)
 
             if len(recent) == 0:
@@ -748,7 +748,7 @@ class FixValidator:
             rationale = "Critical issues found. Do not deploy to production."
 
         report = {
-            'validation_date': datetime.utcnow().isoformat(),
+            'validation_date': datetime.now(timezone.utc).isoformat(),
             'summary': {
                 'total_tests': total_tests,
                 'passed_tests': passed_tests,

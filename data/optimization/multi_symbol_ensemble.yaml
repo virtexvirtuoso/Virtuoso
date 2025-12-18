@@ -1,0 +1,192 @@
+metadata:
+  creation_date: '2025-11-19T14:33:41.515886'
+  method: ensemble
+  source_study: multi_symbol_full
+  top_n_trials: 10
+  ensemble_sharpe_mean: !!python/object/apply:numpy._core.multiarray.scalar
+  - &id001 !!python/object/apply:numpy.dtype
+    args:
+    - f8
+    - false
+    - true
+    state: !!python/tuple
+    - 3
+    - <
+    - null
+    - null
+    - null
+    - -1
+    - -1
+    - 0
+  - !!binary |
+    PHRtPJeN1T8=
+  ensemble_sharpe_std: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    kpqxA7fGhz8=
+  best_trial_in_ensemble: 121
+  best_sharpe_in_ensemble: 0.3602623827502259
+performance:
+  ensemble_sharpe: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    PHRtPJeN1T8=
+  baseline_sharpe: -1.228
+  improvement_pct: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    QjB9NSPbX0A=
+weights:
+  ensemble:
+    support_resistance: !!python/object/apply:numpy._core.multiarray.scalar
+    - *id001
+    - !!binary |
+      0PktokrfJEA=
+    order_blocks: !!python/object/apply:numpy._core.multiarray.scalar
+    - *id001
+    - !!binary |
+      LEMCk9uXJEA=
+    trend_position: !!python/object/apply:numpy._core.multiarray.scalar
+    - *id001
+    - !!binary |
+      T0IFXBsyJ0A=
+    volume_profile: !!python/object/apply:numpy._core.multiarray.scalar
+    - *id001
+    - !!binary |
+      AkRZtlk/I0A=
+    market_structure: !!python/object/apply:numpy._core.multiarray.scalar
+    - *id001
+    - !!binary |
+      zeqXpfVAH0A=
+    range_analysis: !!python/object/apply:numpy._core.multiarray.scalar
+    - *id001
+    - !!binary |
+      01FpebodSUA=
+  ensemble_std:
+    support_resistance: !!python/object/apply:numpy._core.multiarray.scalar
+    - *id001
+    - !!binary |
+      vcJNEUsjB0A=
+    order_blocks: !!python/object/apply:numpy._core.multiarray.scalar
+    - *id001
+    - !!binary |
+      fjpINgV0AUA=
+    trend_position: !!python/object/apply:numpy._core.multiarray.scalar
+    - *id001
+    - !!binary |
+      VEccPcvnCkA=
+    volume_profile: !!python/object/apply:numpy._core.multiarray.scalar
+    - *id001
+    - !!binary |
+      9WQvZA/rAkA=
+    market_structure: !!python/object/apply:numpy._core.multiarray.scalar
+    - *id001
+    - !!binary |
+      7v6QfFdM6z8=
+    range_analysis: !!python/object/apply:numpy._core.multiarray.scalar
+    - *id001
+    - !!binary |
+      XeYSBY82/z8=
+  baseline:
+    support_resistance: 16.67
+    order_blocks: 16.67
+    trend_position: 16.67
+    volume_profile: 16.67
+    market_structure: 16.67
+    range_analysis: 16.67
+  timeframe_weights:
+    4h: 40.0
+    30m: 30.0
+    5m: 20.0
+    1m: 10.0
+top_trials:
+- trial_number: 121
+  sharpe: 0.3602623827502259
+  weights:
+    support_resistance: 6.576498153114348
+    order_blocks: 10.477758156132321
+    trend_position: 14.548258765438622
+    volume_profile: 8.38904076489814
+    market_structure: 8.4409001465953
+    range_analysis: 51.56754401382126
+- trial_number: 175
+  sharpe: 0.34635276109476937
+  weights:
+    support_resistance: 8.767871934188634
+    order_blocks: 13.39095803827733
+    trend_position: 7.367018492408732
+    volume_profile: 9.174568902952096
+    market_structure: 8.203304841124845
+    range_analysis: 53.096277791048365
+- trial_number: 112
+  sharpe: 0.3442826832323391
+  weights:
+    support_resistance: 6.597002456472166
+    order_blocks: 8.575898604050645
+    trend_position: 14.112035845852933
+    volume_profile: 13.250376993239016
+    market_structure: 6.534303107256524
+    range_analysis: 50.93038299312871
+- trial_number: 60
+  sharpe: 0.34140682330677735
+  weights:
+    support_resistance: 10.509916577971753
+    order_blocks: 12.97120391062854
+    trend_position: 8.12715822878566
+    volume_profile: 8.725617296120845
+    market_structure: 8.432324971268432
+    range_analysis: 51.233779015224755
+- trial_number: 188
+  sharpe: 0.3377946615679992
+  weights:
+    support_resistance: 14.74220829329576
+    order_blocks: 8.758928748131119
+    trend_position: 16.51574171144084
+    volume_profile: 6.3521885946303325
+    market_structure: 6.169904449202
+    range_analysis: 47.46102820329996
+- trial_number: 196
+  sharpe: 0.33303938310825976
+  weights:
+    support_resistance: 14.633495365240224
+    order_blocks: 7.454947830486572
+    trend_position: 8.073203690525162
+    volume_profile: 12.863814418027792
+    market_structure: 7.7635555658584945
+    range_analysis: 49.21098312986176
+- trial_number: 124
+  sharpe: 0.33241270110536963
+  weights:
+    support_resistance: 13.841425735265517
+    order_blocks: 9.163853516535125
+    trend_position: 15.029369359557677
+    volume_profile: 6.085906923991754
+    market_structure: 7.715980225328304
+    range_analysis: 48.163464239321634
+- trial_number: 162
+  sharpe: 0.33107604949739694
+  weights:
+    support_resistance: 10.430698663557294
+    order_blocks: 8.199535852343178
+    trend_position: 9.327844537487612
+    volume_profile: 9.789429096091574
+    market_structure: 9.039406645704739
+    range_analysis: 53.21308520481559
+- trial_number: 137
+  sharpe: 0.32450433388048217
+  weights:
+    support_resistance: 9.308599063310444
+    order_blocks: 10.248275948514287
+    trend_position: 14.136291453729546
+    volume_profile: 9.441340072159665
+    market_structure: 8.40446688856806
+    range_analysis: 48.461026573717994
+- trial_number: 148
+  sharpe: 0.3165383655987837
+  weights:
+    support_resistance: 8.953446592822182
+    order_blocks: 13.724610330971995
+    trend_position: 8.741727775555562
+    volume_profile: 12.165030193167247
+    market_structure: 7.430223842737489
+    range_analysis: 48.98496126474552

@@ -11,6 +11,7 @@ import numpy as np
 from dataclasses import dataclass, field
 from enum import Enum
 import json
+from dateutil import parser
 
 
 logger = logging.getLogger(__name__)
@@ -174,80 +175,147 @@ class RiskManager:
         self.portfolio_value_history: List[Tuple[datetime, float]] = []
         self.risk_alerts: List[Dict[str, Any]] = []
         self.risk_overrides: Dict[str, Any] = {}
-        
+
+        # Validation period configuration (for orderflow fix validation)
+        risk_mgmt_config = config.get('risk_management', {})
+        validation_config = risk_mgmt_config.get('validation_period', {})
+        self.validation_period_active = validation_config.get('active', False)
+        self.validation_period_end_date_str = validation_config.get('end_date', '2026-01-10')
+        self.validation_short_multiplier = validation_config.get('short_position_multiplier', 0.5)
+        self.validation_short_stop_pct = validation_config.get('short_stop_loss_pct', 1.5)
+
+        # Parse end date
+        try:
+            self.validation_period_end_date = parser.parse(self.validation_period_end_date_str)
+        except Exception as e:
+            self.logger.warning(f"Failed to parse validation period end_date '{self.validation_period_end_date_str}': {e}. Using default.")
+            self.validation_period_end_date = datetime(2026, 1, 10)
+
         # Validate configuration
         self._validate_configuration()
-        
+
         self.logger.info("Risk Manager initialized")
         self.logger.info(f"Default risk: {self.default_risk_percentage}%")
         self.logger.info(f"Max risk: {self.max_risk_percentage}%")
         self.logger.info(f"Risk limits: {self.risk_limits}")
+
+        if self.validation_period_active:
+            self.logger.info(f"VALIDATION PERIOD ACTIVE: SHORT positions reduced to {self.validation_short_multiplier * 100:.0f}% until {self.validation_period_end_date.date()}")
+            self.logger.info(f"SHORT stop loss tightened to {self.validation_short_stop_pct}% during validation")
     
     def _validate_configuration(self):
         """Validate risk management configuration."""
         self.risk_limits.validate()
-        
+
         if not (0.0 <= self.default_risk_percentage <= 100.0):
             raise ValueError(f"default_risk_percentage must be between 0.0 and 100.0")
-        
+
         if self.max_risk_percentage < self.min_risk_percentage:
             raise ValueError("max_risk_percentage must be >= min_risk_percentage")
-        
+
         if self.risk_reward_ratio <= 0:
             raise ValueError("risk_reward_ratio must be positive")
-        
+
         self.logger.info("Risk configuration validation successful")
+
+    def _is_validation_period_active(self) -> bool:
+        """Check if validation period is still active."""
+        if not self.validation_period_active:
+            return False
+
+        # Check if we've passed the end date
+        now = datetime.now()
+        if now >= self.validation_period_end_date:
+            # Auto-disable validation period
+            if self.validation_period_active:
+                self.validation_period_active = False
+                self.logger.info(
+                    f"Validation period ended on {self.validation_period_end_date.date()}. "
+                    "Restoring full position sizing for SHORT signals."
+                )
+            return False
+
+        return True
     
-    def calculate_position_size(self, 
+    def calculate_position_size(self,
                               account_balance: float,
                               entry_price: float,
                               stop_loss_price: float,
-                              risk_percentage: Optional[float] = None) -> Dict[str, Any]:
+                              risk_percentage: Optional[float] = None,
+                              order_type: Optional[OrderType] = None) -> Dict[str, Any]:
         """
         Calculate optimal position size based on risk parameters.
-        
+
         Args:
             account_balance: Total account balance
             entry_price: Entry price for the position
             stop_loss_price: Stop-loss price
             risk_percentage: Risk percentage (defaults to configured value)
-            
+            order_type: Order type (BUY/SELL) - used for validation period logic
+
         Returns:
             Dictionary with position sizing information
         """
         if risk_percentage is None:
             risk_percentage = self.default_risk_percentage
-        
+
         # Clamp risk percentage to limits
-        risk_percentage = max(self.min_risk_percentage, 
+        risk_percentage = max(self.min_risk_percentage,
                             min(risk_percentage, self.max_risk_percentage))
-        
+
         # Calculate risk amount
         risk_amount = account_balance * (risk_percentage / 100.0)
-        
+
         # Calculate price difference for risk calculation
         price_diff = abs(entry_price - stop_loss_price)
         if price_diff == 0:
             return {"error": "Entry price and stop-loss price cannot be the same"}
-        
+
         risk_per_unit = price_diff
-        
+
         # Calculate position size
         position_size_units = risk_amount / risk_per_unit
         position_value = position_size_units * entry_price
         position_size_percent = (position_value / account_balance) * 100
-        
-        # Check against position size limits
+
+        # Check against position size limits FIRST (before validation reduction)
         max_position_value = account_balance * self.risk_limits.max_position_size
-        if position_value > max_position_value:
+        position_capped = position_value > max_position_value
+
+        if position_capped:
+            # Position is capped by max limit
             position_value = max_position_value
             position_size_units = position_value / entry_price
             actual_risk_amount = position_size_units * risk_per_unit
             actual_risk_percentage = (actual_risk_amount / account_balance) * 100
         else:
+            # Position is within limits, use calculated risk
             actual_risk_amount = risk_amount
             actual_risk_percentage = risk_percentage
-        
+
+        # VALIDATION PERIOD LOGIC: Reduce SHORT position sizes AFTER cap check
+        # This ensures validation reduction applies even to capped positions
+        validation_applied = False
+        if order_type == OrderType.SELL and self._is_validation_period_active():
+            original_size = position_size_units
+            original_value = position_value
+            original_risk = actual_risk_amount
+
+            # Apply 50% reduction to SHORT positions during validation
+            position_size_units *= self.validation_short_multiplier
+            position_value *= self.validation_short_multiplier
+            position_size_percent *= self.validation_short_multiplier
+            actual_risk_amount *= self.validation_short_multiplier
+            actual_risk_percentage = (actual_risk_amount / account_balance) * 100
+
+            validation_applied = True
+            self.logger.info(
+                f"VALIDATION PERIOD: SHORT position reduced from "
+                f"{original_value:.2f} USD ({original_size:.6f} units, risk: ${original_risk:.2f}) to "
+                f"{position_value:.2f} USD ({position_size_units:.6f} units, risk: ${actual_risk_amount:.2f}) "
+                f"[{self.validation_short_multiplier * 100:.0f}% of normal size]"
+            )
+
         return {
             "position_size_units": position_size_units,
             "position_value_usd": position_value,
@@ -257,7 +325,8 @@ class RiskManager:
             "risk_per_unit": risk_per_unit,
             "entry_price": entry_price,
             "stop_loss_price": stop_loss_price,
-            "max_position_size_reached": position_value >= max_position_value
+            "max_position_size_reached": position_capped,
+            "validation_period_applied": validation_applied
         }
     
     def calculate_stop_loss_take_profit(self,
@@ -267,24 +336,38 @@ class RiskManager:
                                       custom_tp_ratio: Optional[float] = None) -> Dict[str, Any]:
         """
         Calculate stop-loss and take-profit levels.
-        
+
         Args:
             entry_price: Entry price
             order_type: Buy or sell order
             custom_stop_percentage: Custom stop-loss percentage
             custom_tp_ratio: Custom take-profit ratio
-            
+
         Returns:
             Dictionary with stop-loss and take-profit information
         """
-        # Use custom values or defaults
-        stop_percentage = custom_stop_percentage or (
-            self.long_stop_percentage if order_type == OrderType.BUY 
-            else self.short_stop_percentage
-        ) / 100.0
-        
+        # VALIDATION PERIOD LOGIC: Use tighter stop loss for SHORT
+        validation_applied = False
+        if custom_stop_percentage is None:
+            if order_type == OrderType.SELL and self._is_validation_period_active():
+                # Use validation period stop loss for SHORT
+                stop_percentage = self.validation_short_stop_pct / 100.0
+                validation_applied = True
+                self.logger.info(
+                    f"VALIDATION PERIOD: Using tighter stop loss for SHORT: "
+                    f"{self.validation_short_stop_pct}% (normal: {self.short_stop_percentage}%)"
+                )
+            else:
+                # Use normal stop loss
+                stop_percentage = (
+                    self.long_stop_percentage if order_type == OrderType.BUY
+                    else self.short_stop_percentage
+                ) / 100.0
+        else:
+            stop_percentage = custom_stop_percentage / 100.0
+
         tp_ratio = custom_tp_ratio or self.risk_reward_ratio
-        
+
         if order_type == OrderType.BUY:
             # Long position
             stop_loss_price = entry_price * (1 - stop_percentage)
@@ -295,7 +378,7 @@ class RiskManager:
             stop_loss_price = entry_price * (1 + stop_percentage)
             risk_per_unit = stop_loss_price - entry_price
             take_profit_price = entry_price - (risk_per_unit * tp_ratio)
-        
+
         return {
             "entry_price": entry_price,
             "stop_loss_price": stop_loss_price,
@@ -303,7 +386,8 @@ class RiskManager:
             "stop_loss_percentage": stop_percentage * 100,
             "risk_reward_ratio": tp_ratio,
             "risk_per_unit": risk_per_unit,
-            "order_type": order_type.value
+            "order_type": order_type.value,
+            "validation_period_applied": validation_applied
         }
     
     def assess_position_risk(self,

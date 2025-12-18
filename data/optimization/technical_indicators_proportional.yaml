@@ -1,0 +1,36 @@
+calculation_date: '2025-11-21T11:29:08.977296'
+approach: proportional_effectiveness_weighting
+formula: weight = effectiveness / sum(effectiveness)
+weights:
+  percentages:
+    rsi: 19.854721549636803
+    macd: 17.675544794188863
+    williams_r: 16.46489104116223
+    ao: 16.94915254237288
+    cci: 15.012106537530268
+    atr: 14.043583535108958
+  normalized:
+    rsi: 0.19854721549636803
+    macd: 0.17675544794188863
+    williams_r: 0.1646489104116223
+    ao: 0.16949152542372878
+    cci: 0.15012106537530268
+    atr: 0.14043583535108958
+indicator_effectiveness:
+  rsi: 0.82
+  macd: 0.73
+  williams_r: 0.68
+  ao: 0.7
+  cci: 0.62
+  atr: 0.58
+metrics:
+  weighted_effectiveness: 0.6969733656174334
+  weight_spread: 5.811138014527845
+  min_weight: 14.043583535108958
+  max_weight: 19.854721549636803
+  entropy: 0.9965181734702084
+  effectiveness_correlation: 1.0
+comparison_to_baseline:
+  baseline_weighted_effectiveness: 0.6954999999999999
+  improvement_absolute: 0.0014733656174334975
+  improvement_percentage: 0.21184264808533393

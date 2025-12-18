@@ -4,7 +4,7 @@ import logging
 import yaml
 import asyncio
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 # Add the src directory to the path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
@@ -73,7 +73,7 @@ async def test_discord_handler():
             "footer": {
                 "text": "Discord Handler Test"
             },
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
         
         # Create webhook message

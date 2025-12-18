@@ -202,7 +202,7 @@ def __init__(self):
 **Environment:**
 - Platform: macOS (Darwin 24.5.0)
 - Python: venv311 virtual environment
-- Test Script: `/Users/ffv_macmini/Desktop/Virtuoso_ccxt/test_log_warning_fixes.py`
+- Test Script: `test_log_warning_fixes.py`
 
 **Test Execution Results:**
 
@@ -271,7 +271,7 @@ Pass Rate: 93.8%
 ### Test Suite 3: VPS Production Log Analysis
 
 **Environment:**
-- Server: virtuoso-ccx23-prod (VPS)
+- Server: <vps-hostname> (VPS)
 - Services: virtuoso-trading.service, virtuoso-web.service, virtuoso-monitoring-api.service
 - Analysis Period: 30 minutes post-fix vs 2 hours pre-fix
 

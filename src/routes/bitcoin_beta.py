@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from typing import Dict, Any, List
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 import logging
 from aiomcache import Client
@@ -27,13 +27,13 @@ async def get_bitcoin_beta_status() -> Dict[str, Any]:
             
             return {
                 "status": "active",
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "beta_coefficient": beta_data.get("beta_coefficient", 0.0),
                 "correlation": beta_data.get("correlation", 0.0),
                 "r_squared": beta_data.get("r_squared", 0.0),
                 "alpha": beta_data.get("alpha", 0.0),
                 "volatility_ratio": beta_data.get("volatility_ratio", 0.0),
-                "last_update": beta_data.get("timestamp", datetime.utcnow().isoformat()),
+                "last_update": beta_data.get("timestamp", datetime.now(timezone.utc).isoformat()),
                 "analysis_period": beta_data.get("analysis_period", "30d"),
                 "market_regime": beta_data.get("market_regime", "neutral"),
                 "confidence_level": beta_data.get("confidence_level", 0.0)
@@ -44,13 +44,13 @@ async def get_bitcoin_beta_status() -> Dict[str, Any]:
             # Return default/mock data if analysis fails
             return {
                 "status": "inactive",
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "beta_coefficient": 0.0,
                 "correlation": 0.0,
                 "r_squared": 0.0,
                 "alpha": 0.0,
                 "volatility_ratio": 0.0,
-                "last_update": datetime.utcnow().isoformat(),
+                "last_update": datetime.now(timezone.utc).isoformat(),
                 "analysis_period": "30d",
                 "market_regime": "neutral",
                 "confidence_level": 0.0,
@@ -72,7 +72,7 @@ async def get_bitcoin_beta_analysis() -> Dict[str, Any]:
         
         return {
             "status": "success",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "analysis": analysis
         }
         
@@ -98,7 +98,7 @@ async def get_realtime_beta() -> Dict[str, Any]:
                 'neutral_beta_count': 0,
                 'avg_correlation': 0.0,
                 'market_regime': 'NEUTRAL',
-                'timestamp': int(datetime.utcnow().timestamp() * 1000)
+                'timestamp': int(datetime.now(timezone.utc).timestamp() * 1000)
             }
         
         # Get all symbol betas
@@ -126,7 +126,7 @@ async def get_realtime_beta() -> Dict[str, Any]:
             'status': 'success',
             'overview': overview,
             'symbols': symbols,
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         }
         
     except Exception as e:
@@ -141,7 +141,7 @@ async def get_realtime_beta() -> Dict[str, Any]:
                 'market_regime': 'NEUTRAL'
             },
             'symbols': [],
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'error': str(e)
         }
 
@@ -171,7 +171,7 @@ async def get_beta_history(symbol: str) -> Dict[str, Any]:
             'symbol': symbol,
             'history': history,
             'current_beta': current_beta,
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         }
         
     except Exception as e:
@@ -207,7 +207,7 @@ async def bitcoin_beta_health() -> Dict[str, Any]:
         
         return {
             "status": "healthy" if cache_healthy else "degraded",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "service": "bitcoin_beta",
             "version": "2.0.0",
             "cache_connected": cache_healthy,
@@ -217,7 +217,7 @@ async def bitcoin_beta_health() -> Dict[str, Any]:
     except Exception as e:
         return {
             "status": "unhealthy",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "service": "bitcoin_beta",
             "error": str(e)
         } 

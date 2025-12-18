@@ -1,5 +1,17 @@
 """
 Cache Keys and TTL Configuration with Symbol Normalization
+
+NAMING CONVENTION NOTE:
+"Confluence" terminology is retained in cache keys for backward compatibility.
+User-facing branding uses "Alpha Analysis" / "Alpha Score".
+
+Legacy Name -> User-Facing Name:
+- confluence:breakdown:{symbol} -> Alpha Analysis breakdown
+- confluence:score:{symbol} -> Alpha Score
+- confluence:result:{symbol} -> Alpha Analysis result
+
+DO NOT rename cache keys - this would invalidate all cached data and require
+cache migration. See docs/07-technical/CONFLUENCE_TO_ALPHA_MIGRATION_PLAN.md
 """
 
 from enum import Enum

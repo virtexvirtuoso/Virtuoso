@@ -14,7 +14,7 @@ import asyncio
 import json
 import time
 import logging
-from typing import Dict, Any, Optional, Tuple, Union
+from typing import Dict, Any, Optional, Tuple, Union, List
 from dataclasses import dataclass, field
 from enum import Enum
 import aiomcache
@@ -528,9 +528,75 @@ class MultiTierCacheAdapter:
         
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
-        
+
         logger.info("Multi-tier cache cleared")
-    
+
+    async def warm_from_redis(self, keys: List[str] = None) -> Dict[str, bool]:
+        """
+        Warm L1/L2 cache from Redis (L3) on startup.
+
+        This dramatically reduces startup time by promoting persisted data
+        from Redis into faster cache layers immediately.
+
+        Args:
+            keys: List of specific keys to warm. If None, warms critical dashboard keys.
+
+        Returns:
+            Dict mapping key names to success status
+        """
+        # Default critical keys for dashboard startup
+        if keys is None:
+            keys = [
+                'market:movers',
+                'market:overview',
+                'mobile:data',
+                'confluence:summary',
+                'vt_shared:market:movers',
+                'vt_shared:market:overview'
+            ]
+
+        results = {}
+        warmed_count = 0
+
+        try:
+            client = await self._get_redis_client()
+            if not client:
+                logger.warning("Redis not available - cannot warm cache from L3")
+                return {k: False for k in keys}
+
+            for key in keys:
+                try:
+                    # Read from Redis (L3)
+                    data = await client.get(key)
+                    if data:
+                        # Deserialize
+                        try:
+                            value = json.loads(data)
+                        except (json.JSONDecodeError, TypeError):
+                            value = data
+
+                        # Promote to L1 and L2 with shorter TTLs (fresh data will replace)
+                        await self._set_l1(key, value, ttl=120)  # 2 min in L1
+                        await self._set_l2(key, value, ttl=300)  # 5 min in L2
+
+                        results[key] = True
+                        warmed_count += 1
+                        logger.debug(f"Warmed {key} from Redis")
+                    else:
+                        results[key] = False
+
+                except Exception as e:
+                    logger.warning(f"Failed to warm {key} from Redis: {e}")
+                    results[key] = False
+
+            logger.info(f"✅ Cache warming complete: {warmed_count}/{len(keys)} keys promoted from Redis")
+
+        except Exception as e:
+            logger.error(f"Cache warming from Redis failed: {e}")
+            return {k: False for k in keys}
+
+        return results
+
     def get_performance_metrics(self) -> Dict[str, Any]:
         """Get comprehensive performance metrics"""
         runtime = time.time() - self.stats.last_reset
@@ -615,6 +681,14 @@ class DirectCacheAdapter:
                 'error': str(e),
                 'timestamp': time.time()
             }
+
+    async def warm_from_redis(self, keys: List[str] = None) -> Dict[str, bool]:
+        """
+        Warm L1/L2 cache from Redis (L3) on startup.
+        Delegates to multi-tier cache implementation.
+        """
+        return await self.multi_tier_cache.warm_from_redis(keys)
+
 
 # Export for use in other modules
 __all__ = ['MultiTierCacheAdapter', 'DirectCacheAdapter', 'CacheLayer', 'CacheStats']

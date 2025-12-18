@@ -1,0 +1,60 @@
+optimization_date: '2025-11-21T11:03:06.417819'
+study_name: technical_indicators_quadratic
+approach: quadratic_effectiveness_scoring
+n_trials: 200
+best_trial: 161
+best_value: 0.476642551630688
+weights:
+  percentages:
+    rsi: 17.194281803431846
+    macd: 17.00570803579912
+    williams_r: 16.499735054863617
+    ao: 16.98556376997332
+    cci: 16.206339921122694
+    atr: 16.108371414809383
+  normalized:
+    rsi: 0.17194281803431846
+    macd: 0.17005708035799122
+    williams_r: 0.16499735054863618
+    ao: 0.16985563769973322
+    cci: 0.16206339921122695
+    atr: 0.16108371414809383
+  raw:
+    rsi: 0.20157347262245073
+    macd: 0.1993627685278115
+    williams_r: 0.1934311028737133
+    ao: 0.19912661155060493
+    cci: 0.18999154798943296
+    atr: 0.18884303523089094
+indicator_effectiveness:
+  linear:
+    rsi: 0.82
+    macd: 0.73
+    williams_r: 0.68
+    ao: 0.7
+    cci: 0.62
+    atr: 0.58
+  quadratic:
+    rsi: 0.6723999999999999
+    macd: 0.5328999999999999
+    williams_r: 0.4624000000000001
+    ao: 0.48999999999999994
+    cci: 0.3844
+    atr: 0.3364
+regularization:
+  entropy: 0.9998245651419781
+  dominance: 0.01085910388622463
+  variance: 0.0
+  weight_stability: 0.0
+config:
+  n_folds: 5
+  n_trials: 200
+  entropy_penalty: 1.0
+  dominance_penalty: 0.5
+  variance_penalty: 2.0
+  stability_penalty: 1.0
+  scoring_function: "quadratic (effectiveness\xB2)"
+weight_range:
+  min: 16.108371414809383
+  max: 17.194281803431846
+  spread: 1.0859103886224624

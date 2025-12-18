@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 import asyncio
 import logging
 import psutil
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import numpy as np
 from collections import deque
 
@@ -70,7 +70,7 @@ class ResourceMetrics:
         """Update metrics with new values."""
         self.memory_mb = memory_mb
         self.cpu_percent = cpu_percent
-        self.last_updated = datetime.utcnow()
+        self.last_updated = datetime.now(timezone.utc)
         
         # Update peaks
         self.peak_memory = max(self.peak_memory, memory_mb)
@@ -268,7 +268,7 @@ class ResourceManager:
     
     async def _cleanup_stale_components(self) -> None:
         """Clean up stale component resources."""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         stale_threshold = timedelta(minutes=30)
         
         for component in list(self._active_components):

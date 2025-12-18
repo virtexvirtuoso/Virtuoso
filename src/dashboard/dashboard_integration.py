@@ -10,7 +10,7 @@ import json
 import logging
 import time
 from typing import Dict, List, Any, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import math
 
 # Import monitoring system components (avoid circular imports)
@@ -85,6 +85,7 @@ class DashboardIntegrationService:
         self._confluence_cache = {}
         self._confluence_cache_ttl = 30  # 30 seconds cache
         self._confluence_update_task = None
+        self._score_history_max_size = 60  # Keep last 60 readings (~30 mins at 30s intervals)
         
         # Full confluence analysis cache
         self._confluence_analysis_cache = {}
@@ -198,13 +199,14 @@ class DashboardIntegrationService:
         """Background task to update confluence scores cache."""
         while self._running:
             try:
-                # Get all symbols we're tracking
+                # Get all symbols we're tracking (max_symbols from config, default 20)
                 symbols = []
+                max_symbols = self.monitor.config.get('market', {}).get('symbols', {}).get('max_symbols', 20)
                 if hasattr(self.monitor, 'symbols') and self.monitor.symbols:
-                    symbols = self.monitor.symbols[:15]  # Top 15 symbols
+                    symbols = self.monitor.symbols[:max_symbols]
                 elif hasattr(self.monitor, 'top_symbols_manager'):
                     try:
-                        top_symbols = await self.monitor.top_symbols_manager.get_top_symbols(limit=15)
+                        top_symbols = await self.monitor.top_symbols_manager.get_top_symbols(limit=max_symbols)
                         symbols = [s.get('symbol', s) if isinstance(s, dict) else s for s in top_symbols]
                     except:
                         pass
@@ -295,7 +297,33 @@ class DashboardIntegrationService:
                                     else:
                                         sentiment = 'BEARISH'
                                     
-                                    # Create comprehensive breakdown WITH market data fields
+                                    # Get existing score history or create new (BEFORE creating breakdown)
+                                    # First check in-memory cache, then fall back to persistent memcached
+                                    existing_history = []
+                                    if symbol in self._confluence_cache:
+                                        existing_history = self._confluence_cache[symbol].get('score_history', [])
+
+                                    # If no in-memory history, try to restore from memcached (survives restarts)
+                                    if not existing_history:
+                                        try:
+                                            import aiomcache
+                                            import json
+                                            client = aiomcache.Client('localhost', 11211)
+                                            history_key = f'confluence:history:{symbol}'
+                                            cached_history = await client.get(history_key.encode())
+                                            await client.close()
+                                            if cached_history:
+                                                existing_history = json.loads(cached_history.decode())
+                                                self.logger.info(f"Restored {len(existing_history)} history points for {symbol} from memcached")
+                                        except Exception as e:
+                                            self.logger.debug(f"Could not restore history from memcached: {e}")
+
+                                    # Append new score and maintain rolling buffer
+                                    score_history = existing_history + [round(score, 1)]
+                                    if len(score_history) > self._score_history_max_size:
+                                        score_history = score_history[-self._score_history_max_size:]
+
+                                    # Create comprehensive breakdown WITH market data fields AND score history
                                     # Fix: Include price, change_24h, and volume_24h from market_data
                                     breakdown = {
                                         'overall_score': score,
@@ -309,27 +337,35 @@ class DashboardIntegrationService:
                                         # Add missing market data fields for dashboard calculations
                                         'price': market_data.get('price', 0) if market_data else 0,
                                         'change_24h': market_data.get('change_24h', market_data.get('price_change_24h', 0)) if market_data else 0,
-                                        'volume_24h': market_data.get('volume_24h', market_data.get('volume', 0)) if market_data else 0
+                                        'volume_24h': market_data.get('volume_24h', market_data.get('volume', 0)) if market_data else 0,
+                                        # Score history for sparkline visualization
+                                        'score_history': score_history
                                     }
-                                    
-                                    # Store in internal cache
+
+                                    # Store in internal cache with score history
                                     self._confluence_cache[symbol] = {
                                         'score': score,
                                         'components': components,
                                         'timestamp': time.time(),
                                         'formatted_analysis': formatted_analysis,
-                                        'breakdown': breakdown
+                                        'breakdown': breakdown,
+                                        'score_history': score_history
                                     }
-                                    
-                                    # Store breakdown in memcached with proper key
+
+                                    # Store breakdown in memcached with proper key (includes score_history)
                                     try:
                                         import aiomcache
                                         import json
                                         client = aiomcache.Client('localhost', 11211)
                                         cache_key = f'confluence:breakdown:{symbol}'
                                         await client.set(cache_key.encode(), json.dumps(breakdown).encode(), exptime=60)
+
+                                        # Store score history separately with longer TTL (1 hour) for restart persistence
+                                        history_key = f'confluence:history:{symbol}'
+                                        await client.set(history_key.encode(), json.dumps(score_history).encode(), exptime=3600)
+
                                         await client.close()
-                                        self.logger.info(f"Stored confluence breakdown for {symbol} in cache")
+                                        self.logger.info(f"Stored confluence breakdown for {symbol} in cache (history: {len(score_history)} pts)")
                                     except Exception as e:
                                         self.logger.error(f"Failed to store breakdown in cache: {e}")
                                     
@@ -1110,14 +1146,14 @@ class DashboardIntegrationService:
             
             return {
                 "symbols": symbols_data,
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
             
         except Exception as e:
             self.logger.error(f"Error getting symbols data: {e}")
             return {
                 "symbols": [],
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
     
     async def get_performance_metrics(self) -> Dict[str, Any]:
@@ -1156,7 +1192,7 @@ class DashboardIntegrationService:
                 "api_latency": round(api_latency, 0),
                 "active_connections": active_connections,
                 "uptime": uptime_str,
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
             
         except Exception as e:
@@ -1167,7 +1203,7 @@ class DashboardIntegrationService:
                 "api_latency": 0,
                 "active_connections": 0,
                 "uptime": "0h 0m",
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
     
     async def get_confluence_analysis(self, symbol: str) -> Dict[str, Any]:

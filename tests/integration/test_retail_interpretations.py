@@ -7,7 +7,8 @@ Ensures comprehensive RPI analysis follows the same pattern as other orderbook c
 
 import sys
 import os
-sys.path.append('/Users/ffv_macmini/Desktop/Virtuoso_ccxt')
+from pathlib import Path
+sys.path.append(str(Path(__file__).parent.parent.parent))
 
 from src.core.analysis.interpretation_generator import InterpretationGenerator
 

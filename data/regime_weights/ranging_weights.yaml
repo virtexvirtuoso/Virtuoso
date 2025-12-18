@@ -1,0 +1,29 @@
+confluence:
+  weights:
+    components:
+      orderbook: 0.05
+      orderflow: 0.05
+      price_structure: 0.3
+      sentiment: 0.05
+      technical: 0.35
+      volume: 0.2
+    sub_components:
+      price_structure:
+        market_structure: 0.14047459779492022
+        order_blocks: 0.06628227853686233
+        range_analysis: 0.22776092092586073
+        support_resistance: 0.19883809951539783
+        trend_position: 0.2542554476809305
+        volume_profile: 0.11238865554602837
+      technical:
+        ao: 0.2758197265900994
+        atr: 0.27475121754276094
+        cci: 0.1308355026972725
+        macd: 0.0839335632996311
+        rsi: 0.08481608582572248
+        williams_r: 0.14984390404451362
+      volume:
+        adl: 0.2072723425291818
+        cmf: 0.3765271842858659
+        obv: 0.1247127405786911
+        relative_volume: 0.29148773260626115

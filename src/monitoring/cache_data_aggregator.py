@@ -24,11 +24,655 @@ from datetime import datetime, timezone
 from collections import defaultdict, deque
 import statistics
 import math
+import aiohttp
 
 # Import unified cache writer
 from .cache_writer import MonitoringCacheWriter
 
+# Import unified regime enum for consistent labels
+from src.core.analysis.market_regime_detector import MarketRegime
+
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# CoinGecko API Integration - Comprehensive Global Market Data
+# =============================================================================
+_coingecko_global_cache = {
+    # Dominance metrics
+    'btc_dominance': 57.0,
+    'btc_dominance_prev': 57.0,  # For calculating 24h change
+    'eth_dominance': 11.5,
+    'stablecoin_dominance': 8.0,  # USDT + USDC combined
+    # Market cap metrics
+    'total_market_cap': 3_000_000_000_000,  # $3T default
+    'market_cap_change_24h': 0.0,
+    # Volume metrics
+    'total_volume_24h': 100_000_000_000,  # $100B default
+    # Ecosystem metrics
+    'active_cryptocurrencies': 15000,
+    'markets': 1000,
+    # Metadata
+    'last_updated': 0,
+    'cache_ttl': 300  # 5 minutes cache
+}
+
+_fear_greed_cache = {
+    'value': 50,  # 0-100 scale
+    'classification': 'Neutral',
+    'last_updated': 0,
+    'cache_ttl': 3600  # 1 hour cache (updates daily)
+}
+
+_defi_cache = {
+    'defi_market_cap': 100_000_000_000,  # $100B default
+    'defi_dominance': 3.0,
+    'defi_volume_24h': 5_000_000_000,  # $5B default
+    'top_defi_protocol': 'Lido',
+    'top_defi_dominance': 25.0,
+    'last_updated': 0,
+    'cache_ttl': 600  # 10 minutes cache
+}
+
+# =============================================================================
+# NEW CoinGecko Integrations (2025-12-16)
+# See: docs/08-features/COINGECKO_INTEGRATION_ROADMAP.md
+# =============================================================================
+
+_trending_cache = {
+    'coins': [],  # Top 7 trending coins
+    'nfts': [],   # Top 3 trending NFTs
+    'last_updated': 0,
+    'cache_ttl': 900  # 15 minutes (trending updates every ~15 min)
+}
+
+_derivatives_cache = {
+    'contracts': [],         # Top derivative contracts by OI
+    'by_symbol': {},         # Contracts grouped by symbol for comparison
+    'funding_spreads': {},   # Cross-exchange funding rate spreads
+    'total_open_interest': 0,
+    'last_updated': 0,
+    'cache_ttl': 300  # 5 minutes (funding rates update frequently)
+}
+
+_categories_cache = {
+    'categories': [],        # Category performance data
+    'top_performers': [],    # Top 3 performing categories
+    'bottom_performers': [], # Bottom 3 categories
+    'rotation_signal': '',   # Sector rotation signal
+    'last_updated': 0,
+    'cache_ttl': 600  # 10 minutes
+}
+
+_exchanges_cache = {
+    'exchanges': [],         # Exchange data with volume/trust
+    'total_volume_btc': 0,   # Total 24h volume in BTC
+    'concentration': {},     # Market concentration metrics
+    'last_updated': 0,
+    'cache_ttl': 600  # 10 minutes
+}
+
+# Global lock to prevent concurrent CoinGecko API calls (rate limit prevention)
+# CoinGecko free tier: ~30 requests/minute. Multiple concurrent fetches cause 429 errors.
+_coingecko_fetch_lock = asyncio.Lock()
+
+
+async def fetch_coingecko_global_data() -> dict:
+    """
+    Fetch comprehensive global market data from CoinGecko's free API.
+
+    Returns all available metrics including:
+    - BTC/ETH/Stablecoin dominance
+    - Total market cap and 24h change
+    - Total volume
+    - Active cryptocurrencies count
+
+    Implements retry logic with exponential backoff for resilience.
+    """
+    global _coingecko_global_cache
+
+    current_time = time.time()
+
+    # Return cached values if still valid
+    if current_time - _coingecko_global_cache['last_updated'] < _coingecko_global_cache['cache_ttl']:
+        return _coingecko_global_cache.copy()
+
+    # Retry logic with exponential backoff
+    max_retries = 3
+    base_delay = 1.0
+
+    for attempt in range(max_retries):
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    'https://api.coingecko.com/api/v3/global',
+                    timeout=aiohttp.ClientTimeout(total=30)  # Increased from 10 to 30 seconds
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        global_data = data.get('data', {})
+                        market_cap_pct = global_data.get('market_cap_percentage', {})
+
+                        # Store previous BTC dominance for calculating change
+                        _coingecko_global_cache['btc_dominance_prev'] = _coingecko_global_cache['btc_dominance']
+
+                        # Extract dominance metrics
+                        btc_dom = market_cap_pct.get('btc', 0)
+                        eth_dom = market_cap_pct.get('eth', 0)
+                        usdt_dom = market_cap_pct.get('usdt', 0)
+                        usdc_dom = market_cap_pct.get('usdc', 0)
+
+                        if btc_dom > 0:
+                            _coingecko_global_cache['btc_dominance'] = round(btc_dom, 2)
+                            _coingecko_global_cache['eth_dominance'] = round(eth_dom, 2)
+                            _coingecko_global_cache['stablecoin_dominance'] = round(usdt_dom + usdc_dom, 2)
+
+                            # Market cap metrics
+                            _coingecko_global_cache['total_market_cap'] = global_data.get('total_market_cap', {}).get('usd', 0)
+                            _coingecko_global_cache['market_cap_change_24h'] = round(
+                                global_data.get('market_cap_change_percentage_24h_usd', 0), 2
+                            )
+
+                            # Volume metrics
+                            _coingecko_global_cache['total_volume_24h'] = global_data.get('total_volume', {}).get('usd', 0)
+
+                            # Ecosystem metrics
+                            _coingecko_global_cache['active_cryptocurrencies'] = global_data.get('active_cryptocurrencies', 0)
+                            _coingecko_global_cache['markets'] = global_data.get('markets', 0)
+
+                            _coingecko_global_cache['last_updated'] = current_time
+
+                            logger.info(
+                                f"✅ CoinGecko Global: BTC {btc_dom:.1f}% | ETH {eth_dom:.1f}% | "
+                                f"MCap ${_coingecko_global_cache['total_market_cap']/1e12:.2f}T "
+                                f"({_coingecko_global_cache['market_cap_change_24h']:+.1f}%)"
+                            )
+                            return _coingecko_global_cache.copy()  # Success - return immediately
+                    else:
+                        logger.warning(f"CoinGecko Global API returned status {response.status} (attempt {attempt + 1}/{max_retries})")
+
+        except asyncio.TimeoutError:
+            if attempt < max_retries - 1:
+                delay = base_delay * (2 ** attempt)  # Exponential backoff: 1s, 2s, 4s
+                logger.warning(f"⏱️ CoinGecko Global API timeout (attempt {attempt + 1}/{max_retries}) - retrying in {delay:.1f}s")
+                await asyncio.sleep(delay)
+            else:
+                logger.warning("⚠️ CoinGecko Global API timeout after all retries - using cached values")
+        except Exception as e:
+            if attempt < max_retries - 1:
+                delay = base_delay * (2 ** attempt)
+                logger.warning(f"CoinGecko Global API error (attempt {attempt + 1}/{max_retries}): {e} - retrying in {delay:.1f}s")
+                await asyncio.sleep(delay)
+            else:
+                logger.warning(f"⚠️ CoinGecko Global API error after all retries: {e} - using cached values")
+
+    return _coingecko_global_cache.copy()
+
+
+async def fetch_fear_greed_index() -> dict:
+    """
+    Fetch Fear & Greed Index from Alternative.me (FREE API).
+
+    Returns:
+        dict with 'value' (0-100) and 'classification' (Extreme Fear/Fear/Neutral/Greed/Extreme Greed)
+
+    Implements retry logic with exponential backoff for resilience.
+    """
+    global _fear_greed_cache
+
+    current_time = time.time()
+
+    # Return cached value if still valid
+    if current_time - _fear_greed_cache['last_updated'] < _fear_greed_cache['cache_ttl']:
+        return _fear_greed_cache.copy()
+
+    # Retry logic with exponential backoff
+    max_retries = 3
+    base_delay = 1.0
+
+    for attempt in range(max_retries):
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    'https://api.alternative.me/fng/',
+                    timeout=aiohttp.ClientTimeout(total=30)  # Increased from 10 to 30 seconds
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        fng_data = data.get('data', [{}])[0]
+
+                        value = int(fng_data.get('value', 50))
+                        classification = fng_data.get('value_classification', 'Neutral')
+
+                        _fear_greed_cache['value'] = value
+                        _fear_greed_cache['classification'] = classification
+                        _fear_greed_cache['last_updated'] = current_time
+
+                        logger.info(f"✅ Fear & Greed Index: {value} ({classification})")
+                        return _fear_greed_cache.copy()  # Success - return immediately
+                    else:
+                        logger.warning(f"Fear & Greed API returned status {response.status} (attempt {attempt + 1}/{max_retries})")
+
+        except asyncio.TimeoutError:
+            if attempt < max_retries - 1:
+                delay = base_delay * (2 ** attempt)
+                logger.warning(f"⏱️ Fear & Greed API timeout (attempt {attempt + 1}/{max_retries}) - retrying in {delay:.1f}s")
+                await asyncio.sleep(delay)
+            else:
+                logger.warning("⚠️ Fear & Greed API timeout after all retries - using cached value")
+        except Exception as e:
+            if attempt < max_retries - 1:
+                delay = base_delay * (2 ** attempt)
+                logger.warning(f"Fear & Greed API error (attempt {attempt + 1}/{max_retries}): {e} - retrying in {delay:.1f}s")
+                await asyncio.sleep(delay)
+            else:
+                logger.warning(f"⚠️ Fear & Greed API error after all retries: {e} - using cached value")
+
+    return _fear_greed_cache.copy()
+
+
+async def fetch_defi_data() -> dict:
+    """
+    Fetch DeFi market data from CoinGecko's DeFi endpoint.
+
+    Returns:
+        dict with DeFi market cap, dominance, volume, and top protocol
+    """
+    global _defi_cache
+
+    current_time = time.time()
+
+    # Return cached value if still valid
+    if current_time - _defi_cache['last_updated'] < _defi_cache['cache_ttl']:
+        return _defi_cache.copy()
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                'https://api.coingecko.com/api/v3/global/decentralized_finance_defi',
+                timeout=aiohttp.ClientTimeout(total=10)
+            ) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    defi_data = data.get('data', {})
+
+                    # Parse string values to floats
+                    defi_mcap = float(defi_data.get('defi_market_cap', '0') or '0')
+                    defi_dom = float(defi_data.get('defi_dominance', '0') or '0')
+                    defi_vol = float(defi_data.get('trading_volume_24h', '0') or '0')
+                    top_coin = defi_data.get('top_coin_name', 'Unknown')
+                    top_dom = float(defi_data.get('top_coin_defi_dominance', 0) or 0)
+
+                    _defi_cache['defi_market_cap'] = defi_mcap
+                    _defi_cache['defi_dominance'] = round(defi_dom, 2)
+                    _defi_cache['defi_volume_24h'] = defi_vol
+                    _defi_cache['top_defi_protocol'] = top_coin
+                    _defi_cache['top_defi_dominance'] = round(top_dom, 1)
+                    _defi_cache['last_updated'] = current_time
+
+                    logger.info(
+                        f"✅ DeFi Data: MCap ${defi_mcap/1e9:.1f}B | "
+                        f"Dom {defi_dom:.1f}% | Top: {top_coin} ({top_dom:.1f}%)"
+                    )
+                else:
+                    logger.warning(f"DeFi API returned status {response.status}")
+    except asyncio.TimeoutError:
+        logger.warning("DeFi API timeout - using cached value")
+    except Exception as e:
+        logger.warning(f"DeFi API error: {e}")
+
+    return _defi_cache.copy()
+
+
+# =============================================================================
+# NEW FETCH FUNCTIONS: Trending, Derivatives, Categories, Exchanges
+# =============================================================================
+
+async def fetch_trending_coins() -> dict:
+    """
+    Fetch trending coins from CoinGecko's search/trending endpoint.
+
+    Returns top 7 trending coins and top 3 trending NFTs.
+    Updates every ~15 minutes on CoinGecko's side.
+
+    Trading Value: Early signal detection for momentum plays.
+    Coins appearing on trending often see 10-30% pumps within 24-48 hours.
+    """
+    global _trending_cache
+
+    current_time = time.time()
+
+    # Return cached value if still valid
+    if current_time - _trending_cache['last_updated'] < _trending_cache['cache_ttl']:
+        return _trending_cache.copy()
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                'https://api.coingecko.com/api/v3/search/trending',
+                timeout=aiohttp.ClientTimeout(total=15)
+            ) as response:
+                if response.status == 200:
+                    data = await response.json()
+
+                    trending_coins = []
+                    for coin in data.get('coins', [])[:7]:
+                        item = coin.get('item', {})
+                        coin_data = item.get('data', {})
+                        price_change = coin_data.get('price_change_percentage_24h', {})
+
+                        trending_coins.append({
+                            'symbol': item.get('symbol', '').upper(),
+                            'name': item.get('name'),
+                            'market_cap_rank': item.get('market_cap_rank'),
+                            'price_change_24h': price_change.get('usd', 0) if isinstance(price_change, dict) else 0,
+                            'score': item.get('score', 0),
+                            'thumb': item.get('thumb', '')
+                        })
+
+                    trending_nfts = [n.get('name') for n in data.get('nfts', [])[:3]]
+
+                    _trending_cache['coins'] = trending_coins
+                    _trending_cache['nfts'] = trending_nfts
+                    _trending_cache['last_updated'] = current_time
+
+                    # Log top 3 trending
+                    top_3 = ', '.join([f"{c['symbol']}" for c in trending_coins[:3]])
+                    logger.info(f"🔥 Trending: {top_3}")
+                else:
+                    logger.warning(f"Trending API returned status {response.status}")
+
+    except asyncio.TimeoutError:
+        logger.warning("Trending API timeout - using cached value")
+    except Exception as e:
+        logger.warning(f"Trending API error: {e}")
+
+    return _trending_cache.copy()
+
+
+async def fetch_derivatives_data() -> dict:
+    """
+    Fetch derivatives (perpetual futures) data from CoinGecko.
+
+    Returns funding rates, open interest, and cross-exchange comparisons.
+
+    Trading Value: Cross-exchange funding rate arbitrage detection.
+    When Bybit funding is 0.01% and Binance is -0.02%, there's a 3bp spread to capture.
+    """
+    global _derivatives_cache
+
+    current_time = time.time()
+
+    # Return cached value if still valid
+    if current_time - _derivatives_cache['last_updated'] < _derivatives_cache['cache_ttl']:
+        return _derivatives_cache.copy()
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                'https://api.coingecko.com/api/v3/derivatives',
+                timeout=aiohttp.ClientTimeout(total=20)
+            ) as response:
+                if response.status == 200:
+                    data = await response.json()
+
+                    if not isinstance(data, list):
+                        logger.warning("Derivatives API returned unexpected format")
+                        return _derivatives_cache.copy()
+
+                    # Group by symbol for cross-exchange comparison
+                    by_symbol = {}
+                    for contract in data:
+                        symbol = contract.get('index_id', '').upper()
+                        if not symbol:
+                            continue
+
+                        if symbol not in by_symbol:
+                            by_symbol[symbol] = []
+
+                        by_symbol[symbol].append({
+                            'exchange': contract.get('market', ''),
+                            'funding_rate': float(contract.get('funding_rate', 0) or 0),
+                            'open_interest': float(contract.get('open_interest', 0) or 0),
+                            'index_price': float(contract.get('index', 0) or 0),
+                            'volume_24h': float(contract.get('volume_24h', 0) or 0)
+                        })
+
+                    # Calculate funding rate spreads for arbitrage detection
+                    spreads = {}
+                    for symbol, contracts in by_symbol.items():
+                        if len(contracts) >= 2:
+                            rates = [c['funding_rate'] for c in contracts if c['funding_rate'] != 0]
+                            if len(rates) >= 2:
+                                spreads[symbol] = {
+                                    'max_rate': max(rates),
+                                    'min_rate': min(rates),
+                                    'spread_bps': round((max(rates) - min(rates)) * 100, 4),
+                                    'exchange_count': len(contracts)
+                                }
+
+                    # Sort spreads by magnitude for trading opportunities
+                    top_spreads = dict(sorted(
+                        spreads.items(),
+                        key=lambda x: x[1]['spread_bps'],
+                        reverse=True
+                    )[:10])
+
+                    # Calculate total OI
+                    total_oi = sum(
+                        float(c.get('open_interest', 0) or 0) for c in data
+                    )
+
+                    _derivatives_cache['contracts'] = data[:50]  # Top 50 by OI
+                    _derivatives_cache['by_symbol'] = {k: v[:5] for k, v in list(by_symbol.items())[:20]}
+                    _derivatives_cache['funding_spreads'] = top_spreads
+                    _derivatives_cache['total_open_interest'] = total_oi
+                    _derivatives_cache['last_updated'] = current_time
+
+                    logger.info(
+                        f"📊 Derivatives: {len(data)} contracts | "
+                        f"OI ${total_oi/1e9:.1f}B | "
+                        f"{len(top_spreads)} arb opportunities"
+                    )
+                else:
+                    logger.warning(f"Derivatives API returned status {response.status}")
+
+    except asyncio.TimeoutError:
+        logger.warning("Derivatives API timeout - using cached value")
+    except Exception as e:
+        logger.warning(f"Derivatives API error: {e}")
+
+    return _derivatives_cache.copy()
+
+
+# Categories to track for sector rotation signals
+TRACKED_CATEGORIES = [
+    'layer-1', 'decentralized-finance-defi', 'meme-token',
+    'artificial-intelligence', 'gaming', 'real-world-assets-rwa',
+    'liquid-staking-tokens', 'stablecoins'
+]
+
+
+def _detect_rotation_signal(categories: list) -> str:
+    """Detect sector rotation signal from category performance."""
+    cat_by_id = {c.get('id', ''): c for c in categories}
+
+    defi = cat_by_id.get('decentralized-finance-defi', {})
+    l1 = cat_by_id.get('layer-1', {})
+    meme = cat_by_id.get('meme-token', {})
+    ai = cat_by_id.get('artificial-intelligence', {})
+
+    meme_change = meme.get('change_24h', 0) or 0
+    defi_change = defi.get('change_24h', 0) or 0
+    l1_change = l1.get('change_24h', 0) or 0
+    ai_change = ai.get('change_24h', 0) or 0
+
+    if meme_change > 5:
+        return "RISK_ON: Meme coins leading - high risk appetite"
+    elif defi_change > l1_change + 2:
+        return "DEFI_ROTATION: Capital flowing to DeFi"
+    elif ai_change > 3:
+        return "AI_NARRATIVE: AI tokens outperforming"
+    elif l1_change < -3:
+        return "RISK_OFF: L1s declining - defensive positioning"
+
+    return "NEUTRAL: No clear rotation signal"
+
+
+async def fetch_category_performance() -> dict:
+    """
+    Fetch category (sector) performance from CoinGecko.
+
+    Returns market cap and 24h change for each category.
+
+    Trading Value: Sector rotation signals for identifying where capital is flowing.
+    When DeFi outperforms L1s, rotate into DeFi plays.
+    """
+    global _categories_cache
+
+    current_time = time.time()
+
+    # Return cached value if still valid
+    if current_time - _categories_cache['last_updated'] < _categories_cache['cache_ttl']:
+        return _categories_cache.copy()
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                'https://api.coingecko.com/api/v3/coins/categories',
+                timeout=aiohttp.ClientTimeout(total=20)
+            ) as response:
+                if response.status == 200:
+                    data = await response.json()
+
+                    categories = []
+                    for cat in data:
+                        cat_id = cat.get('id', '')
+                        market_cap = cat.get('market_cap', 0) or 0
+                        volume = cat.get('volume_24h', 0) or 0
+
+                        # Include tracked categories + top 15 by market cap
+                        if cat_id in TRACKED_CATEGORIES or len(categories) < 15:
+                            categories.append({
+                                'id': cat_id,
+                                'name': cat.get('name'),
+                                'market_cap': market_cap,
+                                'change_24h': round(cat.get('market_cap_change_24h', 0) or 0, 2),
+                                'volume_24h': volume,
+                                'volume_mcap_ratio': round((volume / market_cap * 100), 2) if market_cap > 0 else 0
+                            })
+
+                    # Sort by 24h change for rotation signals
+                    categories.sort(key=lambda x: x['change_24h'], reverse=True)
+
+                    top_performers = [c['name'] for c in categories[:3]]
+                    bottom_performers = [c['name'] for c in categories[-3:]]
+                    rotation_signal = _detect_rotation_signal(categories)
+
+                    _categories_cache['categories'] = categories
+                    _categories_cache['top_performers'] = top_performers
+                    _categories_cache['bottom_performers'] = bottom_performers
+                    _categories_cache['rotation_signal'] = rotation_signal
+                    _categories_cache['last_updated'] = current_time
+
+                    logger.info(
+                        f"🔄 Categories: {len(categories)} tracked | "
+                        f"Top: {', '.join(top_performers[:2])} | "
+                        f"{rotation_signal.split(':')[0]}"
+                    )
+                else:
+                    logger.warning(f"Categories API returned status {response.status}")
+
+    except asyncio.TimeoutError:
+        logger.warning("Categories API timeout - using cached value")
+    except Exception as e:
+        logger.warning(f"Categories API error: {e}")
+
+    return _categories_cache.copy()
+
+
+async def fetch_exchange_distribution() -> dict:
+    """
+    Fetch exchange volume distribution from CoinGecko.
+
+    Returns volume by exchange and concentration metrics.
+
+    Trading Value: Liquidity concentration analysis for execution optimization.
+    If 60% of ETH volume is on Binance, that's where you get best execution.
+    """
+    global _exchanges_cache
+
+    current_time = time.time()
+
+    # Return cached value if still valid
+    if current_time - _exchanges_cache['last_updated'] < _exchanges_cache['cache_ttl']:
+        return _exchanges_cache.copy()
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                'https://api.coingecko.com/api/v3/exchanges',
+                params={'per_page': 20},
+                timeout=aiohttp.ClientTimeout(total=15)
+            ) as response:
+                if response.status == 200:
+                    data = await response.json()
+
+                    total_volume = sum(
+                        float(e.get('trade_volume_24h_btc', 0) or 0) for e in data
+                    )
+
+                    exchanges = []
+                    for exch in data:
+                        vol = float(exch.get('trade_volume_24h_btc', 0) or 0)
+                        exchanges.append({
+                            'name': exch.get('name'),
+                            'id': exch.get('id'),
+                            'trust_score': exch.get('trust_score'),
+                            'rank': exch.get('trust_score_rank'),
+                            'volume_24h_btc': round(vol, 2),
+                            'market_share': round(vol / total_volume * 100, 2) if total_volume else 0,
+                            'country': exch.get('country')
+                        })
+
+                    # Calculate concentration metrics (Herfindahl index)
+                    shares = [e['market_share'] for e in exchanges]
+                    top_3_share = sum(shares[:3])
+                    top_5_share = sum(shares[:5])
+                    hhi = sum(s**2 for s in shares) / 100 if shares else 0
+
+                    _exchanges_cache['exchanges'] = exchanges
+                    _exchanges_cache['total_volume_btc'] = round(total_volume, 2)
+                    _exchanges_cache['concentration'] = {
+                        'top_3_share': round(top_3_share, 1),
+                        'top_5_share': round(top_5_share, 1),
+                        'herfindahl_index': round(hhi, 2)
+                    }
+                    _exchanges_cache['last_updated'] = current_time
+
+                    logger.info(
+                        f"🏦 Exchanges: {len(exchanges)} | "
+                        f"Vol {total_volume:,.0f} BTC | "
+                        f"Top3 share: {top_3_share:.1f}%"
+                    )
+                else:
+                    logger.warning(f"Exchanges API returned status {response.status}")
+
+    except asyncio.TimeoutError:
+        logger.warning("Exchanges API timeout - using cached value")
+    except Exception as e:
+        logger.warning(f"Exchanges API error: {e}")
+
+    return _exchanges_cache.copy()
+
+
+async def fetch_btc_dominance_from_coingecko() -> float:
+    """
+    Legacy function for backward compatibility.
+    Now calls the comprehensive fetch and returns just BTC dominance.
+    """
+    global_data = await fetch_coingecko_global_data()
+    return global_data.get('btc_dominance', 57.0)
 
 
 class CacheDataAggregator:
@@ -84,6 +728,65 @@ class CacheDataAggregator:
         self.last_aggregation_time = 0
         self.cache_push_count = 0
         self.cache_push_errors = 0
+
+        # Initialization flag
+        self._initialized = False
+
+    async def initialize(self) -> None:
+        """
+        Pre-warm cache on startup with critical market data.
+
+        Strategy:
+        1. First, try to warm cache from Redis (instant - persisted data from last run)
+        2. Then, fetch fresh market data to update the cache
+
+        This provides instant data availability while ensuring fresh data flows in.
+        """
+        logger.info("🔥 Cache Aggregator: Pre-warming cache on startup...")
+        start_time = time.time()
+
+        try:
+            # PHASE 1: Try to warm from Redis (instant data from last run)
+            # This makes cached data available immediately without waiting for API calls
+            if hasattr(self.cache_adapter, 'warm_from_redis'):
+                try:
+                    warm_results = await self.cache_adapter.warm_from_redis()
+                    warmed = sum(1 for v in warm_results.values() if v)
+                    if warmed > 0:
+                        logger.info(f"⚡ Instant cache: {warmed} keys restored from Redis in {time.time() - start_time:.2f}s")
+                    else:
+                        logger.info("📭 No cached data in Redis - fetching fresh data")
+                except Exception as e:
+                    logger.warning(f"Redis warm-up failed (will fetch fresh): {e}")
+
+            # PHASE 2: Fetch fresh market data (updates the cached data)
+            # Bypass the 60-second rate limit for initial fetch
+            self.last_ticker_fetch = 0
+
+            # Fetch market-wide tickers immediately
+            ticker_success = await self._fetch_market_wide_tickers()
+
+            if ticker_success:
+                # Immediately populate market movers cache
+                await self._update_market_movers()
+                logger.info(f"✅ Pre-warmed market:movers with {len(self.market_wide_tickers)} symbols")
+            else:
+                logger.warning("⚠️ Could not fetch initial tickers - using Redis cache if available")
+
+            # Take initial BTC snapshot for volatility calculations
+            await self._track_btc_price()
+
+            # Set initial market overview (even with minimal data)
+            await self._update_market_overview()
+
+            elapsed = time.time() - start_time
+            self._initialized = True
+            logger.info(f"✅ Cache pre-warming complete in {elapsed:.2f}s")
+
+        except Exception as e:
+            logger.error(f"Error during cache pre-warming: {e}", exc_info=True)
+            # Don't fail startup, just log the error
+            self._initialized = True  # Mark as initialized anyway to proceed
 
     async def add_analysis_result(self, symbol: str, analysis_result: Dict[str, Any]) -> None:
         """
@@ -571,6 +1274,9 @@ class CacheDataAggregator:
             # Update market:movers
             await self._update_market_movers()
 
+            # Update NEW CoinGecko data (trending, derivatives, categories, exchanges)
+            await self._update_coingecko_extended_data()
+
             self.last_aggregation_time = time.time()
 
         except Exception as e:
@@ -583,28 +1289,30 @@ class CacheDataAggregator:
             total_symbols = len(self.market_data_buffer)
             active_signals = len([s for s in self.signal_buffer if time.time() - s['timestamp'] < 3600])  # Last hour
 
-            # Calculate average confluence score
-            if self.analysis_results_buffer:
+            # Calculate average confluence score with BTC fallback for startup
+            if self.analysis_results_buffer and len(self.analysis_results_buffer) >= 5:
+                # Use real confluence scores once we have enough data
                 recent_scores = [r.get('confluence_score', 0) for r in list(self.analysis_results_buffer)[-20:]]
                 avg_confluence = statistics.mean(recent_scores) if recent_scores else 0
                 max_confluence = max(recent_scores) if recent_scores else 0
             else:
-                avg_confluence = 0
-                max_confluence = 0
+                # STARTUP FALLBACK: Use BTC price action for initial regime indication
+                # This provides meaningful data immediately instead of "Initializing"
+                if 'BTCUSDT' in self.market_wide_tickers:
+                    btc_ticker = self.market_wide_tickers['BTCUSDT']
+                    btc_change = float(btc_ticker.get('priceChangePercent', 0))
+                    # Map BTC momentum to pseudo-confluence score
+                    # -5% BTC = 25 confluence, 0% = 50, +5% = 75
+                    avg_confluence = max(0, min(100, 50 + (btc_change * 5)))
+                    max_confluence = avg_confluence
+                    logger.debug(f"📊 Using BTC-based initial regime: {avg_confluence:.1f} (BTC: {btc_change:+.2f}%)")
+                else:
+                    avg_confluence = 50  # Neutral default
+                    max_confluence = 50
 
             # Calculate market trend
             bullish_signals = len([s for s in self.signal_buffer if s['signal_type'] == 'LONG'])
             bearish_signals = len([s for s in self.signal_buffer if s['signal_type'] == 'SHORT'])
-
-            # Generate market regime assessment
-            if avg_confluence > 70:
-                market_regime = "Strong Trending"
-            elif avg_confluence > 60:
-                market_regime = "Trending"
-            elif avg_confluence > 50:
-                market_regime = "Choppy"
-            else:
-                market_regime = "Ranging"
 
             # Calculate total volume from buffered market data
             total_volume = sum(
@@ -646,6 +1354,56 @@ class CacheDataAggregator:
             else:
                 avg_dispersion = 8.0  # Fallback default (more realistic than 20%)
 
+            # =================================================================
+            # Fetch ALL external market data from CoinGecko & Alternative.me
+            # =================================================================
+            # CoinGecko Global Data (BTC/ETH dominance, market cap, volume)
+            coingecko_data = await fetch_coingecko_global_data()
+            btc_dominance = coingecko_data.get('btc_dominance', 57.0)
+            eth_dominance = coingecko_data.get('eth_dominance', 11.5)
+            stablecoin_dominance = coingecko_data.get('stablecoin_dominance', 8.0)
+            total_market_cap = coingecko_data.get('total_market_cap', 0)
+            market_cap_change_24h = coingecko_data.get('market_cap_change_24h', 0)
+            coingecko_volume = coingecko_data.get('total_volume_24h', 0)
+            active_cryptos = coingecko_data.get('active_cryptocurrencies', 0)
+
+            # Fear & Greed Index (Alternative.me)
+            fear_greed_data = await fetch_fear_greed_index()
+            fear_greed_value = fear_greed_data.get('value', 50)
+            fear_greed_label = fear_greed_data.get('classification', 'Neutral')
+
+            # DeFi Data (CoinGecko DeFi endpoint)
+            defi_data = await fetch_defi_data()
+            defi_market_cap = defi_data.get('defi_market_cap', 0)
+            defi_dominance = defi_data.get('defi_dominance', 0)
+            defi_volume = defi_data.get('defi_volume_24h', 0)
+            top_defi = defi_data.get('top_defi_protocol', 'Unknown')
+            top_defi_dom = defi_data.get('top_defi_dominance', 0)
+
+            # Calculate derived metrics
+            altcoin_dominance = round(100 - btc_dominance, 2)
+            # Altcoin season: BTC dom < 50% or falling trend
+            altcoin_season = 'Active' if btc_dominance < 50 else 'Emerging' if btc_dominance < 55 else 'Dormant'
+
+            # Volume/Market Cap ratio (liquidity indicator)
+            volume_mcap_ratio = round((coingecko_volume / total_market_cap * 100), 2) if total_market_cap > 0 else 0
+
+            # =================================================================
+            # ENHANCED REGIME CLASSIFICATION (v1.2)
+            # Uses multiple data sources for rich, descriptive labels
+            # =================================================================
+            btc_dom_prev = coingecko_data.get('btc_dominance_prev', btc_dominance)
+            enhanced_regime = self._classify_enhanced_regime(
+                avg_confluence=avg_confluence,
+                gainers=gainers_count,
+                losers=losers_count,
+                fear_greed=fear_greed_value,
+                market_dispersion=market_dispersion,
+                btc_dominance=btc_dominance,
+                btc_dom_prev=btc_dom_prev
+            )
+            market_regime = enhanced_regime['regime']  # e.g., "Neutral: Bottoming Formation"
+
             logger.debug(
                 f"Market Dispersion: current={market_dispersion:.2f}%, avg={avg_dispersion:.2f}% "
                 f"(based on {len(self.volatility_history)} samples)"
@@ -654,7 +1412,8 @@ class CacheDataAggregator:
             logger.info(
                 f"📊 BTC Volatility: {btc_volatility:.1f}% annualized "
                 f"({btc_daily_vol:.2f}% daily, {btc_vol_days} days) | "
-                f"Market Dispersion: {market_dispersion:.2f}%"
+                f"Market Dispersion: {market_dispersion:.2f}% | "
+                f"Fear & Greed: {fear_greed_value} ({fear_greed_label})"
             )
 
             # Build monitoring format data (old schema format)
@@ -665,7 +1424,8 @@ class CacheDataAggregator:
                 'bearish_signals': bearish_signals,
                 'avg_confluence_score': round(avg_confluence, 2),
                 'max_confluence_score': round(max_confluence, 2),
-                'market_state': market_regime,  # Will be mapped to market_regime
+                'market_state': market_regime,  # Enhanced label e.g., "🚀 Broad Rally"
+                'market_regime_details': enhanced_regime,  # Full regime data with components
                 'signal_quality': 'High' if avg_confluence > 65 else 'Medium' if avg_confluence > 55 else 'Low',
                 'total_volume': total_volume,
 
@@ -686,7 +1446,57 @@ class CacheDataAggregator:
                 'avg_change_percent': round(avg_change_percent, 2),
                 'gainers': gainers_count,
                 'losers': losers_count,
-                'btc_dom': 59.3,  # TODO: Calculate from BTC dominance
+
+                # =================================================================
+                # CoinGecko Global Data - Dominance Metrics
+                # =================================================================
+                'btc_dom': btc_dominance,  # Real BTC dominance from CoinGecko
+                'eth_dominance': eth_dominance,  # ETH market cap dominance
+                'stablecoin_dominance': stablecoin_dominance,  # USDT + USDC combined
+                'altcoin_dominance': altcoin_dominance,  # 100 - BTC dominance
+                'altcoin_season': altcoin_season,  # Active/Emerging/Dormant
+
+                # =================================================================
+                # CoinGecko Global Data - Market Cap Metrics
+                # =================================================================
+                # IMPORTANT: These metrics represent GLOBAL cryptocurrency market data from CoinGecko,
+                # NOT exchange-specific data from Bybit/Binance/etc.
+                #
+                # Data Source: CoinGecko Free API (https://api.coingecko.com/api/v3/global)
+                # Update Frequency: Every 3-5 seconds via cache_data_aggregator
+                # Cache TTL: 60 seconds (L1=memory, L2=memcached, L3=Redis)
+                #
+                # Why CoinGecko for Market Overview?
+                # - Aggregates data across ALL major exchanges (Binance, Coinbase, Bybit, etc.)
+                # - Provides true market-wide metrics (not just one exchange)
+                # - Includes BTC/ETH dominance, total market cap, global trading volume
+                # - Free tier sufficient for our needs (50 calls/min)
+                #
+                # Note: crypto-perps-tracker service (port 8050) is used separately for
+                # derivatives analysis (funding rates, basis) but NOT for market overview data.
+                # =================================================================
+                'total_market_cap': total_market_cap,  # Total crypto market cap (USD)
+                'market_cap_change_24h': market_cap_change_24h,  # 24h market cap change %
+                'coingecko_volume_24h': coingecko_volume,  # CoinGecko global 24h volume (all exchanges)
+                'total_volume_24h': coingecko_volume,  # GLOBAL crypto market volume from CoinGecko (NOT Bybit-specific)
+                'volume_mcap_ratio': volume_mcap_ratio,  # Volume/Market Cap ratio (liquidity indicator)
+                'active_cryptocurrencies': active_cryptos,  # Number of active cryptos tracked by CoinGecko
+
+                # =================================================================
+                # Fear & Greed Index (Alternative.me)
+                # =================================================================
+                'fear_greed_value': fear_greed_value,  # 0-100 scale
+                'fear_greed_label': fear_greed_label,  # Extreme Fear/Fear/Neutral/Greed/Extreme Greed
+
+                # =================================================================
+                # DeFi Data (CoinGecko DeFi endpoint)
+                # =================================================================
+                'defi_market_cap': defi_market_cap,  # DeFi sector market cap
+                'defi_dominance': defi_dominance,  # DeFi % of total market
+                'defi_volume_24h': defi_volume,  # DeFi 24h trading volume
+                'top_defi_protocol': top_defi,  # Leading DeFi protocol name
+                'top_defi_dominance': top_defi_dom,  # Leading protocol's % of DeFi
+
                 'last_updated': time.time(),
                 'datetime': datetime.now(timezone.utc).isoformat(),
                 'data_points': len(self.analysis_results_buffer),
@@ -694,9 +1504,11 @@ class CacheDataAggregator:
             }
 
             # Use unified cache writer (automatically transforms to unified schema)
+            # TTL increased to 300s (5 min) to survive gaps between analysis cycles
+            # Previous 60s TTL caused cache expiration between update batches
             success = await self.cache_writer.write_market_overview(
                 monitoring_data,
-                ttl=60
+                ttl=300
             )
 
             if success:
@@ -874,6 +1686,108 @@ class CacheDataAggregator:
         except Exception as e:
             logger.error(f"Error updating market movers cache: {e}", exc_info=True)
 
+    async def _update_coingecko_extended_data(self) -> None:
+        """
+        Fetch and cache extended CoinGecko data (trending, derivatives, categories, exchanges).
+
+        These are NEW integrations added 2025-12-16.
+        See: docs/08-features/COINGECKO_INTEGRATION_ROADMAP.md
+
+        IMPORTANT: Uses global lock to prevent concurrent CoinGecko calls which cause 429 rate limits.
+        Fetches are staggered with 2-second delays to respect CoinGecko's free tier limits.
+        """
+        logger.debug("🔄 _update_coingecko_extended_data called - acquiring lock...")
+
+        # Use global lock to prevent concurrent fetches from multiple symbol analyzers
+        # This is critical because CoinGecko free tier limits to ~30 req/min
+        async with _coingecko_fetch_lock:
+            logger.debug("🔒 Lock acquired - fetching CoinGecko extended data")
+            try:
+                # Fetch SEQUENTIALLY with delays to avoid rate limiting (CoinGecko 429 errors)
+                # The module-level caches handle deduplication, but concurrent calls at startup
+                # were all passing TTL check simultaneously and hitting rate limits.
+
+                trending = await fetch_trending_coins()
+                await asyncio.sleep(2)  # 2 second delay between calls
+
+                derivatives = await fetch_derivatives_data()
+                await asyncio.sleep(2)
+
+                categories = await fetch_category_performance()
+                await asyncio.sleep(2)
+
+                exchanges = await fetch_exchange_distribution()
+
+                # Process and cache each data type
+                cache_results = {}
+
+                # 1. Trending coins
+                if isinstance(trending, dict) and trending.get('coins'):
+                    trending_data = {
+                        'coins': trending.get('coins', []),
+                        'nfts': trending.get('nfts', []),
+                        'updated_at': datetime.now(timezone.utc).isoformat()
+                    }
+                    success = await self._push_to_cache('coingecko:trending', trending_data, expiry=900)
+                    cache_results['trending'] = success
+                else:
+                    cache_results['trending'] = False
+
+                # 2. Derivatives (funding rates, OI)
+                if isinstance(derivatives, dict) and derivatives.get('contracts'):
+                    derivatives_data = {
+                        'contracts': derivatives.get('contracts', [])[:30],  # Top 30 for API response
+                        'by_symbol': derivatives.get('by_symbol', {}),
+                        'funding_spreads': derivatives.get('funding_spreads', {}),
+                        'total_open_interest': derivatives.get('total_open_interest', 0),
+                        'updated_at': datetime.now(timezone.utc).isoformat()
+                    }
+                    success = await self._push_to_cache('coingecko:derivatives', derivatives_data, expiry=300)
+                    cache_results['derivatives'] = success
+                else:
+                    cache_results['derivatives'] = False
+
+                # 3. Category performance
+                if isinstance(categories, dict) and categories.get('categories'):
+                    categories_data = {
+                        'categories': categories.get('categories', []),
+                        'top_performers': categories.get('top_performers', []),
+                        'bottom_performers': categories.get('bottom_performers', []),
+                        'rotation_signal': categories.get('rotation_signal', ''),
+                        'updated_at': datetime.now(timezone.utc).isoformat()
+                    }
+                    success = await self._push_to_cache('coingecko:categories', categories_data, expiry=600)
+                    cache_results['categories'] = success
+                else:
+                    cache_results['categories'] = False
+
+                # 4. Exchange distribution
+                if isinstance(exchanges, dict) and exchanges.get('exchanges'):
+                    exchanges_data = {
+                        'exchanges': exchanges.get('exchanges', []),
+                        'total_volume_btc': exchanges.get('total_volume_btc', 0),
+                        'concentration': exchanges.get('concentration', {}),
+                        'updated_at': datetime.now(timezone.utc).isoformat()
+                    }
+                    success = await self._push_to_cache('coingecko:exchanges', exchanges_data, expiry=600)
+                    cache_results['exchanges'] = success
+                else:
+                    cache_results['exchanges'] = False
+
+                # Log summary
+                successful = sum(1 for v in cache_results.values() if v)
+                total = len(cache_results)
+                logger.info(
+                    f"✅ CoinGecko Extended: {successful}/{total} updated | "
+                    f"trending={cache_results.get('trending')}, "
+                    f"derivatives={cache_results.get('derivatives')}, "
+                    f"categories={cache_results.get('categories')}, "
+                    f"exchanges={cache_results.get('exchanges')}"
+                )
+
+            except Exception as e:
+                logger.error(f"Error updating CoinGecko extended data: {e}", exc_info=True)
+
     async def _push_to_cache(self, key: str, data: Dict[str, Any], expiry: int = 300) -> bool:
         """Push data directly to cache."""
         try:
@@ -934,3 +1848,294 @@ class CacheDataAggregator:
             'analysis_results_count': len(self.analysis_results_buffer),
             'price_tracking_symbols': len(self.price_changes)
         }
+
+    def _classify_aggregate_regime(
+        self,
+        avg_confluence: float,
+        market_dispersion: float
+    ) -> MarketRegime:
+        """
+        Classify aggregate market regime using unified regime labels.
+
+        This method applies the Unified Regime System (v1.1) classification
+        at the aggregate level (across all monitored symbols).
+
+        Classification Logic:
+        - Confluence is the PRIMARY directional signal (0=bearish, 100=bullish)
+        - Market dispersion serves as volatility proxy (high dispersion = high volatility)
+        - Without per-symbol ADX, we use confidence-adjusted thresholds
+
+        Thresholds (adapted for aggregate data):
+        - Strong Bullish: confluence >= 70 (strong bullish indicator consensus)
+        - Bullish: confluence >= 60 (majority bullish)
+        - Sideways: confluence 40-60 (mixed/uncertain signals)
+        - Bearish: confluence <= 40 (majority bearish)
+        - Strong Bearish: confluence <= 30 (strong bearish consensus)
+        - High Volatility: market_dispersion > 15% (safety override)
+
+        Args:
+            avg_confluence: Average confluence score across all symbols (0-100)
+            market_dispersion: Cross-sectional volatility of returns (%)
+
+        Returns:
+            MarketRegime enum value with display_name property
+        """
+        # Safety override: High volatility
+        if market_dispersion > 15.0:
+            logger.debug(
+                f"Aggregate regime: HIGH_VOLATILITY (dispersion={market_dispersion:.1f}%)"
+            )
+            return MarketRegime.HIGH_VOLATILITY
+
+        # Strong Bullish: High confluence consensus
+        if avg_confluence >= 70:
+            regime = MarketRegime.STRONG_BULLISH
+        # Bullish: Good confluence
+        elif avg_confluence >= 60:
+            regime = MarketRegime.BULLISH
+        # Strong Bearish: Very low confluence (bearish consensus)
+        elif avg_confluence <= 30:
+            regime = MarketRegime.STRONG_BEARISH
+        # Bearish: Low confluence
+        elif avg_confluence <= 40:
+            regime = MarketRegime.BEARISH
+        # Sideways: Neutral zone (40-60)
+        else:
+            regime = MarketRegime.SIDEWAYS
+
+        logger.debug(
+            f"Aggregate regime: {regime.display_name} "
+            f"(confluence={avg_confluence:.1f}, dispersion={market_dispersion:.1f}%)"
+        )
+
+        return regime
+
+    def _classify_enhanced_regime(
+        self,
+        avg_confluence: float,
+        gainers: int,
+        losers: int,
+        fear_greed: int,
+        market_dispersion: float,
+        btc_dominance: float,
+        btc_dom_prev: float = None
+    ) -> Dict[str, Any]:
+        """
+        Enhanced regime classification using multiple data sources.
+
+        Produces rich, descriptive labels that incorporate:
+        - Confluence score (indicator consensus direction)
+        - Market breadth (gainers vs losers ratio)
+        - Fear & Greed sentiment
+        - Market dispersion (volatility)
+        - BTC dominance trend (rotation indicator)
+
+        Returns:
+            Dict with 'regime', 'label', 'emoji', 'description', and component scores
+        """
+        total = gainers + losers if (gainers + losers) > 0 else 1
+        breadth_ratio = gainers / total  # 0-1, higher = more bullish breadth
+
+        # Determine direction from confluence
+        if avg_confluence >= 70:
+            direction = 'strong_bullish'
+        elif avg_confluence >= 60:
+            direction = 'bullish'
+        elif avg_confluence <= 30:
+            direction = 'strong_bearish'
+        elif avg_confluence <= 40:
+            direction = 'bearish'
+        else:
+            direction = 'neutral'
+
+        # Determine breadth condition
+        if breadth_ratio >= 0.6:
+            breadth = 'broad'  # Many gainers
+        elif breadth_ratio <= 0.3:
+            breadth = 'narrow'  # Many losers
+        else:
+            breadth = 'mixed'
+
+        # Determine sentiment from Fear & Greed
+        if fear_greed >= 75:
+            sentiment = 'extreme_greed'
+        elif fear_greed >= 55:
+            sentiment = 'greed'
+        elif fear_greed <= 25:
+            sentiment = 'extreme_fear'
+        elif fear_greed <= 45:
+            sentiment = 'fear'
+        else:
+            sentiment = 'neutral'
+
+        # Determine volatility condition
+        if market_dispersion > 15:
+            volatility = 'high'
+        elif market_dispersion > 8:
+            volatility = 'elevated'
+        else:
+            volatility = 'normal'
+
+        # BTC dominance trend (rotation indicator)
+        btc_trend = 'stable'
+        if btc_dom_prev and btc_dom_prev > 0:
+            dom_change = btc_dominance - btc_dom_prev
+            if dom_change > 1.0:
+                btc_trend = 'rising'  # Flight to BTC
+            elif dom_change < -1.0:
+                btc_trend = 'falling'  # Alt rotation
+
+        # =================================================================
+        # ENHANCED LABEL CLASSIFICATION MATRIX
+        # =================================================================
+
+        # High volatility override
+        if volatility == 'high':
+            if direction in ('strong_bearish', 'bearish'):
+                label = "Volatile Selloff"
+                emoji = "🌪️📉"
+                desc = "High volatility with bearish pressure - risk management critical"
+            elif direction in ('strong_bullish', 'bullish'):
+                label = "Volatile Rally"
+                emoji = "🌪️📈"
+                desc = "High volatility with bullish momentum - use caution on entries"
+            else:
+                label = "Choppy Waters"
+                emoji = "🌊"
+                desc = "High volatility, no clear direction - wait for clarity"
+
+        # Strong bullish scenarios
+        elif direction == 'strong_bullish':
+            if breadth == 'broad' and sentiment in ('greed', 'extreme_greed'):
+                label = "Euphoric Rally"
+                emoji = "🚀🎉"
+                desc = "Strong broad-based rally with extreme optimism - watch for exhaustion"
+            elif breadth == 'broad':
+                label = "Broad Rally"
+                emoji = "🚀"
+                desc = "Strong uptrend with wide market participation"
+            elif breadth == 'narrow':
+                label = "Selective Strength"
+                emoji = "📈⚡"
+                desc = "Strong indicators but concentrated gains - rotation possible"
+            else:
+                label = "Bullish Momentum"
+                emoji = "📈"
+                desc = "Strong bullish consensus across indicators"
+
+        # Bullish scenarios
+        elif direction == 'bullish':
+            if breadth == 'broad' and btc_trend == 'falling':
+                label = "Alt Season"
+                emoji = "🌈💰"
+                desc = "Bullish with altcoin rotation - BTC dominance declining"
+            elif breadth == 'broad':
+                label = "Risk-On"
+                emoji = "✅📈"
+                desc = "Healthy bullish conditions with broad participation"
+            elif sentiment in ('fear', 'extreme_fear'):
+                label = "Accumulation Zone"
+                emoji = "🐋📥"
+                desc = "Bullish indicators despite fearful sentiment - smart money buying"
+            else:
+                label = "Mild Uptrend"
+                emoji = "📈"
+                desc = "Moderately bullish conditions"
+
+        # Strong bearish scenarios
+        elif direction == 'strong_bearish':
+            if breadth == 'narrow' and sentiment == 'extreme_fear':
+                label = "Capitulation"
+                emoji = "💀📉"
+                desc = "Extreme bearish with panic selling - potential bottom forming"
+            elif breadth == 'narrow':
+                label = "Broad Selloff"
+                emoji = "🔴📉"
+                desc = "Strong selling pressure across the market"
+            elif btc_trend == 'rising':
+                label = "Flight to BTC"
+                emoji = "₿🛡️"
+                desc = "Bearish alts with BTC dominance rising - defensive rotation"
+            else:
+                label = "Bearish Momentum"
+                emoji = "📉"
+                desc = "Strong bearish consensus across indicators"
+
+        # Bearish scenarios
+        elif direction == 'bearish':
+            if sentiment in ('greed', 'extreme_greed'):
+                label = "Distribution Zone"
+                emoji = "🐋📤"
+                desc = "Bearish indicators despite greedy sentiment - smart money selling"
+            elif breadth == 'narrow':
+                label = "Risk-Off"
+                emoji = "⚠️📉"
+                desc = "Bearish conditions - reduce exposure"
+            else:
+                label = "Mild Downtrend"
+                emoji = "📉"
+                desc = "Moderately bearish conditions"
+
+        # Neutral/sideways scenarios
+        else:
+            if volatility == 'elevated':
+                label = "Choppy Range"
+                emoji = "↔️🌊"
+                desc = "Ranging with elevated volatility - range trading conditions"
+            elif breadth == 'broad' and sentiment in ('greed', 'extreme_greed'):
+                label = "Topping Formation"
+                emoji = "⚠️🔝"
+                desc = "Neutral indicators but greedy sentiment - potential reversal"
+            elif breadth == 'narrow' and sentiment in ('fear', 'extreme_fear'):
+                label = "Bottoming Formation"
+                emoji = "👀🔻"
+                desc = "Neutral indicators but fearful sentiment - potential reversal"
+            elif btc_trend == 'falling':
+                label = "Alt Accumulation"
+                emoji = "🔄💎"
+                desc = "Sideways with altcoin rotation beginning"
+            else:
+                label = "Consolidation"
+                emoji = "⏸️"
+                desc = "Range-bound market - wait for breakout"
+
+        # Map direction to display-friendly category name
+        category_names = {
+            'strong_bullish': 'Strong Bullish',
+            'bullish': 'Bullish',
+            'neutral': 'Neutral',
+            'bearish': 'Bearish',
+            'strong_bearish': 'Strong Bearish'
+        }
+        category = category_names.get(direction, 'Unknown')
+
+        # Build result (no emojis - clean labels only)
+        result = {
+            'regime': f"{category}: {label}",  # Full display format
+            'label': label,  # Clean label only
+            'category': category,  # Category name
+            'description': desc,
+            'base_regime': direction,
+            'components': {
+                'confluence': round(avg_confluence, 1),
+                'breadth_ratio': round(breadth_ratio * 100, 1),
+                'fear_greed': fear_greed,
+                'dispersion': round(market_dispersion, 1),
+                'btc_dominance': round(btc_dominance, 1) if btc_dominance else None,
+                'btc_trend': btc_trend
+            },
+            'conditions': {
+                'direction': direction,
+                'breadth': breadth,
+                'sentiment': sentiment,
+                'volatility': volatility
+            }
+        }
+
+        logger.info(
+            f"Enhanced regime: {category}: {label} | "
+            f"confluence={avg_confluence:.1f}, breadth={breadth_ratio:.1%}, "
+            f"F&G={fear_greed}, dispersion={market_dispersion:.1f}%"
+        )
+
+        return result

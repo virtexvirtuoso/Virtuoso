@@ -8,7 +8,7 @@ Replaces synthetic data generation with actual market data fetching.
 import asyncio
 import logging
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Any, Union
 import time
 
@@ -131,7 +131,7 @@ class RealMarketDataService:
             raise ValueError("Exchange manager not initialized - cannot fetch real market data")
         
         # Calculate the since timestamp
-        since = datetime.utcnow() - timedelta(days=days)
+        since = datetime.now(timezone.utc) - timedelta(days=days)
         since_timestamp = int(since.timestamp() * 1000)
         
         # Try to get data from exchanges

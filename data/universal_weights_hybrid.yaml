@@ -1,0 +1,86 @@
+timestamp: '2025-11-13T23:50:35.300842'
+optimization_info:
+  method: hybrid_walk_forward_cross_validated_ensemble
+  n_windows: 3
+  n_trials_per_window: 200
+  total_trials: 600
+  train_days: 60
+  test_days: 30
+  regularization_strength: 0.5
+  ensemble_size: 10
+  max_train_test_gap: 0.15
+  symbols:
+  - BTCUSDT
+  - ETHUSDT
+  - SOLUSDT
+  - BNBUSDT
+  - ADAUSDT
+  - AVAXUSDT
+  - LINKUSDT
+  window_results:
+  - window: 1
+    best_value: 3.4926690739662405
+    valid_trials: 200
+  - window: 2
+    best_value: 3.3728529388597823
+    valid_trials: 200
+  - window: 3
+    best_value: 100.72481112368324
+    valid_trials: 195
+confluence:
+  weights:
+    components:
+      orderbook: 0.2633462338143344
+      orderflow: 0.22025984550572272
+      price_structure: 0.13742705355327176
+      technical: 0.15596013529407954
+      volume: 0.155941072623075
+      sentiment: 0.06706565920951647
+    sub_components:
+      technical:
+        rsi: 0.1523107752152281
+        ao: 0.21193342073676097
+        macd: 0.11992166842662427
+        williams_r: 0.1732656123755439
+        atr: 0.09346365071558851
+        cci: 0.24910487253025423
+      orderbook:
+        depth: 0.20937354392001206
+        imbalance: 0.16089299234013701
+        oir: 0.16247159091803637
+        liquidity: 0.09765824377416432
+        mpi: 0.07120183576595526
+        manipulation: 0.07458645080989959
+        absorption_exhaustion: 0.05018312343162495
+        di: 0.10130624995140122
+        retail: 0.07232596908876929
+      volume:
+        volume_delta: 0.2458393865772702
+        adl: 0.13063492876645696
+        cmf: 0.1073730733838075
+        relative_volume: 0.13059807797194647
+        obv: 0.16618442734000324
+        volume_profile: 0.12427478556717103
+        vwap: 0.09509532039334438
+      orderflow:
+        cvd: 0.12644534706373609
+        imbalance: 0.10053414174343349
+        trade_flow: 0.21599074202948854
+        open_interest: 0.11925900603545446
+        pressure: 0.16500484436740284
+        liquidity: 0.14112308033765353
+        smart_money_flow: 0.131642838422831
+      price_structure:
+        support_resistance: 0.17650263450776413
+        order_blocks: 0.19940903351943212
+        trend_position: 0.18240629770092154
+        volume_profile: 0.12214570345284599
+        market_structure: 0.19700889872910668
+        range_analysis: 0.12252743208992946
+      sentiment:
+        funding_rate: 0.2357196399220966
+        liquidations: 0.19475134818020132
+        long_short_ratio: 0.1931558276352859
+        market_activity: 0.12850918408577477
+        risk: 0.15890712610011776
+        volatility: 0.08895687407652356

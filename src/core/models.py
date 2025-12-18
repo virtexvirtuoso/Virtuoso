@@ -1,7 +1,7 @@
 """Core data models for market data processing."""
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Any, Optional, Callable
 from enum import Enum, auto
 
@@ -230,7 +230,7 @@ class HealthStatus:
         """Update health status."""
         self.is_healthy = is_healthy
         self.error = error
-        self.last_check = datetime.utcnow() 
+        self.last_check = datetime.now(timezone.utc) 
 
 @dataclass
 class StateChangeEvent(MarketEvent):

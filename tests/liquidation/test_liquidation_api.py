@@ -2,7 +2,7 @@ import pytest
 import asyncio
 from fastapi.testclient import TestClient
 from unittest.mock import Mock, AsyncMock, patch
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from src.core.models.liquidation import (
     LiquidationEvent, MarketStressIndicator, LiquidationRisk, CascadeAlert,
@@ -22,7 +22,7 @@ class TestLiquidationAPI:
             event_id="test_event_1",
             symbol="BTCUSDT",
             exchange="binance",
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             liquidation_type=LiquidationType.LONG_LIQUIDATION,
             severity=LiquidationSeverity.HIGH,
             confidence_score=0.85,
@@ -228,7 +228,7 @@ class TestLiquidationAPI:
         mock_exchange = Mock()
         mock_exchange.fetch_funding_rate = AsyncMock(return_value={
             "fundingRate": 0.005,
-            "fundingTimestamp": datetime.utcnow().timestamp() * 1000
+            "fundingTimestamp": datetime.now(timezone.utc).timestamp() * 1000
         })
         mock_exchange.fetch_market = AsyncMock(return_value={
             "limits": {"leverage": {"max": 125}}

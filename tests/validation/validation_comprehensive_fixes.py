@@ -24,7 +24,7 @@ import logging
 import json
 import asyncio
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
 import ast
 import tempfile
@@ -50,7 +50,7 @@ class ValidationReport:
         self.regression = {"areas_tested": [], "issues_found": []}
         self.overall_decision = "pending"
         self.notes = []
-        self.start_time = datetime.utcnow()
+        self.start_time = datetime.now(timezone.utc)
 
     def _get_commit_sha(self):
         """Get current git commit SHA"""
@@ -92,7 +92,7 @@ class ValidationReport:
 
     def generate_report(self) -> Dict[str, Any]:
         """Generate final JSON report"""
-        end_time = datetime.utcnow()
+        end_time = datetime.now(timezone.utc)
         duration = (end_time - self.start_time).total_seconds()
 
         # Determine overall decision
@@ -1078,7 +1078,7 @@ Blocking Issues:
 
         markdown_content += f"""
 ---
-*Report generated on {datetime.utcnow().isoformat()}Z*
+*Report generated on {datetime.now(timezone.utc).isoformat()}Z*
 *Validation Duration: {report_data['validation_duration_seconds']:.2f} seconds*
 """
 

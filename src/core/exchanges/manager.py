@@ -1080,7 +1080,56 @@ class ExchangeManager:
         except Exception as e:
             self.logger.error(f"Error in fetch_funding_rate: {str(e)}")
             return {'fundingRate': 0}
-    
+
+    async def fetch_open_interest(self, symbol: str, exchange_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """
+        Fetch open interest data for a symbol from an exchange
+
+        Args:
+            symbol: Symbol to fetch open interest for
+            exchange_id: Optional specific exchange to use
+
+        Returns:
+            Dict containing open interest data or None if not available
+        """
+        try:
+            exchange = await self._get_exchange_for_operation(exchange_id)
+            if not exchange:
+                return None
+
+            # Standardize the symbol format
+            if '/' in symbol and ':' not in symbol:
+                # Convert traditional format to exchange specific
+                base, quote = symbol.split('/')
+                api_symbol = f"{base}{quote}"
+            else:
+                api_symbol = symbol
+
+            # Try to fetch open interest
+            try:
+                self.logger.debug(f"Fetching open interest for {api_symbol}")
+
+                # Check if exchange has fetch_open_interest method
+                if hasattr(exchange, 'fetch_open_interest'):
+                    result = await exchange.fetch_open_interest(api_symbol)
+                    if result:
+                        return result
+
+                # Fallback: return empty dict if not supported
+                self.logger.warning(f"Exchange {exchange.exchange_id} does not provide open interest data")
+                return {'open_interest': 0}
+
+            except (AttributeError, NotImplementedError):
+                self.logger.warning(f"Exchange {exchange.exchange_id} does not support open interest")
+                return {'open_interest': 0}
+            except Exception as e:
+                self.logger.error(f"Error fetching open interest: {str(e)}")
+                return {'open_interest': 0}
+
+        except Exception as e:
+            self.logger.error(f"Error in fetch_open_interest: {str(e)}")
+            return {'open_interest': 0}
+
     async def fetch_risk_limits(self, symbol: str, exchange_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """Fetch risk limits data for a symbol.
         

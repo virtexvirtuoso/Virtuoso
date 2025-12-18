@@ -980,7 +980,7 @@ class MarketDataManager:
                         self.logger.debug(f"Trade data that caused error: {type(data)}")
                         if isinstance(data, dict) and 'data' in data:
                             self.logger.debug(f"Inner data type: {type(data['data'])}")
-                elif "liquidation" in topic:
+                elif "liquidation" in topic.lower():
                     self._update_liquidation_from_ws(symbol, data)
                 else:
                     # Log unhandled topic types only at debug level to avoid spamming
@@ -1556,24 +1556,32 @@ class MarketDataManager:
     
     def _update_liquidation_from_ws(self, symbol: str, data: Dict[str, Any]) -> None:
         """Update liquidation data from WebSocket message
-        
+
         Args:
             symbol: Trading pair symbol
             data: WebSocket message data (official Bybit allLiquidation format)
         """
         if not data:
             return
-        
-        # Extract liquidation data array (official Bybit format)
-        liquidation_data_array = data.get('data', [])
+
+        # Extract liquidation data array (handle both direct array and nested format)
+        # After message routing, data is already extracted from message['data']
+        if isinstance(data, list):
+            liquidation_data_array = data
+            ts = int(time.time() * 1000)  # Use current time if data is direct array
+        else:
+            liquidation_data_array = data.get('data', [])
+            ts = data.get('ts', int(time.time() * 1000))
+
         if not liquidation_data_array:
             return
-        
-        ts = data.get('ts', int(time.time() * 1000))
+
+        # Log receipt of liquidation message
+        logger.info(f"📡 Received liquidation WebSocket message for {symbol} with {len(liquidation_data_array)} events")
         
         # Process each liquidation event in the array
         for liq_data in liquidation_data_array:
-            # Format liquidation data using official field names
+            # Format liquidation data using official Bybit field names (T, s, S, v, p)
             liquidation_dict = {
                 'symbol': liq_data.get('s', symbol),
                 'side': liq_data.get('S', ''),
@@ -1582,48 +1590,11 @@ class MarketDataManager:
                 'timestamp': int(liq_data.get('T', ts))
             }
 
-            # Create LiquidationEvent object for cache
-            liquidation_event = LiquidationEvent(
-                symbol=liquidation_dict['symbol'],
-                exchange='bybit',  # TODO: Get from config or context
-                side=liquidation_dict['side'],
-                price=liquidation_dict['price'],
-                quantity=liquidation_dict['amount'],
-                timestamp=liquidation_dict['timestamp']
-            )
+            # Skip creating LiquidationEvent Pydantic object - it requires many fields
+            # that WebSocket data doesn't provide (severity, confidence_score, etc.)
+            # Store raw liquidation dict directly in caches instead
 
-            # Store in liquidation cache (Redis/Memcached)
-            # Get recent liquidations to update
-            symbols = [liquidation_dict['symbol']]
-            exchanges = ['bybit']
-            recent_liquidations = self.liquidation_cache.get_liquidation_events(
-                symbols=symbols,
-                exchanges=exchanges,
-                lookback_minutes=1440  # 24 hours
-            ) or []
-
-            # Add new liquidation and store back
-            recent_liquidations.append(liquidation_event)
-            self.liquidation_cache.set_liquidation_events(
-                symbols=symbols,
-                exchanges=exchanges,
-                lookback_minutes=1440,
-                events=recent_liquidations
-            )
-
-            # Also persist to database if enabled
-            if self.liquidation_storage is not None:
-                try:
-                    # Use asyncio to persist without blocking
-                    persist_task = create_tracked_task(
-                        self.liquidation_storage.store_liquidation_event(liquidation_event),
-                        name="liquidation_persistence"
-                    )
-                    # Fire and forget - don't wait for completion
-                except Exception as db_error:
-                    logger.error(f"Error persisting liquidation to database: {db_error}")
-
-            # Also maintain backward compatibility with in-memory cache
+            # Store in in-memory cache
             if 'liquidations' not in self.data_cache[liquidation_dict['symbol']]:
                 self.data_cache[liquidation_dict['symbol']]['liquidations'] = []
 
@@ -1637,7 +1608,44 @@ class MarketDataManager:
             ]
 
             logger.info(f"Liquidation detected for {liquidation_dict['symbol']}: {liquidation_dict['side']} {liquidation_dict['amount']} @ {liquidation_dict['price']} (cached)")
-            
+
+            # Update BybitExchange's liquidation storage for backward compatibility
+            # This ensures get_recent_liquidations() returns actual data
+            # We need to schedule this as a background task to avoid blocking
+            async def update_exchange_storage():
+                try:
+                    exchange = await self.exchange_manager.get_primary_exchange()
+                    if exchange:
+                        if not hasattr(exchange, '_liquidations') or exchange._liquidations is None:
+                            exchange._liquidations = {}
+
+                        if liquidation_dict['symbol'] not in exchange._liquidations:
+                            exchange._liquidations[liquidation_dict['symbol']] = []
+
+                        # Store with 'size' key for backward compatibility
+                        exchange_liq_data = {
+                            'symbol': liquidation_dict['symbol'],
+                            'side': liquidation_dict['side'],
+                            'price': liquidation_dict['price'],
+                            'size': liquidation_dict['amount'],
+                            'timestamp': liquidation_dict['timestamp']
+                        }
+                        exchange._liquidations[liquidation_dict['symbol']].append(exchange_liq_data)
+
+                        # Keep only last 24 hours in exchange storage
+                        cutoff = int(time.time() * 1000) - (24 * 60 * 60 * 1000)
+                        exchange._liquidations[liquidation_dict['symbol']] = [
+                            liq for liq in exchange._liquidations[liquidation_dict['symbol']]
+                            if liq['timestamp'] > cutoff
+                        ]
+
+                        logger.debug(f"Updated BybitExchange liquidation storage for {liquidation_dict['symbol']} (count: {len(exchange._liquidations[liquidation_dict['symbol']])})")
+                except Exception as exchange_update_error:
+                    logger.debug(f"Could not update exchange liquidation storage: {exchange_update_error}")
+
+            # Create task to update exchange storage without blocking
+            create_tracked_task(update_exchange_storage(), name="update_exchange_liquidations")
+
             # Send to AlertManager if it's available
             if hasattr(self, 'alert_manager') and self.alert_manager is not None:
                 # Prepare data for the alert manager format
@@ -1651,7 +1659,8 @@ class MarketDataManager:
                 
                 # Use asyncio to call the coroutine with proper error handling
                 task = create_tracked_task(
-                    self.alert_manager.check_liquidation_threshold(liquidation_dict['symbol'], liquidation_data, name="auto_tracked_task")
+                    self.alert_manager.check_liquidation_threshold(liquidation_dict['symbol'], liquidation_data),
+                    name="liquidation_threshold_check"
                 )
                 # Add error callback to handle any exceptions
                 def handle_liquidation_alert_error(task):

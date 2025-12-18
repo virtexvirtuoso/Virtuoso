@@ -6,6 +6,7 @@ Simulates end-to-end flow to verify all fixes work together.
 
 import sys
 import os
+from pathlib import Path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 import json
@@ -153,7 +154,8 @@ def simulate_confluence_analysis_formatting():
 
     # Test 5: Monitor fallback logic (code inspection)
     try:
-        with open('/Users/ffv_macmini/Desktop/Virtuoso_ccxt/src/monitoring/monitor.py', 'r') as f:
+        monitor_path = Path(__file__).parent.parent.parent / 'src' / 'monitoring' / 'monitor.py'
+        with open(monitor_path, 'r') as f:
             monitor_content = f.read()
 
         # Check for key fallback patterns

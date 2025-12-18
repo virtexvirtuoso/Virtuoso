@@ -1,0 +1,76 @@
+timestamp: '2025-11-17T09:58:40.385620'
+version: V8.2-Hybrid-BHMS-RCP
+description: Combines V8.1 TRENDING with V8.2 regime-specific RANGING/VOLATILE
+methodology: Regime-specific optimization on pure datasets
+source_weights:
+  TRENDING: V8.1-Constrained (validation-optimized)
+  RANGING: V8.2-Specific (1,508 pure RANGING candles)
+  VOLATILE: V8.2-Specific (975 pure VOLATILE candles)
+optimization_summary:
+  TRENDING:
+    source: V8.1
+    score: -0.9984683898120316
+    trades: 35
+    signal_rate: 0.012115967113803548
+  RANGING:
+    source: V8.2
+    score: 1.761971643712335
+    trades: 16
+    signal_rate: 0.010610079575596816
+  VOLATILE:
+    source: V8.2
+    score: 1.7894863515290262
+    trades: 12
+    signal_rate: 0.012307692307692308
+generated_weights:
+  TRENDING:
+    rsi: 0.029058568036706478
+    macd: 0.08096902544877634
+    cci: 0.11705863883819732
+    williams_r: 0.037243730929658006
+    atr: 0.0341031567692341
+    ao: 0.06072098297883438
+    trend_position: 0.2354300469565013
+    market_structure: 0.03596692372992443
+    support_resistance: 0.027934326588475396
+    range_analysis: 0.01787566716702412
+    order_blocks: 0.038395463514283024
+    adl: 0.028956913498621423
+    cmf: 0.0486056484866811
+    obv: 0.0896444224706691
+    relative_volume: 0.033451291718229026
+    volume_profile: 0.08458519286818439
+  RANGING:
+    rsi: 0.14515272455382322
+    macd: 0.08914597594391478
+    cci: 0.14321294822502662
+    williams_r: 0.06304256959443362
+    atr: 0.01776007117874064
+    ao: 0.04802133045135942
+    trend_position: 0.10318430438944806
+    market_structure: 0.025316066916855316
+    support_resistance: 0.025538668771689955
+    range_analysis: 0.023004852714158818
+    order_blocks: 0.037950911867520844
+    adl: 0.04061598148352479
+    cmf: 0.024877077771525133
+    obv: 0.04710481396570229
+    relative_volume: 0.01875387488622641
+    volume_profile: 0.14731782728605033
+  VOLATILE:
+    rsi: 0.0624358320113907
+    macd: 0.19963672081447298
+    cci: 0.1778901985222421
+    williams_r: 0.07471845858388756
+    atr: 0.034827047388362085
+    ao: 0.03596555768732185
+    trend_position: 0.020852820693960303
+    market_structure: 0.04787510035121672
+    support_resistance: 0.054262858606568265
+    range_analysis: 0.07177329024558605
+    order_blocks: 0.11295318676897965
+    adl: 0.015054221637358913
+    cmf: 0.007521351877870177
+    obv: 0.012983784958495
+    relative_volume: 0.010779020116255521
+    volume_profile: 0.06047054973603215

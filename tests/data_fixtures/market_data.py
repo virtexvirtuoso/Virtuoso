@@ -1,11 +1,11 @@
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 def create_sample_price_data(start_time=None, periods=100):
     """Create sample price data for testing."""
     if start_time is None:
-        start_time = datetime.utcnow()
+        start_time = datetime.now(timezone.utc)
     
     return pd.DataFrame({
         'timestamp': pd.date_range(start=start_time, periods=periods, freq='1min'),
@@ -19,7 +19,7 @@ def create_sample_price_data(start_time=None, periods=100):
 def create_sample_trades_data(periods=50):
     """Create sample trades data for testing."""
     return pd.DataFrame({
-        'timestamp': pd.date_range(start=datetime.utcnow(), periods=periods, freq='1min'),
+        'timestamp': pd.date_range(start=datetime.now(timezone.utc), periods=periods, freq='1min'),
         'price': np.random.uniform(45000, 46000, periods),
         'size': np.random.uniform(0.1, 1.0, periods),
         'side': np.random.choice(['Buy', 'Sell'], periods)
@@ -53,7 +53,7 @@ def create_sample_session_data():
                 'trades_data': create_sample_trades_data(),
                 'orderbook_data': create_sample_orderbook_data()
             },
-            'session_start': datetime.utcnow(),
+            'session_start': datetime.now(timezone.utc),
             'symbol': 'BTCUSDT'
         }
     }

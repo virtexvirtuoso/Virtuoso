@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from typing import Dict, List, Optional, Any
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import time
 import logging
 from pydantic import BaseModel, Field
@@ -95,19 +95,66 @@ async def get_alerts(
                 continue
             if resolved is not None and alert.get('resolved', False) != resolved:
                 continue
-            
-            alert_data.append(AlertData(
-                id=alert.get('id', str(int(alert.get('timestamp', time.time()) * 1000000))),
-                level=alert.get('level', 'INFO'),
-                message=alert.get('message', ''),
-                details=alert.get('details', {}),
-                timestamp=alert.get('timestamp', time.time()),
-                source=alert.get('details', {}).get('source'),
-                alert_type=alert.get('details', {}).get('type'),
-                symbol=alert.get('details', {}).get('symbol'),
-                resolved=alert.get('resolved', False),
-                acknowledged=alert.get('acknowledged', False)
-            ))
+
+            # Fix Pydantic validation: Ensure all fields are proper types
+            try:
+                # Extract and validate required fields with type conversion
+                alert_id = alert.get('id')
+                if alert_id is None:
+                    alert_id = str(int(alert.get('timestamp', time.time()) * 1000000))
+                else:
+                    alert_id = str(alert_id)
+
+                # Ensure level is a string
+                alert_level = alert.get('level', 'INFO')
+                if alert_level is None:
+                    alert_level = 'INFO'
+                else:
+                    alert_level = str(alert_level)
+
+                # Ensure message is a string
+                alert_message = alert.get('message', '')
+                if alert_message is None:
+                    alert_message = ''
+                else:
+                    alert_message = str(alert_message)
+
+                # Ensure timestamp is a float
+                alert_timestamp = alert.get('timestamp', time.time())
+                if not isinstance(alert_timestamp, (int, float)):
+                    alert_timestamp = time.time()
+                else:
+                    alert_timestamp = float(alert_timestamp)
+
+                # Extract optional string fields safely
+                details = alert.get('details', {})
+                if not isinstance(details, dict):
+                    details = {}
+
+                source_val = details.get('source')
+                source_val = str(source_val) if source_val is not None else None
+
+                type_val = details.get('type')
+                type_val = str(type_val) if type_val is not None else None
+
+                symbol_val = details.get('symbol')
+                symbol_val = str(symbol_val) if symbol_val is not None else None
+
+                alert_data.append(AlertData(
+                    id=alert_id,
+                    level=alert_level,
+                    message=alert_message,
+                    details=details,
+                    timestamp=alert_timestamp,
+                    source=source_val,
+                    alert_type=type_val,
+                    symbol=symbol_val,
+                    resolved=bool(alert.get('resolved', False)),
+                    acknowledged=bool(alert.get('acknowledged', False))
+                ))
+            except Exception as field_error:
+                logger.warning(f"Skipping invalid alert due to validation error: {field_error}, alert: {alert}")
+                continue
         
         return alert_data
         
@@ -133,21 +180,67 @@ async def get_recent_alerts(
             start_time=one_hour_ago
         )
         
-        # Convert to AlertData format
+        # Convert to AlertData format with proper type validation
         alert_data = []
         for alert in alerts:
-            alert_data.append(AlertData(
-                id=alert.get('id', str(int(alert.get('timestamp', time.time()) * 1000000))),
-                level=alert.get('level', 'INFO'),
-                message=alert.get('message', ''),
-                details=alert.get('details', {}),
-                timestamp=alert.get('timestamp', time.time()),
-                source=alert.get('details', {}).get('source'),
-                alert_type=alert.get('details', {}).get('type'),
-                symbol=alert.get('details', {}).get('symbol'),
-                resolved=alert.get('resolved', False),
-                acknowledged=alert.get('acknowledged', False)
-            ))
+            try:
+                # Extract and validate required fields with type conversion
+                alert_id = alert.get('id')
+                if alert_id is None:
+                    alert_id = str(int(alert.get('timestamp', time.time()) * 1000000))
+                else:
+                    alert_id = str(alert_id)
+
+                # Ensure level is a string
+                alert_level = alert.get('level', 'INFO')
+                if alert_level is None:
+                    alert_level = 'INFO'
+                else:
+                    alert_level = str(alert_level)
+
+                # Ensure message is a string
+                alert_message = alert.get('message', '')
+                if alert_message is None:
+                    alert_message = ''
+                else:
+                    alert_message = str(alert_message)
+
+                # Ensure timestamp is a float
+                alert_timestamp = alert.get('timestamp', time.time())
+                if not isinstance(alert_timestamp, (int, float)):
+                    alert_timestamp = time.time()
+                else:
+                    alert_timestamp = float(alert_timestamp)
+
+                # Extract optional string fields safely
+                details = alert.get('details', {})
+                if not isinstance(details, dict):
+                    details = {}
+
+                source_val = details.get('source')
+                source_val = str(source_val) if source_val is not None else None
+
+                type_val = details.get('type')
+                type_val = str(type_val) if type_val is not None else None
+
+                symbol_val = details.get('symbol')
+                symbol_val = str(symbol_val) if symbol_val is not None else None
+
+                alert_data.append(AlertData(
+                    id=alert_id,
+                    level=alert_level,
+                    message=alert_message,
+                    details=details,
+                    timestamp=alert_timestamp,
+                    source=source_val,
+                    alert_type=type_val,
+                    symbol=symbol_val,
+                    resolved=bool(alert.get('resolved', False)),
+                    acknowledged=bool(alert.get('acknowledged', False))
+                ))
+            except Exception as field_error:
+                logger.warning(f"Skipping invalid alert due to validation error: {field_error}, alert: {alert}")
+                continue
         
         # Sort by timestamp (most recent first)
         alert_data.sort(key=lambda x: x.timestamp, reverse=True)
@@ -289,7 +382,7 @@ async def create_alert(
         return {
             "status": "success",
             "message": "Alert created successfully",
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
         
     except Exception as e:
@@ -346,7 +439,7 @@ async def acknowledge_alert(
             return {
                 "status": "success",
                 "message": f"Alert {alert_id} acknowledged",
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
         else:
             raise HTTPException(status_code=404, detail=f"Alert {alert_id} not found")
@@ -364,7 +457,8 @@ def get_persistence():
     """Dependency to get alert persistence instance"""
     global alert_persistence
     if not alert_persistence and AlertPersistence:
-        alert_persistence = AlertPersistence("data/alerts.db")
+        # MIGRATION 2025-12-06: Changed from alerts.db to virtuoso.db
+        alert_persistence = AlertPersistence("data/virtuoso.db")
     return alert_persistence
 
 @router.get("/persisted/list")
@@ -382,7 +476,7 @@ async def get_persisted_alerts(
         if not persistence:
             raise HTTPException(status_code=503, detail="Alert persistence not available")
         
-        end_time = datetime.utcnow().timestamp()
+        end_time = datetime.now(timezone.utc).timestamp()
         start_time = end_time - (hours * 3600)
         
         alerts = await persistence.get_alerts(
@@ -459,7 +553,7 @@ async def get_persisted_stats(hours: int = Query(24)):
         if not persistence:
             raise HTTPException(status_code=503, detail="Alert persistence not available")
         
-        end_time = datetime.utcnow().timestamp()
+        end_time = datetime.now(timezone.utc).timestamp()
         start_time = end_time - (hours * 3600) if hours else None
         
         stats = await persistence.get_alert_statistics(

@@ -13,17 +13,18 @@ Expected Performance Impact: +100% through multi-tier architecture and intellige
 
 from .multi_tier_cache import (
     MultiTierCacheAdapter,
-    DirectCacheAdapter, 
+    DirectCacheAdapter,
     CacheLayer,
     CacheStats
 )
 
-from .intelligent_warmer import (
-    IntelligentCacheWarmer,
-    MarketPeriod,
-    VolatilityLevel,
-    start_intelligent_cache_warming
-)
+# Intelligent warmer module removed - functionality integrated elsewhere
+# from .intelligent_warmer import (
+#     IntelligentCacheWarmer,
+#     MarketPeriod,
+#     VolatilityLevel,
+#     start_intelligent_cache_warming
+# )
 
 from .monitoring import (
     CachePerformanceMonitor,
@@ -43,16 +44,16 @@ from .indicator_cache import (
 __all__ = [
     # Multi-tier cache
     'MultiTierCacheAdapter',
-    'DirectCacheAdapter', 
+    'DirectCacheAdapter',
     'CacheLayer',
     'CacheStats',
-    
-    # Intelligent warming
-    'IntelligentCacheWarmer',
-    'MarketPeriod',
-    'VolatilityLevel',
-    'start_intelligent_cache_warming',
-    
+
+    # Intelligent warming - REMOVED (functionality integrated elsewhere)
+    # 'IntelligentCacheWarmer',
+    # 'MarketPeriod',
+    # 'VolatilityLevel',
+    # 'start_intelligent_cache_warming',
+
     # Performance monitoring
     'CachePerformanceMonitor',
     'PerformanceAlert',

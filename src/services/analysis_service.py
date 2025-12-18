@@ -9,7 +9,7 @@ import logging
 import time
 import statistics
 from typing import Dict, List, Optional, Any
-from datetime import datetime
+from datetime import datetime, timezone
 import aiomcache
 
 logger = logging.getLogger(__name__)
@@ -79,7 +79,7 @@ class AnalysisService:
                     await self._store_analysis(analysis, analysis_time)
                     
                     self.error_count = 0
-                    self.last_analysis = datetime.utcnow()
+                    self.last_analysis = datetime.now(timezone.utc)
                     
                     logger.debug(f"✅ Analysis completed in {analysis_time:.0f}ms")
                 else:

@@ -6,7 +6,7 @@ Directly uses exchange manager from app state for immediate functionality.
 import logging
 import numpy as np
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Any, Optional
 import asyncio
 
@@ -142,7 +142,7 @@ class SimpleCorrelationService:
                 "symbols": symbols,
                 "correlation_matrix": correlations,
                 "timeframe": f"{days}d",
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "status": "success" if len(failed_symbols) == 0 else "partial",
                 "data_source": "real_market_data",
                 "successful_symbols": successful_symbols,
@@ -178,7 +178,7 @@ class SimpleCorrelationService:
                 data_points = []
                 
                 for i in range(num_windows):
-                    end_date = datetime.utcnow() - timedelta(days=i)
+                    end_date = datetime.now(timezone.utc) - timedelta(days=i)
                     
                     # Calculate beta for this window
                     if len(asset_df) >= window_days and len(btc_df) >= window_days:
@@ -219,7 +219,7 @@ class SimpleCorrelationService:
                 "series_data": series_data,
                 "benchmark": "BTCUSDT",
                 "window_size": f"{window_days}d",
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "status": "success"
             }
             
@@ -288,7 +288,7 @@ class SimpleCorrelationService:
             "symbols": symbols,
             "correlation_matrix": correlations,
             "timeframe": "unavailable",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "status": "error",
             "data_source": "fallback_null_values",
             "error_message": error_msg,
@@ -305,7 +305,7 @@ class SimpleCorrelationService:
             
             data_points = []
             for i in range(num_windows):
-                end_date = datetime.utcnow() - timedelta(days=i)
+                end_date = datetime.now(timezone.utc) - timedelta(days=i)
                 data_points.append({
                     "date": end_date.strftime("%Y-%m-%d"),
                     "timestamp": int(end_date.timestamp() * 1000),
@@ -339,7 +339,7 @@ class SimpleCorrelationService:
             "symbols": symbols,
             "min_correlation": 0.0,
             "max_correlation": 1.0,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "status": "partial",
             "data_source": "fallback_null_values"
         }

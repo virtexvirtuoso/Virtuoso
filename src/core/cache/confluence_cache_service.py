@@ -7,16 +7,16 @@ import json
 import logging
 import time
 from typing import Dict, Any, Optional, List
-from datetime import datetime
+from datetime import datetime, timezone
 from src.core.cache_keys import CacheKeys, CacheTTL
 
 
 class ConfluenceCacheService:
     """Service to handle caching of confluence analysis results."""
-    
+
     def __init__(self, memcached_host: str = "localhost", memcached_port: int = 11211):
         """Initialize the confluence cache service.
-        
+
         Args:
             memcached_host: Memcached server host
             memcached_port: Memcached server port
@@ -25,6 +25,9 @@ class ConfluenceCacheService:
         self.memcached_port = memcached_port
         self.logger = logging.getLogger(__name__)
         self._client = None
+        # Score history for sparkline visualization
+        self._score_history: Dict[str, List[float]] = {}
+        self._score_history_max_size = 24  # Keep last 24 readings (~12 mins at 30s intervals)
     
     async def get_client(self) -> aiomcache.Client:
         """Get or create memcached client."""
@@ -68,6 +71,9 @@ class ConfluenceCacheService:
             # Extract interpretations - preserve existing ones
             interpretations = analysis_result.get('interpretations', {})
 
+            # Standardize interpretations - convert dicts to prose and enrich short ones
+            interpretations = self._standardize_interpretations(interpretations, components)
+
             # DEBUG: Log what we received
             self.logger.info(f"[INTERP-CACHE] {symbol} - Received interpretations at top level: {list(interpretations.keys()) if interpretations else 'NONE'}")
 
@@ -99,6 +105,18 @@ class ConfluenceCacheService:
             else:
                 self.logger.info(f"[INTERP-CACHE] {symbol} - Using {len(interpretations)} interpretations from analysis_result")
             
+            # Update score history for sparkline visualization
+            # Only append if score changed (avoids duplicate consecutive values)
+            if symbol not in self._score_history:
+                self._score_history[symbol] = []
+            rounded_score = round(confluence_score, 1)
+            # Only add if history is empty or score differs from the last recorded value
+            if not self._score_history[symbol] or self._score_history[symbol][-1] != rounded_score:
+                self._score_history[symbol].append(rounded_score)
+                # Maintain rolling buffer
+                if len(self._score_history[symbol]) > self._score_history_max_size:
+                    self._score_history[symbol] = self._score_history[symbol][-self._score_history_max_size:]
+
             # Create the breakdown structure expected by mobile-data endpoint
             breakdown = {
                 "overall_score": round(confluence_score, 2),
@@ -108,10 +126,11 @@ class ConfluenceCacheService:
                 "sub_components": sub_components,
                 "interpretations": interpretations,
                 "timestamp": int(time.time()),
-                "cached_at": datetime.utcnow().isoformat(),
+                "cached_at": datetime.now(timezone.utc).isoformat(),
                 "symbol": symbol,
                 "has_breakdown": True,
-                "real_confluence": True
+                "real_confluence": True,
+                "score_history": self._score_history[symbol].copy()  # Include score history for sparklines
             }
             
             # Cache the breakdown with the centralized key format
@@ -145,7 +164,8 @@ class ConfluenceCacheService:
                 exptime=CacheTTL.LONG
             )
 
-            self.logger.info(f"✅ Cached confluence breakdown for {symbol}: {confluence_score:.2f} ({sentiment})")
+            history_len = len(self._score_history.get(symbol, []))
+            self.logger.info(f"✅ Cached confluence breakdown for {symbol}: {confluence_score:.2f} ({sentiment}) [history: {history_len} pts]")
             return True
             
         except Exception as e:
@@ -191,7 +211,87 @@ class ConfluenceCacheService:
                 normalized['price_structure'] = round(float(score), 2)
         
         return normalized
-    
+
+    def _standardize_interpretations(
+        self,
+        interpretations: Dict[str, Any],
+        components: Dict[str, Any]
+    ) -> Dict[str, str]:
+        """Standardize interpretations to ensure consistent, rich prose output.
+
+        Fixes:
+        1. Converts dict interpretations (like sentiment) to prose
+        2. Enriches short interpretations with score-based context
+
+        Args:
+            interpretations: Raw interpretations dict (may contain dicts or short strings)
+            components: Component scores for context
+
+        Returns:
+            Standardized interpretations as strings
+        """
+        if not interpretations:
+            return {}
+
+        result = {}
+        for comp, interp in interpretations.items():
+            comp_score = components.get(comp, 50)
+            if isinstance(comp_score, dict):
+                comp_score = comp_score.get('score', 50)
+            comp_score = float(comp_score) if comp_score else 50
+
+            # Handle sentiment dict -> prose conversion
+            if comp == 'sentiment' and isinstance(interp, dict):
+                parts = []
+                if interp.get('sentiment'):
+                    parts.append(str(interp['sentiment']))
+                if interp.get('funding_rate'):
+                    parts.append(f"with {str(interp['funding_rate']).lower()}")
+                if interp.get('long_short_ratio'):
+                    parts.append(f"and {str(interp['long_short_ratio']).lower()}")
+                if interp.get('market_activity'):
+                    parts.append(f"amid {str(interp['market_activity']).lower()}")
+
+                base = ". ".join(parts) + "." if parts else "Neutral market sentiment."
+
+                # Add score-based context
+                if comp_score >= 65:
+                    base += " Strong bullish sentiment suggests continuation of upward momentum with high conviction from market participants."
+                elif comp_score >= 55:
+                    base += " Moderately bullish sentiment supports upward price action with reasonable conviction."
+                elif comp_score <= 35:
+                    base += " Strong bearish sentiment suggests continuation of downward momentum with high conviction from market participants."
+                elif comp_score <= 45:
+                    base += " Moderately bearish sentiment supports downward price action with reasonable conviction."
+                else:
+                    base += " Neutral sentiment indicates market indecision with no clear directional bias."
+                result[comp] = base
+
+            # Enrich short orderflow interpretation
+            elif comp == 'orderflow' and isinstance(interp, str) and len(interp) < 250:
+                if comp_score >= 60:
+                    extra = " Buying pressure dominates with strong accumulation patterns. Large orders are predominantly on the bid side, suggesting institutional buying interest. Volume-weighted order flow supports upward price movement."
+                elif comp_score <= 40:
+                    extra = " Selling pressure dominates with distribution patterns evident. Large orders are predominantly on the ask side, suggesting institutional selling interest. Volume-weighted order flow supports downward price movement."
+                else:
+                    extra = " Order flow shows equilibrium between buyers and sellers. Large orders are evenly distributed across both sides. This balance suggests potential consolidation or range-bound price action."
+                result[comp] = interp + extra
+
+            # Enrich short price_structure interpretation
+            elif comp == 'price_structure' and isinstance(interp, str) and len(interp) < 150:
+                if comp_score >= 60:
+                    extra = " Key support levels are holding firm with higher lows forming. Resistance levels are being tested with increasing momentum. The overall structure favors bullish continuation with well-defined risk levels."
+                elif comp_score <= 40:
+                    extra = " Key support levels are breaking down with lower highs forming. Resistance levels are capping price advances. The overall structure favors bearish continuation with breakdown targets in focus."
+                else:
+                    extra = " Price is consolidating within a defined range. Support and resistance levels are well-established, creating a balanced trading environment. Breakout direction will likely determine the next trend."
+                result[comp] = interp + extra
+            else:
+                # Ensure string type
+                result[comp] = str(interp) if not isinstance(interp, str) else interp
+
+        return result
+
     def _generate_basic_interpretations(
         self, 
         symbol: str, 
@@ -235,10 +335,10 @@ class ConfluenceCacheService:
     
     async def get_cached_breakdown(self, symbol: str) -> Optional[Dict[str, Any]]:
         """Get cached confluence breakdown for a symbol.
-        
+
         Args:
             symbol: Trading symbol
-            
+
         Returns:
             Cached breakdown data or None if not found
         """
@@ -246,11 +346,18 @@ class ConfluenceCacheService:
             client = await self.get_client()
             breakdown_key = CacheKeys.confluence_breakdown(symbol)
             data = await client.get(breakdown_key.encode())
-            
+
             if data:
-                return json.loads(data.decode())
+                breakdown = json.loads(data.decode())
+                # Apply standardization on read to fix any legacy cached data
+                if 'interpretations' in breakdown and 'components' in breakdown:
+                    breakdown['interpretations'] = self._standardize_interpretations(
+                        breakdown.get('interpretations', {}),
+                        breakdown.get('components', {})
+                    )
+                return breakdown
             return None
-            
+
         except Exception as e:
             self.logger.error(f"Failed to get cached breakdown for {symbol}: {e}")
             return None

@@ -21,11 +21,11 @@ import tempfile
 import shutil
 from pathlib import Path
 from typing import Dict, Any, List
-from datetime import datetime
+from datetime import datetime, timezone
 import numpy as np
 
 # Add project root to path
-sys.path.insert(0, '/Users/ffv_macmini/Desktop/Virtuoso_ccxt')
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from src.core.analysis.confluence import ConfluenceAnalyzer
 from src.core.formatting.formatter import PrettyTableFormatter
@@ -58,7 +58,7 @@ class QualityFilteringValidator:
             'status': status,
             'passed': passed,
             'evidence': evidence or {},
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         })
 
         if passed:
@@ -1140,7 +1140,7 @@ class QualityFilteringValidator:
 
         report = {
             'validation_metadata': {
-                'timestamp': datetime.utcnow().isoformat(),
+                'timestamp': datetime.now(timezone.utc).isoformat(),
                 'commit_sha': 'fd025b3, f4302a1, 2cf4185',
                 'environment': 'local',
                 'validator': 'QualityFilteringValidator'
@@ -1273,7 +1273,7 @@ async def main():
         report = validator.generate_report()
 
         # Save report to file
-        report_path = '/Users/ffv_macmini/Desktop/Virtuoso_ccxt/QUALITY_FILTERING_VALIDATION_REPORT.json'
+        report_path = str(Path(__file__).parent.parent.parent / 'QUALITY_FILTERING_VALIDATION_REPORT.json')
         with open(report_path, 'w') as f:
             json.dump(report, f, indent=2)
 

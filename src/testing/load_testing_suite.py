@@ -38,7 +38,7 @@ import time
 import random
 from typing import Dict, List, Any, Optional, Callable, Awaitable, Tuple
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 import uuid
 import statistics
@@ -302,7 +302,7 @@ class EventGenerator:
             symbol=symbol,
             exchange=exchange,
             data_type=DataType.TICKER,
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             raw_data={
                 'price': new_price,
                 'volume': volume,
@@ -385,7 +385,7 @@ class EventGenerator:
         return Event(
             event_id=event_id,
             event_type=event_type,
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             source='load_test_system',
             priority=EventPriority.LOW,
             data={
@@ -569,8 +569,8 @@ class LoadTestRunner:
             test_id=test_id,
             scenario=config.scenario,
             config=config,
-            start_time=datetime.utcnow(),
-            end_time=datetime.utcnow(),  # Will be updated
+            start_time=datetime.now(timezone.utc),
+            end_time=datetime.now(timezone.utc),  # Will be updated
             duration_seconds=0.0
         )
         
@@ -607,7 +607,7 @@ class LoadTestRunner:
         except Exception as e:
             self.logger.error(f"Load test failed: {e}")
             if self.current_test:
-                self.current_test.end_time = datetime.utcnow()
+                self.current_test.end_time = datetime.now(timezone.utc)
                 self.current_test.error_count += 1
             raise
         
@@ -806,7 +806,7 @@ class LoadTestRunner:
         if not self.current_test:
             return
         
-        end_time = datetime.utcnow()
+        end_time = datetime.now(timezone.utc)
         self.current_test.end_time = end_time
         self.current_test.duration_seconds = (end_time - self.current_test.start_time).total_seconds()
         
@@ -1098,7 +1098,7 @@ class LoadTestSuite:
                 'total_tests': len(self.test_results),
                 'suite_duration_seconds': suite_duration,
                 'overall_success': overall_success,
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             },
             'aggregate_metrics': {
                 'total_events_generated': total_events_generated,
@@ -1143,7 +1143,7 @@ class LoadTestSuite:
     
     async def _save_suite_report(self, report: Dict[str, Any]):
         """Save comprehensive suite report."""
-        timestamp = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
+        timestamp = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')
         
         # Save JSON report
         json_filename = f"load_test_suite_report_{timestamp}.json"

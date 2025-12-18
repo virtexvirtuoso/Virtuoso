@@ -672,8 +672,8 @@ class DocumentationAuditor:
 def main():
     """Main execution function."""
     # Set project root
-    project_root = "/Users/ffv_macmini/Desktop/Virtuoso_ccxt"
-    
+    project_root = str(Path(__file__).parent.parent)
+
     # Initialize auditor
     auditor = DocumentationAuditor(project_root)
     

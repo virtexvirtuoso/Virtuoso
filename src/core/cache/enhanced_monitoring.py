@@ -6,7 +6,7 @@ Phase 1 Performance Excellence Implementation
 
 import asyncio
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, List, Optional, Tuple
 from dataclasses import dataclass, field
 import json
@@ -140,7 +140,7 @@ class EnhancedCacheMonitor:
     async def _collect_metrics(self):
         """Collect current metrics snapshot"""
         snapshot = {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "hit_rates": self.metrics.get_hit_rates(),
             "avg_latencies": self.metrics.get_avg_latencies(),
             "p99_latencies": self.metrics.get_p99_latencies(),
@@ -208,7 +208,7 @@ class EnhancedCacheMonitor:
     async def _check_alerts(self):
         """Check and process performance alerts"""
         # Remove old alerts
-        current_time = datetime.utcnow()
+        current_time = datetime.now(timezone.utc)
         self.performance_alerts = [
             alert for alert in self.performance_alerts
             if current_time - alert["timestamp"] < timedelta(hours=1)
@@ -322,7 +322,7 @@ class EnhancedCacheMonitor:
     async def _create_alert(self, alert_type: str, message: str, level: str = "warning"):
         """Create a performance alert"""
         alert = {
-            "timestamp": datetime.utcnow(),
+            "timestamp": datetime.now(timezone.utc),
             "type": alert_type,
             "message": message,
             "level": level
@@ -389,7 +389,7 @@ class EnhancedCacheMonitor:
                     "type": alert["type"],
                     "message": alert["message"],
                     "level": alert["level"],
-                    "age_minutes": (datetime.utcnow() - alert["timestamp"]).seconds / 60
+                    "age_minutes": (datetime.now(timezone.utc) - alert["timestamp"]).seconds / 60
                 }
                 for alert in self.performance_alerts[-5:]  # Last 5 alerts
             ]

@@ -3,11 +3,19 @@ from typing import Dict, List, Optional, Any
 from ..models.market import MarketData, OrderBook, Trade, MarketComparison, TechnicalAnalysis
 from src.core.exchanges.manager import ExchangeManager
 from fastapi import Request
-from datetime import datetime
+from datetime import datetime, timezone
 import time
 import logging
 import asyncio
-from src.core.analysis.confluence import ConfluenceAnalyzer
+
+# Import ConfluenceAnalyzer with safe fallback (module is gitignored/proprietary)
+try:
+    from src.core.analysis.confluence import ConfluenceAnalyzer
+except ImportError:
+    ConfluenceAnalyzer = None
+    logger = logging.getLogger(__name__)
+    logger.warning("ConfluenceAnalyzer not available - confluence features disabled")
+
 from src.api.cache_adapter_direct import cache_adapter
 
 # Initialize logger early
@@ -165,7 +173,7 @@ async def get_ticker(
             "ask_volume": ticker_data.get('askVolume', 0),
             "open_24h": ticker_data.get('open', 0),
             "timestamp": ticker_data.get('timestamp', int(time.time() * 1000)),
-            "datetime": datetime.fromtimestamp(ticker_data.get('timestamp', time.time() * 1000) / 1000).isoformat() if ticker_data.get('timestamp') else datetime.utcnow().isoformat(),
+            "datetime": datetime.fromtimestamp(ticker_data.get('timestamp', time.time() * 1000) / 1000).isoformat() if ticker_data.get('timestamp') else datetime.now(timezone.utc).isoformat(),
             "status": "success"
         }
         
@@ -273,7 +281,7 @@ async def get_ticker_batch(
                     "ask_volume": ticker_data.get('askVolume', 0),
                     "open_24h": ticker_data.get('open', 0),
                     "timestamp": ticker_data.get('timestamp', int(time.time() * 1000)),
-                    "datetime": datetime.fromtimestamp(ticker_data.get('timestamp', time.time() * 1000) / 1000).isoformat() if ticker_data.get('timestamp') else datetime.utcnow().isoformat(),
+                    "datetime": datetime.fromtimestamp(ticker_data.get('timestamp', time.time() * 1000) / 1000).isoformat() if ticker_data.get('timestamp') else datetime.now(timezone.utc).isoformat(),
                     "status": "success"
                 }
                 
@@ -523,7 +531,7 @@ async def get_market_overview(
             
         return {
             "status": "active",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "regime": regime,
             "trend_strength": round(trend_strength, 1),
             "volatility": round(current_volatility, 1),
@@ -549,7 +557,7 @@ async def get_market_overview(
         # Return default values on error
         return {
             "status": "active",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "regime": "NEUTRAL",
             "trend_strength": 50.0,
             "volatility": 0.0,
@@ -646,7 +654,7 @@ async def get_market_movers(
         losers.reverse()  # Make losers show biggest loss first
         
         return {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "total_markets": len(linear_symbols),
             "markets_analyzed": len(market_data),
             "gainers": gainers,
@@ -664,7 +672,7 @@ async def get_market_movers(
         logger.error(f"Error getting market movers: {e}")
         # Return empty movers on error
         return {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "total_markets": 0,
             "markets_analyzed": 0,
             "gainers": [],
@@ -850,7 +858,7 @@ async def get_futures_premium_analysis(
         
         return {
             "status": "success",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "data": futures_analysis,
             "metadata": {
                 "symbols_analyzed": len(symbol_list),
@@ -898,7 +906,7 @@ async def get_contango_status(
         
         return {
             "status": "success",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "contango_status": contango_status,
             "average_premium": f"{average_premium:.4f}%",
             "market_sentiment": sentiment,
@@ -939,7 +947,7 @@ async def get_term_structure_analysis(
         
         return {
             "status": "success", 
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "symbol": symbol,
             "spot_price": symbol_data.get('index_price', 0),
             "perpetual_price": symbol_data.get('mark_price', 0),
@@ -1023,7 +1031,7 @@ async def get_single_futures_premium(
         
         return {
             "status": "success",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "symbol": symbol_formatted,
             "contango_analysis": {
                 "spot_premium": f"{spot_premium:.4f}%",
@@ -1103,7 +1111,7 @@ async def get_comprehensive_symbol_analysis(
         # Initialize response structure
         analysis = {
             "status": "success",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "symbol": symbol_formatted,
             "symbol_clean": symbol_clean,
             "exchange": exchange_id,
@@ -1215,103 +1223,110 @@ async def get_comprehensive_symbol_analysis(
         
         # 4. GET CONFLUENCE ANALYSIS (COMPREHENSIVE TECHNICAL ANALYSIS)
         try:
-            # Initialize confluence analyzer
-            confluence_analyzer = ConfluenceAnalyzer()
-            
-            # Prepare market data for confluence analysis
-            confluence_market_data = {
-                "symbol": symbol_formatted,
-                "exchange": exchange_id,
-                "timestamp": int(time.time() * 1000)
-            }
-            
-            # Add ticker data if available
-            if analysis["analysis"]["market_data"].get("price"):
-                confluence_market_data["ticker"] = {
-                    "last": analysis["analysis"]["market_data"]["price"],
-                    "volume": analysis["analysis"]["market_data"]["volume_24h"],
-                    "high": analysis["analysis"]["market_data"]["high_24h"],
-                    "low": analysis["analysis"]["market_data"]["low_24h"],
-                    "bid": analysis["analysis"]["market_data"]["bid"],
-                    "ask": analysis["analysis"]["market_data"]["ask"]
+            # Check if ConfluenceAnalyzer is available
+            if ConfluenceAnalyzer is None:
+                logger.debug(f"ConfluenceAnalyzer not available for {symbol}")
+                analysis["analysis"]["confluence"] = {
+                    "error": "Confluence analysis module not available"
                 }
-            
-            # Add orderbook data if available
-            if "orderbook" in analysis["analysis"] and "error" not in analysis["analysis"]["orderbook"]:
-                confluence_market_data["orderbook"] = {
-                    "bids": [[analysis["analysis"]["orderbook"]["best_bid"], analysis["analysis"]["orderbook"]["bid_volume_top10"]]],
-                    "asks": [[analysis["analysis"]["orderbook"]["best_ask"], analysis["analysis"]["orderbook"]["ask_volume_top10"]]]
-                }
-            
-            # Get confluence analysis
-            if not (confluence_analyzer and hasattr(confluence_analyzer, 'analyze') and callable(getattr(confluence_analyzer, 'analyze'))):
-                return {
-                    "error": "confluence_analyzer not available",
-                    "symbol": symbol,
-                    "message": "Confluence analysis service is currently unavailable"
+            else:
+                # Initialize confluence analyzer
+                confluence_analyzer = ConfluenceAnalyzer()
+
+                # Prepare market data for confluence analysis
+                confluence_market_data = {
+                    "symbol": symbol_formatted,
+                    "exchange": exchange_id,
+                    "timestamp": int(time.time() * 1000)
                 }
 
-            try:
-                confluence_result = await confluence_analyzer.analyze(confluence_market_data)
-            except Exception as e:
-                logger.debug(f"confluence_analyzer.analyze error for {symbol}: {e}")
-                return {
-                    "error": f"analysis failed: {e}",
-                    "symbol": symbol,
-                    "message": "Failed to perform confluence analysis"
-                }
-            
-            if confluence_result and "error" not in confluence_result:
-                # Extract key confluence metrics
-                confluence_score = confluence_result.get("confluence_score", 50.0)
-                reliability = confluence_result.get("reliability", 0.0)
-                components = confluence_result.get("components", {})
-                
-                # Determine overall signal
-                if confluence_score >= 70:
-                    overall_signal = "STRONG_LONG"
-                elif confluence_score >= 60:
-                    overall_signal = "LONG"
-                elif confluence_score >= 45:
-                    overall_signal = "NEUTRAL"
-                elif confluence_score >= 30:
-                    overall_signal = "SHORT"
+                # Add ticker data if available
+                if analysis["analysis"]["market_data"].get("price"):
+                    confluence_market_data["ticker"] = {
+                        "last": analysis["analysis"]["market_data"]["price"],
+                        "volume": analysis["analysis"]["market_data"]["volume_24h"],
+                        "high": analysis["analysis"]["market_data"]["high_24h"],
+                        "low": analysis["analysis"]["market_data"]["low_24h"],
+                        "bid": analysis["analysis"]["market_data"]["bid"],
+                        "ask": analysis["analysis"]["market_data"]["ask"]
+                    }
+
+                # Add orderbook data if available
+                if "orderbook" in analysis["analysis"] and "error" not in analysis["analysis"]["orderbook"]:
+                    confluence_market_data["orderbook"] = {
+                        "bids": [[analysis["analysis"]["orderbook"]["best_bid"], analysis["analysis"]["orderbook"]["bid_volume_top10"]]],
+                        "asks": [[analysis["analysis"]["orderbook"]["best_ask"], analysis["analysis"]["orderbook"]["ask_volume_top10"]]]
+                    }
+
+                # Get confluence analysis
+                if not (confluence_analyzer and hasattr(confluence_analyzer, 'analyze') and callable(getattr(confluence_analyzer, 'analyze'))):
+                    return {
+                        "error": "confluence_analyzer not available",
+                        "symbol": symbol,
+                        "message": "Confluence analysis service is currently unavailable"
+                    }
+
+                try:
+                    confluence_result = await confluence_analyzer.analyze(confluence_market_data)
+                except Exception as e:
+                    logger.debug(f"confluence_analyzer.analyze error for {symbol}: {e}")
+                    return {
+                        "error": f"analysis failed: {e}",
+                        "symbol": symbol,
+                        "message": "Failed to perform confluence analysis"
+                    }
+
+                if confluence_result and "error" not in confluence_result:
+                    # Extract key confluence metrics
+                    confluence_score = confluence_result.get("confluence_score", 50.0)
+                    reliability = confluence_result.get("reliability", 0.0)
+                    components = confluence_result.get("components", {})
+
+                    # Determine overall signal
+                    if confluence_score >= 70:
+                        overall_signal = "STRONG_LONG"
+                    elif confluence_score >= 60:
+                        overall_signal = "LONG"
+                    elif confluence_score >= 45:
+                        overall_signal = "NEUTRAL"
+                    elif confluence_score >= 30:
+                        overall_signal = "SHORT"
+                    else:
+                        overall_signal = "STRONG_SHORT"
+
+                    # Count component signals
+                    long_signals = sum(1 for comp in components.values() if isinstance(comp, dict) and comp.get("score", 50) > 60)
+                    short_signals = sum(1 for comp in components.values() if isinstance(comp, dict) and comp.get("score", 50) < 40)
+                    neutral_signals = len(components) - long_signals - short_signals
+
+                    analysis["analysis"]["confluence"] = {
+                        "confluence_score": confluence_score,
+                        "confluence_score_formatted": f"{confluence_score:.1f}/100",
+                        "reliability": reliability,
+                        "reliability_formatted": f"{reliability:.1f}%",
+                        "overall_signal": overall_signal,
+                        "signal_strength": "HIGH" if reliability > 80 else "MEDIUM" if reliability > 60 else "LOW",
+                        "components": {
+                            "technical": components.get("technical", {}).get("score", 50) if "technical" in components else 50,
+                            "volume": components.get("volume", {}).get("score", 50) if "volume" in components else 50,
+                            "orderflow": components.get("orderflow", {}).get("score", 50) if "orderflow" in components else 50,
+                            "sentiment": components.get("sentiment", {}).get("score", 50) if "sentiment" in components else 50,
+                            "orderbook": components.get("orderbook", {}).get("score", 50) if "orderbook" in components else 50,
+                            "price_structure": components.get("price_structure", {}).get("score", 50) if "price_structure" in components else 50
+                        },
+                        "signals": {
+                            "long_signals": long_signals,
+                            "short_signals": short_signals,
+                            "neutral_signals": neutral_signals,
+                            "total_components": len(components)
+                        },
+                        "analysis_timestamp": confluence_result.get("timestamp", int(time.time() * 1000)),
+                        "data_quality": len([c for c in components.values() if isinstance(c, dict) and c.get("score") is not None]) / max(len(components), 1) * 100
+                    }
+                    analysis["data_sources"].append("confluence")
+
                 else:
-                    overall_signal = "STRONG_SHORT"
-                
-                # Count component signals
-                long_signals = sum(1 for comp in components.values() if isinstance(comp, dict) and comp.get("score", 50) > 60)
-                short_signals = sum(1 for comp in components.values() if isinstance(comp, dict) and comp.get("score", 50) < 40)
-                neutral_signals = len(components) - long_signals - short_signals
-                
-                analysis["analysis"]["confluence"] = {
-                    "confluence_score": confluence_score,
-                    "confluence_score_formatted": f"{confluence_score:.1f}/100",
-                    "reliability": reliability,
-                    "reliability_formatted": f"{reliability:.1f}%",
-                    "overall_signal": overall_signal,
-                    "signal_strength": "HIGH" if reliability > 80 else "MEDIUM" if reliability > 60 else "LOW",
-                    "components": {
-                        "technical": components.get("technical", {}).get("score", 50) if "technical" in components else 50,
-                        "volume": components.get("volume", {}).get("score", 50) if "volume" in components else 50,
-                        "orderflow": components.get("orderflow", {}).get("score", 50) if "orderflow" in components else 50,
-                        "sentiment": components.get("sentiment", {}).get("score", 50) if "sentiment" in components else 50,
-                        "orderbook": components.get("orderbook", {}).get("score", 50) if "orderbook" in components else 50,
-                        "price_structure": components.get("price_structure", {}).get("score", 50) if "price_structure" in components else 50
-                    },
-                    "signals": {
-                        "long_signals": long_signals,
-                        "short_signals": short_signals,
-                        "neutral_signals": neutral_signals,
-                        "total_components": len(components)
-                    },
-                    "analysis_timestamp": confluence_result.get("timestamp", int(time.time() * 1000)),
-                    "data_quality": len([c for c in components.values() if isinstance(c, dict) and c.get("score") is not None]) / max(len(components), 1) * 100
-                }
-                analysis["data_sources"].append("confluence")
-                
-            else:
-                analysis["analysis"]["confluence"] = {"error": "Confluence analysis unavailable - insufficient data"}
+                    analysis["analysis"]["confluence"] = {"error": "Confluence analysis unavailable - insufficient data"}
             
         except Exception as e:
             logger.warning(f"Confluence analysis error for {symbol}: {e}")
@@ -1499,13 +1514,13 @@ async def get_market_symbols() -> Dict[str, Any]:
                         return {
                             "symbols": symbols[:50],  # Top 50 by volume
                             "count": len(symbols),
-                            "timestamp": datetime.utcnow().isoformat()
+                            "timestamp": datetime.now(timezone.utc).isoformat()
                         }
 
         return {
             "symbols": [],
             "count": 0,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "status": "no_data"
         }
     except Exception as e:

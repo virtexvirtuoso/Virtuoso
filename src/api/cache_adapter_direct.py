@@ -368,7 +368,7 @@ class DirectCacheAdapter:
             'trend_strength': max(0, overview.get('trend_strength', 0)) if overview.get('trend_strength', 0) != 0 else (50 if total_symbols == 0 else overview.get('trend_strength', 50)),
             'current_volatility': max(0, overview.get('current_volatility', overview.get('volatility', 0))) if overview else 0,
             'avg_volatility': overview.get('avg_volatility', 20),
-            'btc_dominance': max(0, overview.get('btc_dominance', 0)) if overview.get('btc_dominance', 0) != 0 else (57.6 if total_symbols == 0 else overview.get('btc_dominance', 57.6)),
+            'btc_dominance': max(0, overview.get('btc_dominance', 0)) if overview.get('btc_dominance', 0) != 0 else (57.0 if total_symbols == 0 else overview.get('btc_dominance', 57.0)),  # Fallback, real value from CoinGecko
             'volatility': overview.get('current_volatility', overview.get('volatility', 0)),
             'average_change': overview.get('average_change_24h', overview.get('average_change', 0)),
             'range_24h': overview.get('range_24h', overview.get('avg_range_24h', 0)),
@@ -407,6 +407,42 @@ class DirectCacheAdapter:
         if not isinstance(movers, dict):
             logger.warning(f"movers is not a dict: {type(movers)}")
             movers = {}
+
+        # CRITICAL FIX: Derive top movers from signals if market:movers is empty
+        if not movers.get('gainers') and not movers.get('losers'):
+            signal_list = signals.get('signals', signals.get('recent_signals', []))
+            if signal_list and isinstance(signal_list, list):
+                # Sort by change_24h
+                sorted_signals = sorted(
+                    [s for s in signal_list if isinstance(s, dict) and s.get('change_24h') is not None],
+                    key=lambda x: x.get('change_24h', 0),
+                    reverse=True
+                )
+                # Top gainers
+                movers['gainers'] = [
+                    {
+                        "symbol": s.get('symbol', ''),
+                        "display_symbol": s.get('symbol', '').replace('USDT', ''),
+                        "change_24h": s.get('change_24h', 0),
+                        "price": s.get('price', 0),
+                        "volume_24h": s.get('volume_24h', 0)
+                    }
+                    for s in sorted_signals[:10]
+                    if s.get('change_24h', 0) > 0
+                ]
+                # Top losers
+                movers['losers'] = [
+                    {
+                        "symbol": s.get('symbol', ''),
+                        "display_symbol": s.get('symbol', '').replace('USDT', ''),
+                        "change_24h": s.get('change_24h', 0),
+                        "price": s.get('price', 0),
+                        "volume_24h": s.get('volume_24h', 0)
+                    }
+                    for s in reversed(sorted_signals[-10:])
+                    if s.get('change_24h', 0) < 0
+                ]
+                logger.info(f"✅ Derived movers from signals: {len(movers['gainers'])} gainers, {len(movers['losers'])} losers")
         
         # Enhanced DEBUG logging to trace the data issue
         has_overview = bool(overview)
@@ -459,8 +495,12 @@ class DirectCacheAdapter:
                             'timestamp': int(time.time())
                         }
                         
-                        # Cache the fetched data for next time
-                        await self._set('market:overview', overview, ttl=30)
+                        # DISABLED: Don't overwrite market:overview from cache_data_aggregator
+                        # This was overwriting complete CoinGecko data (Fear & Greed, Market Cap, etc.)
+                        # with minimal data (just total_symbols, total_volume, average_change)
+                        # See: COINGECKO_API_TIMEOUT_FIX.md for full race condition analysis
+                        # await self._set('market:overview', overview, ttl=30)
+
                         # DISABLED: Don't overwrite properly formatted signals from aggregation
                         # This was overwriting our signals that have components and interpretations
                         # await self._set('analysis:signals', signals, ttl=30)
@@ -727,12 +767,165 @@ class DirectCacheAdapter:
         signals = await self._get('analysis:signals', {})
         movers = await self._get('market:movers', {})
         regime = await self._get('analysis:market_regime', 'unknown')
-        btc_dom = await self._get('market:btc_dominance', '59.3')
-        
+        btc_dom = await self._get('market:btc_dominance', '57.0')  # Fallback, real value from CoinGecko
+
+        # Ensure movers is a dict
+        if not isinstance(movers, dict):
+            movers = {}
+
+        # DEBUG: Log what we got
+        logger.info(f"[get_mobile_data] signals type={type(signals).__name__}, keys={list(signals.keys()) if isinstance(signals, dict) else 'N/A'}")
+        logger.info(f"[get_mobile_data] movers gainers={len(movers.get('gainers', []))}, losers={len(movers.get('losers', []))}")
+
+        # CRITICAL FIX: Derive top movers from signals if market:movers is empty
+        if not movers.get('gainers') and not movers.get('losers'):
+            signal_list = signals.get('signals', signals.get('recent_signals', []))
+            logger.info(f"[get_mobile_data] signal_list count={len(signal_list) if isinstance(signal_list, list) else 'not list'}")
+            if signal_list and isinstance(signal_list, list):
+                # Sort by change_24h
+                sorted_signals = sorted(
+                    [s for s in signal_list if isinstance(s, dict) and s.get('change_24h') is not None],
+                    key=lambda x: x.get('change_24h', 0),
+                    reverse=True
+                )
+                # Top gainers
+                movers['gainers'] = [
+                    {
+                        "symbol": s.get('symbol', ''),
+                        "display_symbol": s.get('symbol', '').replace('USDT', ''),
+                        "change_24h": s.get('change_24h', 0),
+                        "price": s.get('price', 0),
+                        "volume_24h": s.get('volume_24h', 0)
+                    }
+                    for s in sorted_signals[:10]
+                    if s.get('change_24h', 0) > 0
+                ]
+                # Top losers
+                movers['losers'] = [
+                    {
+                        "symbol": s.get('symbol', ''),
+                        "display_symbol": s.get('symbol', '').replace('USDT', ''),
+                        "change_24h": s.get('change_24h', 0),
+                        "price": s.get('price', 0),
+                        "volume_24h": s.get('volume_24h', 0)
+                    }
+                    for s in reversed(sorted_signals[-10:])
+                    if s.get('change_24h', 0) < 0
+                ]
+                logger.info(f"✅ [get_mobile_data] Derived movers: {len(movers['gainers'])} gainers, {len(movers['losers'])} losers")
+
+        # CRITICAL FIX: Check if overview contains cache warmer data (all zeros)
+        # and fetch live data from Bybit if so
+        is_cache_warmer_data = (
+            isinstance(overview, dict) and
+            overview.get('trend_strength', 0) == 0 and
+            overview.get('gainers', 0) == 0 and
+            overview.get('losers', 0) == 0 and
+            overview.get('total_volume_24h', 0) == 0 and
+            overview.get('btc_price', 0) == 0
+        )
+
+        if is_cache_warmer_data:
+            import aiohttp
+            # Note: logger is already defined at module level, don't shadow it here
+            logger.warning("⚠️ Detected cache warmer data - fetching live market data from Bybit")
+
+            # Fetch live data from Bybit API as fallback
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(
+                        'https://api.bybit.com/v5/market/tickers?category=linear',
+                        timeout=aiohttp.ClientTimeout(total=10)
+                    ) as response:
+                        if response.status == 200:
+                            data = await response.json()
+                            if data.get('retCode') == 0:
+                                tickers = data['result']['list']
+
+                                # Calculate market metrics from live data
+                                gainers = sum(1 for t in tickers if float(t.get('price24hPcnt', 0)) > 0)
+                                losers = sum(1 for t in tickers if float(t.get('price24hPcnt', 0)) < 0)
+                                total_volume = sum(float(t.get('turnover24h', 0)) for t in tickers)
+                                avg_change = sum(float(t.get('price24hPcnt', 0)) * 100 for t in tickers) / len(tickers) if tickers else 0
+
+                                # Get BTC price
+                                btc_ticker = next((t for t in tickers if t['symbol'] == 'BTCUSDT'), None)
+                                btc_price = float(btc_ticker['lastPrice']) if btc_ticker else 0
+
+                                # Build overview with live data, but PRESERVE CoinGecko fields from original cache
+                                # The original 'overview' from Redis has fear_greed, total_market_cap, etc.
+                                original_coingecko_fields = {
+                                    'fear_greed_value': overview.get('fear_greed_value', 50),
+                                    'fear_greed_label': overview.get('fear_greed_label', 'Neutral'),
+                                    'total_market_cap': overview.get('total_market_cap', 0),
+                                    'market_cap_change_24h': overview.get('market_cap_change_24h', 0),
+                                    'active_cryptocurrencies': overview.get('active_cryptocurrencies', 0),
+                                    'eth_dominance': overview.get('eth_dominance', 11.5),
+                                    'stablecoin_dominance': overview.get('stablecoin_dominance', 8.0),
+                                    'altcoin_dominance': overview.get('altcoin_dominance', 43.0),
+                                    'altcoin_season': overview.get('altcoin_season', 'Dormant'),
+                                    'btc_dominance': overview.get('btc_dominance', 57.0),
+                                }
+
+                                overview = {
+                                    'trend_strength': abs(avg_change),  # Use abs of avg change as trend strength
+                                    'btc_price': btc_price,
+                                    'total_volume_24h': total_volume,
+                                    'gainers': gainers,
+                                    'losers': losers,
+                                    'average_change': avg_change,
+                                    'market_regime': 'Bullish' if gainers > losers else 'Bearish' if losers > gainers else 'Neutral',
+                                    # Merge in CoinGecko fields from original cache
+                                    **original_coingecko_fields
+                                }
+                                logger.info(f"✅ Fetched live Bybit data: {gainers} gainers, {losers} losers, ${total_volume/1e9:.2f}B volume")
+
+                                # CRITICAL FIX: Derive top movers from live tickers
+                                # Sort tickers by 24h price change to get top gainers/losers
+                                if not movers.get('gainers') and not movers.get('losers'):
+                                    sorted_tickers = sorted(
+                                        [t for t in tickers if t.get('price24hPcnt') is not None],
+                                        key=lambda x: float(x.get('price24hPcnt', 0)),
+                                        reverse=True
+                                    )
+                                    # Top 10 gainers (positive change)
+                                    movers['gainers'] = [
+                                        {
+                                            "symbol": t.get('symbol', ''),
+                                            "display_symbol": t.get('symbol', '').replace('USDT', ''),
+                                            "change_24h": round(float(t.get('price24hPcnt', 0)) * 100, 2),
+                                            "price": float(t.get('lastPrice', 0)),
+                                            "volume_24h": float(t.get('turnover24h', 0))
+                                        }
+                                        for t in sorted_tickers[:10]
+                                        if float(t.get('price24hPcnt', 0)) > 0
+                                    ]
+                                    # Top 10 losers (negative change, from end of sorted list)
+                                    movers['losers'] = [
+                                        {
+                                            "symbol": t.get('symbol', ''),
+                                            "display_symbol": t.get('symbol', '').replace('USDT', ''),
+                                            "change_24h": round(float(t.get('price24hPcnt', 0)) * 100, 2),
+                                            "price": float(t.get('lastPrice', 0)),
+                                            "volume_24h": float(t.get('turnover24h', 0))
+                                        }
+                                        for t in sorted_tickers[-10:]
+                                        if float(t.get('price24hPcnt', 0)) < 0
+                                    ]
+                                    # Sort losers by change ascending (most negative first)
+                                    movers['losers'] = sorted(movers['losers'], key=lambda x: x['change_24h'])
+                                    logger.info(f"✅ Derived movers from live tickers: {len(movers['gainers'])} gainers, {len(movers['losers'])} losers")
+            except Exception as e:
+                logger.error(f"❌ Failed to fetch live Bybit data: {e}")
+                # Keep empty dict to use fallback values
+                overview = {}
+
         # Process confluence scores from signals with real breakdown
+        # Use max_symbols from config (default 20) for consistent coverage
         confluence_scores = []
         signal_list = signals.get('signals', [])
-        for signal in signal_list[:15]:  # Top 15 for mobile
+        max_symbols = 20  # Matches config/config.yaml market.symbols.max_symbols
+        for signal in signal_list[:max_symbols]:
             # Check if we have detailed breakdown
             symbol = signal.get('symbol', '')
             breakdown_data = None
@@ -769,6 +962,7 @@ class DirectCacheAdapter:
                     "sub_components": breakdown_data.get('sub_components', {}),
                     "interpretations": breakdown_data.get('interpretations', {}),
                     "has_breakdown": True,
+                    "score_history": breakdown_data.get('score_history', []),
                     "turnover_24h": signal.get('turnover_24h', 0)
                 })
             else:
@@ -818,6 +1012,7 @@ class DirectCacheAdapter:
                         "price_structure": 50
                     }),
                     "has_breakdown": signal.get('has_breakdown', False),
+                    "score_history": [],
                     "turnover_24h": signal.get('turnover_24h', 0)
                 })
         
@@ -827,8 +1022,11 @@ class DirectCacheAdapter:
             try:
                 btc_dominance = float(btc_dom)
             except:
-                btc_dominance = 59.3  # Default realistic value
-        
+                btc_dominance = 57.0  # Default fallback, real value from CoinGecko
+
+        # Get perps data for Perpetuals Pulse widget
+        perps_data = await self._get_perps_data(overview)
+
         return {
             "market_overview": {
                 "market_regime": overview.get('market_regime', regime),
@@ -852,17 +1050,120 @@ class DirectCacheAdapter:
                 "total_volume_24h": overview.get('total_volume_24h', overview.get('total_volume', 0)),
                 "gainers": overview.get('gainers', 0),
                 "losers": overview.get('losers', 0),
-                "average_change": overview.get('average_change', 0)
+                "average_change": overview.get('average_change', 0),
+
+                # CoinGecko Global Data - Additional Dominance Metrics
+                "eth_dominance": overview.get('eth_dominance', 11.5),
+                "stablecoin_dominance": overview.get('stablecoin_dominance', 8.0),
+                "altcoin_dominance": overview.get('altcoin_dominance', 43.0),
+                "altcoin_season": overview.get('altcoin_season', 'Dormant'),
+
+                # CoinGecko Global Data - Market Cap Metrics
+                "total_market_cap": overview.get('total_market_cap', 0),
+                "market_cap_change_24h": overview.get('market_cap_change_24h', 0),
+                "coingecko_volume_24h": overview.get('coingecko_volume_24h', 0),
+                "volume_mcap_ratio": overview.get('volume_mcap_ratio', 0),
+                "active_cryptocurrencies": overview.get('active_cryptocurrencies', 0),
+
+                # Fear & Greed Index (Alternative.me)
+                "fear_greed_value": overview.get('fear_greed_value', 50),
+                "fear_greed_label": overview.get('fear_greed_label', 'Neutral'),
+
+                # DeFi Data (CoinGecko DeFi endpoint)
+                "defi_market_cap": overview.get('defi_market_cap', 0),
+                "defi_dominance": overview.get('defi_dominance', 0),
+                "defi_volume_24h": overview.get('defi_volume_24h', 0),
+                "top_defi_protocol": overview.get('top_defi_protocol', ''),
+                "top_defi_dominance": overview.get('top_defi_dominance', 0)
             },
             "confluence_scores": confluence_scores,
             "top_movers": {
                 "gainers": movers.get('gainers', [])[:5],
                 "losers": movers.get('losers', [])[:5]
             },
+            "perps": perps_data,
             "timestamp": int(time.time()),
             "status": "success",
             "source": "cache"
         }
+
+    async def _get_perps_data(self, overview_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Get perpetuals market data for Perpetuals Pulse widget
+
+        Includes funding rate, long/short ratio, and advanced metrics like
+        funding z-score and L/S entropy (health indicator)
+        """
+        try:
+            # TEMPORARY FIX: Fetch funding rate directly from Bybit API
+            # TODO: Once trading service populates cache with funding rates, use cached data
+            import aiohttp
+
+            funding_rate = 0
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get('https://api.bybit.com/v5/market/tickers?category=linear&symbol=BTCUSDT') as resp:
+                        if resp.status == 200:
+                            data = await resp.json()
+                            if 'result' in data and 'list' in data['result'] and len(data['result']['list']) > 0:
+                                ticker = data['result']['list'][0]
+                                funding_rate = float(ticker.get('fundingRate', 0))
+                                logger.info(f"✅ Fetched live funding rate from Bybit: {funding_rate}")
+            except Exception as e:
+                logger.warning(f"Could not fetch live funding rate: {e}")
+                funding_rate = 0
+
+            # Calculate funding z-score (how extreme is the current funding rate)
+            # Typical funding rates range from -0.001 to 0.001 (0.1%)
+            # Z-score: number of standard deviations from mean
+            # Assuming mean=0, std=0.0003 (30 basis points)
+            funding_zscore = funding_rate / 0.0003 if funding_rate != 0 else 0.0
+
+            # Calculate L/S entropy (market health indicator)
+            # Entropy measures how balanced the long/short ratio is
+            # 70%+ = healthy (balanced market), <40% = unhealthy (overcrowded)
+            long_pct = overview_data.get('long_percentage', 50)
+            short_pct = 100 - long_pct
+
+            # Shannon entropy normalized to 0-1 range
+            # Maximum entropy (most balanced) = 0.5/0.5 split
+            # Minimum entropy (least balanced) = 1.0/0.0 or 0.0/1.0 split
+            import math
+            if long_pct > 0 and short_pct > 0:
+                p_long = long_pct / 100
+                p_short = short_pct / 100
+                entropy = -(p_long * math.log2(p_long) + p_short * math.log2(p_short))
+                # Normalize: max entropy for 2 outcomes is log2(2) = 1.0
+                ls_entropy = entropy / 1.0
+            else:
+                ls_entropy = 0.0  # Completely one-sided = unhealthy
+
+            return {
+                "funding_rate": funding_rate,
+                "funding_zscore": round(funding_zscore, 2),
+                "long_pct": round(long_pct, 1),
+                "short_pct": round(short_pct, 1),
+                "ls_entropy": round(ls_entropy, 2),
+                "open_interest": overview_data.get('total_open_interest', 0),
+                "volume_24h": overview_data.get('total_volume_24h', 0),
+                "cex_pct": 90,  # Default CEX dominance
+                "dex_pct": 10,
+                "basis_pct": 0.0  # Futures-spot basis
+            }
+        except Exception as e:
+            logger.error(f"Error getting perps data in DirectCacheAdapter: {e}")
+            return {
+                "funding_rate": 0.0,
+                "funding_zscore": 0.0,
+                "long_pct": 50.0,
+                "short_pct": 50.0,
+                "ls_entropy": 0.5,
+                "open_interest": 0,
+                "volume_24h": 0,
+                "cex_pct": 90,
+                "dex_pct": 10,
+                "basis_pct": 0.0
+            }
 
     async def get_ohlcv(self, symbol: str, timeframe: str, limit: int = 100) -> List:
         """

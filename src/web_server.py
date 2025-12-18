@@ -264,7 +264,7 @@ api_routes_loaded = False
 def init_standalone_api_routes(app: FastAPI):
     """Initialize API routes for standalone web server, excluding exchange manager dependencies."""
     try:
-        from src.api.routes import signals, signal_performance, market, trading, dashboard, alpha, liquidation, correlation, bitcoin_beta, manipulation, top_symbols, whale_activity, sentiment, admin, core_api, alerts, cache_metrics, interactive_reports, news, analytics, bitcoin_prediction, risk, health
+        from src.api.routes import signals, signal_performance, market, trading, dashboard, alpha, liquidation, correlation, bitcoin_beta, manipulation, top_symbols, whale_activity, sentiment, admin, core_api, alerts, cache_metrics, interactive_reports, news, analytics, bitcoin_prediction, risk, health, coingecko
 
         api_prefix = "/api"
 
@@ -291,7 +291,8 @@ def init_standalone_api_routes(app: FastAPI):
             (news.router, f"{api_prefix}/news", ["news"]),
             (analytics.router, f"{api_prefix}/analytics", ["analytics"]),
             (risk.router, "", ["risk"]),  # No prefix - router already has /api/risk prefix
-            (health.router, f"{api_prefix}/health", ["health"])
+            (health.router, f"{api_prefix}/health", ["health"]),
+            (coingecko.router, "", ["coingecko"])  # No prefix - router already has /api/coingecko prefix
         ]
 
         # Add MTF ranking routes
@@ -533,6 +534,22 @@ async def serve_desktop_v3_dashboard():
     if template_path.exists():
         return FileResponse(str(template_path))
     return {"message": "Desktop v3 dashboard not found"}
+
+@app.get("/liquidation-heatmap")
+async def serve_liquidation_heatmap():
+    """Serve standalone liquidation heatmap visualization (CoinGlass-style)"""
+    template_path = project_root / "src" / "dashboard" / "templates" / "standalone" / "liquidation_heatmap_standalone.html"
+    if template_path.exists():
+        return FileResponse(str(template_path))
+    return {"message": "Liquidation heatmap not found"}
+
+@app.get("/heatmap-showcase")
+async def serve_heatmap_showcase():
+    """Serve liquidation heatmap charting library showcase/comparison"""
+    template_path = project_root / "src" / "dashboard" / "templates" / "standalone" / "liquidation_heatmap_showcase.html"
+    if template_path.exists():
+        return FileResponse(str(template_path))
+    return {"message": "Heatmap showcase not found"}
 
 @app.get("/chart-comparison")
 async def serve_chart_comparison():

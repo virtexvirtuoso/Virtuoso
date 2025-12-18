@@ -8,7 +8,7 @@ import psutil
 import redis
 import pymemcache.client
 from typing import Dict, Any
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 class EnhancedHealthCheck:
     def __init__(self, redis_host='localhost', memcached_host='localhost'):
@@ -146,7 +146,7 @@ class EnhancedHealthCheck:
 
         return {
             'status': overall_status,
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'uptime_seconds': uptime_seconds,
             'uptime_human': str(timedelta(seconds=uptime_seconds)),
             'components': {

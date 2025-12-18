@@ -45,7 +45,7 @@ except ImportError:
 import pandas as pd
 import logging
 from typing import Dict, Any, Optional, List, Union, Callable, Sequence, Tuple
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass
 import os
 import json
@@ -304,7 +304,7 @@ class DatabaseClient:
             
         # Normalize timestamp value for consistency
         timestamp_value = self._normalize_timestamp_value(
-            data.get('timestamp', datetime.utcnow().timestamp()),
+            data.get('timestamp', datetime.now(timezone.utc).timestamp()),
             'timestamp'
         )
             
@@ -313,7 +313,7 @@ class DatabaseClient:
             .field("price", float(data.get('price', 0)))\
             .field("volume", float(data.get('volume', 0)))\
             .field("data_timestamp", timestamp_value)\
-            .time(datetime.utcnow())
+            .time(datetime.now(timezone.utc))
         
         self.write_api.write(bucket=self.config.bucket, record=point)
         logger.debug(f"Stored market data for {symbol}")
@@ -334,7 +334,7 @@ class DatabaseClient:
             .field("signal_type", signal_data.get('type', 'unknown'))\
             .field("value", float(signal_data.get('value', 0)))\
             .field("confidence", float(signal_data.get('confidence', 0)))\
-            .time(datetime.utcnow())
+            .time(datetime.now(timezone.utc))
         
         self.write_api.write(bucket=self.config.bucket, record=point)
         logger.debug(f"Stored signal for {symbol}")
@@ -492,7 +492,7 @@ class DatabaseClient:
             # Create point with proper structure
             point = Point("analysis")\
                 .tag("symbol", symbol)\
-                .time(datetime.utcnow())
+                .time(datetime.now(timezone.utc))
             
             # Add fields from analysis data with proper type conversion
             # Complex types (dict/list) are now automatically serialized to JSON in _validate_and_convert_field_value
@@ -560,9 +560,9 @@ class DatabaseClient:
             return None
             
         if not start_time:
-            start_time = datetime.utcnow() - timedelta(days=1)
+            start_time = datetime.now(timezone.utc) - timedelta(days=1)
         if not end_time:
-            end_time = datetime.utcnow()
+            end_time = datetime.now(timezone.utc)
             
         # Build component filter
         component_filter = ""
@@ -611,7 +611,7 @@ class DatabaseClient:
                 if pd.notna(value):  # Skip NaN values
                     point.field(column, value)
             
-            point.time(index if isinstance(index, datetime) else datetime.utcnow())
+            point.time(index if isinstance(index, datetime) else datetime.now(timezone.utc))
             self.write_api.write(bucket=self.config.bucket, record=point)
         
         logger.debug(f"Successfully wrote DataFrame to measurement: {measurement}")
@@ -656,9 +656,9 @@ class DatabaseClient:
             return None
             
         if not start_time:
-            start_time = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+            start_time = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
         if not end_time:
-            end_time = datetime.utcnow()
+            end_time = datetime.now(timezone.utc)
 
         query = f'''
         from(bucket: "{self.config.bucket}")
@@ -728,7 +728,7 @@ class DatabaseClient:
     def _update_circuit_breaker(self, error: Optional[Exception] = None) -> None:
         """Update circuit breaker state based on success/failure (thread-safe)."""
         with self._circuit_breaker_lock:
-            current_time = datetime.utcnow()
+            current_time = datetime.now(timezone.utc)
 
             if error is None:
                 # Success - reset circuit breaker
@@ -798,7 +798,7 @@ class DatabaseClient:
             if self._circuit_breaker.state == DatabaseHealthState.HEALTHY:
                 return False
 
-            current_time = datetime.utcnow()
+            current_time = datetime.now(timezone.utc)
             if (self._circuit_breaker.next_retry_time and
                 current_time < self._circuit_breaker.next_retry_time):
                 return True
@@ -814,7 +814,7 @@ class DatabaseClient:
         if self._last_health_check is None:
             return False, False
 
-        current_time = datetime.utcnow()
+        current_time = datetime.now(timezone.utc)
         time_since_check = (current_time - self._last_health_check).total_seconds()
 
         if time_since_check < self._health_check_ttl:
@@ -859,7 +859,7 @@ class DatabaseClient:
                 return cached_result
 
             # Perform actual health check
-            current_time = datetime.utcnow()
+            current_time = datetime.now(timezone.utc)
             ping_success = False
             write_success = False
             query_success = False
@@ -885,7 +885,7 @@ class DatabaseClient:
                 test_point = Point("health_check")\
                     .tag("type", "test")\
                     .field("value", 1)\
-                    .time(datetime.utcnow())
+                    .time(datetime.now(timezone.utc))
                 self.write_api.write(bucket=self.config.bucket, record=test_point)
                 logger.debug("Write operation successful")
                 write_success = True
@@ -933,14 +933,14 @@ class DatabaseClient:
             logger.error(f"Error checking database health: {str(e)}")
             logger.debug(traceback.format_exc())
             self._update_circuit_breaker(e)
-            self._last_health_check = datetime.utcnow()
+            self._last_health_check = datetime.now(timezone.utc)
             self._last_health_result = False
             return False
 
     def get_health_status(self) -> Dict[str, Any]:
         """Get detailed health status including circuit breaker state (thread-safe)."""
         with self._circuit_breaker_lock:
-            current_time = datetime.utcnow()
+            current_time = datetime.now(timezone.utc)
             is_cached, cached_result = self._is_health_check_cached()
 
             return {
@@ -1001,7 +1001,7 @@ class DatabaseClient:
                 if pd.notna(value):  # Skip NaN values
                     point.field(column, value)
             
-            point.time(index if isinstance(index, datetime) else datetime.utcnow())
+            point.time(index if isinstance(index, datetime) else datetime.now(timezone.utc))
             points.append(point)
             
             # Write batch if we've reached batch size
@@ -1085,7 +1085,7 @@ class DatabaseClient:
         try:
             stats = {
                 'health': await self.is_healthy(),
-                'timestamp': datetime.utcnow().isoformat(),
+                'timestamp': datetime.now(timezone.utc).isoformat(),
                 'metrics': {},
                 'schema_status': await self.check_and_fix_schema_conflicts()
             }
@@ -1107,7 +1107,7 @@ class DatabaseClient:
             logger.error(f"Error getting database stats: {str(e)}")
             return {
                 'health': False,
-                'timestamp': datetime.utcnow().isoformat(),
+                'timestamp': datetime.now(timezone.utc).isoformat(),
                 'error': str(e)
             }
 

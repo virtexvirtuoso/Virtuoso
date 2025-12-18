@@ -13,7 +13,8 @@ import sys
 from datetime import datetime
 
 # Add the src directory to the path
-sys.path.insert(0, '/Users/ffv_macmini/Desktop/Virtuoso_ccxt/src')
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'src'))
 
 async def test_bybit_connection():
     """Test Bybit connection with current credentials."""

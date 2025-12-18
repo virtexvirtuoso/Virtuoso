@@ -8,7 +8,7 @@ from typing import Dict, List, Any, Optional
 import asyncio
 import json
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import time
 
 # Import our optimized cache components
@@ -112,7 +112,7 @@ class AlertCacheService:
                 self.ttl_strategy.record_access(cache_key, True)
                 
                 # Filter by time range
-                cutoff_time = datetime.utcnow() - timedelta(hours=hours)
+                cutoff_time = datetime.now(timezone.utc) - timedelta(hours=hours)
                 filtered_alerts = [
                     alert for alert in cached_alerts
                     if datetime.fromisoformat(alert.get('timestamp', '2000-01-01')) >= cutoff_time
@@ -164,7 +164,7 @@ class AlertCacheService:
         """Create alert and invalidate relevant caches"""
         try:
             # Add timestamp
-            alert_data['timestamp'] = datetime.utcnow().isoformat()
+            alert_data['timestamp'] = datetime.now(timezone.utc).isoformat()
             alert_data['id'] = f"alert_{int(time.time() * 1000)}"
             
             # Store the alert (simplified - in production you'd use a database)
@@ -253,7 +253,7 @@ class AlertCacheService:
                 'info': info_alerts,
                 'hourly_trend': hourly_counts,
                 'avg_per_hour': total_alerts / 24 if total_alerts > 0 else 0,
-                'last_updated': datetime.utcnow().isoformat()
+                'last_updated': datetime.now(timezone.utc).isoformat()
             }
             
         except Exception as e:
@@ -269,7 +269,7 @@ class AlertCacheService:
             'info': 0,
             'hourly_trend': {},
             'avg_per_hour': 0,
-            'last_updated': datetime.utcnow().isoformat()
+            'last_updated': datetime.now(timezone.utc).isoformat()
         }
     
     def _apply_filters(self, alerts: List[Dict[str, Any]], limit: int, priority_filter: Optional[str]) -> List[Dict[str, Any]]:
@@ -387,7 +387,7 @@ async def get_active_alerts(
             "status": "success",
             "alerts": alerts,
             "count": len(alerts),
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "cache_info": {
                 "ttl": alert_cache_service.cache_config['active_alerts_ttl'],
                 "cached": True  # Simplified - in production you'd track this
@@ -417,7 +417,7 @@ async def get_recent_alerts(
             "alerts": alerts,
             "count": len(alerts),
             "time_range_hours": hours,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "cache_info": {
                 "ttl": alert_cache_service.cache_config['recent_alerts_ttl']
             }
@@ -444,7 +444,7 @@ async def get_alert_statistics() -> Dict[str, Any]:
         return {
             "status": "success",
             "statistics": stats,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
         
     except Exception as e:
@@ -497,7 +497,7 @@ async def invalidate_alert_caches() -> Dict[str, Any]:
         return {
             "status": "success",
             "message": "Alert caches invalidated",
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
         
     except Exception as e:
@@ -532,7 +532,7 @@ async def alert_service_health() -> Dict[str, Any]:
             "cache_connectivity": cache_healthy,
             "response_time_ms": round(response_time, 2),
             "service_stats": service_stats,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
         
     except Exception as e:
@@ -540,5 +540,5 @@ async def alert_service_health() -> Dict[str, Any]:
         return {
             "status": "unhealthy",
             "error": str(e),
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }

@@ -1,0 +1,50 @@
+optimization_date: '2025-11-21T10:53:35.755917'
+study_name: technical_indicators_production
+n_trials: 200
+best_trial: 191
+best_value: 0.6643380931379597
+weights:
+  percentages:
+    rsi: 16.525178357740884
+    macd: 16.932386038692368
+    williams_r: 17.078221380671266
+    ao: 16.791780363040093
+    cci: 16.394346954022833
+    atr: 16.278086905832566
+  normalized:
+    rsi: 0.16525178357740883
+    macd: 0.16932386038692368
+    williams_r: 0.17078221380671266
+    ao: 0.16791780363040093
+    cci: 0.16394346954022831
+    atr: 0.16278086905832567
+  raw:
+    rsi: 0.17267017474347066
+    macd: 0.17692505296049393
+    williams_r: 0.17844887397096276
+    ao: 0.1754558762860147
+    cci: 0.17130312860013222
+    atr: 0.17008833730395878
+indicator_effectiveness:
+  rsi: 0.82
+  macd: 0.73
+  williams_r: 0.68
+  ao: 0.7
+  cci: 0.62
+  atr: 0.58
+regularization:
+  entropy: 0.9999161706114292
+  dominance: 0.008001344748386985
+  variance: 0.0
+  weight_stability: 0.0
+config:
+  n_folds: 5
+  n_trials: 200
+  entropy_penalty: 6.0
+  dominance_penalty: 3.0
+  variance_penalty: 3.0
+  stability_penalty: 2.0
+weight_range:
+  min: 16.278086905832566
+  max: 17.078221380671266
+  spread: 0.8001344748386998

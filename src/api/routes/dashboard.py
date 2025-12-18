@@ -1346,12 +1346,20 @@ async def get_market_overview() -> Dict[str, Any]:
                         "btc_price": market_overview.get('btc_price', 0),
                         "btc_volatility": market_overview.get('btc_volatility', 0),
                         "btc_dominance": market_overview.get('btc_dominance', 59.3),
+                        "eth_dominance": market_overview.get('eth_dominance', 11.5),
                         "total_volume": market_overview.get('total_volume_24h', 0),
                         "total_volume_24h": market_overview.get('total_volume_24h', 0),
                         "gainers": market_overview.get('gainers', 0),
                         "losers": market_overview.get('losers', 0),
                         "average_change": market_overview.get('average_change', 0),
                         "active_symbols": len(mobile_data.get('confluence_scores', [])),
+                        # CoinGecko global data
+                        "total_market_cap": market_overview.get('total_market_cap', 0),
+                        "market_cap_change_24h": market_overview.get('market_cap_change_24h', 0),
+                        "active_cryptocurrencies": market_overview.get('active_cryptocurrencies', 0),
+                        # Fear & Greed Index
+                        "fear_greed_value": market_overview.get('fear_greed_value', 50),
+                        "fear_greed_label": market_overview.get('fear_greed_label', 'Neutral'),
                         "data_source": "mobile_data_cache",
                         "timestamp": mobile_data.get('timestamp', int(time.time()))
                     }
@@ -1378,12 +1386,20 @@ async def get_market_overview() -> Dict[str, Any]:
                         "btc_price": market_overview.get('btc_price', 0),
                         "btc_volatility": market_overview.get('btc_volatility', 0),
                         "btc_dominance": market_overview.get('btc_dominance', 59.3),
+                        "eth_dominance": market_overview.get('eth_dominance', 11.5),
                         "total_volume": market_overview.get('total_volume_24h', 0),
                         "total_volume_24h": market_overview.get('total_volume_24h', 0),
                         "gainers": market_overview.get('gainers', 0),
                         "losers": market_overview.get('losers', 0),
                         "average_change": market_overview.get('average_change', 0),
                         "active_symbols": len(mobile_data.get('confluence_scores', [])),
+                        # CoinGecko global data
+                        "total_market_cap": market_overview.get('total_market_cap', 0),
+                        "market_cap_change_24h": market_overview.get('market_cap_change_24h', 0),
+                        "active_cryptocurrencies": market_overview.get('active_cryptocurrencies', 0),
+                        # Fear & Greed Index
+                        "fear_greed_value": market_overview.get('fear_greed_value', 50),
+                        "fear_greed_label": market_overview.get('fear_greed_label', 'Neutral'),
                         "data_source": "direct_cache",
                         "timestamp": mobile_data.get('timestamp', int(time.time()))
                     }
@@ -1531,56 +1547,177 @@ async def dashboard_health() -> Dict[str, Any]:
 @router.get("/perpetuals-pulse")
 async def get_perpetuals_pulse() -> Dict[str, Any]:
     """
-    Proxy endpoint for crypto-perps-tracker perpetuals pulse data.
-    Fetches from local perps-tracker service running on port 8050.
+    Aggregated perpetuals market data from CoinGecko derivatives API.
+    Provides total OI, volume, funding rates, and market sentiment metrics.
+    Uses internal cached endpoint to avoid rate limits.
     """
+    import math
+
     try:
+        # Fetch from our internal cached CoinGecko derivatives endpoint
         async with aiohttp.ClientSession() as session:
             async with session.get(
-                'http://localhost:8050/api/perpetuals-pulse',
+                'http://localhost:8002/api/coingecko/derivatives',
                 timeout=aiohttp.ClientTimeout(total=15)
             ) as response:
-                if response.status == 200:
-                    data = await response.json()
-
-                    # Enrich with funding z-score and L/S entropy
-                    funding_rate = data.get('funding_rate', 0)
-                    funding_zscore = funding_rate / 0.0003 if funding_rate != 0 else 0.0
-
-                    long_pct = data.get('long_pct', 50)
-                    short_pct = data.get('short_pct', 50)
-
-                    # Calculate Shannon entropy
-                    import math
-                    if long_pct > 0 and short_pct > 0:
-                        p_long = long_pct / 100
-                        p_short = short_pct / 100
-                        entropy = -(p_long * math.log2(p_long) + p_short * math.log2(p_short))
-                        ls_entropy = entropy / 1.0
-                    else:
-                        ls_entropy = 0.0
-
-                    # Add calculated fields
-                    data['funding_zscore'] = round(funding_zscore, 2)
-                    data['ls_entropy'] = round(ls_entropy, 2)
-
-                    return data
-                else:
-                    logger.warning(f"Perps tracker returned status {response.status}")
+                if response.status != 200:
+                    logger.warning(f"Internal derivatives endpoint returned {response.status}")
                     return {
                         "status": "error",
-                        "error": f"Perps tracker returned status {response.status}",
+                        "error": f"Internal API returned status {response.status}",
                         "timestamp": datetime.now(timezone.utc).isoformat()
                     }
+
+                data = await response.json()
+
+        if data.get('status') != 'success':
+            return {
+                "status": "error",
+                "error": data.get('error', 'Unknown error from derivatives endpoint'),
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+
+        contracts = data.get('data', {}).get('contracts', [])
+
+        if not contracts:
+            return {
+                "status": "error",
+                "error": "No derivatives data available",
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+
+        # Aggregate metrics from all contracts
+        total_oi = 0.0
+        total_volume = 0.0
+        weighted_funding_sum = 0.0
+        funding_volume = 0.0
+
+        # Track exchange distribution
+        exchange_oi = {}
+        cex_oi = 0.0
+        dex_oi = 0.0
+        dex_exchanges = {'dydx', 'hyperliquid', 'gmx', 'vertex', 'drift'}
+
+        for contract in contracts:
+            oi = float(contract.get('open_interest') or 0)
+            vol = float(contract.get('volume_24h') or 0)
+            funding = float(contract.get('funding_rate') or 0)
+
+            total_oi += oi
+            total_volume += vol
+
+            # Volume-weighted funding rate
+            if vol > 0:
+                weighted_funding_sum += funding * vol
+                funding_volume += vol
+
+            # Exchange tracking
+            market = contract.get('market', '').lower()
+            exchange = market.replace(' (futures)', '').replace(' futures', '').strip()
+            exchange_oi[exchange] = exchange_oi.get(exchange, 0) + oi
+
+            # CEX vs DEX
+            if any(dex in exchange for dex in dex_exchanges):
+                dex_oi += oi
+            else:
+                cex_oi += oi
+
+        # Calculate averages and percentages
+        # CoinGecko returns funding rate as a percentage (e.g., 0.0057 = 0.0057%)
+        avg_funding = (weighted_funding_sum / funding_volume) if funding_volume > 0 else 0.0
+
+        # CEX/DEX percentages
+        total_for_pct = cex_oi + dex_oi
+        cex_pct = (cex_oi / total_for_pct * 100) if total_for_pct > 0 else 90.0
+        dex_pct = 100 - cex_pct
+
+        # Funding sentiment (thresholds for percentage values)
+        # Typical 8-hour funding is ±0.01% to ±0.03%
+        if avg_funding > 0.02:  # > 0.02%
+            funding_sentiment = "BULLISH"
+            funding_strength = "STRONG" if avg_funding > 0.05 else "MODERATE"
+        elif avg_funding < -0.02:  # < -0.02%
+            funding_sentiment = "BEARISH"
+            funding_strength = "STRONG" if avg_funding < -0.05 else "MODERATE"
+        else:
+            funding_sentiment = "NEUTRAL"
+            funding_strength = "WEAK"
+
+        # Basis status (based on funding direction)
+        if avg_funding > 0.01:
+            basis_status = "CONTANGO"
+            basis_pct = avg_funding * 3 * 365 / 100  # Annualized (3 funding periods/day)
+        elif avg_funding < -0.01:
+            basis_status = "BACKWARDATION"
+            basis_pct = avg_funding * 3 * 365 / 100
+        else:
+            basis_status = "NEUTRAL"
+            basis_pct = avg_funding * 3 * 365 / 100
+
+        # Long/Short estimation from funding rates
+        # Positive funding = longs pay shorts = more longs
+        # Funding rate of 0.01% suggests roughly 55-60% longs
+        funding_signal = min(max(avg_funding * 100, -5), 5)  # Clamp to reasonable range
+        long_pct = 50 + funding_signal * 2  # Adjust by funding
+        long_pct = min(max(long_pct, 35), 65)  # Clamp to 35-65%
+        short_pct = 100 - long_pct
+
+        # Calculate funding z-score (normalized against typical range of ±0.03%)
+        funding_zscore = avg_funding / 0.03 if avg_funding != 0 else 0.0
+
+        # Calculate Shannon entropy for L/S balance
+        if long_pct > 0 and short_pct > 0:
+            p_long = long_pct / 100
+            p_short = short_pct / 100
+            entropy = -(p_long * math.log2(p_long) + p_short * math.log2(p_short))
+            ls_entropy = entropy  # Max entropy is 1.0 for 50/50
+        else:
+            ls_entropy = 0.0
+
+        return {
+            "status": "success",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "source": "coingecko",
+
+            # Primary metrics
+            "total_open_interest": total_oi,
+            "total_volume_24h": total_volume,
+
+            # Funding data (avg_funding is already in percentage, e.g., 0.01 = 0.01%)
+            "funding_rate": round(avg_funding, 4),  # Already as percentage
+            "funding_sentiment": funding_sentiment,
+            "funding_strength": funding_strength,
+            "funding_zscore": round(funding_zscore, 2),
+
+            # Long/Short ratio
+            "long_pct": round(long_pct, 1),
+            "short_pct": round(short_pct, 1),
+            "ls_entropy": round(ls_entropy, 2),
+
+            # Basis
+            "basis_status": basis_status,
+            "basis_pct": round(basis_pct, 3),
+
+            # Exchange distribution
+            "cex_pct": round(cex_pct, 1),
+            "dex_pct": round(dex_pct, 1),
+            "exchange_count": len(exchange_oi),
+
+            # Metadata
+            "contract_count": len(contracts),
+            "signals": [],
+            "signal_count": 0
+        }
+
     except asyncio.TimeoutError:
-        logger.warning("Perps tracker request timed out")
+        logger.warning("CoinGecko derivatives request timed out")
         return {
             "status": "error",
             "error": "Request timed out",
             "timestamp": datetime.now(timezone.utc).isoformat()
         }
     except aiohttp.ClientError as e:
-        logger.warning(f"Could not connect to perps tracker: {e}")
+        logger.warning(f"Could not connect to CoinGecko: {e}")
         return {
             "status": "error",
             "error": f"Connection error: {str(e)}",

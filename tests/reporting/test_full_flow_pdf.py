@@ -9,7 +9,7 @@ that a PDF is generated with normalized reliability, chart overlays, and interpr
 import os
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 import numpy as np
 import pandas as pd
 
@@ -29,7 +29,7 @@ def create_ohlcv(periods: int = 120, base_price: float = 50000.0) -> pd.DataFram
     highs = np.maximum(opens, closes) * (1 + abs(rng.normal(0, 0.0015, periods)))
     lows = np.minimum(opens, closes) * (1 - abs(rng.normal(0, 0.0015, periods)))
     volumes = rng.gamma(2.0, 800.0, periods)
-    dates = pd.date_range(end=datetime.utcnow(), periods=periods, freq="5min")
+    dates = pd.date_range(end=datetime.now(timezone.utc), periods=periods, freq="5min")
     return pd.DataFrame(
         {"timestamp": dates, "open": opens, "high": highs, "low": lows, "close": closes, "volume": volumes}
     )

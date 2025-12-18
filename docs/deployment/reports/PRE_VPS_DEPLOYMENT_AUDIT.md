@@ -28,7 +28,7 @@ The codebase requires several important fixes before VPS deployment, with the mo
 
 **16 test scripts contain hardcoded paths:**
 ```python
-sys.path.append('/Users/ffv_macmini/Desktop/Virtuoso_ccxt/src')  # Line 4
+sys.path.append('src')  # Line 4
 ```
 
 **Files affected:**

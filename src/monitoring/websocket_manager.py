@@ -19,7 +19,7 @@ from datetime import datetime
 
 from src.core.exchanges.websocket_manager import WebSocketManager as CoreWebSocketManager
 from src.core.cache.liquidation_cache import LiquidationCacheManager
-from src.core.models.liquidation import LiquidationEvent
+from src.core.models.liquidation import LiquidationEvent, LiquidationType, LiquidationSeverity
 
 
 class MonitoringWebSocketManager:
@@ -386,12 +386,30 @@ class MonitoringWebSocketManager:
             try:
                 # Create LiquidationEvent object
                 liquidation_event = LiquidationEvent(
+                    event_id=f"ws_cache_{self.exchange_id}_{liquidation['timestamp']}",
                     symbol=liquidation['symbol'],
                     exchange=self.exchange_id,
-                    side=liquidation['side'],
-                    price=liquidation['price'],
-                    quantity=liquidation['size'],
-                    timestamp=liquidation['timestamp']
+                    timestamp=datetime.fromtimestamp(liquidation['timestamp'] / 1000),
+                    liquidation_type=LiquidationType.LONG_LIQUIDATION if liquidation['side'].lower() == 'sell' else LiquidationType.SHORT_LIQUIDATION,
+                    severity=LiquidationSeverity.MEDIUM,
+                    confidence_score=0.8,
+                    trigger_price=liquidation['price'],
+                    price_impact=0.0,
+                    volume_spike_ratio=1.0,
+                    liquidated_amount_usd=liquidation['price'] * liquidation['size'],
+                    bid_ask_spread_pct=0.0,
+                    order_book_imbalance=0.0,
+                    market_depth_impact=0.0,
+                    volatility_spike=1.0,
+                    duration_seconds=0,
+                    suspected_triggers=['websocket_cache'],
+                    market_conditions={'source': 'websocket_cache'},
+                    # Optional fields
+                    rsi=None,
+                    volume_weighted_price=None,
+                    funding_rate=None,
+                    open_interest_change=None,
+                    recovery_time_seconds=None
                 )
 
                 # Get recent liquidations and update

@@ -13,14 +13,15 @@ Expected Results:
 
 import sys
 import os
-sys.path.insert(0, '/Users/ffv_macmini/Desktop/Virtuoso_ccxt')
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 import yaml
 from src.core.risk.stop_loss_calculator import StopLossCalculator, StopLossMethod
 
 def load_config():
     """Load configuration from config.yaml"""
-    config_path = '/Users/ffv_macmini/Desktop/Virtuoso_ccxt/config/config.yaml'
+    config_path = str(Path(__file__).parent.parent.parent / 'config' / 'config.yaml')
     with open(config_path, 'r') as f:
         return yaml.safe_load(f)
 

@@ -11,7 +11,7 @@ import time
 import logging
 import asyncio
 import aiohttp
-from datetime import datetime
+from datetime import datetime, timezone
 
 # Setup logging
 logging.basicConfig(
@@ -61,7 +61,7 @@ async def test_discord_webhook():
                 "footer": {
                     "text": "Virtuoso Trading Bot"
                 },
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
         ]
     }
@@ -145,7 +145,7 @@ async def test_discord_webhook():
                 "footer": {
                     "text": "Virtuoso Trading Bot"
                 },
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
         ]
     }

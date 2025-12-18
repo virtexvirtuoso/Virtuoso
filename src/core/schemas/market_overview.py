@@ -102,6 +102,30 @@ class MarketOverviewSchema(CacheSchema):
     gainers: Optional[int] = None
     losers: Optional[int] = None
 
+    # === CoinGecko Global Data - Additional Dominance Metrics ===
+    eth_dominance: float = 11.5  # ETH market cap dominance %
+    stablecoin_dominance: float = 8.0  # USDT + USDC combined %
+    altcoin_dominance: float = 43.0  # 100 - BTC dominance
+    altcoin_season: str = "Dormant"  # Active/Emerging/Dormant
+
+    # === CoinGecko Global Data - Market Cap Metrics ===
+    total_market_cap: float = 0.0  # Total crypto market cap (USD)
+    market_cap_change_24h: float = 0.0  # 24h market cap change %
+    coingecko_volume_24h: float = 0.0  # CoinGecko total 24h volume
+    volume_mcap_ratio: float = 0.0  # Volume/Market Cap ratio (liquidity indicator)
+    active_cryptocurrencies: int = 0  # Number of active cryptos tracked
+
+    # === Fear & Greed Index (Alternative.me) ===
+    fear_greed_value: int = 50  # 0-100 scale
+    fear_greed_label: str = "Neutral"  # Extreme Fear/Fear/Neutral/Greed/Extreme Greed
+
+    # === DeFi Data (CoinGecko DeFi endpoint) ===
+    defi_market_cap: float = 0.0  # DeFi sector market cap
+    defi_dominance: float = 0.0  # DeFi % of total market
+    defi_volume_24h: float = 0.0  # DeFi 24h trading volume
+    top_defi_protocol: str = ""  # Leading DeFi protocol name
+    top_defi_dominance: float = 0.0  # Leading protocol's % of DeFi
+
     def __post_init__(self):
         """Ensure total_volume stays in sync with total_volume_24h"""
         # Keep both fields synchronized for backward compatibility
@@ -207,8 +231,9 @@ class MarketOverviewSchema(CacheSchema):
         return cls(
             # Core fields with mapping
             total_symbols=monitoring_data.get('total_symbols_monitored', 0),
-            total_volume_24h=monitoring_data.get('total_volume', 0.0),
-            total_volume=monitoring_data.get('total_volume', 0.0),
+            # FIXED: Use total_volume_24h first (CoinGecko global volume), fallback to total_volume
+            total_volume_24h=monitoring_data.get('total_volume_24h', monitoring_data.get('total_volume', 0.0)),
+            total_volume=monitoring_data.get('total_volume_24h', monitoring_data.get('total_volume', 0.0)),
 
             # Calculated trend strength from signals
             trend_strength=cls._calculate_trend_strength(monitoring_data),
@@ -254,6 +279,30 @@ class MarketOverviewSchema(CacheSchema):
             # Sentiment counts (if available)
             gainers=monitoring_data.get('gainers'),
             losers=monitoring_data.get('losers'),
+
+            # CoinGecko Global Data - Additional Dominance Metrics
+            eth_dominance=monitoring_data.get('eth_dominance', 11.5),
+            stablecoin_dominance=monitoring_data.get('stablecoin_dominance', 8.0),
+            altcoin_dominance=monitoring_data.get('altcoin_dominance', 43.0),
+            altcoin_season=monitoring_data.get('altcoin_season', 'Dormant'),
+
+            # CoinGecko Global Data - Market Cap Metrics
+            total_market_cap=monitoring_data.get('total_market_cap', 0.0),
+            market_cap_change_24h=monitoring_data.get('market_cap_change_24h', 0.0),
+            coingecko_volume_24h=monitoring_data.get('coingecko_volume_24h', 0.0),
+            volume_mcap_ratio=monitoring_data.get('volume_mcap_ratio', 0.0),
+            active_cryptocurrencies=monitoring_data.get('active_cryptocurrencies', 0),
+
+            # Fear & Greed Index (Alternative.me)
+            fear_greed_value=monitoring_data.get('fear_greed_value', 50),
+            fear_greed_label=monitoring_data.get('fear_greed_label', 'Neutral'),
+
+            # DeFi Data (CoinGecko DeFi endpoint)
+            defi_market_cap=monitoring_data.get('defi_market_cap', 0.0),
+            defi_dominance=monitoring_data.get('defi_dominance', 0.0),
+            defi_volume_24h=monitoring_data.get('defi_volume_24h', 0.0),
+            top_defi_protocol=monitoring_data.get('top_defi_protocol', ''),
+            top_defi_dominance=monitoring_data.get('top_defi_dominance', 0.0),
         )
 
     @staticmethod

@@ -6,7 +6,7 @@ This module provides the data models used by the validation system.
 import dataclasses
 from typing import Dict, Any, List, Optional, Union
 from enum import Enum
-from datetime import datetime
+from datetime import datetime, timezone
 
 class ValidationLevel(str, Enum):
     """Validation error severity levels."""
@@ -97,4 +97,4 @@ class ValidationMetrics:
             (self.avg_validation_time * (self.total_validations - 1) + duration)
             / self.total_validations
         )
-        self.last_validation = datetime.utcnow() 
+        self.last_validation = datetime.now(timezone.utc) 

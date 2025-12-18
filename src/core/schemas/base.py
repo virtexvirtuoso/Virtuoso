@@ -11,7 +11,7 @@ Provides the foundation for all cache schemas with:
 
 from dataclasses import dataclass, asdict, field
 from typing import Dict, Any, Optional, Type, TypeVar, ClassVar
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 import json
 import logging
@@ -65,7 +65,7 @@ class CacheSchema:
     """
 
     # Metadata fields (automatically populated)
-    timestamp: float = field(default_factory=lambda: datetime.utcnow().timestamp())
+    timestamp: float = field(default_factory=lambda: datetime.now(timezone.utc).timestamp())
     version: str = field(default=SchemaVersion.V1.value)
 
     # Class constants (must be overridden in subclasses)

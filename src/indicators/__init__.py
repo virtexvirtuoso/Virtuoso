@@ -38,12 +38,43 @@ logger.debug(f"BaseIndicator dict: {BaseIndicator.__dict__}")
 
 # Log before importing each indicator
 logger.debug("About to import indicator classes")
-from .volume_indicators import VolumeIndicators
-from .orderflow_indicators import OrderflowIndicators
-from .orderbook_indicators import OrderbookIndicators
-from .technical_indicators import TechnicalIndicators
-from .sentiment_indicators import SentimentIndicators
-from .price_structure_indicators import PriceStructureIndicators
+
+# Import indicators with safe fallbacks (some modules are gitignored/proprietary)
+try:
+    from .volume_indicators import VolumeIndicators
+except ImportError as e:
+    logger.warning(f"VolumeIndicators not available: {e}")
+    VolumeIndicators = None
+
+try:
+    from .orderflow_indicators import OrderflowIndicators
+except ImportError as e:
+    logger.warning(f"OrderflowIndicators not available: {e}")
+    OrderflowIndicators = None
+
+try:
+    from .orderbook_indicators import OrderbookIndicators
+except ImportError as e:
+    logger.warning(f"OrderbookIndicators not available: {e}")
+    OrderbookIndicators = None
+
+try:
+    from .technical_indicators import TechnicalIndicators
+except ImportError as e:
+    logger.warning(f"TechnicalIndicators not available: {e}")
+    TechnicalIndicators = None
+
+try:
+    from .sentiment_indicators import SentimentIndicators
+except ImportError as e:
+    logger.warning(f"SentimentIndicators not available: {e}")
+    SentimentIndicators = None
+
+try:
+    from .price_structure_indicators import PriceStructureIndicators
+except ImportError as e:
+    logger.warning(f"PriceStructureIndicators not available: {e}")
+    PriceStructureIndicators = None
 
 logger.debug("All indicator modules loaded")
 
@@ -73,13 +104,19 @@ def patch_indicators_with_divergence_visualization():
     divergence visualization in the final score breakdown.
     """
     # Add _apply_divergence_bonuses method to indicator classes
-    for indicator_class in [
-        VolumeIndicators, 
-        OrderflowIndicators, 
-        OrderbookIndicators, 
-        PriceStructureIndicators, 
+    indicator_classes = [
+        VolumeIndicators,
+        OrderflowIndicators,
+        OrderbookIndicators,
+        PriceStructureIndicators,
         SentimentIndicators
-    ]:
+    ]
+
+    for indicator_class in indicator_classes:
+        # Skip if class is None (import failed)
+        if indicator_class is None:
+            continue
+
         # Skip if the class already has the method (like TechnicalIndicators)
         if hasattr(indicator_class, '_apply_divergence_bonuses'):
             continue

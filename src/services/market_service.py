@@ -8,7 +8,7 @@ import json
 import logging
 import time
 from typing import Dict, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 import aiohttp
 import aiomcache
 
@@ -83,7 +83,7 @@ class MarketDataService:
                     
                     # Update metrics
                     self.error_count = 0
-                    self.last_update = datetime.utcnow()
+                    self.last_update = datetime.now(timezone.utc)
                     
                     logger.debug(f"✅ Market data updated: {len(tickers)} symbols in {fetch_time:.0f}ms")
                 else:

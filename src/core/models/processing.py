@@ -1,7 +1,7 @@
 """Processing related models."""
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 
 @dataclass
@@ -31,7 +31,7 @@ class ProcessingMetrics:
                 (self.cache_hit_rate * (self.processed_count - 1) + 1)
                 / self.processed_count
             )
-        self.last_processed = datetime.utcnow()
+        self.last_processed = datetime.now(timezone.utc)
 
 @dataclass
 class ProcessingResult:

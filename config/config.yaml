@@ -7,22 +7,16 @@ system:
   log_level: DEBUG
   reports_dir: ./reports
   version: 1.0.0
-
-# Data Validation Configuration
-# Ensures data quality and temporal alignment for trading signals
 data_validation:
   timestamp_sync:
-    enabled: true  # Enable timestamp synchronization validation for multi-timeframe data
-    max_delta_seconds: 60  # Maximum allowed time difference between timeframes (seconds)
-    strict_mode: false  # If true, validation failures cause exceptions; if false, log warnings
-    fallback_to_base: true  # Use only base timeframe if validation fails
-
-  # Additional validation options (for future enhancement)
+    enabled: true
+    max_delta_seconds: 60
+    strict_mode: false
+    fallback_to_base: true
   data_quality:
-    enabled: true  # Enable data quality checks
-    min_data_points: 20  # Minimum required data points for indicators
-    allow_nan: false  # Whether to allow NaN values in data
-
+    enabled: true
+    min_data_points: 20
+    allow_nan: false
 signal_tracking:
   enabled: false
   api_url: http://localhost:8001/api/signal-tracking
@@ -226,8 +220,8 @@ analysis:
           trade_history_size: 50
         spoofing:
           enabled: true
-          volatility_threshold: 2.0
-          min_order_size_usd: 50000
+          volatility_threshold: 1.5          # Lowered from 2.0 (moderate, crypto-friendly)
+          min_order_size_usd: 35000          # Lowered from 50000 (catches more patterns)
           execution_ratio_threshold: 0.1
           flip_frequency_window: 3
           max_flip_count: 5
@@ -235,16 +229,16 @@ analysis:
           consecutive_reversals: 2
         layering:
           enabled: true
-          price_gap_threshold: 0.001
+          price_gap_threshold: 0.0018        # Increased from 0.001 (crypto spreads)
           max_price_gap: 0.005
-          size_uniformity_threshold: 0.1
+          size_uniformity_threshold: 0.14    # Slightly relaxed from 0.1
           min_layers: 3
           max_layers: 10
           same_size_tolerance: 0.05
           price_increment_regularity: 0.8
         alerts:
           severity_levels:
-            low: 0.5
+            low: 0.55                        # Raised from 0.5 (fewer alerts)
             medium: 0.7
             high: 0.85
             critical: 0.95
@@ -286,7 +280,7 @@ analysis:
       cvd:
         price_direction_threshold: 0.01
         cvd_significance_threshold: 0.01
-        saturation_threshold: 0.15  # CVD % for full strength signal (15% of volume)
+        saturation_threshold: 0.15
       divergence:
         impact_multiplier: 0.1
         lookback: 20
@@ -310,8 +304,8 @@ analysis:
         normalization_threshold: 5.0
         minimal_change_threshold: 0.02
         price_direction_threshold: 0.01
-        oi_saturation_threshold: 2.0  # OI change % for full strength (2%)
-        price_saturation_threshold: 1.0  # Price change % for full strength (1%)
+        oi_saturation_threshold: 2.0
+        price_saturation_threshold: 1.0
       trade_flow:
         momentum_lookback: 10
         pressure_sensitivity: 0.8
@@ -338,6 +332,8 @@ analysis:
         range_percent: 0.01
         interpolate_missing_cvd: true
       volume_threshold: 1.5
+      use_symmetric_divergence: true
+      _kill_switch_note: 'Multipliers managed by kill switch. Current: CVD=50.0, OI=45.0'
     price_structure:
       parameters:
         order_block:
@@ -363,6 +359,15 @@ analysis:
           threshold: 1.5
           sweep_threshold: 1.5
           range_threshold: 0.5
+        order_block_decay:
+          half_life_candles: 25      # Recency decay (25 candles = 50% strength)
+          distance_inflection: 5.0   # Distance sigmoid inflection point (%)
+          distance_steepness: 0.5    # Sigmoid slope (0.5 = gentle falloff, 10% dist = 8% weight)
+        adaptive_lookback:
+          enabled: false             # Start disabled, enable in Phase 2
+          min_candles: 3
+          max_candles: 10
+          base_candles: 5
         volume_profile:
           bins: 100
           threshold: 1.5
@@ -422,7 +427,7 @@ analysis:
         adl:
           period: 20
           trend_lookback: 10
-          window: 1440  # Rolling window for ADL (24 hours for 1-min data, prevents unbounded accumulation)
+          window: 1440
         cmf:
           period: 20
           smoothing: 0.5
@@ -434,7 +439,7 @@ analysis:
         obv:
           smoothing: 3
           trend_lookback: 14
-          window: 1440  # Rolling window for OBV (24 hours for 1-min data, consistent with ADL)
+          window: 1440
         relative_volume:
           period: 30
           significant_threshold: 2.0
@@ -523,11 +528,11 @@ confluence:
     short: 35
   weights:
     components:
-      orderflow: 0.30
-      orderbook: 0.20
+      orderflow: 0.3
+      orderbook: 0.2
       volume: 0.18
       price_structure: 0.15
-      technical: 0.10
+      technical: 0.1
       sentiment: 0.07
     sub_components:
       orderbook:
@@ -577,28 +582,20 @@ confluence:
         volume_delta: 0.2
         volume_profile: 0.1
         vwap: 0.1
-
-# Bitcoin Lead/Lag Prediction Configuration
-# Enhances altcoin signals using Bitcoin's predictive relationship
 bitcoin_prediction:
-  enabled: true  # Enable Bitcoin lead/lag prediction for altcoins
-  min_confidence: 0.6  # Minimum confidence threshold (0.0-1.0)
-  boost_multiplier: 10.0  # Maximum points to boost confluence score
-  min_stability_score: 50  # Minimum beta stability score (0-100)
-  min_data_points: 60  # Minimum BTC price history (minutes)
-
-  # Lead/lag detection parameters
+  enabled: false
+  min_confidence: 0.6
+  boost_multiplier: 10.0
+  min_stability_score: 50
+  min_data_points: 60
   lead_lag:
-    max_lag_minutes: 60  # Maximum lag to analyze
-    btc_move_threshold: 0.005  # Minimum BTC move to trigger (0.5%)
-    significance_threshold: 2.0  # Statistical significance (z-score)
-
-  # Beta calculation parameters
+    max_lag_minutes: 60
+    btc_move_threshold: 0.005
+    significance_threshold: 2.0
   beta:
-    alpha: 0.94  # EWMA decay factor (0.94 = 16-period half-life)
-    min_r_squared: 0.3  # Minimum R² for reliable predictions
-    recalibration_hours: 24  # Recalibrate beta every N hours
-
+    alpha: 0.94
+    min_r_squared: 0.3
+    recalibration_hours: 24
 data_processing:
   batch_size: 100
   enabled: true
@@ -648,76 +645,46 @@ data_processing:
     check_outliers: true
   volatility_threshold: 0.05
   window_size: 20
-
-# Scalping Signal Configuration
-# Real-time detection of high-probability long/short scalp opportunities
 scalping_signals:
-  enabled: true  # Enable/disable scalping signal monitoring
-
-  # Symbols to monitor for scalp setups
+  enabled: true
   symbols:
-    - BTCUSDT
-    - ETHUSDT
-    - SOLUSDT
-    - 1000PEPEUSDT
-    - BNBUSDT
-
-  # Scan interval (seconds)
-  scan_interval: 30  # Scan for signals every 30 seconds
-
-  # Analyzer configuration
+  - BTCUSDT
+  - ETHUSDT
+  - SOLUSDT
+  - 1000PEPEUSDT
+  - BNBUSDT
+  scan_interval: 30
   analyzer:
-    # Signal thresholds
-    min_confidence: 70  # Minimum score to trigger alert (0-100)
-    strong_signal_threshold: 85  # High confidence threshold
-
-    # Momentum parameters (EMA & RSI)
-    ema_fast_period: 9  # Fast EMA for trend detection
-    ema_slow_period: 21  # Slow EMA for trend detection
-    rsi_period: 14  # RSI calculation period
-    rsi_long_threshold: 55  # RSI > 55 indicates bullish momentum
-    rsi_short_threshold: 45  # RSI < 45 indicates bearish momentum
-
-    # Order flow parameters
-    orderflow_window_seconds: 300  # 5-minute window for orderflow analysis
-    orderflow_imbalance_threshold: 0.15  # 15% imbalance required
-    aggressive_buyer_threshold: 0.65  # 65%+ aggressive buys = bullish
-    aggressive_seller_threshold: 0.35  # 35%- aggressive buys = bearish
-
-    # Liquidity parameters
-    max_spread_bps: 3  # Max 0.03% spread for good execution
-    min_depth_usd: 100000  # Min $100k depth within 0.1% of mid
-
-    # Volume parameters
-    volume_window_periods: 20  # Compare vs 20-period average
-    min_volume_multiplier: 1.3  # Min 1.3x average volume
-
-    # Liquidation parameters
-    liquidation_window_seconds: 900  # 15-minute window
-    min_liquidation_usd: 500000  # Min $500k liquidations for score
-
-    # Data retention
+    min_confidence: 70
+    strong_signal_threshold: 85
+    ema_fast_period: 9
+    ema_slow_period: 21
+    rsi_period: 14
+    rsi_long_threshold: 55
+    rsi_short_threshold: 45
+    orderflow_window_seconds: 300
+    orderflow_imbalance_threshold: 0.15
+    aggressive_buyer_threshold: 0.65
+    aggressive_seller_threshold: 0.35
+    max_spread_bps: 3
+    min_depth_usd: 100000
+    volume_window_periods: 20
+    min_volume_multiplier: 1.3
+    liquidation_window_seconds: 900
+    min_liquidation_usd: 500000
     max_price_history: 100
     max_trade_history: 1000
     max_orderbook_snapshots: 20
     max_liquidation_history: 50
-
-  # Alert configuration
   alerts:
-    # Alert frequency limits
-    min_signal_interval_seconds: 300  # Min 5 min between signals per symbol
-    max_signals_per_hour: 12  # Max 12 signals/hour across all symbols
-
-    # Priority levels
-    high_confidence_threshold: 85  # "URGENT" signals
-    medium_confidence_threshold: 75  # "NORMAL" signals
-
-    # Alert channels
-    console_alerts: true  # Log to console
-    telegram_alerts: false  # Send to Telegram (requires bot setup)
-    discord_alerts: false  # Send to Discord (requires webhook setup)
-    database_logging: true  # Store signals in database
-
+    min_signal_interval_seconds: 300
+    max_signals_per_hour: 12
+    high_confidence_threshold: 85
+    medium_confidence_threshold: 75
+    console_alerts: true
+    telegram_alerts: false
+    discord_alerts: false
+    database_logging: true
 database:
   url: ${DATABASE_URL:sqlite:///./data/virtuoso.db}
   influxdb:
@@ -726,6 +693,8 @@ database:
     timeout: 30000
     token: ${INFLUXDB_TOKEN}
     url: ${INFLUXDB_URL}
+liquidation_persistence:
+  enabled: true
 exchanges:
   binance:
     api_credentials:
@@ -739,7 +708,7 @@ exchanges:
       - USDT
       - BTC
       - ETH
-    enabled: false  # Disabled - no API credentials configured
+    enabled: false
     market_types:
     - spot
     - futures
@@ -984,12 +953,12 @@ market_data:
       update_interval: 100
       rpi:
         enabled: true
-        retail_threshold: 0.05  # Minimum retail share for signal validity
-        cache_ttl: 30          # RPI data cache TTL in seconds
-        extreme_thresholds:    # Thresholds for extreme retail alerts
-          buying: 80           # Score above which to send extreme buying alerts
-          selling: 20          # Score below which to send extreme selling alerts
-        participation_weight: 2.0  # Multiplier for retail participation impact
+        retail_threshold: 0.05
+        cache_ttl: 30
+        extreme_thresholds:
+          buying: 80
+          selling: 20
+        participation_weight: 2.0
     price:
       max_value: 1000000
       min_value: 0
@@ -1053,10 +1022,9 @@ monitoring:
       cooldown: 300
       threshold: 500000
     regime:
-      # Confidence thresholds for regime change alerts
-      discord_confidence_threshold: 0.80  # 80% - Minimum to send to Discord
-      dashboard_confidence_threshold: 0.80  # 80% - Minimum to show on dashboard
-      cooldown: 1800  # 30 minutes between alerts for same symbol
+      discord_confidence_threshold: 0.8
+      dashboard_confidence_threshold: 0.8
+      cooldown: 1800
     system_alerts:
       cooldown:
         api: 300
@@ -1096,24 +1064,21 @@ monitoring:
       use_system_webhook: true
     system_alerts_webhook_url: ${SYSTEM_ALERTS_WEBHOOK_URL}
     whale_activity:
-      # ORDERBOOK-based detection (sustained positioning)
-      accumulation_threshold: 500000  # $500k net orderbook accumulation
-      cooldown: 1800  # 30 min cooldown for orderbook alerts
-      distribution_threshold: 500000  # $500k net orderbook distribution
+      accumulation_threshold: 500000
+      cooldown: 1800
+      distribution_threshold: 500000
       enabled: true
       excluded_symbols: []
-      imbalance_threshold: 0.3  # 30% bid/ask imbalance required
+      imbalance_threshold: 0.3
       included_symbols: []
-      market_percentage: 0.025  # Must be 2.5% of total orderbook
-      min_order_count: 4  # Minimum 4 large orders required
+      market_percentage: 0.025
+      min_order_count: 4
       min_trade_imbalance: 0.75
       min_trade_volume_usd: 500000
       min_whale_trades: 5
-
-      # TRADE-based detection (NEW - individual large trade executions)
-      trade_alerts_enabled: true  # Enable whale trade execution alerts
-      trade_cooldown: 600  # 10 min cooldown between trade alerts per symbol
-      alert_threshold_usd: 750000  # Alert on trades >= $750k (raised from $300k to reduce noise)
+      trade_alerts_enabled: true
+      trade_cooldown: 600
+      alert_threshold_usd: 750000
     smart_money_detection:
       enabled: true
       min_sophistication_score: 6.0
@@ -1131,42 +1096,34 @@ monitoring:
         pattern_complexity: 0.15
         coordination: 0.1
         stealth: 0.1
-    # Predictive Liquidation Monitor Configuration
-    # Monitors symbols for signs of imminent liquidation cascades
     predictive_alerts:
       enabled: true
-      symbols_limit: 20  # Monitor top 20 symbols by liquidation risk
-      ranking_method: liquidation_risk  # Use composite scoring (OI, funding, volatility, turnover)
-      check_interval_seconds: 60  # Check every 60 seconds
-
-      # Funding Rate Alert Configuration
+      symbols_limit: 20
+      ranking_method: liquidation_risk
+      check_interval_seconds: 60
       funding_rate:
         enabled: true
         thresholds:
-          warning: 0.0005   # 0.05% - elevated funding rate warning
-          high: 0.001       # 0.1% - extreme funding rate alert
-          critical: 0.0015  # 0.15% - critical funding rate alert
-        cooldown_minutes: 60  # 1 hour between funding alerts per symbol
-
-      # Leverage Build-Up Alert Configuration
+          warning: 0.0005
+          high: 0.001
+          critical: 0.0015
+        cooldown_minutes: 60
       leverage_buildup:
         enabled: true
-        timeframe_hours: 4  # Analyze OI changes over 4-hour windows
+        timeframe_hours: 4
         thresholds:
-          oi_change_warning: 0.08   # 8% OI increase
-          oi_change_high: 0.12      # 12% OI increase
-          oi_change_critical: 0.18  # 18% OI increase
-          price_change_min: 0.02    # Require 2% price change
-        cooldown_minutes: 120  # 2 hours between leverage alerts per symbol
-
-      # Cluster Risk Alert Configuration
+          oi_change_warning: 0.08
+          oi_change_high: 0.12
+          oi_change_critical: 0.18
+          price_change_min: 0.02
+        cooldown_minutes: 120
       cluster_risk:
         enabled: true
-        min_symbols_warning: 2   # 2+ symbols in risky state
-        min_symbols_high: 3      # 3+ symbols in risky state
-        min_symbols_critical: 4  # 4+ symbols in risky state
-        risk_threshold: 0.7      # Risk score threshold
-        cooldown_minutes: 30     # 30 min between cluster risk alerts
+        min_symbols_warning: 2
+        min_symbols_high: 3
+        min_symbols_critical: 4
+        risk_threshold: 0.7
+        cooldown_minutes: 30
   components:
     analysis:
       enabled: true
@@ -1216,7 +1173,7 @@ monitoring:
       type: gauge
   performance:
     enabled: true
-    max_concurrent_symbols: 20  # Process all top symbols concurrently
+    max_concurrent_symbols: 20
     metrics:
     - calculation_time
     - data_quality
@@ -1262,33 +1219,29 @@ risk:
     max_drawdown: 0.25
     max_leverage: 3.0
     max_position_size: 0.1
-  # Enhanced stop loss configuration for more breathing room
-  long_stop_percentage: 4.5    # Increased from 3.0% to 4.5%
-  short_stop_percentage: 5.0   # Increased from 3.5% to 5.0%
-  min_stop_multiplier: 0.7     # Reduced from 0.8 to 0.7 (tighter minimum)
-  max_stop_multiplier: 2.0     # Increased from 1.5 to 2.0 (wider maximum)
+  long_stop_percentage: 4.5
+  short_stop_percentage: 5.0
+  min_stop_multiplier: 0.7
+  max_stop_multiplier: 2.0
   stop_loss:
     activation_percentage: 0.01
-    default: 0.04              # Increased from 0.02 (2%) to 0.04 (4%)
+    default: 0.04
     trailing: true
   take_profit:
     activation_percentage: 0.02
-    default: 0.06              # Increased from 0.04 (4%) to 0.06 (6%)
+    default: 0.06
     trailing: true
 risk_management:
-  # StopLossCalculator configuration
-  default_stop_loss: 0.04      # 4% base stop loss (increased from 2%)
-  confidence_scaling: true     # Enable confidence-based stop loss scaling
-  notes: "Enhanced configuration provides more breathing room for crypto volatility"
-
-  # Validation Period for Orderflow Fix (30-day validation)
-  # Reduces SHORT signal position sizes to 50% during validation
+  default_stop_loss: 0.04
+  confidence_scaling: true
+  notes: Enhanced configuration provides more breathing room for crypto volatility
   validation_period:
-    active: true  # Set to false to disable validation period restrictions
-    end_date: "2026-01-10"  # Auto-disable after this date (30 days from 2025-12-11)
-    short_position_multiplier: 0.5  # Reduce SHORT positions to 50% of normal size
-    short_stop_loss_pct: 1.5  # Tighter stop loss for SHORT during validation (1.5% vs 3.5%)
-    reason: "Orderflow indicator fix deployed 2025-12-11 - validating SHORT signal accuracy"
+    active: true
+    end_date: '2026-01-10'
+    short_position_multiplier: 0.5
+    short_stop_loss_pct: 1.5
+    reason: Orderflow indicator fix deployed 2025-12-11 - validating SHORT signal
+      accuracy
 rollout:
   enabled: true
   mode: complete
@@ -1373,36 +1326,20 @@ caching:
       track_hit_rate: true
       track_time_saved: true
       track_access_patterns: true
-
-# ML Weight Optimization Configuration
-# Shadow mode deployment - validates ML system with zero risk
 ml:
-  # Master enable/disable switch for adaptive weights
-  enabled: false  # Shadow mode: just log predictions, don't change signals
-  
-  # Model configuration
-  model_path: "ml/models/optimizer_v1.0.joblib"
-  model_version: "1.0"
-  
-  # A/B testing configuration
-  ab_test_ratio: 0.0  # 0% = shadow mode (log only), 0.10 = 10% adaptive
-  
-  # Safety constraints
-  max_weight_change: 0.15  # Maximum ±15% change from baseline
-  min_confidence: 0.55  # Minimum model confidence to use adaptive weights
-  
-  # Fallback settings
+  enabled: false
+  model_path: ml/models/optimizer_v1.0.joblib
+  model_version: '1.0'
+  ab_test_ratio: 0.0
+  max_weight_change: 0.15
+  min_confidence: 0.55
   enable_distribution_shift_detection: true
-  shift_threshold: 0.05  # KS test p-value threshold
-  
-  # Monitoring
+  shift_threshold: 0.05
   log_weight_changes: true
-  log_level: "INFO"
-  
-  # Data collection for v2.0 training
+  log_level: INFO
   data_collection:
-    enabled: true  # Collect signal data for future model training
-    database: "data/trading.db"
-    table: "signal_performance"
+    enabled: true
+    database: data/trading.db
+    table: signal_performance
     min_samples_for_retrain: 1000
     retrain_interval_days: 30

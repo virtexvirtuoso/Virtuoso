@@ -12,7 +12,8 @@ This script tests the _ensure_cache_ready() method to verify it properly:
 import asyncio
 import sys
 import os
-sys.path.append('/Users/ffv_macmini/Desktop/Virtuoso_ccxt')
+from pathlib import Path
+sys.path.append(str(Path(__file__).parent.parent.parent))
 
 from unittest.mock import Mock
 try:

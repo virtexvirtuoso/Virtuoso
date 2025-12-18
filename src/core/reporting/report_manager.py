@@ -232,6 +232,10 @@ class ReportManager:
                     # Verify the PDF was generated and exists
                     if result_pdf_path and os.path.exists(result_pdf_path) and not os.path.isdir(result_pdf_path):
                         self._log(f"PDF report generated successfully: {pdf_path}", level=logging.INFO)
+
+                        # Also generate Alpha Snapshot (terminal-style analysis archive)
+                        await self._generate_alpha_snapshot(symbol)
+
                         return True, result_pdf_path, json_path
                 else:
                     self._log(f"Error generating PDF report: Result is {result}", level=logging.ERROR)
@@ -341,7 +345,45 @@ class ReportManager:
             self.logger.error(f"Error attaching files to webhook: {str(e)}")
             self.logger.error(traceback.format_exc())
             return False
-    
+
+    async def _generate_alpha_snapshot(self, symbol: str) -> bool:
+        """
+        Generate an Alpha Snapshot (terminal-style confluence analysis archive).
+
+        This creates a snapshot of the current terminal-style analysis display that
+        can be viewed later, capturing the exact analysis state at alert time.
+
+        Args:
+            symbol: Trading pair symbol (e.g., 'BTCUSDT')
+
+        Returns:
+            True if snapshot was generated successfully, False otherwise
+        """
+        try:
+            # Use localhost to call the snapshot endpoint on the same server
+            snapshot_url = f"http://127.0.0.1:8002/api/dashboard/save-analysis-snapshot/{symbol}"
+
+            self._log(f"Generating Alpha Snapshot for {symbol}", level=logging.INFO)
+
+            async with aiohttp.ClientSession() as session:
+                async with session.post(snapshot_url, timeout=aiohttp.ClientTimeout(total=30)) as response:
+                    if response.status == 200:
+                        result = await response.json()
+                        self._log(f"Alpha Snapshot generated: {result.get('snapshot_url', 'N/A')}", level=logging.INFO)
+                        return True
+                    else:
+                        error_text = await response.text()
+                        self._log(f"Alpha Snapshot generation failed: {response.status} - {error_text}", level=logging.WARNING)
+                        return False
+
+        except asyncio.TimeoutError:
+            self._log(f"Alpha Snapshot generation timed out for {symbol}", level=logging.WARNING)
+            return False
+        except Exception as e:
+            # Don't fail the main report if snapshot generation fails
+            self._log(f"Alpha Snapshot generation error for {symbol}: {str(e)}", level=logging.WARNING)
+            return False
+
     async def generate_and_send_report(
         self,
         signal_data: Dict[str, Any],

@@ -93,7 +93,7 @@ async def get_mobile_data_direct() -> Dict[str, Any]:
         },
         "confluence_scores": confluence_scores,
         "top_movers": top_movers,
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "status": "success",
         "source": "direct-cache"
     }

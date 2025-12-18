@@ -4,7 +4,7 @@ Bypasses all problematic code for immediate functionality
 """
 
 from fastapi import APIRouter
-from datetime import datetime
+from datetime import datetime, timezone
 import time
 
 router = APIRouter(prefix="/api/simple", tags=["simple"])
@@ -16,7 +16,7 @@ async def simple_mobile():
     
     return {
         "status": "success",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "data": {
             "market": {"trend": "bullish", "strength": 65},
             "symbols": [
@@ -35,7 +35,7 @@ async def simple_alerts():
         "status": "success",
         "alerts": [],
         "count": 0,
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.now(timezone.utc).isoformat()
     }
 
 @router.get("/health")

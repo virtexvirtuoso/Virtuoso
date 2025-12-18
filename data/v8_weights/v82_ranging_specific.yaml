@@ -1,0 +1,61 @@
+timestamp: '2025-11-17T09:55:43.212114'
+optimization_info:
+  version: V8.2-RANGING-Specific
+  n_trials: 300
+  best_trial: 149
+  best_score: 1.761971643712335
+  raw_score: 2.204950035321322
+  total_trades: 16
+  signal_rate: 0.010610079575596816
+  total_penalty: 0.4429783916089872
+  l2_penalty: 0.002129585242939445
+  training_candles: 1508
+  constraints:
+    min_trades: 15
+    min_signal_rate: 0.04
+    max_signal_rate: 0.1
+    l2_lambda: 0.01
+hierarchical_parameters:
+  global_strengths:
+    rsi: 0.9341048011023964
+    macd: 0.5736832318107268
+    cci: 0.9216217120845129
+    williams_r: 0.40569935640551036
+    atr: 0.33302159733186143
+    ao: 0.9004547342161537
+    trend_position: 0.704731075346065
+    market_structure: 0.17290438858327822
+    support_resistance: 0.3636225123415058
+    range_analysis: 0.3275457469906016
+    order_blocks: 0.54034946152778
+    adl: 0.7715729208349802
+    cmf: 0.47258440783464845
+    obv: 0.8948398529196679
+    relative_volume: 0.3562632612684493
+    volume_profile: 0.9363152703052008
+  regime_modulations:
+    RANGING:
+      momentum: 1.570498318196627
+      volatility: 0.5389893578815181
+      volume: 0.5320198826504161
+      support_resistance: 0.7098316834337344
+      trend: 1.4797832472714916
+      volume_structure: 1.590160958861028
+generated_weights:
+  RANGING:
+    rsi: 0.14515272455382322
+    macd: 0.08914597594391478
+    cci: 0.14321294822502662
+    williams_r: 0.06304256959443362
+    atr: 0.01776007117874064
+    ao: 0.04802133045135942
+    trend_position: 0.10318430438944806
+    market_structure: 0.025316066916855316
+    support_resistance: 0.025538668771689955
+    range_analysis: 0.023004852714158818
+    order_blocks: 0.037950911867520844
+    adl: 0.04061598148352479
+    cmf: 0.024877077771525133
+    obv: 0.04710481396570229
+    relative_volume: 0.01875387488622641
+    volume_profile: 0.14731782728605033

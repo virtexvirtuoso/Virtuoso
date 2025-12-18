@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from typing import Dict, List, Optional, Any
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import time
 import logging
 from pydantic import BaseModel, Field
@@ -289,7 +289,7 @@ async def create_alert(
         return {
             "status": "success",
             "message": "Alert created successfully",
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
         
     except Exception as e:
@@ -346,7 +346,7 @@ async def acknowledge_alert(
             return {
                 "status": "success",
                 "message": f"Alert {alert_id} acknowledged",
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
         else:
             raise HTTPException(status_code=404, detail=f"Alert {alert_id} not found")
@@ -382,7 +382,7 @@ async def get_persisted_alerts(
         if not persistence:
             raise HTTPException(status_code=503, detail="Alert persistence not available")
         
-        end_time = datetime.utcnow().timestamp()
+        end_time = datetime.now(timezone.utc).timestamp()
         start_time = end_time - (hours * 3600)
         
         alerts = await persistence.get_alerts(
@@ -459,7 +459,7 @@ async def get_persisted_stats(hours: int = Query(24)):
         if not persistence:
             raise HTTPException(status_code=503, detail="Alert persistence not available")
         
-        end_time = datetime.utcnow().timestamp()
+        end_time = datetime.now(timezone.utc).timestamp()
         start_time = end_time - (hours * 3600) if hours else None
         
         stats = await persistence.get_alert_statistics(

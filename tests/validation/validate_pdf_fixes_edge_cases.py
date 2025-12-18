@@ -9,7 +9,7 @@ import sys
 import json
 import time
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import numpy as np
 import pandas as pd
 
@@ -24,7 +24,7 @@ sys.path.insert(0, PROJECT_ROOT)
 def create_test_ohlcv(periods: int = 100, base_price: float = 50000.0) -> pd.DataFrame:
     """Create realistic OHLCV DataFrame for testing."""
     rng = np.random.default_rng(42)
-    timestamps = [datetime.utcnow() - timedelta(minutes=5 * i) for i in range(periods)][::-1]
+    timestamps = [datetime.now(timezone.utc) - timedelta(minutes=5 * i) for i in range(periods)][::-1]
     prices = [base_price]
     for _ in range(periods - 1):
         prices.append(max(1000.0, prices[-1] * (1 + rng.normal(0, 0.003))))

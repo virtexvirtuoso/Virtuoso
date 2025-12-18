@@ -8,7 +8,7 @@ for the Virtuoso CCXT Trading System.
 
 import asyncio
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Any, Optional
 import logging
 
@@ -35,7 +35,7 @@ class WebSocketHealthMonitor:
         Returns:
             Dictionary containing detailed WebSocket health status
         """
-        check_time = datetime.utcnow()
+        check_time = datetime.now(timezone.utc)
         self.last_check_time = check_time
 
         health_status = {
@@ -86,7 +86,7 @@ class WebSocketHealthMonitor:
             "name": "websocket_availability",
             "status": "failed",
             "message": "WebSocket manager not available",
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
 
         try:
@@ -132,7 +132,7 @@ class WebSocketHealthMonitor:
             "name": "websocket_connections",
             "status": "failed",
             "message": "Unable to check connection status",
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
 
         try:
@@ -196,7 +196,7 @@ class WebSocketHealthMonitor:
             "name": "websocket_message_flow",
             "status": "unknown",
             "message": "Unable to check message flow",
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
 
         try:
@@ -248,7 +248,7 @@ class WebSocketHealthMonitor:
             "name": "websocket_performance",
             "status": "unknown",
             "message": "Unable to check performance metrics",
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
 
         try:

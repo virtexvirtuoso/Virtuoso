@@ -19,7 +19,7 @@ import sys
 import time
 import traceback
 from typing import Dict, Any, List
-from datetime import datetime
+from datetime import datetime, timezone
 import importlib.util
 
 
@@ -41,7 +41,7 @@ class ValidationResults:
             'status': status,
             'evidence': evidence,
             'details': details or {},
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         }
 
         self.total_tests += 1
@@ -68,7 +68,7 @@ class ValidationResults:
         report = []
         report.append("# COMPREHENSIVE ERRORCONTEXT VALIDATION REPORT")
         report.append("=" * 60)
-        report.append(f"**Validation Date:** {datetime.utcnow().isoformat()}")
+        report.append(f"**Validation Date:** {datetime.now(timezone.utc).isoformat()}")
         report.append(f"**Overall Score:** {self.overall_score:.1f}% ({self.passed_tests}/{self.total_tests} tests passed)")
         report.append("")
 

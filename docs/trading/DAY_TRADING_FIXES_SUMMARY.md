@@ -212,7 +212,7 @@ target_3 = entry - (risk_distance × 4.0)  # 4.0:1 R:R
 
 **Usage**:
 ```bash
-cd /Users/ffv_macmini/Desktop/Virtuoso_ccxt
+cd .
 ./scripts/deploy_day_trading_fixes.sh
 ```
 

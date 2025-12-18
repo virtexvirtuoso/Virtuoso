@@ -1,0 +1,63 @@
+timestamp: '2025-11-13T23:15:31.379266'
+optimization_info:
+  mode: production
+  n_trials: 100
+  best_performance: 3.33026567703539
+  best_trial: 68
+confluence:
+  weights:
+    components:
+      orderbook: 0.23893329206009006
+      orderflow: 0.21586105770670544
+      price_structure: 0.15594209294200398
+      technical: 0.008377784312678072
+      volume: 0.3377293918585548
+      sentiment: 0.043156381119967585
+    sub_components:
+      technical:
+        rsi: 0.11612650750834504
+        ao: 0.32716171702876445
+        macd: 0.09063418751529724
+        williams_r: 0.12808068737531375
+        atr: 0.023734293175683475
+        cci: 0.31426260739659606
+      orderbook:
+        depth: 0.04239158607179252
+        imbalance: 0.32205180768546143
+        oir: 0.04282617105932473
+        liquidity: 0.3424519559942075
+        mpi: 0.06252187731800894
+        manipulation: 0.1070316339484438
+        absorption_exhaustion: 0.007388645964760361
+        di: 0.004838900901718252
+        retail: 0.06849742105628238
+      volume:
+        volume_delta: 0.3404717184794684
+        adl: 0.05869036174108439
+        cmf: 0.24094290077578692
+        relative_volume: 0.09916178385949576
+        obv: 0.0344619195983256
+        volume_profile: 0.11034990123393254
+        vwap: 0.1159214143119064
+      orderflow:
+        cvd: 0.018525539858841734
+        imbalance: 0.11371259905291962
+        trade_flow: 0.13294913437034028
+        open_interest: 0.19605873246201172
+        pressure: 0.23926677130606827
+        liquidity: 0.25523785147571215
+        smart_money_flow: 0.04424937147410639
+      price_structure:
+        support_resistance: 0.2577885145737417
+        order_blocks: 0.2317750122406985
+        trend_position: 0.1549433704020268
+        volume_profile: 0.1669431296934263
+        market_structure: 0.07506898920496419
+        range_analysis: 0.11348098388514256
+      sentiment:
+        funding_rate: 0.23083344135938202
+        liquidations: 0.12157764632868598
+        long_short_ratio: 0.255855623535626
+        market_activity: 0.06268848325454095
+        risk: 0.3259317686149252
+        volatility: 0.003113036906839987

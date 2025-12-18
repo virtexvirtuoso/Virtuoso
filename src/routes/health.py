@@ -5,7 +5,7 @@ Provides HTTP endpoints for health monitoring integration
 
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
-from datetime import datetime
+from datetime import datetime, timezone
 
 router = APIRouter()
 
@@ -14,7 +14,7 @@ async def basic_health_check():
     """Basic health check endpoint - returns 200 if service is running"""
     return {
         "status": "healthy",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "service": "virtuoso_ccxt",
         "version": "1.0.0",
         "phase": "1_emergency_stabilization"
@@ -23,7 +23,7 @@ async def basic_health_check():
 @router.get("/health/quick")
 async def quick_health_check():
     """Quick health check with minimal overhead"""
-    timestamp = datetime.utcnow()
+    timestamp = datetime.now(timezone.utc)
     checks = []
     
     # Quick memory check

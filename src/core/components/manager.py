@@ -5,7 +5,7 @@ import logging
 import asyncio
 from typing import Dict, Any, Optional, List, Type, Set
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 
 from ..error.handlers import SimpleErrorHandler as ErrorHandler
 from ..error.decorators import handle_errors, measure_execution
@@ -83,7 +83,7 @@ class ComponentManager:
         component = self._components[name]
         health = self._health.get(name) or ComponentHealth(
             state=self._states[name],
-            last_health_check=datetime.utcnow()
+            last_health_check=datetime.now(timezone.utc)
         )
         
         try:
@@ -99,7 +99,7 @@ class ComponentManager:
             
             # Update state
             health.state = self._states[name]
-            health.last_health_check = datetime.utcnow()
+            health.last_health_check = datetime.now(timezone.utc)
             health.is_healthy = (
                 health.state == ComponentState.RUNNING and
                 health.memory_usage_mb < self.resource_manager.limits.max_memory_mb
@@ -128,7 +128,7 @@ class ComponentManager:
             # Initialize health tracking
             self._health[name] = ComponentHealth(
                 state=ComponentState.REGISTERED,
-                last_health_check=datetime.utcnow()
+                last_health_check=datetime.now(timezone.utc)
             )
     
     @handle_errors(error_handler=ErrorHandler(), component="component_manager", severity="critical")

@@ -1,0 +1,136 @@
+# Dual-Regime Signal Enhancement Configuration
+# Created: 2025-12-16
+# Version: 1.0.0 (Phase 1 - Discrete Alignment)
+# Documentation: docs/08-features/trading/DUAL_REGIME_SIGNAL_ENHANCEMENT.md
+
+dual_regime:
+  # Master feature flag (set to false for gradual rollout)
+  enabled: false
+
+  # Phase 2 continuous scoring (optional enhancement, default off)
+  phase2_enabled: false
+
+  # ===================================================================
+  # Market Regime Thresholds
+  # ===================================================================
+  fear_greed:
+    extreme_fear: 20          # <20 = Extreme Fear (contrarian bullish)
+    fear: 40                  # <40 = Fear
+    neutral_low: 40
+    neutral_high: 60
+    greed: 60                 # >60 = Greed
+    extreme_greed: 80         # >80 = Extreme Greed (contrarian bearish)
+
+  positioning:
+    long_crowded_threshold: 60.0   # % longs to trigger crowding penalty
+    short_crowded_threshold: 60.0  # % shorts to trigger squeeze risk
+
+  # ===================================================================
+  # Market Factor Multipliers (Phase 1)
+  # ===================================================================
+  market_factors:
+    sentiment:
+      extreme_contrarian: 1.15     # Extreme Fear + LONG (or Extreme Greed + SHORT)
+      moderate_contrarian: 1.08
+      neutral: 1.00
+      moderate_penalty: 0.92
+      extreme_penalty: 0.85
+
+    positioning:
+      contrarian_boost: 1.15       # Crowded opposite side (opportunity)
+      crowded_penalty: 0.85        # Crowded same side (risk)
+      neutral: 1.00
+
+    alignment:
+      aligned: 1.15                # Market bias matches signal direction
+      neutral: 0.95                # Mixed signals or neutral market
+      misaligned: 0.80             # Relative strength play (signal against market)
+
+  # ===================================================================
+  # Symbol Regime Base Multipliers
+  # ===================================================================
+  symbol_regimes:
+    STRONG_UPTREND: 1.15
+    MODERATE_UPTREND: 1.08
+    RANGING: 1.00
+    MODERATE_DOWNTREND: 0.92
+    STRONG_DOWNTREND: 0.85
+    HIGH_VOLATILITY: 1.00         # Handled by override
+    LOW_LIQUIDITY: 1.00           # Handled by override
+
+  # ===================================================================
+  # Confidence-Weighted Blending
+  # ===================================================================
+  blending:
+    min_confidence_threshold: 0.40   # Below this, ignore symbol regime
+    max_symbol_influence: 0.75       # Market always retains 25% minimum
+    mtf_alignment_bonus: 1.15        # +15% confidence if MTF aligned
+
+    # Confidence tiers (linear interpolation between bounds)
+    weight_tiers:
+      - confidence_range: [0.00, 0.40]
+        weight_range: [0.00, 0.00]   # Ignore symbol regime
+      - confidence_range: [0.40, 0.60]
+        weight_range: [0.05, 0.30]   # Slight symbol influence
+      - confidence_range: [0.60, 0.75]
+        weight_range: [0.30, 0.50]   # Moderate blend
+      - confidence_range: [0.75, 0.85]
+        weight_range: [0.50, 0.65]   # High symbol influence
+      - confidence_range: [0.85, 1.00]
+        weight_range: [0.65, 0.75]   # Very high (never 100%)
+
+  # ===================================================================
+  # Special Regime Overrides (Risk Management)
+  # ===================================================================
+  overrides:
+    HIGH_VOLATILITY:
+      enabled: true
+      clamp_min: 0.90              # Reduce max gain/loss during volatility
+      clamp_max: 1.10
+
+    LOW_LIQUIDITY:
+      enabled: true
+      clamp_min: 0.92              # Very conservative in illiquid markets
+      clamp_max: 1.08
+
+    RANGING_LOW_CONFIDENCE:
+      enabled: true
+      confidence_threshold: 0.40
+      action: "filter"             # Block signal entirely if ranging + low confidence
+
+  # ===================================================================
+  # Multiplier Safety Bounds
+  # ===================================================================
+  bounds:
+    absolute_min: 0.50             # Never reduce score by more than 50%
+    absolute_max: 1.50             # Never boost by more than 50%
+    typical_min: 0.75              # Typical worst case
+    typical_max: 1.25              # Typical best case
+
+  # ===================================================================
+  # Logging & Monitoring
+  # ===================================================================
+  logging:
+    log_adjustments: true          # Log every regime adjustment
+    log_level: "INFO"
+    include_metadata: true         # Include full breakdown in signal metadata
+    log_filtered_signals: true     # Log signals filtered by regime
+
+  # ===================================================================
+  # Phase 2: Continuous Alignment Scoring (Optional Enhancement)
+  # ===================================================================
+  # Disabled by default. Only enable after Phase 1 validation.
+  phase2:
+    enabled: false                 # Feature flag for continuous scoring
+
+    alignment:
+      use_continuous_scoring: false   # Set true to enable Phase 2
+      coefficient: 0.075              # Calibrated for [0.85, 1.15] range
+      clamp_min: 0.85                 # Safety bounds
+      clamp_max: 1.15
+
+    # Validation thresholds (Phase 2 must beat Phase 1 to deploy)
+    validation:
+      min_sharpe_improvement: 0.10    # Minimum +0.10 Sharpe over Phase 1
+      significance_threshold: 0.05    # p-value < 0.05 required
+      min_live_days: 60               # Minimum Phase 1 live trading days before testing Phase 2

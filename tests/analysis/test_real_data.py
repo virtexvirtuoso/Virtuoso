@@ -2,7 +2,7 @@ import unittest
 import asyncio
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta, time
+from datetime import datetime, timedelta, time, timezone
 import logging
 from src.analysis.session_analyzer import SessionAnalyzer
 from src.data_processing.processors import DataProcessor
@@ -71,7 +71,7 @@ class RealDataFetcher:
             end_time = session_info['end']
             
             # Convert session times to timestamps
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
             today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
             yesterday = today_start - timedelta(days=1)
             

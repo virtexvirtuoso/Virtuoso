@@ -1,0 +1,119 @@
+best_params:
+  fast: 8
+  slow: 20
+holdout_performance:
+  combined:
+    overall_sharpe: !!python/object/apply:numpy._core.multiarray.scalar
+    - &id001 !!python/object/apply:numpy.dtype
+      args:
+      - f8
+      - false
+      - true
+      state: !!python/tuple
+      - 3
+      - <
+      - null
+      - null
+      - null
+      - -1
+      - -1
+      - 0
+    - !!binary |
+      Jite3ScB1r8=
+    signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+    - *id001
+    - !!binary |
+      uzlpgQMl0T8=
+    symmetry_score: !!python/object/apply:numpy._core.multiarray.scalar
+    - *id001
+    - !!binary |
+      AAAAAAAAAAA=
+  long:
+    avg_profit: !!python/object/apply:numpy._core.multiarray.scalar
+    - *id001
+    - !!binary |
+      NwnHSX+jsz8=
+    num_trades: 145
+    sharpe: !!python/object/apply:numpy._core.multiarray.scalar
+    - *id001
+    - !!binary |
+      IwJDllU56D8=
+    total_return: !!python/object/apply:numpy._core.multiarray.scalar
+    - *id001
+    - !!binary |
+      cHiTMTY/JkA=
+    win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+    - *id001
+    - !!binary |
+      J0p2baJk1z8=
+  short:
+    avg_profit: !!python/object/apply:numpy._core.multiarray.scalar
+    - *id001
+    - !!binary |
+      7RhjG5D3wb8=
+    num_trades: 145
+    sharpe: !!python/object/apply:numpy._core.multiarray.scalar
+    - *id001
+    - !!binary |
+      dWDx3C9J+78=
+    total_return: !!python/object/apply:numpy._core.multiarray.scalar
+    - *id001
+    - !!binary |
+      PEIGP3FaNMA=
+    win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+    - *id001
+    - !!binary |
+      mApafamg1T8=
+indicator: ao
+n_trials: 50
+optimization_score: 0.5581285371264777
+train_performance:
+  combined:
+    overall_sharpe: !!python/object/apply:numpy._core.multiarray.scalar
+    - *id001
+    - !!binary |
+      XlBGECU71D8=
+    signal_clarity: !!python/object/apply:numpy._core.multiarray.scalar
+    - *id001
+    - !!binary |
+      hC5kdzNtzz8=
+    symmetry_score: !!python/object/apply:numpy._core.multiarray.scalar
+    - *id001
+    - !!binary |
+      AAAAAAAAAAA=
+  long:
+    avg_profit: !!python/object/apply:numpy._core.multiarray.scalar
+    - *id001
+    - !!binary |
+      ApYWnNORyj8=
+    num_trades: 154
+    sharpe: !!python/object/apply:numpy._core.multiarray.scalar
+    - *id001
+    - !!binary |
+      o8qSGDwy9j8=
+    total_return: !!python/object/apply:numpy._core.multiarray.scalar
+    - *id001
+    - !!binary |
+      eizLl3L3P0A=
+    win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+    - *id001
+    - !!binary |
+      27Zt27Zt2z8=
+  short:
+    avg_profit: !!python/object/apply:numpy._core.multiarray.scalar
+    - *id001
+    - !!binary |
+      OIrpweaivr8=
+    num_trades: 155
+    sharpe: !!python/object/apply:numpy._core.multiarray.scalar
+    - *id001
+    - !!binary |
+      zkA3UZ0a778=
+    total_return: !!python/object/apply:numpy._core.multiarray.scalar
+    - *id001
+    - !!binary |
+      sGZot6GMMsA=
+    win_rate: !!python/object/apply:numpy._core.multiarray.scalar
+    - *id001
+    - !!binary |
+      ttZaa6211j8=

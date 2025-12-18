@@ -1,0 +1,50 @@
+optimization_date: '2025-11-21T11:02:38.568504'
+study_name: technical_indicators_minimal_reg
+n_trials: 200
+best_trial: 182
+best_value: 0.6632648236127331
+weights:
+  percentages:
+    rsi: 16.55566964873647
+    macd: 17.691393821200947
+    williams_r: 17.090371025578264
+    ao: 16.02805651522412
+    cci: 16.557610892370636
+    atr: 16.076898096889558
+  normalized:
+    rsi: 0.1655566964873647
+    macd: 0.17691393821200949
+    williams_r: 0.17090371025578263
+    ao: 0.16028056515224118
+    cci: 0.16557610892370636
+    atr: 0.16076898096889558
+  raw:
+    rsi: 0.18092272508126528
+    macd: 0.1933340812258728
+    williams_r: 0.1867660181799715
+    ao: 0.17515689331915316
+    cci: 0.180943939269262
+    atr: 0.1756906411070516
+indicator_effectiveness:
+  rsi: 0.82
+  macd: 0.73
+  williams_r: 0.68
+  ao: 0.7
+  cci: 0.62
+  atr: 0.58
+regularization:
+  entropy: 0.9996657007042737
+  dominance: 0.01663337305976831
+  variance: 0.0
+  weight_stability: 0.0
+config:
+  n_folds: 5
+  n_trials: 200
+  entropy_penalty: 3.0
+  dominance_penalty: 1.5
+  variance_penalty: 2.0
+  stability_penalty: 1.0
+weight_range:
+  min: 16.02805651522412
+  max: 17.691393821200947
+  spread: 1.6633373059768282

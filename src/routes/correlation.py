@@ -6,7 +6,7 @@ import asyncio
 import numpy as np
 import pandas as pd
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import json
 import os
@@ -73,7 +73,7 @@ class SignalCorrelationCalculator:
                     "symbols": symbols,
                     "timeframe": timeframe,
                     "lookback_periods": lookback_periods,
-                    "calculation_time": datetime.utcnow().isoformat(),
+                    "calculation_time": datetime.now(timezone.utc).isoformat(),
                     "data_points": len(signal_data)
                 }
             }
@@ -364,7 +364,7 @@ async def _get_matrix_data_internal(symbols_list: List[str], timeframe: str, inc
                 "symbols": symbols_list,
                 "signal_types": SIGNAL_TYPES,
                 "timeframe": timeframe,
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "total_symbols": len(symbols_list),
                 "total_signals": len(SIGNAL_TYPES)
             }
@@ -517,7 +517,7 @@ async def get_signal_confluence_matrix(
                 "symbols": symbols_list,
                 "signal_types": SIGNAL_TYPES,
                 "timeframe": timeframe,
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "total_symbols": len(symbols_list),
                 "total_signals": len(SIGNAL_TYPES)
             }
@@ -624,7 +624,7 @@ async def get_correlation_heatmap_data(
             "metadata": {
                 "dimensions": f"{len(labels)}x{len(labels)}",
                 "timeframe": timeframe,
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
         }
         
@@ -665,7 +665,7 @@ async def get_live_signal_matrix(
             },
             "real_time_status": {
                 "is_live": True,
-                "last_update": datetime.utcnow().isoformat(),
+                "last_update": datetime.now(timezone.utc).isoformat(),
                 "refresh_interval": refresh_interval,
                 "data_freshness": "excellent"
             },

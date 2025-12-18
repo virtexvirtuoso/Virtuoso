@@ -93,8 +93,11 @@ class WebSocketManager:
                 f"kline.1.{symbol}",          # 1-minute candlesticks
                 f"orderbook.50.{symbol}",     # Orderbook with 50 levels
                 f"publicTrade.{symbol}",      # Trades
-                f"liquidation.{symbol}"       # Liquidations
+                f"allLiquidation.{symbol}"    # Liquidations (Bybit V5 format)
             ]
+
+            # Log liquidation subscription setup
+            self.logger.info(f"📊 Configured liquidation subscription: allLiquidation.{symbol}")
         
         # Connect to WebSocket and subscribe to channels
         await self._connect_and_subscribe()
@@ -225,6 +228,11 @@ class WebSocketManager:
                     "args": topics
                 }
 
+                # Log liquidation subscriptions specifically
+                liq_topics = [t for t in topics if 'allLiquidation' in t]
+                if liq_topics:
+                    self.logger.info(f"🔔 Subscribing to {len(liq_topics)} liquidation channels: {liq_topics[:3]}...")
+
                 try:
                     await ws.send_json(subscription_message)
                     self.logger.info(f"Subscription sent for {connection_id}: {len(topics)} topics")
@@ -235,7 +243,9 @@ class WebSocketManager:
                         if response.get('success'):
                             self.logger.info(f"Subscription confirmed for {connection_id}")
                         else:
-                            self.logger.warning(f"Subscription response for {connection_id}: {response}")
+                            # Bybit sends snapshot data instead of success=true for kline subscriptions
+                            # This is normal behavior, not an error
+                            self.logger.debug(f"Subscription response for {connection_id}: {response}")
                     except asyncio.TimeoutError:
                         self.logger.warning(f"No subscription confirmation received for {connection_id}")
 

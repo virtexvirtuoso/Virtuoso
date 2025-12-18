@@ -187,6 +187,8 @@ class MarketMonitor:
         self._metrics_tracker = None
         self._ws_manager_component = None
         self._alert_manager_component = None
+        self._regime_monitor = None
+        self._regime_detector = None
         self._components_initialized = False
         
         # Runtime state
@@ -368,7 +370,24 @@ class MarketMonitor:
             
             # Alert Manager Component - enhanced alert handling (if needed)
             self._alert_manager_component = self.alert_manager  # Use existing alert manager
-            
+
+            # Regime Detection Components - for market regime monitoring and alerts
+            try:
+                from src.core.analysis.market_regime_detector import MarketRegimeDetector
+                from src.monitoring.regime_monitor import RegimeMonitor
+
+                self._regime_detector = MarketRegimeDetector(self.config)
+                self._regime_monitor = RegimeMonitor(
+                    alert_manager=self.alert_manager,
+                    config=self.config,
+                    enable_external_data=True
+                )
+                self.logger.info("✅ Regime detection components initialized (detector + monitor + external data)")
+            except Exception as e:
+                self.logger.warning(f"Regime detection initialization failed: {e} - regime alerts will be disabled")
+                self._regime_detector = None
+                self._regime_monitor = None
+
             self._components_initialized = True
             self.logger.info("✅ All monitoring components initialized successfully")
             
@@ -441,6 +460,32 @@ class MarketMonitor:
     def alert_manager_component(self):
         """Get alert manager component."""
         return self._alert_manager_component
+
+    @property
+    def regime_monitor(self):
+        """Get regime monitor, initializing components if needed."""
+        if not self._components_initialized:
+            try:
+                import asyncio
+                loop = asyncio.get_running_loop()
+                if not hasattr(self, '_init_task') or self._init_task.done():
+                    self._init_task = loop.create_task(self._initialize_components())
+            except RuntimeError:
+                pass
+        return self._regime_monitor
+
+    @property
+    def regime_detector(self):
+        """Get regime detector, initializing components if needed."""
+        if not self._components_initialized:
+            try:
+                import asyncio
+                loop = asyncio.get_running_loop()
+                if not hasattr(self, '_init_task') or self._init_task.done():
+                    self._init_task = loop.create_task(self._initialize_components())
+            except RuntimeError:
+                pass
+        return self._regime_detector
 
     def set_shared_cache(self, shared_cache_bridge):
         """
@@ -550,7 +595,17 @@ class MarketMonitor:
                 except Exception as e:
                     self.logger.warning(f"Could not initialize symbols during startup: {e}")
                     # Not critical - will be populated in monitoring cycle
-            
+
+            # Pre-warm cache aggregator for faster dashboard startup
+            # This fetches market-wide tickers and populates cache before monitoring begins
+            if self.cache_data_aggregator:
+                try:
+                    await self.cache_data_aggregator.initialize()
+                    self.logger.info("✅ Cache aggregator pre-warmed for instant dashboard data")
+                except Exception as e:
+                    self.logger.warning(f"Cache aggregator pre-warming failed (non-critical): {e}")
+                    # Not critical - cache will warm up gradually during normal operation
+
             # Always return True - we can function with lazy initialization
             return True
             
@@ -855,9 +910,11 @@ class MarketMonitor:
             if not await self.validator.validate_market_data(market_data):
                 self.logger.warning(f"Invalid market data for {symbol_str}")
                 return {"success": False, "reason": "invalid_market_data", "symbol": symbol_str}
-            
-            # Step 3: Process with confluence analyzer
+
+            # Step 3: Process with confluence analyzer (MUST happen before regime detection)
+            # NOTE: Order changed in v1.1 - confluence analysis provides the primary directional signal
             self.logger.debug(f"🎯 TASK STEP 3: Starting confluence analysis for {symbol_str}")
+            confluence_score = None  # Will be populated by analyzer
             analyzer = getattr(self, 'confluence_analyzer', None)
             if analyzer and hasattr(analyzer, 'analyze') and callable(getattr(analyzer, 'analyze')):
                 try:
@@ -871,7 +928,15 @@ class MarketMonitor:
                         # Log confluence score
                         confluence_score = analysis_result.get('confluence_score', 0)
                         self.logger.info(f"✅ Confluence analysis complete for {symbol_str}: Score={confluence_score:.2f}")
-                        
+
+                        # Step 3.5: Unified Regime Detection (NOW uses confluence as primary signal)
+                        # Moved AFTER confluence analysis to enable unified classification
+                        if self.regime_detector and self.regime_monitor:
+                            try:
+                                await self._detect_and_update_regime(symbol_str, market_data, confluence_score)
+                            except Exception as e:
+                                self.logger.warning(f"Regime detection error for {symbol_str}: {e}")
+
                         # Step 4: Process analysis result (handles signal generation internally)
                         await self._process_analysis_result(symbol_str, analysis_result, market_data)
                         
@@ -931,6 +996,16 @@ class MarketMonitor:
                 self.logger.debug(f"✅ Whale trade detection completed for {symbol_str}")
             except Exception as e:
                 self.logger.error(f"Whale trade detection error for {symbol_str}: {str(e)}")
+
+            # Step 10: Update Bitcoin prediction system with BTC price
+            if symbol_str in ['BTCUSDT', 'BTC/USDT'] and self.signal_generator:
+                try:
+                    btc_price = market_data.get('ticker', {}).get('last', 0) or market_data.get('price', 0)
+                    if btc_price > 0 and hasattr(self.signal_generator, 'update_btc_price'):
+                        self.signal_generator.update_btc_price(btc_price)
+                        self.logger.debug(f"✅ Updated BTC price for prediction: ${btc_price:,.2f}")
+                except Exception as e:
+                    self.logger.debug(f"BTC price update failed: {e}")
 
             # CRITICAL SUCCESS RETURN - This fixes the "15 tasks completed but did no work" error
             self.logger.debug(f"🎯 TASK SUCCESS: {symbol_str} processing completed successfully")
@@ -1153,6 +1228,118 @@ class MarketMonitor:
             throttle=True,
         )
         self._last_whale_alert[symbol] = current_time
+
+    async def _detect_and_update_regime(
+        self,
+        symbol: str,
+        market_data: Dict[str, Any],
+        confluence_score: Optional[float] = None
+    ) -> None:
+        """
+        Detect market regime and push update to RegimeMonitor.
+
+        UNIFIED REGIME SYSTEM (v1.1):
+        This method now uses confluence_score as the PRIMARY directional signal,
+        with ADX/EMA as validators. This provides more accurate regime detection
+        by leveraging the indicator consensus from confluence analysis.
+
+        This method performs multi-timeframe regime detection using available OHLCV data,
+        enhances it with external signals (perps-tracker, CoinGecko, Fear/Greed), and
+        sends updates to the RegimeMonitor which handles change detection and alerting.
+
+        Args:
+            symbol: Trading symbol (e.g., 'BTCUSDT')
+            market_data: Market data dict containing OHLCV, orderbook, etc.
+            confluence_score: Optional confluence score (0-100) for unified regime detection
+                - 0-40: Bearish indicator consensus
+                - 40-60: Neutral/mixed signals
+                - 60-100: Bullish indicator consensus
+        """
+        import pandas as pd
+
+        if not self.regime_detector or not self.regime_monitor:
+            return
+
+        try:
+            # Extract OHLCV data by timeframe
+            ohlcv_data = market_data.get('ohlcv', {})
+            if not ohlcv_data:
+                self.logger.debug(f"No OHLCV data for regime detection: {symbol}")
+                return
+
+            # Build timeframe dict for MTF detection
+            ohlcv_by_timeframe = {}
+
+            # Map internal timeframe names to expected format
+            tf_mappings = {
+                'base': '5m',    # or whatever base timeframe is
+                'ltf': '1m',
+                'mtf': '15m',
+                'htf': '1h'
+            }
+
+            for internal_name, tf_key in tf_mappings.items():
+                df = ohlcv_data.get(internal_name)
+                if df is not None and isinstance(df, pd.DataFrame) and len(df) >= 50:
+                    ohlcv_by_timeframe[tf_key] = df
+
+            if len(ohlcv_by_timeframe) < 2:
+                # Fall back to single timeframe if not enough MTF data
+                for key, df in ohlcv_data.items():
+                    if isinstance(df, pd.DataFrame) and len(df) >= 50:
+                        ohlcv_by_timeframe['5m'] = df
+                        break
+
+            if not ohlcv_by_timeframe:
+                self.logger.debug(f"Insufficient OHLCV data for regime detection: {symbol}")
+                return
+
+            # Extract orderbook for liquidity assessment
+            orderbook = market_data.get('orderbook', {})
+
+            # Perform MTF regime detection with unified confluence signal
+            # v1.1: confluence_score is now the PRIMARY directional signal
+            detection = self.regime_detector.detect_regime_mtf(
+                ohlcv_by_timeframe=ohlcv_by_timeframe,
+                orderbook=orderbook,
+                confluence_score=confluence_score  # Unified regime: confluence as primary signal
+            )
+
+            # Log unified mode status
+            if confluence_score is not None:
+                self.logger.debug(
+                    f"Unified regime detection for {symbol}: "
+                    f"confluence={confluence_score:.1f}, regime={detection.regime.value}"
+                )
+
+            # Enhance with external signals (perps-tracker, CoinGecko, Fear/Greed)
+            external_signals = await self.regime_monitor.fetch_external_signals()
+            if external_signals:
+                detection = self.regime_detector.enhance_regime_with_external_data(
+                    detection, external_signals
+                )
+
+            # Push to RegimeMonitor (handles change detection and alerting)
+            # Trigger name indicates detection mode: unified (with confluence) vs mtf (legacy)
+            trigger_mode = 'unified' if confluence_score is not None else 'mtf'
+            if external_signals:
+                trigger_mode += '_external'
+
+            change = await self.regime_monitor.update_regime(
+                symbol=symbol,
+                detection=detection,
+                trigger=trigger_mode
+            )
+
+            if change:
+                self.logger.info(
+                    f"📊 Regime change detected: {symbol} "
+                    f"{change.previous_regime} → {change.new_regime} "
+                    f"(confidence: {change.new_confidence:.1%})"
+                )
+
+        except Exception as e:
+            self.logger.warning(f"Regime detection failed for {symbol}: {e}")
 
     async def _detect_whale_trades(self, symbol: str, market_data: Dict[str, Any]) -> None:
         """Detect individual large trades (executed whales), not just orderbook positioning.
