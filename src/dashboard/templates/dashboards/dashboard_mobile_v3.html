@@ -4368,7 +4368,7 @@
         // Fetch real L/S positioning from crypto-perps-tracker API
         async function fetchMarketLSR() {
             try {
-                const response = await fetch('/api/aggregated/market-lsr');
+                const response = await fetch('http://' + window.location.hostname + ':8888/api/aggregated/market-lsr');
                 if (!response.ok) throw new Error('LSR API error');
                 const data = await response.json();
 
@@ -4787,7 +4787,7 @@
 
         // Sector Rotation API - crypto-perps-tracker multi-exchange API (8 exchanges, 91.7% market coverage)
         // Direct connection to derivatives-signals-api on port 8888
-        const SECTOR_ROTATION_API = '';
+        const SECTOR_ROTATION_API = 'http://' + window.location.hostname + ':8888';
 
         // Fetch and update Sector Rotation data (multi-exchange: Binance, OKX, Bybit, Gate.io, Bitget, HyperLiquid, AsterDEX, dYdX)
         // API is running on port 8888 with CORS enabled
