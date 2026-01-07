@@ -288,6 +288,12 @@ analysis:
         recency_factor: 1.5
         strength_threshold: 20
         time_weighting: true
+        # Divergence score multipliers - controls max point bonus/penalty
+        # Primary (CVD/OI): 0.1 * 40 = 4 pts max (was 0.1 * 15 = 1.5 pts)
+        # Secondary (Timeframe): 0.1 * 20 = 2 pts max (was 0.1 * 10 = 1 pt)
+        # See: docs/07-technical/investigations/CONFLUENCE_SCORE_COMPRESSION_INVESTIGATION.md
+        multiplier_primary: 40      # For CVD and OI divergences
+        multiplier_secondary: 20    # For timeframe divergences
       imbalance:
         normalize: true
         smoothing: 2
