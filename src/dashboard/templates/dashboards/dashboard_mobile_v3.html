@@ -52,29 +52,8 @@
     <link rel="apple-touch-icon" sizes="152x152" href="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTUyIiBoZWlnaHQ9IjE1MiIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPgogIDxyZWN0IHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgcng9IjQiIGZpbGw9IiMwYTBhMGEiLz4KICA8cGF0aCBkPSJtMyAxNyA2LTYgNCA0IDgtOCIgc3Ryb2tlPSIjZmJiZjI0IiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPgogIDxwYXRoIGQ9Im0yMSA3LTQgNFY3aDR6IiBmaWxsPSIjZmJiZjI0IiBzdHJva2U9IiNmYmJmMjQiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+Cjwvc3ZnPg==">
     <link rel="apple-touch-icon" sizes="180x180" href="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTgwIiBoZWlnaHQ9IjE4MCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPgogIDxyZWN0IHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgcng9IjQiIGZpbGw9IiMwYTBhMGEiLz4KICA8cGF0aCBkPSJtMyAxNyA2LTYgNCA0IDgtOCIgc3Ryb2tlPSIjZmJiZjI0IiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPgogIDxwYXRoIGQ9Im0yMSA3LTQgNFY3aDR6IiBmaWxsPSIjZmJiZjI0IiBzdHJva2U9IiNmYmJmMjQiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+Cjwvc3ZnPg==">
     
-    <!-- DNS Prefetch & Preconnect for faster resource loading -->
-    <link rel="dns-prefetch" href="//fonts.googleapis.com">
-    <link rel="dns-prefetch" href="//fonts.gstatic.com">
-
-    <!-- Brand Fonts - with fallback for blocked networks -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <style>
-        /* Fallback fonts if Google Fonts is blocked */
-        @font-face {
-            font-family: 'Inter';
-            font-style: normal;
-            font-weight: 300 700;
-            src: local('Inter'), local('Segoe UI'), local('Roboto'), local('Helvetica Neue');
-        }
-        @font-face {
-            font-family: 'IBM Plex Mono';
-            font-style: normal;
-            font-weight: 400 700;
-            src: local('IBM Plex Mono'), local('SF Mono'), local('Consolas'), local('Monaco');
-        }
-    </style>
+    <!-- Self-hosted Brand Fonts (Inter & IBM Plex Mono) - no external requests needed -->
+    <link rel="stylesheet" href="/static/fonts/fonts.css">
 
     <!-- Preload critical JavaScript for parallel download -->
     <link rel="preload" href="/static/js/lightweight-charts.min.js" as="script">
@@ -159,10 +138,46 @@
             transform: scale(0.99);
         }
 
-        /* Elastic Overscroll for iOS feel */
+        /* Overscroll behavior - contain prevents parent scroll chaining */
         .main-content, .tab-content {
-            overscroll-behavior-y: auto;
+            overscroll-behavior-y: contain;
             -webkit-overflow-scrolling: touch;
+        }
+
+        /* Horizontal scroll fade indicators - shows more content exists */
+        .scroll-fade-wrapper {
+            position: relative;
+        }
+
+        .scroll-fade-wrapper::before,
+        .scroll-fade-wrapper::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            bottom: 4px; /* Account for scrollbar padding */
+            width: 24px;
+            pointer-events: none;
+            z-index: 10;
+            opacity: 0;
+            transition: opacity 0.2s ease;
+        }
+
+        .scroll-fade-wrapper::before {
+            left: 0;
+            background: linear-gradient(to right, var(--bg-panel) 0%, transparent 100%);
+        }
+
+        .scroll-fade-wrapper::after {
+            right: 0;
+            background: linear-gradient(to left, var(--bg-panel) 0%, transparent 100%);
+        }
+
+        .scroll-fade-wrapper.can-scroll-left::before {
+            opacity: 1;
+        }
+
+        .scroll-fade-wrapper.can-scroll-right::after {
+            opacity: 1;
         }
 
         /* Minimum 44px touch targets (Apple HIG) - Optimization #7 */
@@ -426,7 +441,7 @@
             -webkit-backdrop-filter: blur(16px) saturate(140%);
             border-bottom: 1px solid rgba(255, 255, 255, 0.05);
             overflow: hidden;
-            z-index: 89;
+            z-index: 998; /* Match header/price-ticker z-index level to prevent content bleeding */
             display: flex;
             align-items: center;
             transition: transform 0.3s ease, opacity 0.3s ease;
@@ -576,13 +591,31 @@
                 0 -4px 20px rgba(0, 0, 0, 0.4),
                 0 0 0 1px rgba(255, 255, 255, 0.05) inset,
                 0 1px 0 rgba(255, 255, 255, 0.12) inset;
-            /* GPU compositing fixes for scroll distortion */
-            -webkit-transform: translate3d(0, 0, 0);
-            transform: translate3d(0, 0, 0);
+            /* Safari iOS fixed positioning fix - transform handled by JS scroll controller */
+            -webkit-transform: translateZ(0);
+            transform: translateZ(0);
             -webkit-backface-visibility: hidden;
             backface-visibility: hidden;
-            will-change: transform;
+            /* REMOVED: will-change causes Safari fixed positioning bugs with backdrop-filter */
+            /* will-change: transform; */
             isolation: isolate;
+            /* Scroll hide/show transition */
+            transition: transform 300ms cubic-bezier(0.4, 0, 0.2, 1);
+            /* Safari-specific: Force new compositor layer without breaking fixed positioning */
+            -webkit-transform-style: flat;
+            transform-style: flat;
+        }
+
+        /* Reduced motion support - accessibility */
+        @media (prefers-reduced-motion: reduce) {
+            .bottom-nav {
+                transition-duration: 0ms !important;
+            }
+        }
+
+        /* Hidden state - applied by scroll controller */
+        .bottom-nav[aria-hidden="true"] {
+            pointer-events: none;
         }
 
         /* Subtle top highlight for depth */
@@ -1102,12 +1135,28 @@
         .signal-card:last-child {
             border-bottom: none;
         }
-        
+
         .signal-card:hover {
             background: rgba(251, 191, 36, 0.05);
             margin: 0 -8px;
             padding: 12px 8px;
             border-radius: 8px;
+        }
+
+        /* MTF Rankings Cards - Override base .signal-card styles */
+        #mtfRankingsList .signal-card {
+            display: block;
+            width: 100%;
+            box-sizing: border-box;
+            padding: 14px;
+            border-bottom: none;
+        }
+
+        #mtfRankingsList .signal-card:hover {
+            margin: 0;
+            padding: 14px;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
         }
 
         .signal-info {
@@ -1677,6 +1726,8 @@
             .bottom-nav {
                 padding: 6px 16px;
                 padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px));
+                /* Preserve scroll hide/show transition in landscape */
+                transition: transform 300ms cubic-bezier(0.4, 0, 0.2, 1);
             }
             .nav-icon { width: 18px; height: 18px; }
             .nav-label { font-size: 9px; }
@@ -1686,7 +1737,125 @@
                 border-radius: 12px;
             }
         }
-        
+
+        /* ═══════════════════════════════════════════════════════════════════
+           LANDSCAPE MODE OPTIMIZATIONS (All Landscape Orientations)
+           Card #202: Mobile Dashboard Landscape Mode Improvements
+           ═══════════════════════════════════════════════════════════════════ */
+
+        /* P0: Content width - use full landscape width instead of portrait max-width */
+        @media (orientation: landscape) {
+            .tab-content {
+                max-width: min(90vw, 900px);
+                padding-left: env(safe-area-inset-left, 16px);
+                padding-right: env(safe-area-inset-right, 16px);
+            }
+
+            /* P0: Reduce header chrome to maximize content area */
+            .mobile-header {
+                height: 50px !important;
+                --mobile-header-height: 50px;
+            }
+
+            /* Note: main-content padding adjusted in TICKER OPTIMIZATIONS block below */
+
+            /* P1: Body safe areas for iPhone notch/Dynamic Island */
+            body {
+                padding-left: env(safe-area-inset-left);
+                padding-right: env(safe-area-inset-right);
+            }
+
+            /* P1: Optimized bottom nav for landscape */
+            .bottom-nav {
+                height: 54px;
+                padding: 8px 20px;
+                padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+                padding-left: calc(20px + env(safe-area-inset-left, 0px));
+                padding-right: calc(20px + env(safe-area-inset-right, 0px));
+            }
+
+            .nav-item {
+                padding: 8px 6px;
+                min-height: 44px;
+            }
+
+            .nav-icon {
+                width: 20px;
+                height: 20px;
+            }
+
+            .nav-label {
+                font-size: 10px;
+                margin-top: 2px;
+            }
+        }
+
+        /* ═══════════════════════════════════════════════════════════════════
+           LANDSCAPE MODE: TICKER OPTIMIZATIONS
+           Compact both tickers to maximize content area while keeping visible
+           ═══════════════════════════════════════════════════════════════════ */
+        @media (orientation: landscape) {
+            /* Compact price ticker: reduce height from 28px to 20px */
+            .price-ticker {
+                height: 20px;
+                top: calc(50px + var(--safe-area-top));
+            }
+
+            /* Compact news ticker: reduce height from 24px to 18px */
+            .news-ticker {
+                height: 18px;
+                top: calc(50px + var(--safe-area-top) + 20px); /* header + price ticker */
+            }
+
+            /* Smaller ticker text for compact height */
+            .ticker-item {
+                font-size: 10px;
+                padding: 0 10px;
+            }
+
+            .ticker-change {
+                font-size: 9px;
+            }
+
+            /* Compact news ticker text */
+            .news-ticker-label {
+                font-size: 8px;
+                padding: 2px 6px;
+            }
+
+            .news-track {
+                font-size: 10px;
+            }
+
+            /* Adjust main content padding: header(50px) + price(20px) + news(18px) + gap(6px) = 94px */
+            .main-content {
+                padding-top: calc(50px + var(--safe-area-top) + 20px + 18px + 6px);
+            }
+        }
+
+        /* P1: Two-column grid for wider landscape screens */
+        @media (orientation: landscape) and (min-width: 600px) {
+            .tab-content > .mobile-card:not(.fullscreen-chart):not(#betaChartCard) {
+                display: inline-block;
+                width: calc(50% - 8px);
+                vertical-align: top;
+                margin-right: 8px;
+            }
+
+            .tab-content > .mobile-card:not(.fullscreen-chart):not(#betaChartCard):nth-child(2n) {
+                margin-right: 0;
+            }
+
+            /* Keep full-width for charts and important cards */
+            #betaChartCard,
+            .mobile-card.fullscreen-chart,
+            .tab-content > .mobile-card:first-child {
+                display: block;
+                width: 100%;
+                margin-right: 0;
+            }
+        }
+
         /* Neon Text Utility */
         .neon-text {
             color: var(--neon-amber);
@@ -1984,21 +2153,23 @@
         .momentum-metrics-mobile {
             display: flex;
             flex-direction: column;
-            gap: 2px;
+            gap: 4px; /* Increased from 2px for better touch targets */
         }
 
         .momentum-metric-mobile {
             display: flex;
             align-items: center;
-            gap: 4px;
+            gap: 6px; /* Increased from 4px for visual breathing room */
+            min-height: 18px; /* Ensures consistent row height */
         }
 
         .momentum-metric-label-mobile {
-            font-size: 9px;
+            font-size: 8px;
             color: var(--text-muted);
             text-transform: uppercase;
-            letter-spacing: 0.04em;
-            width: 28px;
+            letter-spacing: 0.02em;
+            width: 34px; /* Accommodates full words: PRICE, 24H, TREND */
+            flex-shrink: 0; /* Prevents label from shrinking */
         }
 
         .momentum-metric-value-mobile {
@@ -2006,6 +2177,7 @@
             font-size: 11px;
             font-weight: 500;
             color: var(--text-primary);
+            white-space: nowrap; /* Prevents value wrapping */
         }
 
         .momentum-metric-value-mobile.positive { color: #34d399; }
@@ -2223,6 +2395,316 @@
         .signal-pill-mobile.weak {
             opacity: 0.7;
         }
+
+        /* ===== Alert Quick Actions Bottom Sheet ===== */
+        .alert-sheet-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
+            z-index: 9998;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.3s ease, visibility 0.3s ease;
+        }
+
+        .alert-sheet-overlay.active {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .alert-bottom-sheet {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: var(--bg-secondary);
+            border-radius: 20px 20px 0 0;
+            border: 1px solid var(--border-light);
+            border-bottom: none;
+            z-index: 9999;
+            transform: translateY(100%);
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            max-height: 80vh;
+            overflow-y: auto;
+            padding-bottom: env(safe-area-inset-bottom, 20px);
+        }
+
+        .alert-bottom-sheet.active {
+            transform: translateY(0);
+        }
+
+        .sheet-handle {
+            width: 40px;
+            height: 4px;
+            background: var(--text-muted);
+            border-radius: 2px;
+            margin: 12px auto 16px;
+        }
+
+        .sheet-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 0 20px 16px;
+            border-bottom: 1px solid var(--border-light);
+        }
+
+        .sheet-header-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            background: rgba(251, 191, 36, 0.15);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .sheet-header-icon i {
+            color: var(--neon-amber);
+        }
+
+        .sheet-header-text h3 {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .sheet-header-text .sheet-subtitle {
+            font-size: 12px;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-top: 2px;
+        }
+
+        .sheet-score-badge {
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .sheet-score-badge.bullish {
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--accent-positive);
+        }
+
+        .sheet-score-badge.bearish {
+            background: rgba(239, 68, 68, 0.15);
+            color: var(--accent-negative);
+        }
+
+        .sheet-options {
+            padding: 16px;
+        }
+
+        .sheet-option {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 16px 14px;
+            border-radius: 12px;
+            margin-bottom: 8px;
+            background: var(--bg-tertiary);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border: 1px solid transparent;
+        }
+
+        .sheet-option:hover, .sheet-option:active {
+            background: rgba(251, 191, 36, 0.1);
+            border-color: rgba(251, 191, 36, 0.2);
+        }
+
+        .sheet-option-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .sheet-option-icon.amber {
+            background: rgba(251, 191, 36, 0.15);
+            color: var(--neon-amber);
+        }
+
+        .sheet-option-icon.green {
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--accent-positive);
+        }
+
+        .sheet-option-icon.red {
+            background: rgba(239, 68, 68, 0.15);
+            color: var(--accent-negative);
+        }
+
+        .sheet-option-text {
+            flex: 1;
+        }
+
+        .sheet-option-text h4 {
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--text-primary);
+            margin-bottom: 2px;
+        }
+
+        .sheet-option-text p {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        .sheet-option-value {
+            font-size: 12px;
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .sheet-option-value .count-badge {
+            padding: 2px 8px;
+            background: rgba(251, 191, 36, 0.15);
+            border-radius: 10px;
+            font-weight: 600;
+            color: var(--neon-amber);
+        }
+
+        .sheet-option-toggle {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            border: 2px solid var(--border-light);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .sheet-option-toggle.active {
+            background: var(--accent-positive);
+            border-color: var(--accent-positive);
+        }
+
+        .sheet-option-toggle.active i {
+            color: white;
+        }
+
+        .sheet-divider {
+            height: 1px;
+            background: var(--border-light);
+            margin: 8px 0 16px;
+        }
+
+        .sheet-section-label {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+            padding: 0 4px;
+            margin-bottom: 12px;
+        }
+
+        /* Threshold Slider in Sheet */
+        .threshold-config {
+            padding: 16px;
+            background: var(--bg-primary);
+            border-radius: 12px;
+            margin-bottom: 8px;
+        }
+
+        .threshold-config-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .threshold-config-header h5 {
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-primary);
+        }
+
+        .threshold-value-display {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--neon-amber);
+        }
+
+        .threshold-slider-container {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .threshold-slider-container input[type="range"] {
+            flex: 1;
+            -webkit-appearance: none;
+            height: 6px;
+            border-radius: 3px;
+            background: var(--bg-tertiary);
+            outline: none;
+        }
+
+        .threshold-slider-container input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            background: var(--neon-amber);
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(251, 191, 36, 0.4);
+        }
+
+        .threshold-range-labels {
+            display: flex;
+            justify-content: space-between;
+            font-size: 10px;
+            color: var(--text-muted);
+            margin-top: 6px;
+        }
+
+        .sheet-actions {
+            display: flex;
+            gap: 12px;
+            padding: 16px 20px;
+            border-top: 1px solid var(--border-light);
+        }
+
+        .sheet-btn {
+            flex: 1;
+            padding: 14px;
+            border-radius: 10px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border: none;
+        }
+
+        .sheet-btn.secondary {
+            background: var(--bg-tertiary);
+            color: var(--text-secondary);
+            border: 1px solid var(--border-light);
+        }
+
+        .sheet-btn.primary {
+            background: var(--neon-amber);
+            color: var(--bg-primary);
+        }
+
+        .sheet-btn:active {
+            transform: scale(0.98);
+        }
     </style>
 </head>
 <body>
@@ -2382,9 +2864,12 @@
                     </div>
                 </div>
 
-                <!-- Market Sentiment Breadth -->
+                <!-- Market L/S Positioning (Real Exchange Data) -->
                 <div class="breadth-visual" style="padding-top: 12px; border-top: 1px solid var(--border-light);">
-                    <div class="breadth-title" style="font-size: 10px; color: var(--text-secondary); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;">Market Sentiment <span class="live-indicator" style="display: inline-block; width: 6px; height: 6px; background: var(--accent-positive); border-radius: 50%; margin-left: 6px; animation: pulse 2s infinite;"></span></div>
+                    <div class="breadth-title" style="font-size: 10px; color: var(--text-secondary); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; justify-content: space-between;">
+                        <span>L/S Positioning <span class="live-indicator" style="display: inline-block; width: 6px; height: 6px; background: var(--accent-positive); border-radius: 50%; margin-left: 6px; animation: pulse 2s infinite;"></span></span>
+                        <span id="lsExchangeBadge" style="font-size: 9px; padding: 2px 6px; background: rgba(139, 92, 246, 0.2); color: #a78bfa; border-radius: 4px;">4 Exchanges</span>
+                    </div>
                     <div class="breadth-main" style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
                         <div class="market-icon" id="marketIcon" style="width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; transition: all 0.3s ease; background: rgba(76, 175, 80, 0.2); color: var(--accent-positive);">
                             <i data-lucide="trending-up" style="width: 24px; height: 24px;"></i>
@@ -2400,16 +2885,22 @@
                             <div class="breadth-stats" style="display: flex; justify-content: space-between; font-size: 12px; color: var(--text-muted);">
                                 <span class="stat-item" style="display: flex; align-items: center; gap: 4px;">
                                     <i data-lucide="arrow-up" style="width: 12px; height: 12px; color: var(--accent-positive);"></i>
-                                    <span class="stat-value" id="upCount" style="font-weight: 600; color: var(--text-primary);">0</span>
-                                    <span>rising</span>
+                                    <span class="stat-value" id="upCount" style="font-weight: 600; color: var(--text-primary);">0%</span>
+                                    <span>LONG</span>
                                 </span>
                                 <span class="stat-item" style="display: flex; align-items: center; gap: 4px;">
                                     <i data-lucide="arrow-down" style="width: 12px; height: 12px; color: var(--accent-negative);"></i>
-                                    <span class="stat-value" id="downCount" style="font-weight: 600; color: var(--text-primary);">0</span>
-                                    <span>falling</span>
+                                    <span class="stat-value" id="downCount" style="font-weight: 600; color: var(--text-primary);">0%</span>
+                                    <span>SHORT</span>
                                 </span>
                             </div>
                         </div>
+                    </div>
+                    <!-- Per-symbol breakdown -->
+                    <div id="lsSymbolBreakdown" style="display: flex; gap: 8px; justify-content: center; margin-top: 6px;">
+                        <span class="ls-symbol-chip" style="font-size: 10px; padding: 2px 8px; background: rgba(255,255,255,0.05); border-radius: 4px;"><span style="color: var(--text-secondary);">BTC:</span> <span id="lsBtc" style="color: var(--accent-positive);">--</span></span>
+                        <span class="ls-symbol-chip" style="font-size: 10px; padding: 2px 8px; background: rgba(255,255,255,0.05); border-radius: 4px;"><span style="color: var(--text-secondary);">ETH:</span> <span id="lsEth" style="color: var(--accent-positive);">--</span></span>
+                        <span class="ls-symbol-chip" style="font-size: 10px; padding: 2px 8px; background: rgba(255,255,255,0.05); border-radius: 4px;"><span style="color: var(--text-secondary);">SOL:</span> <span id="lsSol" style="color: var(--accent-positive);">--</span></span>
                     </div>
                 </div>
 
@@ -2454,10 +2945,10 @@
                     </div>
 
                     <!-- Basis Status -->
-                    <div style="background: rgba(0,0,0,0.2); padding: 10px; border-radius: 8px; text-align: center; min-width: 95px; display: flex; flex-direction: column; align-items: center;">
+                    <div style="background: rgba(0,0,0,0.2); padding: 10px; border-radius: 8px; text-align: center;">
                         <div style="font-size: 10px; color: var(--text-secondary); margin-bottom: 4px; text-transform: uppercase;">Basis</div>
-                        <div id="perpsBasisStatus" style="font-size: 8px; font-weight: 700; padding: 3px 6px; border-radius: 4px; background: rgba(255, 191, 0, 0.15); color: var(--text-primary); white-space: nowrap; letter-spacing: 0.3px;">NEUTRAL</div>
-                        <div id="perpsBasisPct" style="font-size: 10px; color: var(--text-secondary); margin-top: 2px;">+0.00%</div>
+                        <div id="perpsBasisPct" style="font-size: 16px; font-weight: 700; color: var(--text-primary);">+0.00%</div>
+                        <div id="perpsBasisStatus" style="font-size: 10px; font-weight: 600; color: var(--text-secondary); margin-top: 2px;">NEUTRAL</div>
                     </div>
                 </div>
 
@@ -2668,6 +3159,108 @@
                                 <div class="skeleton" style="height: 14px; margin-bottom: 4px;"></div>
                                 <div class="skeleton" style="height: 14px; width: 80%;"></div>
                             </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Market Cycle Phase -->
+                <div id="cyclePhaseSection" style="background: linear-gradient(135deg, rgba(251, 191, 36, 0.08) 0%, rgba(0,0,0,0.2) 100%); padding: 12px; border-radius: 10px; margin-bottom: 14px; border: 1px solid rgba(251, 191, 36, 0.15);">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">
+                        <div>
+                            <div style="font-size: 10px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 4px;">Market Cycle Phase</div>
+                            <div id="cyclePhaseLabel" style="font-size: 14px; font-weight: 700; color: var(--neon-amber);">
+                                Loading...
+                            </div>
+                        </div>
+                        <div id="cyclePhaseRiskBadge" style="font-size: 9px; font-weight: 700; padding: 4px 8px; border-radius: 4px; background: rgba(251, 191, 36, 0.2); color: var(--neon-amber); text-transform: uppercase;">
+                            --
+                        </div>
+                    </div>
+                    <!-- Phase Progress Bar -->
+                    <div style="margin-bottom: 10px;">
+                        <div style="display: flex; justify-content: space-between; font-size: 8px; color: var(--text-secondary); margin-bottom: 4px;">
+                            <span>BTC Dom</span>
+                            <span>Infra</span>
+                            <span>Alt</span>
+                            <span>Spec</span>
+                            <span>Peak</span>
+                        </div>
+                        <div style="position: relative; height: 6px; background: rgba(0,0,0,0.3); border-radius: 3px; overflow: hidden;">
+                            <div id="cyclePhaseProgress" style="position: absolute; left: 0; top: 0; height: 100%; width: 50%; background: linear-gradient(90deg, var(--accent-positive), var(--neon-amber), var(--accent-negative)); border-radius: 3px; transition: width 0.5s ease;"></div>
+                            <div id="cyclePhaseMarker" style="position: absolute; top: -2px; width: 10px; height: 10px; background: white; border-radius: 50%; box-shadow: 0 0 6px rgba(251,191,36,0.8); left: 50%; transform: translateX(-50%); transition: left 0.5s ease;"></div>
+                        </div>
+                    </div>
+                    <!-- Key Indicators -->
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;">
+                        <div style="text-align: center; background: rgba(0,0,0,0.2); padding: 6px; border-radius: 6px;">
+                            <div style="font-size: 8px; color: var(--text-secondary); text-transform: uppercase;">Spec Ratio</div>
+                            <div id="cycleSpecRatio" style="font-size: 13px; font-weight: 700; color: var(--text-primary);">--</div>
+                        </div>
+                        <div style="text-align: center; background: rgba(0,0,0,0.2); padding: 6px; border-radius: 6px;">
+                            <div style="font-size: 8px; color: var(--text-secondary); text-transform: uppercase;">Phase Score</div>
+                            <div id="cyclePhaseScore" style="font-size: 13px; font-weight: 700; color: var(--text-primary);">--</div>
+                        </div>
+                        <div style="text-align: center; background: rgba(0,0,0,0.2); padding: 6px; border-radius: 6px;">
+                            <div style="font-size: 8px; color: var(--text-secondary); text-transform: uppercase;">Confidence</div>
+                            <div id="cycleConfidence" style="font-size: 13px; font-weight: 700; color: var(--text-primary);">--</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Sector Rotation (Bybit-only during migration to multi-exchange) -->
+                <!-- MIGRATION NOTE: Multi-exchange version (8 exchanges, 91.7% coverage) available in crypto-perps-tracker -->
+                <div id="bybitSectorSection" style="background: linear-gradient(135deg, rgba(6, 182, 212, 0.08) 0%, rgba(0,0,0,0.2) 100%); padding: 12px; border-radius: 10px; margin-bottom: 14px; border: 1px solid rgba(6, 182, 212, 0.15);">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">
+                        <div>
+                            <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                                <span style="font-size: 10px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.3px;">Perps Sector Rotation</span>
+                                <span style="font-size: 7px; padding: 2px 5px; background: rgba(251, 191, 36, 0.15); color: var(--neon-amber); border-radius: 3px; font-weight: 600;">BYBIT</span>
+                            </div>
+                            <div id="bybitSectorStatus" style="font-size: 11px; color: var(--neon-cyan);">
+                                Loading...
+                            </div>
+                        </div>
+                        <div id="bybitSectorTimeframe" style="font-size: 9px; font-weight: 600; padding: 4px 8px; border-radius: 4px; background: rgba(6, 182, 212, 0.2); color: var(--neon-cyan); text-transform: uppercase;">
+                            4H
+                        </div>
+                    </div>
+                    <!-- Top/Bottom Sectors Grid -->
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+                        <div>
+                            <div style="font-size: 9px; color: var(--accent-positive); text-transform: uppercase; margin-bottom: 4px;">📈 Top Inflow</div>
+                            <div id="bybitTopSectors" style="font-size: 11px; color: var(--text-primary); line-height: 1.6;">
+                                <div style="color: var(--text-secondary);">--</div>
+                            </div>
+                        </div>
+                        <div>
+                            <div style="font-size: 9px; color: var(--accent-negative); text-transform: uppercase; margin-bottom: 4px;">📉 Top Outflow</div>
+                            <div id="bybitBottomSectors" style="font-size: 11px; color: var(--text-primary); line-height: 1.6;">
+                                <div style="color: var(--text-secondary);">--</div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Active Signals Count -->
+                    <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.2); padding: 8px; border-radius: 6px; margin-bottom: 10px;">
+                        <div style="font-size: 9px; color: var(--text-secondary); text-transform: uppercase;">Active Signals</div>
+                        <div style="display: flex; gap: 12px;">
+                            <div style="text-align: center;">
+                                <div id="bybitActiveSignals" style="font-size: 14px; font-weight: 700; color: var(--neon-cyan);">0</div>
+                                <div style="font-size: 8px; color: var(--text-secondary);">Total</div>
+                            </div>
+                            <div style="text-align: center;">
+                                <div id="bybitConfirmedSignals" style="font-size: 14px; font-weight: 700; color: var(--accent-positive);">0</div>
+                                <div style="font-size: 8px; color: var(--text-secondary);">Confirmed</div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- CEX vs DEX Flow -->
+                    <div style="background: rgba(0,0,0,0.2); padding: 8px; border-radius: 6px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                            <div style="font-size: 9px; color: var(--text-secondary); text-transform: uppercase;">CEX vs DEX Flow</div>
+                            <div id="cexDexFlowDirection" style="font-size: 8px; padding: 2px 6px; border-radius: 3px; background: rgba(251, 191, 36, 0.2); color: var(--neon-amber); font-weight: 600;">--</div>
+                        </div>
+                        <div id="cexDexFlowList" style="font-size: 10px; color: var(--text-primary); line-height: 1.6;">
+                            <div style="color: var(--text-secondary);">Loading...</div>
                         </div>
                     </div>
                 </div>
@@ -2988,13 +3581,13 @@
                        Pixel-perfect alignment for all 7 chips
                        ======================================== */
                     .tf-chip {
-                        /* Layout & Sizing */
+                        /* Layout & Sizing - 44px min for Apple HIG touch targets */
                         display: flex;
                         align-items: center;
                         justify-content: center;
-                        padding: 0 8px;
-                        min-height: 28px;
-                        min-width: 40px;
+                        padding: 0 10px;
+                        min-height: 44px;
+                        min-width: 44px;
                         flex: 1 1 0; /* Equal width distribution */
 
                         /* Typography */
@@ -3076,26 +3669,27 @@
                         display: none !important;
                     }
 
-                    /* Make chips slightly smaller in fullscreen for compact fit */
+                    /* Fullscreen chips - maintain 44px height for touch, compact width */
                     .fullscreen-chart .tf-chip {
-                        min-height: 24px;
-                        padding: 0 6px;
+                        min-height: 44px;
+                        padding: 0 8px;
                         font-size: 9px;
-                        min-width: 36px;
+                        min-width: 40px;
                     }
 
                     /* ========================================
                        RESPONSIVE ADJUSTMENTS
                        ======================================== */
                     @media (max-width: 360px) {
-                        /* Tighter spacing for very small screens */
+                        /* Tighter spacing for very small screens - maintain 44px height */
                         #timeframeScroller {
                             gap: 3px;
                         }
 
                         .tf-chip {
                             padding: 0 6px;
-                            min-width: 36px;
+                            min-width: 40px;
+                            min-height: 44px; /* Apple HIG compliance */
                             font-size: 9px;
                         }
                     }
@@ -3161,6 +3755,25 @@
                 </div>
             </div>
 
+            <!-- Beta Rankings -->
+            <div class="mobile-card">
+                <div class="card-header">
+                    <h2 class="card-title">Beta Rankings</h2>
+                    <select id="mtfClusterSelector" style="background: var(--bg-secondary); border: 1px solid var(--border-light); border-radius: 6px; padding: 6px 12px; color: var(--text-primary); font-size: 12px;" onchange="loadMTFRankings()">
+                        <option value="day_trading">Day Trading</option>
+                        <option value="scalping">Scalping</option>
+                        <option value="swing_trading">Swing Trading</option>
+                        <option value="comprehensive">Comprehensive</option>
+                    </select>
+                </div>
+                <div id="mtfRankingsList" style="display: flex; flex-direction: column; gap: 8px;">
+                    <!-- Beta rankings will be populated here -->
+                    <div class="loading" style="text-align: center; padding: 40px;">
+                        <div class="spinner" style="width: 32px; height: 32px; margin: 0 auto;"></div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Beta Performance (Combined Overview + Beta Analysis) -->
             <div class="mobile-card">
                 <div class="card-header">
@@ -3218,47 +3831,28 @@
                     </div>
                 </div>
             </div>
-
-            <!-- Beta Rankings -->
-            <div class="mobile-card">
-                <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; gap: 12px;">
-                    <h2 class="card-title" style="margin: 0;">Beta Rankings</h2>
-                    <select id="mtfClusterSelector" style="background: var(--bg-secondary); border: 1px solid var(--border-light); border-radius: 6px; padding: 6px 12px; color: var(--text-primary); font-size: 12px;" onchange="loadMTFRankings()">
-                        <option value="day_trading">Day Trading</option>
-                        <option value="scalping">Scalping</option>
-                        <option value="swing_trading">Swing Trading</option>
-                        <option value="comprehensive">Comprehensive</option>
-                    </select>
-                </div>
-                <div id="mtfRankingsList" style="display: flex; flex-direction: column; gap: 8px;">
-                    <!-- Beta rankings will be populated here -->
-                    <div class="loading" style="text-align: center; padding: 40px;">
-                        <div class="spinner" style="width: 32px; height: 32px; margin: 0 auto;"></div>
-                    </div>
-                </div>
-            </div>
         </div>
     </main>
 
     <!-- Bottom Navigation -->
-    <nav class="bottom-nav">
-        <button class="nav-item active" onclick="switchTab('dashboard')">
+    <nav class="bottom-nav" role="navigation" aria-label="Main navigation" aria-hidden="false">
+        <button class="nav-item active" onclick="switchTab('dashboard')" aria-label="Market Dashboard" aria-current="page">
             <i data-lucide="bar-chart-2" class="nav-icon"></i>
             <span class="nav-label">Market</span>
         </button>
-        <button class="nav-item" onclick="switchTab('alpha')">
+        <button class="nav-item" onclick="switchTab('alpha')" aria-label="Alpha Pulse">
             <i data-lucide="trending-up" class="nav-icon"></i>
             <span class="nav-label">Alpha</span>
         </button>
-        <button class="nav-item" onclick="switchTab('performance')">
+        <button class="nav-item" onclick="switchTab('performance')" aria-label="Bitcoin Beta Tracker">
             <span class="nav-icon" style="font-size: 20px; font-weight: 700;">₿</span>
             <span class="nav-label">Beta</span>
         </button>
-        <button class="nav-item" onclick="switchTab('signals')">
+        <button class="nav-item" onclick="switchTab('signals')" aria-label="Trading Signals">
             <i data-lucide="activity" class="nav-icon"></i>
             <span class="nav-label">Signals</span>
         </button>
-        <button class="nav-item" onclick="switchTab('alerts')" id="alertsNavBtn">
+        <button class="nav-item" onclick="switchTab('alerts')" id="alertsNavBtn" aria-label="Alerts">
             <i data-lucide="bell" class="nav-icon"></i>
             <span class="nav-label">Alerts</span>
             <span id="alertsBadge" class="notification-badge hidden">0</span>
@@ -3439,6 +4033,12 @@
         // Tab switching
         function switchTab(tabName) {
             hapticFeedback('light'); // Haptic feedback on tab switch
+
+            // Force show bottom nav on tab switch
+            if (window.bottomNavController) {
+                window.bottomNavController.forceShow();
+            }
+
             // Update nav items
             document.querySelectorAll('.nav-item').forEach(item => {
                 item.classList.remove('active');
@@ -3450,6 +4050,9 @@
                 const onclick = item.getAttribute('onclick');
                 if (onclick && onclick.includes(`'${tabName}'`)) {
                     item.classList.add('active');
+                    item.setAttribute('aria-current', 'page');
+                } else {
+                    item.removeAttribute('aria-current');
                 }
             });
 
@@ -3539,11 +4142,12 @@
             rafId = requestAnimationFrame(() => {
                 const currentY = e.touches[0].pageY;
                 const pullDistance = currentY - startY;
-                
-                if (pullDistance > 0 && pullDistance < 100) {
+
+                // Lowered threshold for better touch response (70px vs 100px)
+                if (pullDistance > 0 && pullDistance < 70) {
                     pullToRefresh.classList.add('active');
-                    // Use transform for better performance
-                    pullToRefresh.style.transform = `translate3d(0, ${Math.min(pullDistance - 60, 0)}px, 0)`;
+                    // Use transform for better performance (appear after 40px pull)
+                    pullToRefresh.style.transform = `translate3d(0, ${Math.min(pullDistance - 40, 0)}px, 0)`;
                 }
             });
         }, { passive: true });
@@ -3641,8 +4245,8 @@
             const longPct = data.long_pct || 50;
             const shortPct = data.short_pct || 50;
 
-            document.getElementById('perpsLongPct').textContent = longPct.toFixed(0) + '%';
-            document.getElementById('perpsShortPct').textContent = shortPct.toFixed(0) + '%';
+            document.getElementById('perpsLongPct').textContent = longPct.toFixed(1) + '%';
+            document.getElementById('perpsShortPct').textContent = shortPct.toFixed(1) + '%';
 
             const lsLabelEl = document.getElementById('perpsLSLabel');
             if (longPct > 55) {
@@ -3761,7 +4365,109 @@
             console.log('[PERPS] UI updated successfully with Phase 2 data');
         }
 
-        // Market breadth update function
+        // Fetch real L/S positioning from crypto-perps-tracker API
+        async function fetchMarketLSR() {
+            try {
+                const response = await fetch('/api/aggregated/market-lsr');
+                if (!response.ok) throw new Error('LSR API error');
+                const data = await response.json();
+
+                // Update the widget with real L/S data
+                updateMarketLSR(data);
+                console.log('[LSR] Real L/S positioning updated:', data.market_long_pct + '% long');
+                return data;
+            } catch (error) {
+                console.warn('[LSR] Failed to fetch real L/S data, falling back to breadth:', error);
+                return null;
+            }
+        }
+
+        // Update L/S Positioning widget with real exchange data
+        function updateMarketLSR(data) {
+            const longPct = data.market_long_pct || 50;
+            const shortPct = data.market_short_pct || 50;
+            const crowdSide = data.crowd_side || 'balanced';
+
+            // Update visual elements
+            document.getElementById('bullSection').style.width = longPct + '%';
+            document.getElementById('bullSection').textContent = Math.round(longPct) + '%';
+            document.getElementById('bearSection').style.width = shortPct + '%';
+            document.getElementById('bearSection').textContent = Math.round(shortPct) + '%';
+            document.getElementById('upCount').textContent = longPct.toFixed(1) + '%';
+            document.getElementById('downCount').textContent = shortPct.toFixed(1) + '%';
+
+            // Update icon and label based on positioning
+            const iconContainer = document.getElementById('marketIcon');
+            const label = document.getElementById('marketLabel');
+
+            if (crowdSide === 'long' || longPct > 65) {
+                iconContainer.innerHTML = '<i data-lucide="trending-up" style="width: 24px; height: 24px;"></i>';
+                iconContainer.style.background = 'rgba(76, 175, 80, 0.2)';
+                iconContainer.style.color = 'var(--accent-positive)';
+                label.textContent = 'Longs Crowded';
+                label.style.color = 'var(--accent-positive)';
+            } else if (crowdSide === 'short' || shortPct > 65) {
+                iconContainer.innerHTML = '<i data-lucide="trending-down" style="width: 24px; height: 24px;"></i>';
+                iconContainer.style.background = 'rgba(244, 67, 54, 0.2)';
+                iconContainer.style.color = 'var(--accent-negative)';
+                label.textContent = 'Shorts Crowded';
+                label.style.color = 'var(--accent-negative)';
+            } else if (crowdSide === 'lean_long') {
+                iconContainer.innerHTML = '<i data-lucide="arrow-up-right" style="width: 24px; height: 24px;"></i>';
+                iconContainer.style.background = 'rgba(76, 175, 80, 0.15)';
+                iconContainer.style.color = 'var(--accent-positive)';
+                label.textContent = 'Leaning Long';
+                label.style.color = 'var(--text-primary)';
+            } else if (crowdSide === 'lean_short') {
+                iconContainer.innerHTML = '<i data-lucide="arrow-down-right" style="width: 24px; height: 24px;"></i>';
+                iconContainer.style.background = 'rgba(244, 67, 54, 0.15)';
+                iconContainer.style.color = 'var(--accent-negative)';
+                label.textContent = 'Leaning Short';
+                label.style.color = 'var(--text-primary)';
+            } else {
+                iconContainer.innerHTML = '<i data-lucide="minus" style="width: 24px; height: 24px;"></i>';
+                iconContainer.style.background = 'rgba(255, 191, 0, 0.1)';
+                iconContainer.style.color = 'var(--text-primary)';
+                label.textContent = 'Balanced';
+                label.style.color = 'var(--text-primary)';
+            }
+
+            // Update per-symbol breakdown
+            if (data.symbols) {
+                const btcData = data.symbols.BTCUSDT;
+                const ethData = data.symbols.ETHUSDT;
+                const solData = data.symbols.SOLUSDT;
+
+                if (btcData && !btcData.error) {
+                    const btcEl = document.getElementById('lsBtc');
+                    btcEl.textContent = btcData.long_pct.toFixed(0) + '%L';
+                    btcEl.style.color = btcData.long_pct > 60 ? 'var(--accent-positive)' : btcData.long_pct < 40 ? 'var(--accent-negative)' : 'var(--text-primary)';
+                }
+                if (ethData && !ethData.error) {
+                    const ethEl = document.getElementById('lsEth');
+                    ethEl.textContent = ethData.long_pct.toFixed(0) + '%L';
+                    ethEl.style.color = ethData.long_pct > 60 ? 'var(--accent-positive)' : ethData.long_pct < 40 ? 'var(--accent-negative)' : 'var(--text-primary)';
+                }
+                if (solData && !solData.error) {
+                    const solEl = document.getElementById('lsSol');
+                    solEl.textContent = solData.long_pct.toFixed(0) + '%L';
+                    solEl.style.color = solData.long_pct > 60 ? 'var(--accent-positive)' : solData.long_pct < 40 ? 'var(--accent-negative)' : 'var(--text-primary)';
+                }
+            }
+
+            // Update exchange badge
+            if (data.sources) {
+                const badge = document.getElementById('lsExchangeBadge');
+                if (badge) {
+                    badge.textContent = data.sources.exchanges_available + ' Exchanges';
+                }
+            }
+
+            // Re-initialize Lucide icons
+            try { if (typeof lucide !== 'undefined') lucide.createIcons(); } catch(e) {}
+        }
+
+        // Market breadth update function (fallback)
         function updateMarketBreadth(upCount, downCount) {
             const total = upCount + downCount;
             
@@ -3912,7 +4618,7 @@
                 // Fetch bottom performers from full categories endpoint
                 if (bottomSectors) {
                     // Fetch full categories data for bottom performers
-                    fetch('/api/coingecko/categories')
+                    fetch('/api/market/categories')
                         .then(res => res.json())
                         .then(catData => {
                             if (catData.status === 'success' && catData.data?.bottom_performers) {
@@ -3935,19 +4641,7 @@
             }
 
             // === EXCHANGE CONCENTRATION ===
-            const exchangeTop3 = document.getElementById('exchangeTop3Share');
-            const exchangesList = document.getElementById('topExchangesList');
-
-            if (data.exchanges && data.exchanges.available) {
-                if (exchangeTop3) {
-                    const share = data.exchanges.top_3_share || 0;
-                    exchangeTop3.textContent = share.toFixed(1) + '%';
-                }
-                if (exchangesList) {
-                    // Top 3 exchanges names come from full endpoint
-                    exchangesList.innerHTML = 'Binance, Bybit, Gate';
-                }
-            }
+            fetchExchangeConcentration();
 
             // === DERIVATIVES OI & ARB ===
             const derivativesOI = document.getElementById('globalDerivativesOI');
@@ -3974,7 +4668,320 @@
                 fetchOIDistribution();
             }
 
+            // === MARKET CYCLE PHASE ===
+            fetchMarketCyclePhase();
+
+            // === BYBIT SECTOR ROTATION ===
+            fetchBybitSectorRotation();
+
+            // === CEX VS DEX FLOW ===
+            fetchCexDexFlow();
+
             console.log('[DEBUG] Market Intelligence updated successfully');
+        }
+
+        // Fetch Exchange Concentration data
+        function fetchExchangeConcentration() {
+            const exchangeTop3 = document.getElementById('exchangeTop3Share');
+            const exchangesList = document.getElementById('topExchangesList');
+            
+            fetch('/api/market/exchanges/concentration')
+                .then(res => res.json())
+                .then(response => {
+                    if (response.status === 'success' && response.data) {
+                        const data = response.data;
+                        if (exchangeTop3 && data.concentration) {
+                            const share = data.concentration.top_3_share || 0;
+                            exchangeTop3.textContent = share.toFixed(1) + '%';
+                        }
+                        if (exchangesList && data.top_exchanges) {
+                            const names = data.top_exchanges.slice(0, 3).map(e => e.name).join(', ');
+                            exchangesList.innerHTML = names;
+                        }
+                    }
+                })
+                .catch(err => console.warn('[WARN] Failed to fetch exchange concentration:', err));
+        }
+
+        // Fetch and update Market Cycle Phase
+        function fetchMarketCyclePhase() {
+            fetch('/api/market/cycle-phase')
+                .then(res => res.json())
+                .then(data => {
+                    if (data.status === 'success' && data.data) {
+                        updateMarketCyclePhase(data.data);
+                    }
+                })
+                .catch(err => console.warn('[WARN] Failed to fetch cycle phase:', err));
+        }
+
+        // Update Market Cycle Phase UI
+        function updateMarketCyclePhase(data) {
+            const phaseLabel = document.getElementById('cyclePhaseLabel');
+            const riskBadge = document.getElementById('cyclePhaseRiskBadge');
+            const phaseProgress = document.getElementById('cyclePhaseProgress');
+            const phaseMarker = document.getElementById('cyclePhaseMarker');
+            const specRatio = document.getElementById('cycleSpecRatio');
+            const phaseScore = document.getElementById('cyclePhaseScore');
+            const confidence = document.getElementById('cycleConfidence');
+
+            if (!phaseLabel) return;
+
+            // Update phase name
+            const phaseName = data.phase?.name || 'Unknown';
+            phaseLabel.textContent = phaseName;
+
+            // Update risk badge with color coding
+            const riskLevel = data.phase?.risk_level || 'MODERATE';
+            if (riskBadge) {
+                riskBadge.textContent = riskLevel;
+                if (riskLevel === 'LOW') {
+                    riskBadge.style.background = 'rgba(16, 185, 129, 0.2)';
+                    riskBadge.style.color = 'var(--accent-positive)';
+                } else if (riskLevel === 'MODERATE') {
+                    riskBadge.style.background = 'rgba(251, 191, 36, 0.2)';
+                    riskBadge.style.color = 'var(--neon-amber)';
+                } else if (riskLevel === 'HIGH') {
+                    riskBadge.style.background = 'rgba(249, 115, 22, 0.2)';
+                    riskBadge.style.color = '#f97316';
+                } else if (riskLevel === 'EXTREME') {
+                    riskBadge.style.background = 'rgba(239, 68, 68, 0.2)';
+                    riskBadge.style.color = 'var(--accent-negative)';
+                }
+            }
+
+            // Update phase progress bar (0-100 based on phase_score)
+            const score = data.phase_score || 50;
+            if (phaseProgress) {
+                phaseProgress.style.width = score + '%';
+            }
+            if (phaseMarker) {
+                phaseMarker.style.left = score + '%';
+            }
+
+            // Update indicators
+            if (specRatio && data.indicators) {
+                const ratio = data.indicators.speculative_ratio || 0;
+                specRatio.textContent = ratio.toFixed(2) + 'x';
+                // Color based on ratio threshold
+                if (ratio > 1.5) {
+                    specRatio.style.color = 'var(--accent-negative)';
+                } else if (ratio > 1.0) {
+                    specRatio.style.color = 'var(--neon-amber)';
+                } else {
+                    specRatio.style.color = 'var(--accent-positive)';
+                }
+            }
+
+            if (phaseScore) {
+                phaseScore.textContent = Math.round(score);
+            }
+
+            if (confidence && data.confidence !== undefined) {
+                const confPct = Math.round(data.confidence * 100);
+                confidence.textContent = confPct + '%';
+            }
+
+            console.log('[DEBUG] Market Cycle Phase updated:', phaseName, 'Score:', score);
+        }
+
+        // Sector Rotation API - crypto-perps-tracker multi-exchange API (8 exchanges, 91.7% market coverage)
+        // Direct connection to derivatives-signals-api on port 8888
+        const SECTOR_ROTATION_API = '';
+
+        // Fetch and update Sector Rotation data (multi-exchange: Binance, OKX, Bybit, Gate.io, Bitget, HyperLiquid, AsterDEX, dYdX)
+        // API is running on port 8888 with CORS enabled
+        const SECTOR_ROTATION_ENABLED = true;  // Enabled - API deployed on port 8888
+
+        function fetchBybitSectorRotation() {
+            if (!SECTOR_ROTATION_ENABLED) return;  // Skip if API not available
+
+            // Fetch rankings for top/bottom sectors
+            fetch(`${SECTOR_ROTATION_API}/sector-rotation/rankings?timeframe=4h`)
+                .then(res => {
+                    if (!res.ok) return null;  // Silently skip 404/5xx errors
+                    return res.json();
+                })
+                .then(data => {
+                    if (data) updateBybitSectorRankings(data);
+                })
+                .catch(() => {});  // Silently fail - API not deployed yet
+
+            // Fetch summary for signal counts
+            fetch(`${SECTOR_ROTATION_API}/sector-rotation/summary`)
+                .then(res => {
+                    if (!res.ok) return null;
+                    return res.json();
+                })
+                .then(data => {
+                    if (data) updateBybitSectorSummary(data);
+                })
+                .catch(() => {});
+        }
+
+        // Update Bybit Sector Rankings (top/bottom sectors)
+        function updateBybitSectorRankings(data) {
+            const topSectors = document.getElementById('bybitTopSectors');
+            const bottomSectors = document.getElementById('bybitBottomSectors');
+            const statusLabel = document.getElementById('bybitSectorStatus');
+            const timeframeBadge = document.getElementById('bybitSectorTimeframe');
+
+            if (!topSectors || !bottomSectors) return;
+
+            const rankings = data.rankings || [];
+            const timeframe = data.timeframe_label || '4 Hours';
+
+            if (timeframeBadge) {
+                timeframeBadge.textContent = data.timeframe || '4H';
+            }
+
+            if (rankings.length === 0) {
+                if (statusLabel) {
+                    statusLabel.textContent = 'Awaiting data collection...';
+                    statusLabel.style.color = 'var(--text-secondary)';
+                }
+                topSectors.innerHTML = '<div style="color: var(--text-secondary);">--</div>';
+                bottomSectors.innerHTML = '<div style="color: var(--text-secondary);">--</div>';
+                return;
+            }
+
+            if (statusLabel) {
+                statusLabel.textContent = `${rankings.length} sectors tracked`;
+                statusLabel.style.color = 'var(--neon-cyan)';
+            }
+
+            // Get top 3 (highest rotation score) and bottom 3 (lowest rotation score)
+            const sortedByScore = [...rankings].sort((a, b) =>
+                (b.rotation_score || 50) - (a.rotation_score || 50)
+            );
+
+            const top3 = sortedByScore.slice(0, 3);
+            const bottom3 = sortedByScore.slice(-3).reverse();
+
+            // Helper to get signal badge color and icon
+            const getSignalBadge = (signalType) => {
+                const badges = {
+                    'bullish': { color: 'var(--accent-positive)', bg: 'rgba(16, 185, 129, 0.2)', text: '▲' },
+                    'bearish': { color: 'var(--accent-negative)', bg: 'rgba(239, 68, 68, 0.2)', text: '▼' },
+                    'neutral': { color: 'var(--neon-amber)', bg: 'rgba(251, 191, 36, 0.2)', text: '―' }
+                };
+                return badges[signalType] || badges['neutral'];
+            };
+
+            // Render top sectors with signal badges
+            topSectors.innerHTML = top3.map(s => {
+                const score = (s.rotation_score || 50).toFixed(1);
+                const badge = getSignalBadge(s.signal_type);
+                return `<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+                    <span style="display: flex; align-items: center; gap: 4px;">
+                        <span>${s.emoji || ''}</span>
+                        <span>${s.sector_code || s.sector}</span>
+                    </span>
+                    <span style="display: flex; align-items: center; gap: 6px;">
+                        <span style="font-size: 8px; padding: 2px 4px; border-radius: 3px; background: ${badge.bg}; color: ${badge.color}; font-weight: 600;">${badge.text}</span>
+                        <span style="color: var(--neon-cyan); font-weight: 600; min-width: 32px; text-align: right;">${score}</span>
+                    </span>
+                </div>`;
+            }).join('');
+
+            // Render bottom sectors with signal badges
+            bottomSectors.innerHTML = bottom3.map(s => {
+                const score = (s.rotation_score || 50).toFixed(1);
+                const badge = getSignalBadge(s.signal_type);
+                return `<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+                    <span style="display: flex; align-items: center; gap: 4px;">
+                        <span>${s.emoji || ''}</span>
+                        <span>${s.sector_code || s.sector}</span>
+                    </span>
+                    <span style="display: flex; align-items: center; gap: 6px;">
+                        <span style="font-size: 8px; padding: 2px 4px; border-radius: 3px; background: ${badge.bg}; color: ${badge.color}; font-weight: 600;">${badge.text}</span>
+                        <span style="color: var(--accent-negative); font-weight: 600; min-width: 32px; text-align: right;">${score}</span>
+                    </span>
+                </div>`;
+            }).join('');
+
+            console.log('[DEBUG] Sector Rankings updated (Bybit):', rankings.length, 'sectors');
+        }
+
+        // Update Sector Summary (signal counts)
+        function updateBybitSectorSummary(data) {
+            const activeSignals = document.getElementById('bybitActiveSignals');
+            const confirmedSignals = document.getElementById('bybitConfirmedSignals');
+
+            if (activeSignals) {
+                activeSignals.textContent = data.active_signals || 0;
+            }
+            if (confirmedSignals) {
+                confirmedSignals.textContent = data.confirmed_signals || 0;
+            }
+
+            console.log('[DEBUG] Sector Summary updated (Bybit):', data.active_signals || 0, 'active signals');
+        }
+
+        // Fetch and update CEX vs DEX Flow data
+        function fetchCexDexFlow() {
+            if (!SECTOR_ROTATION_ENABLED) return;  // Skip if API not available
+
+            fetch(`${SECTOR_ROTATION_API}/sector-rotation/cex-vs-dex`)
+                .then(res => {
+                    if (!res.ok) return null;
+                    return res.json();
+                })
+                .then(data => {
+                    if (data) updateCexDexFlow(data);
+                })
+                .catch(() => {});  // Silently fail - API not deployed yet
+        }
+
+        // Update CEX vs DEX Flow display
+        function updateCexDexFlow(data) {
+            const flowList = document.getElementById('cexDexFlowList');
+            const flowDirection = document.getElementById('cexDexFlowDirection');
+
+            if (!flowList) return;
+
+            const flows = data.flows || [];
+
+            if (flows.length === 0) {
+                flowList.innerHTML = '<div style="color: var(--text-secondary);">No data</div>';
+                return;
+            }
+
+            // Count CEX vs DEX dominant sectors
+            const cexCount = flows.filter(f => f.flow_direction === 'CEX').length;
+            const dexCount = flows.filter(f => f.flow_direction === 'DEX').length;
+
+            // Update overall direction badge
+            if (flowDirection) {
+                const dominant = cexCount > dexCount ? 'CEX' : dexCount > cexCount ? 'DEX' : 'BALANCED';
+                const colors = {
+                    'CEX': { bg: 'rgba(251, 191, 36, 0.2)', color: 'var(--neon-amber)' },
+                    'DEX': { bg: 'rgba(6, 182, 212, 0.2)', color: 'var(--neon-cyan)' },
+                    'BALANCED': { bg: 'rgba(255, 255, 255, 0.1)', color: 'var(--text-secondary)' }
+                };
+                flowDirection.textContent = `${dominant} ${cexCount}/${dexCount}`;
+                flowDirection.style.background = colors[dominant].bg;
+                flowDirection.style.color = colors[dominant].color;
+            }
+
+            // Show top 3 sectors with highest DEX activity (institutional flow indicator)
+            const sortedByDex = [...flows].sort((a, b) => (b.dex_volume_share || 0) - (a.dex_volume_share || 0));
+            const topDex = sortedByDex.slice(0, 3);
+
+            flowList.innerHTML = topDex.map(f => {
+                const dexPct = (f.dex_volume_share || 0).toFixed(1);
+                const cexPct = (f.cex_volume_share || 0).toFixed(1);
+                const flowColor = f.flow_direction === 'DEX' ? 'var(--neon-cyan)' : 'var(--neon-amber)';
+                return `<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+                    <span>${f.sector_name || f.sector_code}</span>
+                    <span style="display: flex; gap: 8px; font-size: 9px;">
+                        <span style="color: var(--neon-amber);">CEX ${cexPct}%</span>
+                        <span style="color: var(--neon-cyan);">DEX ${dexPct}%</span>
+                    </span>
+                </div>`;
+            }).join('');
+
+            console.log('[DEBUG] CEX vs DEX Flow updated:', flows.length, 'sectors');
         }
 
         // Update Market Intelligence breadth gauge (separate from Market Overview breadth)
@@ -4029,7 +5036,7 @@
         // Fetch funding spreads for arbitrage display
         async function fetchFundingSpreads() {
             try {
-                const response = await fetch('/api/coingecko/derivatives/funding-spreads');
+                const response = await fetch('/api/market/derivatives/funding-spreads');
                 const data = await response.json();
 
                 if (data.status === 'success' && data.data && data.data.spreads) {
@@ -4070,7 +5077,7 @@
         // Fetch OI distribution by exchange from CoinGecko derivatives data
         async function fetchOIDistribution() {
             try {
-                const response = await fetch('/api/coingecko/derivatives');
+                const response = await fetch('/api/market/derivatives');
                 const data = await response.json();
 
                 if (data.status === 'success' && data.data && data.data.contracts) {
@@ -4132,58 +5139,85 @@
             try {
                 console.log('[DEBUG] Starting individual fetches...');
 
-                // Fetch each endpoint individually with logging
+                // Fetch each endpoint individually with logging and error resilience
                 const fetchWithLog = async (url) => {
                     const start = Date.now();
                     console.log('[DEBUG] Fetching:', url);
                     try {
                         const resp = await fetch(url);
                         console.log('[DEBUG] ✓', url, '- Status:', resp.status, 'Time:', Date.now() - start, 'ms');
-                        return resp;
+                        if (!resp.ok) {
+                            console.warn('[DEBUG] Non-OK response for', url, '- Status:', resp.status);
+                            return null;
+                        }
+                        return await resp.json();
                     } catch (e) {
                         console.error('[DEBUG] ✗', url, '- Error:', e.message);
-                        throw e;
+                        return null; // Return null instead of throwing to allow partial loading
                     }
                 };
 
-                // Load summary, symbols, market overview, movers, and CoinGecko data
-                const [summaryResponse, symbolsResponse, marketResponse, mobileDataResponse, coinGeckoResponse] = await Promise.all([
+                // Load data with resilience - use Promise.allSettled to handle partial failures
+                // NOTE: Removed /api/dashboard/market-overview (redundant - mobile-data includes market_overview)
+                const results = await Promise.allSettled([
                     fetchWithLog('/api/dashboard/overview'),
                     fetchWithLog('/api/dashboard/symbols'),
-                    fetchWithLog('/api/dashboard/market-overview'),
                     fetchWithLog('/api/dashboard/mobile-data'),
-                    fetchWithLog('/api/coingecko/summary')
+                    fetchWithLog('/api/market/summary')
                 ]);
-                console.log('[DEBUG] All fetches completed!');
 
-                const summaryData = await summaryResponse.json();
-                const symbolsData = await symbolsResponse.json();
-                const marketData = await marketResponse.json();
-                const mobileData = await mobileDataResponse.json();
-                const coinGeckoData = await coinGeckoResponse.json();
-                console.log('[DEBUG] All JSON parsed successfully');
-                console.log('[DEBUG] mobileData.market_overview:', JSON.stringify(mobileData.market_overview).substring(0, 200));
+                // Extract values, using null for failures
+                const summaryData = results[0].status === 'fulfilled' ? results[0].value : null;
+                const symbolsData = results[1].status === 'fulfilled' ? results[1].value : null;
+                const mobileData = results[2].status === 'fulfilled' ? results[2].value : null;
+                const coinGeckoData = results[3].status === 'fulfilled' ? results[3].value : null;
 
-                // DEBUG: Log all data sources
+                // Count successful fetches
+                const successCount = results.filter(r => r.status === 'fulfilled' && r.value !== null).length;
+                console.log('[DEBUG] Fetches completed:', successCount, '/ 4 successful');
+
+                // If all fetches failed, show error but don't throw
+                if (successCount === 0) {
+                    console.error('[DEBUG] All API fetches failed');
+                    const errDiv = document.createElement('div');
+                    errDiv.style.cssText = 'position:fixed;top:0;left:0;right:0;background:rgba(239,68,68,0.9);color:white;padding:8px 12px;z-index:9999;font-size:11px;text-align:center;';
+                    errDiv.textContent = 'Network error - retrying...';
+                    errDiv.id = 'networkErrorBanner';
+                    document.body.prepend(errDiv);
+                    // Auto-retry after 5 seconds
+                    setTimeout(() => {
+                        const banner = document.getElementById('networkErrorBanner');
+                        if (banner) banner.remove();
+                        loadDashboardData();
+                    }, 5000);
+                    return;
+                }
+
+                console.log('[DEBUG] Data parsing successful');
+                if (mobileData) {
+                    console.log('[DEBUG] mobileData.market_overview:', JSON.stringify(mobileData.market_overview || {}).substring(0, 200));
+                }
+
+                // DEBUG: Log all data sources (with null safety)
                 console.log('[DEBUG] ====== DATA SOURCES ======');
-                console.log('[DEBUG] summaryData keys:', Object.keys(summaryData));
-                console.log('[DEBUG] summaryData.opportunities:', summaryData.opportunities?.length || 0, 'items');
-                console.log('[DEBUG] mobileData.opportunities:', mobileData.opportunities?.length || 0, 'items');
-                if (summaryData.opportunities?.length > 0) {
-                    console.log('[DEBUG] First opportunity from summaryData:', JSON.stringify(summaryData.opportunities[0]));
-                }
-                if (mobileData.opportunities?.length > 0) {
-                    console.log('[DEBUG] First opportunity from mobileData:', JSON.stringify(mobileData.opportunities[0]));
-                }
+                console.log('[DEBUG] summaryData:', summaryData ? 'loaded' : 'failed');
+                console.log('[DEBUG] symbolsData:', symbolsData ? 'loaded' : 'failed');
+                console.log('[DEBUG] mobileData:', mobileData ? 'loaded' : 'failed');
+                console.log('[DEBUG] coinGeckoData:', coinGeckoData ? 'loaded' : 'failed');
                 console.log('[DEBUG] ============================');
 
-                updateDashboard(summaryData);
-                updateSymbols(symbolsData);
+                // Process available data with null safety
+                if (summaryData) {
+                    updateDashboard(summaryData);
+                }
+                if (symbolsData) {
+                    updateSymbols(symbolsData);
+                }
 
                 // FIX: Check if mobile-data has REAL data (not cache warmer zeros)
-                // Fallback to market-overview endpoint which has real values
-                const mo = mobileData.market_overview || {};
-                const hasRealMobileData = mobileData.status === 'success' &&
+                // Use mobileData.market_overview as primary source, fallback to summaryData
+                const mo = mobileData?.market_overview || {};
+                const hasRealMobileData = mobileData?.status === 'success' &&
                     mo &&
                     (mo.trend_strength > 0 || mo.gainers > 0 || mo.losers > 0 || mo.total_market_cap > 0);
 
@@ -4192,15 +5226,32 @@
                 if (hasRealMobileData) {
                     console.log('[DEBUG] Using mobile-data market_overview');
                     updateMarketOverview(mo);
+                } else if (summaryData?.market_overview) {
+                    console.log('[DEBUG] Using summaryData.market_overview as fallback');
+                    updateMarketOverview(summaryData.market_overview);
                 } else {
-                    console.log('[DEBUG] Using market-overview endpoint (marketData)');
-                    console.log('[DEBUG] marketData:', JSON.stringify(marketData).substring(0, 200));
-                    updateMarketOverview(marketData);
+                    console.warn('[DEBUG] No market overview data available');
                 }
 
                 // Use our new mobile-data endpoint for top movers
-                if (mobileData.status === 'success') {
+                if (mobileData?.status === 'success') {
                     updateTopMovers(mobileData.top_movers);
+
+                    // Update Market Intelligence breadth gauge with ACTUAL breadth data
+                    // FIX: Previously used movers array length (always 5/5), now uses real breadth counts
+                    if (mobileData.market_breadth) {
+                        const breadth = mobileData.market_breadth;
+                        updateMarketIntelBreadth(breadth.up || 0, breadth.down || 0);
+                        console.log('[BREADTH] Updated Market Intelligence with:', breadth.up, 'up,', breadth.down, 'down');
+                    } else {
+                        // Fallback to market_overview gainers/losers if market_breadth not available
+                        const moData = mobileData.market_overview || {};
+                        if (moData.gainers !== undefined || moData.losers !== undefined) {
+                            updateMarketIntelBreadth(moData.gainers || 0, moData.losers || 0);
+                            console.log('[BREADTH] Fallback to market_overview:', moData.gainers, 'gainers,', moData.losers, 'losers');
+                        }
+                    }
+
                     // Update confluence scores if needed - filter out system status entries
                     if (mobileData.confluence_scores) {
                         console.log('Raw confluence scores:', mobileData.confluence_scores);
@@ -4225,7 +5276,7 @@
                 }
 
                 // Update price ticker with confluence scores data
-                if (mobileData.confluence_scores) {
+                if (mobileData?.confluence_scores) {
                     updatePriceTicker(mobileData.confluence_scores);
                 }
 
@@ -4482,18 +5533,24 @@
 
         // Check if alert is important (warrants notification)
         function isImportantAlert(alert) {
-            // Monitor field mapping fallbacks to detect API inconsistencies
-            if (!alert.alert_type && alert.details?.type) {
-                console.warn('[ALERT-FIELD] Using fallback: details.type instead of alert_type', alert);
-            } else if (!alert.alert_type && !alert.details?.type && alert.type) {
-                console.warn('[ALERT-FIELD] Using fallback: legacy type field instead of alert_type', alert);
-            } else if (!alert.alert_type && !alert.details?.type && !alert.type) {
-                console.error('[ALERT-FIELD] Missing all type fields!', alert);
-            }
-
-            const alertType = alert.alert_type || alert.details?.type || alert.type || '';
             const details = alert.details || {};
             const message = alert.message || '';
+
+            // Infer alert type from message if not explicitly set
+            let alertType = alert.alert_type || alert.details?.type || alert.type || '';
+
+            // Fallback: infer type from message content
+            if (!alertType && message) {
+                if (message.toLowerCase().includes('regime')) {
+                    alertType = 'regime_change';
+                } else if (message.toLowerCase().includes('whale')) {
+                    alertType = 'whale_trade';
+                } else if (message.toLowerCase().includes('liquidation')) {
+                    alertType = 'liquidation_cascade';
+                } else if (message.toLowerCase().includes('signal') || message.toLowerCase().includes('confluence')) {
+                    alertType = 'high_confluence';
+                }
+            }
             const level = alert.level || '';
 
             // 1. High confluence signals / trading signals
@@ -4940,8 +5997,11 @@
                     </svg>
                 `;
 
-                // Hide bottom nav
+                // Hide bottom nav and notify scroll controller
                 document.querySelector('.bottom-nav').style.display = 'none';
+                if (window.bottomNavController) {
+                    window.bottomNavController.setFullscreen(true);
+                }
 
                 // CRITICAL: Prevent body scroll but ALLOW chart gestures
                 document.body.style.overflow = 'hidden';
@@ -5005,8 +6065,12 @@
                 </svg>
             `;
 
-            // Show bottom nav
+            // Show bottom nav and notify scroll controller
             document.querySelector('.bottom-nav').style.display = 'flex';
+            if (window.bottomNavController) {
+                window.bottomNavController.setFullscreen(false);
+                window.bottomNavController.forceShow();
+            }
 
             // CRITICAL: Restore body scroll
             document.body.style.overflow = '';
@@ -5095,8 +6159,8 @@
             const swipeDistance = swipeCurrentY - swipeStartY;
             const card = document.getElementById('betaChartCard');
 
-            // If swiped down more than 100px, exit fullscreen
-            if (swipeDistance > 100) {
+            // If swiped down more than 70px, exit fullscreen (lowered for better touch response)
+            if (swipeDistance > 70) {
                 const btn = document.getElementById('fullscreenBtn');
                 const chartContainer = document.getElementById('performanceChart');
                 exitFullscreen(card, btn, chartContainer);
@@ -5318,6 +6382,13 @@
                     method: 'GET',
                     headers: { 'Accept': 'application/json' }
                 });
+
+                // Check for HTTP errors (403, 500, etc.) before parsing JSON
+                if (!response.ok) {
+                    console.warn('[BYBIT] HTTP error:', response.status);
+                    return [];
+                }
+
                 const data = await response.json();
 
                 if (data.retCode !== 0) {
@@ -5346,6 +6417,13 @@
             try {
                 const url = 'https://api.bybit.com/v5/market/kline?category=linear&symbol=' + symbol + '&interval=' + interval + '&limit=' + limit;
                 const response = await fetch(url);
+
+                // Check for HTTP errors before parsing JSON
+                if (!response.ok) {
+                    console.warn('[BYBIT] Klines HTTP error:', response.status, 'for', symbol);
+                    return [];
+                }
+
                 const data = await response.json();
 
                 if (data.retCode !== 0) {
@@ -5463,6 +6541,22 @@
                 const btcChange = overview.btc_change || 0;
                 btcChangeEl.textContent = (btcChange >= 0 ? '+' : '') + btcChange.toFixed(2) + '%';
                 btcChangeEl.style.color = btcChange >= 0 ? 'var(--accent-positive)' : 'var(--accent-negative)';
+            }
+
+            // Update symbols count, outperformers, underperformers from API
+            const symbolCountEl = document.getElementById('perfSymbolCount');
+            if (symbolCountEl && overview.symbols_count !== undefined) {
+                symbolCountEl.textContent = overview.symbols_count;
+            }
+
+            const outperformersEl = document.getElementById('perfOutperformers');
+            if (outperformersEl && overview.outperformers !== undefined) {
+                outperformersEl.textContent = overview.outperformers;
+            }
+
+            const underperformersEl = document.getElementById('perfUnderperformers');
+            if (underperformersEl && overview.underperformers !== undefined) {
+                underperformersEl.textContent = overview.underperformers;
             }
 
             // Update Price HUD (Optimization #2)
@@ -6312,10 +7406,10 @@
                         r_squared: sym.r_squared_30d || 0
                     }));
 
-                    // Update beta symbols table
-                    updateBetaSymbols({ symbols: betaSymbols });
+                    // Beta symbols data is available for future use if needed
+                    // The MTF Rankings card handles its own data loading via loadMTFRankings()
 
-                    console.log('[BETA] Data loaded successfully');
+                    console.log('[BETA] Data loaded successfully, symbols:', betaSymbols.length);
                 } else {
                     throw new Error('Invalid beta data format');
                 }
@@ -6476,19 +7570,33 @@
                 return '<div style="height: 40px; display: flex; align-items: center; color: var(--text-tertiary); font-size: 10px;">No data</div>';
             }
 
-            const timeframes = Object.entries(timeframeDetails).map(([tf, value]) => ({
-                label: `${tf}h`,
-                value: parseFloat(value) || 0
-            }));
+            const timeframes = Object.entries(timeframeDetails).map(([tf, value]) => {
+                // Compact label format for comprehensive mode (7 TFs)
+                const numTf = parseFloat(tf);
+                let label;
+                if (numTf < 1) {
+                    label = `${Math.round(numTf * 60)}m`; // 0.25 -> 15m, 0.5 -> 30m
+                } else {
+                    label = `${Math.round(numTf)}h`;
+                }
+                return {
+                    label: label,
+                    value: parseFloat(value) || 0
+                };
+            });
 
-            const width = 100;
+            const tfCount = timeframes.length;
+            // Dynamic sizing: wider for more timeframes
+            const width = tfCount <= 3 ? 100 : tfCount <= 5 ? 130 : 160;
             const height = 40;
-            const barWidth = (width / timeframes.length) - 4;
+            const gap = tfCount <= 3 ? 4 : tfCount <= 5 ? 3 : 2;
+            const barWidth = (width / tfCount) - gap;
+            const fontSize = tfCount <= 3 ? 8 : tfCount <= 5 ? 7 : 6;
             const maxAbsValue = Math.max(...timeframes.map(tf => Math.abs(tf.value)));
-            const scale = maxAbsValue > 0 ? (height / 2 - 6) / maxAbsValue : 1;
+            const scale = maxAbsValue > 0 ? (height / 2 - 8) / maxAbsValue : 1;
 
             const bars = timeframes.map((tf, i) => {
-                const barHeight = Math.abs(tf.value) * scale;
+                const barHeight = Math.max(2, Math.abs(tf.value) * scale);
                 const isPositive = tf.value >= 0;
                 const y = isPositive ? (height / 2 - barHeight) : height / 2;
                 const color = isPositive ? '#10b981' : '#ef4444';
@@ -6496,28 +7604,28 @@
 
                 return `
                     <rect
-                        x="${i * (barWidth + 4)}"
+                        x="${i * (barWidth + gap)}"
                         y="${y}"
                         width="${barWidth}"
                         height="${barHeight}"
                         fill="${color}"
                         opacity="${opacity}"
-                        rx="2"
+                        rx="1"
                     />
                     <text
-                        x="${i * (barWidth + 4) + barWidth/2}"
-                        y="${height - 2}"
+                        x="${i * (barWidth + gap) + barWidth / 2}"
+                        y="${height - 1}"
                         text-anchor="middle"
                         fill="#6b7280"
-                        font-size="8"
+                        font-size="${fontSize}"
                         font-family="'IBM Plex Mono', monospace"
                     >${tf.label}</text>
                 `;
             }).join('');
 
             return `
-                <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" style="display: block;">
-                    <line x1="0" y1="${height/2}" x2="${width}" y2="${height/2}" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+                <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" style="display: block; flex-shrink: 0;">
+                    <line x1="0" y1="${height / 2}" x2="${width}" y2="${height / 2}" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
                     ${bars}
                 </svg>
             `;
@@ -6539,12 +7647,41 @@
             else if (percentage >= 60) color = '#fbbf24'; // amber (60-80%)
             else if (percentage >= 50) color = '#f59e0b'; // orange (50-60%)
 
-            // Generate filled/empty circles
+            // For 5+ timeframes, use compact progress bar instead of circles
+            if (total >= 5) {
+                const barWidth = 60;
+                const filledWidth = (aligned / total) * barWidth;
+                return `
+                    <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
+                        <div style="
+                            width: ${barWidth}px;
+                            height: 6px;
+                            background: rgba(255,255,255,0.1);
+                            border-radius: 3px;
+                            overflow: hidden;
+                            flex-shrink: 0;
+                        ">
+                            <div style="
+                                width: ${filledWidth}px;
+                                height: 100%;
+                                background: ${color};
+                                border-radius: 3px;
+                                box-shadow: 0 0 4px ${color}40;
+                            "></div>
+                        </div>
+                        <span style="font-size: 10px; color: ${color}; font-weight: 600; font-family: 'IBM Plex Mono', monospace; line-height: 1; white-space: nowrap;">${aligned}/${total}</span>
+                    </div>
+                `;
+            }
+
+            // For 3-4 timeframes, use circles (original behavior)
+            const circleSize = total <= 3 ? 8 : 6;
+            const circleGap = total <= 3 ? 4 : 3;
             const circles = Array.from({ length: total }, (_, i) => {
                 const filled = i < aligned;
                 return `<div style="
-                    width: 8px;
-                    height: 8px;
+                    width: ${circleSize}px;
+                    height: ${circleSize}px;
                     border-radius: 50%;
                     background: ${filled ? color : 'rgba(255,255,255,0.1)'};
                     border: 1px solid ${filled ? color : 'rgba(255,255,255,0.2)'};
@@ -6554,7 +7691,7 @@
             }).join('');
 
             return `
-                <div style="display: flex; align-items: center; gap: 6px;">
+                <div style="display: flex; align-items: center; gap: ${circleGap}px; flex-shrink: 0;">
                     ${circles}
                     <span style="font-size: 10px; color: ${color}; font-weight: 600; font-family: 'IBM Plex Mono', monospace; line-height: 1; white-space: nowrap;">${aligned}/${total}</span>
                 </div>
@@ -6598,15 +7735,18 @@
                         cursor: pointer;
                         position: relative;
                         border-left: 3px solid ${signalStyle.color};
-                        padding: 16px;
+                        padding: 14px;
                         margin-bottom: 8px;
                         background: var(--bg-secondary);
                         border-radius: 8px;
+                        width: 100%;
+                        box-sizing: border-box;
+                        display: block;
                         ${signalStyle.pulse ? 'animation: subtle-pulse 2s ease-in-out infinite;' : ''}
                     " onclick="viewMTFDetails('${coin.symbol}')">
 
                         <!-- Header Row: Rank/Symbol + Signal Badge -->
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
                             <div style="display: flex; align-items: baseline; gap: 8px;">
                                 <span style="
                                     font-family: 'IBM Plex Mono', monospace;
@@ -6639,11 +7779,11 @@
                         </div>
 
                         <!-- Main Content Row: Score Ring + Metrics -->
-                        <div style="display: flex; gap: 16px; align-items: flex-start;">
+                        <div style="display: flex; gap: 16px; align-items: center; width: 100%;">
 
                             <!-- Score Ring -->
                             <div style="
-                                flex-shrink: 0;
+                                flex: 0 0 64px;
                                 width: 64px;
                                 height: 64px;
                                 display: flex;
@@ -6654,11 +7794,11 @@
                             </div>
 
                             <!-- Metrics Column -->
-                            <div style="flex: 1; display: flex; flex-direction: column; gap: 4px; min-width: 0;">
+                            <div style="flex: 1 1 auto; display: flex; flex-direction: column; gap: 6px; min-width: 0; overflow: visible;">
 
                                 <!-- Performance -->
-                                <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px;">
-                                    <span style="font-size: 11px; color: var(--text-secondary); line-height: 1.2; white-space: nowrap;">Performance</span>
+                                <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px;">
+                                    <span style="font-size: 11px; color: var(--text-secondary); line-height: 1.2;">Performance</span>
                                     <span style="
                                         font-size: 14px;
                                         font-weight: 700;
@@ -6670,13 +7810,13 @@
                                 </div>
 
                                 <!-- Timeframe Sparkline -->
-                                <div style="display: flex; align-items: center; justify-content: flex-start; margin: 4px 0;">
+                                <div style="display: flex; align-items: center; justify-content: flex-end; margin: 2px 0; width: 100%;">
                                     ${sparkline}
                                 </div>
 
                                 <!-- Consistency Indicator -->
-                                <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
-                                    <span style="font-size: 11px; color: var(--text-secondary); line-height: 1.2; white-space: nowrap;">Alignment</span>
+                                <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px;">
+                                    <span style="font-size: 11px; color: var(--text-secondary); line-height: 1.2;">Alignment</span>
                                     ${consistencyIndicator}
                                 </div>
 
@@ -6756,6 +7896,10 @@
             console.log('[DEBUG] updateAlpha() called');
             console.log('[DEBUG] Alpha data.opportunities:', data.opportunities?.length || 0);
             const alphaList = document.getElementById('alphaList');
+            if (!alphaList) {
+                console.warn('[DEBUG] alphaList element not found, skipping update');
+                return;
+            }
             alphaList.innerHTML = '';
 
             if (data.opportunities && data.opportunities.length > 0) {
@@ -6873,9 +8017,27 @@
                 const fullSymbol = score.symbol;
                 const cardId = `alpha_pulse_${symbol}_${index}`;
 
+                // Determine column position for mirrored expansion
+                const isRightColumn = index % 2 === 1;
+                const columnPosition = isRightColumn ? 'right' : 'left';
+
                 const sparkline = createMomentumSparkline(score.score_history);
                 const circumference = 2 * Math.PI * 14; // radius 14 for 36px circle
                 const offset = circumference - (confluenceScore / 100) * circumference;
+
+                // Calculate score change from history (like Alpha Report trend)
+                const scoreHistory = score.score_history || [];
+                let scoreChange = 0;
+                let hasScoreHistory = false;
+                if (scoreHistory.length >= 2) {
+                    scoreChange = scoreHistory[scoreHistory.length - 1] - scoreHistory[0];
+                    hasScoreHistory = true;
+                }
+                const scoreChangeDisplay = hasScoreHistory
+                    ? (scoreChange >= 0 ? '+' : '') + scoreChange.toFixed(1)
+                    : '—';
+                const scoreChangeColor = scoreChange > 2 ? '#34d399' : scoreChange < -2 ? '#f87171' : 'var(--text-secondary)';
+                const scoreTrendArrow = scoreChange > 2 ? '↑' : scoreChange < -2 ? '↓' : '';
 
                 const trendArrow = change >= 0
                     ? '<span class="momentum-trend-arrow-mobile" style="color: #34d399;">&#9650;</span>'
@@ -6905,8 +8067,19 @@
                     </div>`;
                 }).join('');
 
+                // Extract timeframe metadata if available
+                const tfMetadata = score.timeframe_metadata || {};
+                const tfWeightsLabel = tfMetadata.weights_label || '1m: 40% | 5m: 30% | 30m: 20% | 4h: 10%';
+
+                // Generate timeframe weights badge HTML
+                const tfBadgeHtml = `
+                    <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 8px; padding: 6px 8px; background: rgba(139, 92, 246, 0.1); border: 1px solid rgba(139, 92, 246, 0.2); border-radius: 6px;">
+                        <i data-lucide="clock" style="width: 12px; height: 12px; color: var(--accent-primary); opacity: 0.8;"></i>
+                        <span style="font-size: 9px; color: var(--text-secondary); font-weight: 500;">TF Weights: ${tfWeightsLabel}</span>
+                    </div>`;
+
                 // Generate expanded breakdown HTML with CSS Grid alignment
-                const breakdownHtml = `<div style="display: grid; grid-template-columns: 80px 1fr 28px; gap: 6px 12px; align-items: center;">` +
+                const breakdownHtml = tfBadgeHtml + `<div style="display: grid; grid-template-columns: 80px 1fr 28px; gap: 6px 12px; align-items: center;">` +
                     Object.entries(componentScores).map(([comp, compScore]) => {
                         const compColor = compScore >= 65 ? 'var(--accent-positive)' : compScore <= 35 ? 'var(--accent-negative)' : 'var(--accent-warning)';
                         const compName = comp.charAt(0).toUpperCase() + comp.slice(1);
@@ -6918,8 +8091,11 @@
                         <span style="font-size: 11px; font-weight: 600; color: ${compColor}; text-align: right;">${Math.round(compScore)}</span>`;
                     }).join('') + `</div>`;
 
+                // Buttons always on right - only track column position for expansion direction
+                const buttonBorder = 'border-left: 1px solid var(--border-light);';
+
                 return `
-                    <div class="momentum-card-mobile ${signalClass}" style="--pulse-duration: ${pulseDuration}s; cursor: pointer; overflow: visible; transition: all 0.3s ease;" id="${cardId}">
+                    <div class="momentum-card-mobile ${signalClass}" data-column="${columnPosition}" style="--pulse-duration: ${pulseDuration}s; cursor: pointer; overflow: visible; transition: all 0.3s ease;" id="${cardId}">
                         <div class="card-pulse-ring-mobile"></div>
                         <div style="display: flex; flex-direction: row;">
                             <!-- Main card content with touch feedback -->
@@ -6935,13 +8111,19 @@
                                 <div class="momentum-card-body">
                                     <div class="momentum-metrics-mobile">
                                         <div class="momentum-metric-mobile">
-                                            <span class="momentum-metric-label-mobile">PRC</span>
+                                            <span class="momentum-metric-label-mobile">PRICE</span>
                                             <span class="momentum-metric-value-mobile">${formatMomentumPrice(score.price || 0)}</span>
                                         </div>
                                         <div class="momentum-metric-mobile">
                                             <span class="momentum-metric-label-mobile">24H</span>
                                             <span class="momentum-metric-value-mobile ${change >= 0 ? 'positive' : 'negative'}">
                                                 ${formatMomentumChange(change)}${trendArrow}
+                                            </span>
+                                        </div>
+                                        <div class="momentum-metric-mobile" title="Score trend since tracking started">
+                                            <span class="momentum-metric-label-mobile">TREND</span>
+                                            <span class="momentum-metric-value-mobile" style="color: ${scoreChangeColor};">
+                                                ${scoreChangeDisplay}${scoreTrendArrow}
                                             </span>
                                         </div>
                                     </div>
@@ -6971,8 +8153,8 @@
                                     <i data-lucide="chevron-down" style="width: 16px; height: 16px; color: var(--text-secondary); opacity: 0.6; transition: transform 0.3s ease;" id="${cardId}_chevron"></i>
                                 </div>
                             </div>
-                            <!-- Horizontal slide: Action buttons only -->
-                            <div id="${cardId}_buttons" style="display: none; width: 0; overflow: hidden; border-left: 1px solid var(--border-light); background: rgba(0,0,0,0.2); opacity: 0; transition: all 0.3s ease;">
+                            <!-- Horizontal slide: Action buttons (position depends on column) -->
+                            <div id="${cardId}_buttons" style="display: none; width: 0; overflow: hidden; ${buttonBorder} background: rgba(0,0,0,0.2); opacity: 0; transition: all 0.3s ease;">
                                 <div style="padding: 8px; min-width: 70px; display: flex; flex-direction: column; gap: 6px; height: 100%; justify-content: center;">
                                     <button onclick="event.stopPropagation(); viewDetailedAnalysis('${fullSymbol}')" style="min-height: 44px; padding: 8px; background: var(--accent-primary); border: none; border-radius: 6px; color: var(--bg-primary); font-size: 11px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px; touch-action: manipulation;">
                                         <i data-lucide="chart-line" style="width: 14px; height: 14px;"></i>
@@ -7202,7 +8384,12 @@
                 alertDate = new Date(alert.unix_timestamp * 1000);
                 alertTimestamp = alertDate.toISOString().replace(/[-:T]/g, '').slice(0, 15);
             } else if (alert.timestamp) {
-                alertDate = new Date(alert.timestamp.replace(' ', 'T') + 'Z');
+                // Handle both numeric (Unix ms) and string timestamps
+                if (typeof alert.timestamp === 'number') {
+                    alertDate = new Date(alert.timestamp);
+                } else {
+                    alertDate = new Date(alert.timestamp.replace(' ', 'T') + 'Z');
+                }
                 alertTimestamp = alertDate.toISOString().replace(/[-:T]/g, '').slice(0, 15);
             } else {
                 alertDate = new Date();
@@ -7337,12 +8524,17 @@
             setTimeout(() => { if (typeof lucide !== 'undefined') lucide.createIcons(); }, 100);
         }
 
+        let symbolsListWarningShown = false;  // Only warn once to reduce console noise
+
         function renderSymbols(symbols) {
             const symbolsList = document.getElementById('analyzedSymbolsList');
-            
-            // Beta tab may not be loaded yet
+
+            // Beta tab may not be loaded yet (lazy loading)
             if (!symbolsList) {
-                console.warn('[WARN] analyzedSymbolsList element not found, skipping render');
+                if (!symbolsListWarningShown) {
+                    console.debug('[DEBUG] analyzedSymbolsList not loaded yet, will render when tab activates');
+                    symbolsListWarningShown = true;
+                }
                 return;
             }
             
@@ -7678,9 +8870,9 @@
                 losersList.innerHTML = '<div style="text-align: center; color: var(--text-secondary); font-size: 12px; padding: 10px;">No losers found</div>';
             }
 
-            // Update Market Intelligence breadth gauge with movers count
-            // This shows broader market breadth from all monitored symbols
-            updateMarketIntelBreadth(gainers.length, losers.length);
+            // NOTE: Market Intelligence breadth gauge is now updated separately
+            // using actual market_breadth data from the API, not movers array length
+            // See: mobileData.market_breadth update in fetchMobileData()
         }
         
         function createMoverItem(item, type) {
@@ -7932,24 +9124,45 @@
 
         // Alert card redesign - handles both whale trades and liquidation cascades
         function createAlertCard(alert) {
-            const symbol = alert.symbol || 'UNKNOWN';
             const message = alert.message || '';
             const details = alert.details || {};
             const level = alert.level || 'warning';
 
-            // Monitor field mapping fallbacks (but less verbose than isImportantAlert)
-            if (!alert.alert_type && !alert.details?.type && !alert.type) {
-                console.error('[ALERT-FIELD] createAlertCard: Missing all type fields!', { symbol, message });
+            // Infer alert type from message if not explicitly set
+            let alertType = alert.alert_type || alert.details?.type || alert.type || '';
+
+            // Fallback: infer type from message content for regime change alerts
+            if (!alertType && message) {
+                if (message.toLowerCase().includes('regime')) {
+                    alertType = 'regime_change';
+                } else if (message.toLowerCase().includes('whale')) {
+                    alertType = 'whale_trade';
+                } else if (message.toLowerCase().includes('liquidation')) {
+                    alertType = 'liquidation_cascade';
+                } else if (message.toLowerCase().includes('signal') || message.toLowerCase().includes('confluence')) {
+                    alertType = 'high_confluence';
+                }
             }
 
-            const alertType = alert.alert_type || alert.details?.type || '';
+            // Determine symbol - strip USDT suffix for cleaner display
+            let symbol = alert.symbol;
+            if (symbol && symbol !== 'null' && symbol !== 'UNKNOWN') {
+                // Clean up symbol format (BTCUSDT -> BTC, ETHUSDT -> ETH)
+                symbol = symbol.replace(/USDT$/i, '');
+            } else {
+                symbol = 'UNKNOWN';
+            }
 
-            // Parse timestamp
+            // Parse timestamp - handle both numeric (Unix ms) and string formats
             let alertDate;
             if (alert.unix_timestamp) {
                 alertDate = new Date(alert.unix_timestamp * 1000);
             } else if (alert.timestamp) {
-                alertDate = new Date(alert.timestamp.replace(' ', 'T') + 'Z');
+                if (typeof alert.timestamp === 'number') {
+                    alertDate = new Date(alert.timestamp);
+                } else {
+                    alertDate = new Date(alert.timestamp.replace(' ', 'T') + 'Z');
+                }
             } else {
                 alertDate = new Date();
             }
@@ -8073,8 +9286,11 @@
                 valueStr = '$' + Math.round(totalValue);
             }
 
-            // Clean symbol
-            const displaySymbol = isGlobal ? 'GLOBAL' : symbol.replace('USDT', '');
+            // Clean symbol - strip 1000 prefix and USDT suffix
+            let displaySymbol = isGlobal ? 'GLOBAL' : symbol.replace('USDT', '');
+            if (displaySymbol.startsWith('1000') && displaySymbol.length > 4) {
+                displaySymbol = displaySymbol.substring(4);
+            }
 
             // For signal alerts, add click handler to navigate to Signals tab
             const isSignalAlert = alertType === 'high_confluence' || alertType === 'signal';
@@ -8083,30 +9299,32 @@
 
             return `
                 <div class="signal-card" data-alert-type="${alertType}" ${clickHandler} style="
-                    padding: 14px 16px;
+                    padding: 12px 16px;
                     background: ${bgTint};
                     border-radius: 8px;
                     display: flex;
-                    justify-content: space-between;
-                    align-items: center;
-                    min-height: 52px;
+                    flex-direction: column;
+                    gap: 6px;
                     font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
                     ${cursorStyle}
                 ">
-                    <div>
-                        <div style="display: flex; align-items: baseline; gap: 6px;">
-                            <span style="font-size: 15px; font-weight: 600; color: #fbbf24; font-family: 'IBM Plex Mono', monospace;">${displaySymbol}</span>
-                            <span style="font-size: 11px; color: #6b7280;">${relativeTime}</span>
+                    <!-- Row 1: Symbol (left) + Direction + Value (right) -->
+                    <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                        <span style="font-size: 15px; font-weight: 600; color: #fbbf24; font-family: 'IBM Plex Mono', monospace;">${displaySymbol}</span>
+                        <div style="display: flex; align-items: center; gap: 12px;">
+                            ${dominant ? `<span style="font-size: 12px; font-weight: 600; color: ${sideColor}; font-family: 'IBM Plex Mono', monospace; letter-spacing: 0.5px;">${dominant}</span>` : ''}
+                            ${isConfidence
+                                ? `<span style="font-size: 11px; color: #6b7280; font-family: 'IBM Plex Mono', monospace; background: rgba(255,255,255,0.05); padding: 2px 6px; border-radius: 4px;"><span style="font-weight: 600; color: #d1d5db;">${valueStr}</span> Conf</span>`
+                                : `<span style="font-size: 17px; font-weight: 700; color: #e0e0e0; font-family: 'IBM Plex Mono', monospace;">${valueStr}</span>`
+                            }
                         </div>
-                        ${isGlobal ? `<div style="font-size: 10px; color: #f59e0b; margin-top: 2px;">Market-wide cascade</div>` : ''}
-                        ${alertLabel ? `<div style="font-size: 10px; color: #9ca3af; margin-top: 2px;">${alertLabel}</div>` : ''}
                     </div>
-                    <div style="display: flex; align-items: center; gap: 12px;">
-                        ${dominant ? `<span style="font-size: 12px; font-weight: 600; color: ${sideColor}; font-family: 'IBM Plex Mono', monospace; letter-spacing: 0.5px; white-space: nowrap;">${dominant}</span>` : ''}
-                        ${isConfidence
-                            ? `<span style="font-size: 11px; color: #6b7280; font-family: 'IBM Plex Mono', monospace; white-space: nowrap; background: rgba(255,255,255,0.05); padding: 2px 6px; border-radius: 4px;"><span style="font-weight: 600; color: #d1d5db;">${valueStr}</span> Conf</span>`
-                            : `<span style="font-size: 17px; font-weight: 700; color: #e0e0e0; font-family: 'IBM Plex Mono', monospace;">${valueStr}</span>`
-                        }
+                    <!-- Row 2: Alert message -->
+                    ${message ? `<div style="font-size: 11px; color: #9ca3af; line-height: 1.4; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;">${message.replace(/🐋\s*/g, '').replace(/📊\s*/g, '').replace(/⚡\s*/g, '')}</div>` : ''}
+                    <!-- Row 3: Time (left) + Label tags (right) -->
+                    <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                        <span style="font-size: 10px; color: #6b7280;">${relativeTime}</span>
+                        ${alertLabel ? `<span style="font-size: 9px; color: #9ca3af; padding: 2px 6px; background: rgba(255,255,255,0.05); border-radius: 4px;">${alertLabel.replace(/^[📊📈🐋💧]\s*/, '')}</span>` : ''}
                     </div>
                 </div>
             `;
@@ -8126,7 +9344,9 @@
             
             // Extract component scores if available
             const components = symbol.components || symbol.results || {};
-            const reliability = symbol.reliability || 0;
+            // Note: reliability from backend is 0-1 decimal, convert to percentage (0-100)
+            const reliabilityRaw = symbol.reliability || 0;
+            const reliability = reliabilityRaw <= 1 ? reliabilityRaw * 100 : reliabilityRaw;
             const signalType = symbol.signal_type || symbol.type || 'NEUTRAL';
             const signalStrength = symbol.signal_strength || symbol.strength || 'weak';
             const timestamp = symbol.timestamp || Date.now();
@@ -8187,6 +9407,10 @@
                 orderbook: components.orderbook || 50,
                 price_structure: components.price_structure || 50
             };
+
+            // Extract timeframe metadata for this card
+            const tfMeta = signal.timeframe_metadata || {};
+            const tfWeightsText = tfMeta.weights_label || '1m: 40% | 5m: 30% | 30m: 20% | 4h: 10%';
             
             return `
                 <div class="symbol-card" id="${cardId}" style="background: var(--bg-secondary); border: 1px solid var(--border-light); border-radius: 14px; cursor: pointer; transition: all 0.2s ease; position: relative; overflow: hidden; margin-bottom: 12px;">
@@ -8247,6 +9471,12 @@
                     
                     <!-- Expanded content (hidden by default) -->
                     <div id="${cardId}_expanded" style="display: none; padding: 0 16px 16px 16px; border-top: 1px solid var(--border-light);">
+                        <!-- Timeframe weights badge -->
+                        <div style="display: flex; align-items: center; gap: 6px; margin: 12px 0 8px 0; padding: 6px 8px; background: rgba(139, 92, 246, 0.1); border: 1px solid rgba(139, 92, 246, 0.2); border-radius: 6px;">
+                            <i data-lucide="clock" style="width: 12px; height: 12px; color: var(--accent-primary); opacity: 0.8;"></i>
+                            <span style="font-size: 9px; color: var(--text-secondary); font-weight: 500;">TF Weights: ${tfWeightsText}</span>
+                        </div>
+
                         <!-- Component scores breakdown -->
                         <div style="margin-bottom: 12px;">
                             <h4 style="font-size: 12px; font-weight: 600; color: var(--text-primary); margin-bottom: 8px; text-transform: uppercase;">Component Breakdown</h4>
@@ -8395,7 +9625,8 @@
             // Also refresh the price ticker (fetch fresh data)
             refreshPriceTicker();
 
-            // Show refresh feedback
+            // Show refresh feedback with success haptic
+            haptic.success();
             pullToRefresh.innerHTML = '<i data-lucide="check" style="width: 16px; height: 16px; margin-right: 8px;"></i><span>Updated</span>';
             setTimeout(() => {
                 pullToRefresh.innerHTML = '<i data-lucide="refresh-cw" style="width: 16px; height: 16px; margin-right: 8px;"></i><span>Pull to refresh</span>';
@@ -8488,7 +9719,7 @@
         // Track currently expanded card (accordion behavior)
         let currentlyExpandedAlphaCard = null;
 
-        // Alpha Pulse card expansion/collapse - HORIZONTAL with UX improvements
+        // Alpha Pulse card expansion/collapse - FLIP animation for smooth right-column expansion
         function toggleAlphaPulseCard(cardId) {
             const card = document.getElementById(cardId);
             const buttonsPanel = document.getElementById(`${cardId}_buttons`);
@@ -8498,6 +9729,7 @@
             if (!breakdownPanel || !card) return;
 
             const isExpanded = breakdownPanel.style.maxHeight && breakdownPanel.style.maxHeight !== '0px';
+            const isRightColumn = card.dataset.column === 'right';
 
             // Accordion: collapse previously expanded card if different
             if (!isExpanded && currentlyExpandedAlphaCard && currentlyExpandedAlphaCard !== cardId) {
@@ -8516,10 +9748,12 @@
                     prevBreakdown.style.maxHeight = '0px';
                     prevBreakdown.style.opacity = '0';
                     if (prevChevron) prevChevron.style.transform = 'rotate(0deg)';
+
                     setTimeout(() => {
                         if (prevButtons) prevButtons.style.display = 'none';
                         prevBreakdown.style.display = 'none';
                         prevCard.style.gridColumn = '';
+                        prevCard.style.transform = '';
                     }, 300);
                 }
             }
@@ -8528,8 +9762,43 @@
                 // Haptic feedback on expand
                 triggerHapticFeedback('light');
 
-                // Expand card to full width
-                card.style.gridColumn = '1 / -1';
+                // FLIP Animation for right-column cards to prevent jarring jump
+                if (isRightColumn) {
+                    // FIRST: Record current position before grid change
+                    const firstRect = card.getBoundingClientRect();
+
+                    // Prepare for GPU-accelerated animation
+                    card.style.willChange = 'transform';
+
+                    // LAST: Apply grid change (card will jump to column 1)
+                    card.style.gridColumn = '1 / -1';
+
+                    // Force layout recalc to get new position
+                    const lastRect = card.getBoundingClientRect();
+
+                    // INVERT: Calculate delta and apply inverse transform
+                    const deltaX = firstRect.left - lastRect.left;
+
+                    // Apply inverse transform (makes card appear in original position)
+                    card.style.transition = 'none';
+                    card.style.transform = `translateX(${deltaX}px)`;
+
+                    // PLAY: Animate back to final position with smooth easing
+                    // Double RAF ensures browser has fully painted before animating
+                    requestAnimationFrame(() => {
+                        requestAnimationFrame(() => {
+                            // Ease-out-quint: ultra-smooth deceleration with soft landing
+                            card.style.transition = 'transform 0.45s cubic-bezier(0.22, 1, 0.36, 1)';
+                            card.style.transform = 'translateX(0)';
+
+                            // Clean up will-change after animation completes
+                            setTimeout(() => { card.style.willChange = ''; }, 450);
+                        });
+                    });
+                } else {
+                    // Left column - simple expansion
+                    card.style.gridColumn = '1 / -1';
+                }
 
                 // Show buttons panel (horizontal)
                 if (buttonsPanel) {
@@ -8544,14 +9813,14 @@
                 breakdownPanel.style.display = 'block';
                 if (chevron) chevron.style.transform = 'rotate(180deg)';
 
+                // Scroll card into view with minimal movement (only if needed)
+                requestAnimationFrame(() => {
+                    card.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+                });
+
                 setTimeout(() => {
                     breakdownPanel.style.maxHeight = '200px';
                     breakdownPanel.style.opacity = '1';
-
-                    // Auto-scroll card into view
-                    setTimeout(() => {
-                        card.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
-                    }, 150);
                 }, 10);
 
                 currentlyExpandedAlphaCard = cardId;
@@ -8561,22 +9830,73 @@
                     lucide.createIcons();
                 }
             } else {
-                // Collapse buttons panel
-                if (buttonsPanel) {
-                    buttonsPanel.style.width = '0px';
-                    buttonsPanel.style.opacity = '0';
+                // FLIP Animation for collapsing right-column cards
+                if (isRightColumn) {
+                    // Get current position
+                    const currentRect = card.getBoundingClientRect();
+
+                    // Collapse buttons panel
+                    if (buttonsPanel) {
+                        buttonsPanel.style.width = '0px';
+                        buttonsPanel.style.opacity = '0';
+                    }
+
+                    // Collapse breakdown panel
+                    breakdownPanel.style.maxHeight = '0px';
+                    breakdownPanel.style.opacity = '0';
+                    if (chevron) chevron.style.transform = 'rotate(0deg)';
+
+                    setTimeout(() => {
+                        if (buttonsPanel) buttonsPanel.style.display = 'none';
+                        breakdownPanel.style.display = 'none';
+
+                        // Prepare for GPU-accelerated animation
+                        card.style.willChange = 'transform';
+
+                        // Record position after content collapse but before grid reset
+                        const beforeReset = card.getBoundingClientRect();
+
+                        // Reset grid
+                        card.style.gridColumn = '';
+
+                        // Get final position
+                        const afterReset = card.getBoundingClientRect();
+
+                        // Calculate delta (card moves right when returning to column 2)
+                        const deltaX = beforeReset.left - afterReset.left;
+
+                        // Apply inverse transform
+                        card.style.transition = 'none';
+                        card.style.transform = `translateX(${deltaX}px)`;
+
+                        // Animate back with smooth easing
+                        requestAnimationFrame(() => {
+                            requestAnimationFrame(() => {
+                                card.style.transition = 'transform 0.45s cubic-bezier(0.22, 1, 0.36, 1)';
+                                card.style.transform = 'translateX(0)';
+
+                                // Clean up will-change after animation completes
+                                setTimeout(() => { card.style.willChange = ''; }, 450);
+                            });
+                        });
+                    }, 300);
+                } else {
+                    // Left column - simple collapse
+                    if (buttonsPanel) {
+                        buttonsPanel.style.width = '0px';
+                        buttonsPanel.style.opacity = '0';
+                    }
+
+                    breakdownPanel.style.maxHeight = '0px';
+                    breakdownPanel.style.opacity = '0';
+                    if (chevron) chevron.style.transform = 'rotate(0deg)';
+
+                    setTimeout(() => {
+                        if (buttonsPanel) buttonsPanel.style.display = 'none';
+                        breakdownPanel.style.display = 'none';
+                        card.style.gridColumn = '';
+                    }, 300);
                 }
-
-                // Collapse breakdown panel
-                breakdownPanel.style.maxHeight = '0px';
-                breakdownPanel.style.opacity = '0';
-                if (chevron) chevron.style.transform = 'rotate(0deg)';
-
-                setTimeout(() => {
-                    if (buttonsPanel) buttonsPanel.style.display = 'none';
-                    breakdownPanel.style.display = 'none';
-                    card.style.gridColumn = '';
-                }, 300);
 
                 currentlyExpandedAlphaCard = null;
             }
@@ -8589,13 +9909,174 @@
             event.stopPropagation();
         }
 
-        function viewAlerts(symbol) {
-            // Navigate to alerts for this symbol
-            console.log('View alerts for:', symbol);
-            // Switch to alerts tab and filter by symbol
+        // ===== Alert Quick Actions Sheet =====
+        let currentAlertSymbol = null;
+        let currentAlertScore = 50;
+        let currentAlertDirection = 'LONG';
+        let symbolAlertSettings = JSON.parse(localStorage.getItem('symbolAlertSettings') || '{}');
+
+        function viewAlerts(symbol, score, direction) {
+            // Open the Quick Actions bottom sheet instead of navigating directly
+            console.log('Opening alert sheet for:', symbol, 'Score:', score, 'Direction:', direction);
+            // Prevent event bubbling if called from onclick (event may be undefined when called directly)
+            if (typeof event !== 'undefined' && event && event.stopPropagation) {
+                event.stopPropagation();
+            }
+
+            currentAlertSymbol = symbol;
+            currentAlertScore = score || 50;
+            currentAlertDirection = direction || 'LONG';
+
+            // Update sheet header with symbol info
+            document.getElementById('sheetSymbolName').textContent = symbol;
+
+            document.getElementById('sheetDirection').textContent = currentAlertDirection;
+            document.getElementById('sheetDirection').style.color = currentAlertDirection === 'LONG' ? 'var(--accent-positive)' : 'var(--accent-negative)';
+
+            const scoreBadge = document.getElementById('sheetScoreBadge');
+            scoreBadge.textContent = `Score: ${Math.round(currentAlertScore)}`;
+            scoreBadge.className = `sheet-score-badge ${currentAlertDirection === 'LONG' ? 'bullish' : 'bearish'}`;
+
+            // Count alerts for this symbol
+            const symbolAlerts = (currentAlertsData || []).filter(a =>
+                a.symbol === symbol || a.symbol === symbol.replace('USDT', '/USDT')
+            );
+            document.getElementById('sheetAlertCount').textContent = symbolAlerts.length;
+
+            // Load saved settings for this symbol
+            const savedSettings = symbolAlertSettings[symbol] || {
+                threshold: 75,
+                alertLong: true,
+                alertShort: false
+            };
+
+            document.getElementById('thresholdSlider').value = savedSettings.threshold;
+            document.getElementById('thresholdDisplay').textContent = `≥ ${savedSettings.threshold}`;
+
+            updateToggleState('alertLongToggle', savedSettings.alertLong);
+            updateToggleState('alertShortToggle', savedSettings.alertShort);
+
+            // Show the sheet
+            document.getElementById('alertSheetOverlay').classList.add('active');
+            document.getElementById('alertBottomSheet').classList.add('active');
+
+            // Re-init Lucide icons in the sheet
+            setTimeout(() => {
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+            }, 50);
+        }
+
+        function closeAlertSheet() {
+            document.getElementById('alertSheetOverlay').classList.remove('active');
+            document.getElementById('alertBottomSheet').classList.remove('active');
+            currentAlertSymbol = null;
+        }
+
+        function updateThresholdDisplay(value) {
+            document.getElementById('thresholdDisplay').textContent = `≥ ${value}`;
+        }
+
+        function updateToggleState(toggleId, isActive) {
+            const toggle = document.getElementById(toggleId);
+            if (isActive) {
+                toggle.classList.add('active');
+            } else {
+                toggle.classList.remove('active');
+            }
+        }
+
+        function toggleAlertOption(type) {
+            const toggleId = type === 'long' ? 'alertLongToggle' : 'alertShortToggle';
+            const toggle = document.getElementById(toggleId);
+            toggle.classList.toggle('active');
+        }
+
+        function viewSymbolAlerts() {
+            // Close sheet and navigate to alerts tab with symbol filter
+            const symbolToFilter = currentAlertSymbol;
+            closeAlertSheet();
+
+            // Switch to alerts tab
             switchTab('alerts');
-            // TODO: Implement symbol filtering in alerts
-            event.stopPropagation();
+
+            // Apply symbol filter after a brief delay
+            setTimeout(() => {
+                filterAlertsBySymbol(symbolToFilter);
+            }, 150);
+        }
+
+        function filterAlertsBySymbol(symbol) {
+            if (!symbol) return;
+
+            // Filter current alerts data by symbol
+            const filteredAlerts = (currentAlertsData || []).filter(a =>
+                a.symbol === symbol ||
+                a.symbol === symbol.replace('USDT', '/USDT') ||
+                (a.symbol && a.symbol.includes(symbol.replace('USDT', '')))
+            );
+
+            // Show a toast indicating the filter
+            showToast(`Showing ${filteredAlerts.length} alerts for ${symbol}`, 'info');
+
+            // Update the alert count badge to show filtered count
+            document.getElementById('alertCount').textContent = `${filteredAlerts.length}`;
+
+            // Add a "clear filter" button to the filter pills
+            const alertFilters = document.getElementById('alertFilters');
+
+            // Remove any existing symbol filter pill
+            const existingSymbolPill = alertFilters.querySelector('.symbol-filter-pill');
+            if (existingSymbolPill) existingSymbolPill.remove();
+
+            // Add symbol filter pill at the beginning
+            const symbolPill = document.createElement('button');
+            symbolPill.className = 'alert-filter-pill active symbol-filter-pill';
+            symbolPill.style.background = 'rgba(251, 191, 36, 0.2)';
+            symbolPill.style.borderColor = 'var(--neon-amber)';
+            symbolPill.innerHTML = `
+                <span>${symbol}</span>
+                <i data-lucide="x" style="width: 12px; height: 12px; margin-left: 4px;"></i>
+            `;
+            symbolPill.onclick = (e) => {
+                e.stopPropagation();
+                symbolPill.remove();
+                renderAlerts(currentAlertsData, currentAlertFilter);
+                document.getElementById('alertCount').textContent = currentAlertsData.length;
+            };
+            alertFilters.insertBefore(symbolPill, alertFilters.firstChild);
+
+            // Re-render with filtered data
+            renderAlerts(filteredAlerts, 'all');
+
+            // Deselect type filter pills since we're showing symbol-filtered results
+            document.querySelectorAll('.alert-filter-pill').forEach(pill => {
+                if (!pill.classList.contains('symbol-filter-pill')) {
+                    pill.classList.remove('active');
+                }
+            });
+
+            // Re-init Lucide
+            setTimeout(() => {
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+            }, 50);
+        }
+
+        function saveAlertSettings() {
+            if (!currentAlertSymbol) return;
+
+            const settings = {
+                threshold: parseInt(document.getElementById('thresholdSlider').value),
+                alertLong: document.getElementById('alertLongToggle').classList.contains('active'),
+                alertShort: document.getElementById('alertShortToggle').classList.contains('active')
+            };
+
+            symbolAlertSettings[currentAlertSymbol] = settings;
+            localStorage.setItem('symbolAlertSettings', JSON.stringify(symbolAlertSettings));
+
+            showToast(`Alert settings saved for ${currentAlertSymbol}`, 'success');
+            console.log('Saved alert settings:', currentAlertSymbol, settings);
+
+            closeAlertSheet();
         }
 
         // View HTML/PDF report for a signal alert
@@ -9018,8 +10499,8 @@
 
         // Add haptic feedback to all interactive elements
         function initHapticFeedback() {
-            // Buttons and nav items
-            document.querySelectorAll('button, .nav-item, .tab-btn, .tf-btn, .pressable').forEach(el => {
+            // Primary interactive elements - standard haptic
+            document.querySelectorAll('button, .nav-item, .tab-btn, .tf-btn, .tf-chip, .pressable').forEach(el => {
                 el.addEventListener('touchstart', () => haptic.light(), { passive: true });
             });
 
@@ -9028,6 +10509,18 @@
                 el.addEventListener('touchstart', () => {
                     if (userHasInteracted && 'vibrate' in navigator) navigator.vibrate(5);
                 }, { passive: true });
+            });
+
+            // Switches/toggles - medium feedback for state changes
+            document.querySelectorAll('input[type="checkbox"], input[type="radio"], .toggle-switch').forEach(el => {
+                el.addEventListener('change', () => haptic.medium(), { passive: true });
+            });
+
+            // Links and clickable text
+            document.querySelectorAll('a, [role="link"], [onclick]').forEach(el => {
+                if (!el.matches('button, .nav-item, .tf-chip, .tf-btn')) {
+                    el.addEventListener('touchstart', () => haptic.light(), { passive: true });
+                }
             });
         }
 
@@ -9065,8 +10558,243 @@
             observer.observe(scrollContainer, { childList: true, subtree: true });
         }
 
+        /**
+         * Initialize horizontal scroll fade indicators
+         * Shows gradient fade when content is scrollable left/right
+         */
+        function initScrollFadeIndicators() {
+            // Container IDs that have horizontal scrolling
+            const containerIds = ['oiDistributionContainer', 'fundingSpreadsContainer', 'alertFilters'];
+
+            containerIds.forEach(id => {
+                const container = document.getElementById(id);
+                if (!container) return;
+
+                // Wrap container if not already wrapped
+                if (!container.parentElement.classList.contains('scroll-fade-wrapper')) {
+                    const wrapper = document.createElement('div');
+                    wrapper.className = 'scroll-fade-wrapper';
+                    container.parentElement.insertBefore(wrapper, container);
+                    wrapper.appendChild(container);
+                }
+
+                const wrapper = container.parentElement;
+
+                function updateScrollIndicators() {
+                    const canScrollLeft = container.scrollLeft > 5;
+                    const canScrollRight = container.scrollLeft < (container.scrollWidth - container.clientWidth - 5);
+
+                    wrapper.classList.toggle('can-scroll-left', canScrollLeft);
+                    wrapper.classList.toggle('can-scroll-right', canScrollRight);
+                }
+
+                // Listen for scroll events
+                container.addEventListener('scroll', updateScrollIndicators, { passive: true });
+
+                // Initial check (delay for content to load)
+                setTimeout(updateScrollIndicators, 500);
+
+                // Re-check when content changes
+                const observer = new MutationObserver(() => {
+                    setTimeout(updateScrollIndicators, 100);
+                });
+                observer.observe(container, { childList: true, subtree: true });
+            });
+
+            console.log('[DEBUG] Scroll fade indicators initialized');
+        }
+
 
         console.log('[DEBUG] Script executing, about to register DOMContentLoaded');
+
+        /**
+         * ============================================
+         * BOTTOM NAVIGATION SCROLL CONTROLLER
+         * ============================================
+         * Handles hide/show behavior based on scroll direction
+         * - GPU-accelerated transforms
+         * - RequestAnimationFrame throttling
+         * - Velocity-based hiding
+         * - Accessibility support (ARIA, reduced motion)
+         */
+        class BottomNavScrollController {
+            constructor(navElement, options = {}) {
+                this.nav = navElement;
+                this.isHidden = false;
+                this.lastScrollY = window.scrollY;
+                this.lastScrollTime = Date.now();
+                this.scrollVelocity = 0;
+                this.ticking = false;
+                this.isFullscreen = false;
+
+                // Configuration
+                this.config = {
+                    hideThreshold: options.hideThreshold || 40,        // Pixels before fast-scroll hide
+                    showThreshold: options.showThreshold || 10,        // Pixels before show on scroll up
+                    velocityThreshold: options.velocityThreshold || 0.15,  // Lower threshold for better touch response
+                    forceHideThreshold: options.forceHideThreshold || 120, // Force hide after sustained scroll (no velocity check)
+                    transitionDuration: options.transitionDuration || 300
+                };
+
+                // State tracking
+                this.scrollDelta = 0;
+                this.isKeyboardOpen = false;
+                this.lastViewportHeight = window.innerHeight;
+                this.navHeight = this.nav.offsetHeight;
+
+                // Bind methods
+                this.handleScroll = this.handleScroll.bind(this);
+                this.update = this.update.bind(this);
+                this.handleResize = this.handleResize.bind(this);
+                this.handleVisibilityChange = this.handleVisibilityChange.bind(this);
+
+                this.init();
+            }
+
+            init() {
+                console.log('[BottomNav] Initializing scroll controller');
+                this.nav.setAttribute('aria-hidden', 'false');
+                this.prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+                window.addEventListener('scroll', this.handleScroll, { passive: true });
+                window.addEventListener('resize', this.handleResize);
+                document.addEventListener('visibilitychange', this.handleVisibilityChange);
+
+                window.bottomNavController = this;
+            }
+
+            handleScroll() {
+                if (!this.ticking && !this.isFullscreen) {
+                    window.requestAnimationFrame(this.update);
+                    this.ticking = true;
+                }
+            }
+
+            update() {
+                const currentScrollY = window.scrollY;
+                const currentTime = Date.now();
+                const deltaY = currentScrollY - this.lastScrollY;
+                const deltaTime = currentTime - this.lastScrollTime;
+
+                this.scrollVelocity = deltaTime > 0 ? Math.abs(deltaY / deltaTime) : 0;
+                this.scrollDelta += deltaY;
+
+                // Always show at top of page
+                if (currentScrollY <= 0) {
+                    if (this.isHidden) this.show();
+                    this.resetState();
+                    this.ticking = false;
+                    return;
+                }
+
+                // Don't hide if content shorter than viewport
+                const contentHeight = document.documentElement.scrollHeight;
+                const viewportHeight = window.innerHeight;
+                if (contentHeight <= viewportHeight + this.navHeight) {
+                    if (this.isHidden) this.show();
+                    this.ticking = false;
+                    return;
+                }
+
+                // Keep visible when keyboard is open
+                if (this.isKeyboardOpen) {
+                    if (this.isHidden) this.show();
+                    this.ticking = false;
+                    return;
+                }
+
+                // HIDE: Scrolling down with sufficient delta and velocity
+                // Two conditions can trigger hide:
+                // 1. Fast scroll: delta > threshold AND velocity > threshold
+                // 2. Sustained scroll: delta > forceHideThreshold (catches slow continuous scrolling)
+                const shouldHide = !this.isHidden && deltaY > 0 && (
+                    (this.scrollDelta > this.config.hideThreshold &&
+                     this.scrollVelocity > this.config.velocityThreshold) ||
+                    (this.scrollDelta > this.config.forceHideThreshold)
+                );
+                if (shouldHide) {
+                    this.hide();
+                }
+
+                // SHOW: Scrolling up with sufficient delta
+                if (this.isHidden &&
+                    deltaY < 0 &&
+                    Math.abs(this.scrollDelta) > this.config.showThreshold) {
+                    this.show();
+                }
+
+                this.lastScrollY = currentScrollY;
+                this.lastScrollTime = currentTime;
+                this.ticking = false;
+            }
+
+            hide() {
+                if (this.isHidden || this.isFullscreen) return;
+                this.isHidden = true;
+                const translateY = this.navHeight + 20;
+                this.nav.style.transform = `translate3d(0, ${translateY}px, 0)`;
+                this.nav.setAttribute('aria-hidden', 'true');
+                this.nav.style.pointerEvents = 'none';
+                this.resetState();
+            }
+
+            show() {
+                if (!this.isHidden) return;
+                this.isHidden = false;
+                this.nav.style.transform = 'translate3d(0, 0, 0)';
+                this.nav.setAttribute('aria-hidden', 'false');
+                this.nav.style.pointerEvents = 'auto';
+                this.resetState();
+            }
+
+            resetState() {
+                this.scrollDelta = 0;
+                this.scrollVelocity = 0;
+            }
+
+            handleResize() {
+                const currentHeight = window.innerHeight;
+                const heightDifference = this.lastViewportHeight - currentHeight;
+
+                // Detect keyboard (viewport shrinks >150px)
+                if (heightDifference > 150) {
+                    this.isKeyboardOpen = true;
+                    this.show();
+                } else if (heightDifference < -150) {
+                    this.isKeyboardOpen = false;
+                }
+
+                this.lastViewportHeight = currentHeight;
+                this.navHeight = this.nav.offsetHeight;
+            }
+
+            handleVisibilityChange() {
+                if (!document.hidden && !this.isFullscreen) {
+                    this.show();
+                }
+            }
+
+            // Called by tab switching
+            forceShow() {
+                if (!this.isFullscreen) this.show();
+            }
+
+            // Called when entering fullscreen
+            setFullscreen(isFullscreen) {
+                this.isFullscreen = isFullscreen;
+                if (isFullscreen) {
+                    this.isHidden = true;
+                }
+            }
+
+            destroy() {
+                window.removeEventListener('scroll', this.handleScroll);
+                window.removeEventListener('resize', this.handleResize);
+                document.removeEventListener('visibilitychange', this.handleVisibilityChange);
+                this.show();
+                delete window.bottomNavController;
+            }
+        }
 
         // Initialize on load with performance optimizations
         document.addEventListener('DOMContentLoaded', () => {
@@ -9083,6 +10811,11 @@
 
                 console.log('[DEBUG] About to call loadDashboardData()');
                 loadDashboardData();
+
+                // Fetch real L/S positioning from crypto-perps-tracker API
+                fetchMarketLSR();
+                // Refresh L/S data every 60 seconds
+                setInterval(fetchMarketLSR, 60000);
 
                 // Initialize Double-Tap Quick Actions (Optimization #4)
                 initDoubleTapActions();
@@ -9113,6 +10846,18 @@
             initHapticFeedback();
             console.log('[DEBUG] iOS features initialized (haptics)');
 
+            // Initialize bottom navigation scroll controller
+            const bottomNav = document.querySelector('.bottom-nav');
+            if (bottomNav) {
+                new BottomNavScrollController(bottomNav, {
+                    hideThreshold: 40,         // Fast scroll trigger
+                    showThreshold: 10,         // Quick reveal on scroll up
+                    velocityThreshold: 0.15,   // Lowered for better touch response
+                    forceHideThreshold: 120    // Guaranteed hide after sustained scroll
+                });
+                console.log('[DEBUG] Bottom nav scroll controller initialized');
+            }
+
             // Initialize Performance Tracker settings (timeframe, auto-refresh)
             initPerformanceSettings();
             if (perfAutoRefreshEnabled) {
@@ -9121,6 +10866,9 @@
 
             // Initialize confluence scroll indicator
             initConfluenceScrollHint();
+
+            // Initialize horizontal scroll fade indicators
+            initScrollFadeIndicators();
 
             // Initialize alert notification system
             initNotifications();
@@ -9560,7 +11308,95 @@
         }
     </script>
 
-        <!-- Cache Status Indicator removed -->
+    <!-- Alert Quick Actions Bottom Sheet -->
+    <div class="alert-sheet-overlay" id="alertSheetOverlay" onclick="closeAlertSheet()"></div>
+    <div class="alert-bottom-sheet" id="alertBottomSheet">
+        <div class="sheet-handle"></div>
+        <div class="sheet-header">
+            <div class="sheet-header-icon">
+                <i data-lucide="bell" style="width: 20px; height: 20px;"></i>
+            </div>
+            <div class="sheet-header-text">
+                <h3 id="sheetSymbolName">BTCUSDT</h3>
+                <div class="sheet-subtitle">
+                    <span id="sheetDirection">LONG</span>
+                    <span class="sheet-score-badge bullish" id="sheetScoreBadge">Score: 72</span>
+                </div>
+            </div>
+        </div>
+        <div class="sheet-options">
+            <!-- View Recent Alerts -->
+            <div class="sheet-option" onclick="viewSymbolAlerts()">
+                <div class="sheet-option-icon amber">
+                    <i data-lucide="list" style="width: 18px; height: 18px;"></i>
+                </div>
+                <div class="sheet-option-text">
+                    <h4>View Recent Alerts</h4>
+                    <p>See all alerts for this symbol</p>
+                </div>
+                <div class="sheet-option-value">
+                    <span class="count-badge" id="sheetAlertCount">0</span>
+                    <i data-lucide="chevron-right" style="width: 16px; height: 16px;"></i>
+                </div>
+            </div>
+
+            <div class="sheet-divider"></div>
+            <div class="sheet-section-label">Alert Settings</div>
+
+            <!-- Score Threshold Config -->
+            <div class="threshold-config">
+                <div class="threshold-config-header">
+                    <h5>
+                        <i data-lucide="zap" style="width: 14px; height: 14px; color: var(--neon-amber); vertical-align: middle;"></i>
+                        Alert when score reaches
+                    </h5>
+                    <span class="threshold-value-display" id="thresholdDisplay">≥ 75</span>
+                </div>
+                <div class="threshold-slider-container">
+                    <input type="range" id="thresholdSlider" min="50" max="95" value="75" oninput="updateThresholdDisplay(this.value)">
+                </div>
+                <div class="threshold-range-labels">
+                    <span>50 (Neutral)</span>
+                    <span>95 (Strong)</span>
+                </div>
+            </div>
+
+            <!-- Alert on LONG Signal -->
+            <div class="sheet-option" onclick="toggleAlertOption('long')">
+                <div class="sheet-option-icon green">
+                    <i data-lucide="trending-up" style="width: 18px; height: 18px;"></i>
+                </div>
+                <div class="sheet-option-text">
+                    <h4>Alert on LONG Signal</h4>
+                    <p>Notify when bullish confluence detected</p>
+                </div>
+                <div class="sheet-option-toggle active" id="alertLongToggle">
+                    <i data-lucide="check" style="width: 12px; height: 12px;"></i>
+                </div>
+            </div>
+
+            <!-- Alert on SHORT Signal -->
+            <div class="sheet-option" onclick="toggleAlertOption('short')">
+                <div class="sheet-option-icon red">
+                    <i data-lucide="trending-down" style="width: 18px; height: 18px;"></i>
+                </div>
+                <div class="sheet-option-text">
+                    <h4>Alert on SHORT Signal</h4>
+                    <p>Notify when bearish confluence detected</p>
+                </div>
+                <div class="sheet-option-toggle" id="alertShortToggle">
+                    <i data-lucide="check" style="width: 12px; height: 12px;"></i>
+                </div>
+            </div>
+        </div>
+
+        <div class="sheet-actions">
+            <button class="sheet-btn secondary" onclick="closeAlertSheet()">Cancel</button>
+            <button class="sheet-btn primary" onclick="saveAlertSettings()">Save Settings</button>
+        </div>
+    </div>
+
+    <!-- Cache Status Indicator removed -->
         
 </body>
 </html>
