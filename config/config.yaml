@@ -701,6 +701,46 @@ database:
     url: ${INFLUXDB_URL}
 liquidation_persistence:
   enabled: true
+
+# Liquidation Time Decay Configuration
+# Weights recent liquidations more heavily than older ones for improved signal quality
+liquidation_decay:
+  # Master switch - set to false to use legacy equal-weighting
+  enabled: true
+
+  # Half-life in hours - time for event weight to decay to 50%
+  # Recommended range: 2.5 - 5.0 hours for crypto perpetuals
+  # Lower = more responsive to recent events
+  # Higher = more smoothing, less noise sensitivity
+  half_life_hours: 3.5
+
+  # Minimum number of events required for valid score
+  # Below this threshold, returns neutral score with warning
+  min_events: 5
+
+  # Apply sqrt transform to liquidation sizes
+  # Reduces impact of outlier large liquidations
+  use_sqrt_transform: true
+
+  # Minimum weight threshold (events below this are excluded)
+  # 0.01 = 1% = effectively ~23 hours with 3.5h half-life
+  min_effective_weight: 0.01
+
+  # Cascade detection settings
+  cascade_detection:
+    enabled: true
+    # Time window for cascade detection (minutes)
+    window_minutes: 5.0
+    # Minimum events in window to trigger cascade
+    min_events: 10
+
+  # Advanced settings (rarely need adjustment)
+  advanced:
+    # Decay function type: exponential, linear, power_law
+    decay_function: exponential
+    # Power law exponent (only used if decay_function: power_law)
+    power_law_alpha: 0.5
+
 exchanges:
   binance:
     api_credentials:
