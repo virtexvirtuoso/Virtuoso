@@ -551,6 +551,14 @@ async def serve_heatmap_showcase():
         return FileResponse(str(template_path))
     return {"message": "Heatmap showcase not found"}
 
+@app.get("/ai-chat")
+async def serve_ai_chat():
+    """Serve Virtuoso AI Chat interface with Claude/OpenAI/Grok API support"""
+    template_path = project_root / "src" / "dashboard" / "templates" / "standalone" / "virtuoso_ai_chat.html"
+    if template_path.exists():
+        return FileResponse(str(template_path))
+    return {"message": "AI Chat not found"}
+
 @app.get("/chart-comparison")
 async def serve_chart_comparison():
     """Serve chart library comparison demo with live correlation data"""
