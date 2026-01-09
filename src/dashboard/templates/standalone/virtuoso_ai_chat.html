@@ -1,0 +1,1390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Virtuoso AI</title>
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- Markdown & Syntax Highlighting -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/github-dark.min.css">
+    <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+
+    <style>
+        :root {
+            --amber: #fbbf24;
+            --gold: #c9a962;
+            --violet: #8B5CF6;
+            --pink: #EC4899;
+            --dark: #0a0a0f;
+            --darker: #050508;
+            --glass: rgba(255, 255, 255, 0.03);
+            --glass-border: rgba(255, 255, 255, 0.08);
+            --text: #ffffff;
+            --text-dim: rgba(255, 255, 255, 0.5);
+            --text-muted: rgba(255, 255, 255, 0.3);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--darker);
+            color: var(--text);
+            min-height: 100vh;
+            overflow: hidden;
+        }
+
+        .mono { font-family: 'IBM Plex Mono', monospace; }
+
+        /* Gradient Background */
+        .gradient-bg {
+            position: fixed;
+            inset: 0;
+            background: linear-gradient(135deg, var(--darker) 0%, #0f0a12 50%, #0a0a0f 100%);
+            z-index: 0;
+        }
+
+        /* Floating Orbs */
+        .orb {
+            position: fixed;
+            border-radius: 50%;
+            filter: blur(100px);
+            opacity: 0.15;
+            pointer-events: none;
+            z-index: 1;
+        }
+        .orb-1 { width: 400px; height: 400px; background: var(--amber); top: -10%; left: -10%; }
+        .orb-2 { width: 300px; height: 300px; background: var(--violet); bottom: -10%; right: -10%; }
+
+        /* Main Container */
+        .app {
+            position: relative;
+            z-index: 10;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        /* Header */
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 0;
+            border-bottom: 1px solid var(--glass-border);
+            margin-bottom: 20px;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .logo-mark {
+            width: 36px;
+            height: 36px;
+            background: linear-gradient(135deg, var(--amber), var(--gold));
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'IBM Plex Mono', monospace;
+            font-weight: 700;
+            font-size: 16px;
+            color: var(--dark);
+        }
+
+        .logo-text {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 14px;
+            font-weight: 600;
+            letter-spacing: 0.05em;
+            color: var(--text-dim);
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .icon-btn {
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            border: 1px solid var(--glass-border);
+            background: var(--glass);
+            color: var(--text-dim);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+
+        .icon-btn:hover {
+            background: rgba(255, 255, 255, 0.08);
+            color: var(--amber);
+            border-color: rgba(251, 191, 36, 0.3);
+        }
+
+        .icon-btn.active {
+            background: rgba(251, 191, 36, 0.1);
+            color: var(--amber);
+            border-color: rgba(251, 191, 36, 0.3);
+        }
+
+        /* Settings Panel */
+        .settings-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(4px);
+            z-index: 100;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .settings-overlay.open { display: flex; }
+
+        .settings-panel {
+            background: var(--dark);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            width: 100%;
+            max-width: 500px;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .settings-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 20px 24px;
+            border-bottom: 1px solid var(--glass-border);
+        }
+
+        .settings-title {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text);
+        }
+
+        .close-btn {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            border: none;
+            background: transparent;
+            color: var(--text-dim);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+
+        .close-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--text);
+        }
+
+        .settings-body { padding: 24px; }
+
+        .setting-section {
+            margin-bottom: 24px;
+        }
+
+        .setting-section:last-child { margin-bottom: 0; }
+
+        .setting-label {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--amber);
+            margin-bottom: 12px;
+        }
+
+        .form-group { margin-bottom: 16px; }
+        .form-group:last-child { margin-bottom: 0; }
+
+        .form-label {
+            display: block;
+            font-size: 12px;
+            color: var(--text-dim);
+            margin-bottom: 6px;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 12px 14px;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 13px;
+            background: var(--darker);
+            border: 1px solid var(--glass-border);
+            border-radius: 8px;
+            color: var(--text);
+            transition: all 0.2s;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: var(--amber);
+            box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.1);
+        }
+
+        .form-input::placeholder { color: var(--text-muted); }
+
+        .form-select {
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='rgba(255,255,255,0.3)' stroke-width='2'%3E%3Cpolyline points='6,9 12,15 18,9'%3E%3C/polyline%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+            padding-right: 36px;
+        }
+
+        .form-textarea {
+            min-height: 100px;
+            resize: vertical;
+            line-height: 1.6;
+        }
+
+        .btn {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 12px;
+            font-weight: 600;
+            padding: 12px 20px;
+            border-radius: 8px;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--amber), var(--gold));
+            color: var(--dark);
+        }
+
+        .btn-primary:hover {
+            box-shadow: 0 0 20px rgba(251, 191, 36, 0.3);
+            transform: translateY(-1px);
+        }
+
+        .btn-ghost {
+            background: transparent;
+            border: 1px solid var(--glass-border);
+            color: var(--text-dim);
+        }
+
+        .btn-ghost:hover {
+            background: var(--glass);
+            color: var(--text);
+        }
+
+        .warning-box {
+            padding: 12px 14px;
+            background: rgba(251, 191, 36, 0.05);
+            border: 1px solid rgba(251, 191, 36, 0.2);
+            border-radius: 8px;
+            font-size: 11px;
+            color: var(--amber);
+            line-height: 1.5;
+        }
+
+        .checkbox-label {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+        }
+
+        .checkbox-label input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            accent-color: var(--amber);
+            cursor: pointer;
+        }
+
+        .checkbox-text {
+            font-size: 13px;
+            color: var(--text);
+        }
+
+        .form-hint {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 8px;
+            line-height: 1.5;
+        }
+
+        /* Status Indicator */
+        .status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 11px;
+            color: var(--text-muted);
+        }
+
+        .status-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--text-muted);
+        }
+
+        .status-dot.connected {
+            background: #10b981;
+            box-shadow: 0 0 8px #10b981;
+        }
+
+        /* Chat Area */
+        .chat-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+        }
+
+        .messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px 0;
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+        }
+
+        .messages::-webkit-scrollbar { width: 4px; }
+        .messages::-webkit-scrollbar-track { background: transparent; }
+        .messages::-webkit-scrollbar-thumb { background: var(--glass-border); border-radius: 2px; }
+
+        .message {
+            display: flex;
+            gap: 12px;
+            max-width: 90%;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .message.user { align-self: flex-end; flex-direction: row-reverse; }
+
+        .message-avatar {
+            width: 28px;
+            height: 28px;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 11px;
+            font-weight: 600;
+            flex-shrink: 0;
+        }
+
+        .message.assistant .message-avatar {
+            background: linear-gradient(135deg, var(--amber), var(--gold));
+            color: var(--dark);
+        }
+
+        .message.user .message-avatar {
+            background: var(--glass);
+            border: 1px solid var(--glass-border);
+            color: var(--text-dim);
+        }
+
+        .message-body {
+            background: var(--glass);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            padding: 14px 16px;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        .message.user .message-body {
+            background: rgba(251, 191, 36, 0.05);
+            border-color: rgba(251, 191, 36, 0.15);
+        }
+
+        .message-body p { margin-bottom: 12px; }
+        .message-body p:last-child { margin-bottom: 0; }
+
+        .message-body code {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 12px;
+            background: var(--darker);
+            padding: 2px 6px;
+            border-radius: 4px;
+            color: var(--amber);
+        }
+
+        .message-body pre {
+            background: var(--darker);
+            border: 1px solid var(--glass-border);
+            border-radius: 8px;
+            padding: 14px;
+            overflow-x: auto;
+            margin: 12px 0;
+        }
+
+        .message-body pre code {
+            background: none;
+            padding: 0;
+            color: var(--text);
+            font-size: 12px;
+        }
+
+        .message-body ul, .message-body ol {
+            margin: 12px 0;
+            padding-left: 20px;
+        }
+
+        .message-body li { margin-bottom: 4px; }
+
+        .message-body h1, .message-body h2, .message-body h3 {
+            font-family: 'IBM Plex Mono', monospace;
+            color: var(--amber);
+            margin: 16px 0 8px;
+        }
+
+        .message-body blockquote {
+            border-left: 2px solid var(--violet);
+            padding-left: 12px;
+            margin: 12px 0;
+            color: var(--text-dim);
+        }
+
+        .message-actions {
+            display: flex;
+            gap: 4px;
+            margin-top: 8px;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+
+        .message:hover .message-actions { opacity: 1; }
+
+        .msg-action {
+            padding: 4px 8px;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 10px;
+            background: var(--darker);
+            border: 1px solid var(--glass-border);
+            border-radius: 4px;
+            color: var(--text-muted);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .msg-action:hover {
+            color: var(--amber);
+            border-color: rgba(251, 191, 36, 0.3);
+        }
+
+        .typing-indicator {
+            display: flex;
+            gap: 4px;
+            padding: 8px 0;
+        }
+
+        .typing-indicator span {
+            width: 6px;
+            height: 6px;
+            background: var(--amber);
+            border-radius: 50%;
+            animation: bounce 1.4s ease-in-out infinite;
+        }
+
+        .typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+        .typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+
+        @keyframes bounce {
+            0%, 60%, 100% { transform: translateY(0); opacity: 0.3; }
+            30% { transform: translateY(-6px); opacity: 1; }
+        }
+
+        .empty-state {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            color: var(--text-muted);
+        }
+
+        .empty-icon {
+            width: 48px;
+            height: 48px;
+            margin-bottom: 16px;
+            opacity: 0.3;
+        }
+
+        .empty-state h3 {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 14px;
+            color: var(--text-dim);
+            margin-bottom: 8px;
+        }
+
+        .empty-state p {
+            font-size: 13px;
+            max-width: 280px;
+        }
+
+        /* Input Area */
+        .input-area {
+            padding-top: 20px;
+            border-top: 1px solid var(--glass-border);
+        }
+
+        .input-row {
+            display: flex;
+            gap: 12px;
+        }
+
+        .input-wrapper {
+            flex: 1;
+            position: relative;
+        }
+
+        .chat-input {
+            width: 100%;
+            padding: 14px 16px;
+            font-family: 'Inter', sans-serif;
+            font-size: 14px;
+            background: var(--glass);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            color: var(--text);
+            resize: none;
+            min-height: 52px;
+            max-height: 150px;
+            transition: all 0.2s;
+        }
+
+        .chat-input:focus {
+            outline: none;
+            border-color: var(--amber);
+            box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.1);
+        }
+
+        .chat-input::placeholder { color: var(--text-muted); }
+
+        .send-btn {
+            width: 52px;
+            height: 52px;
+            border-radius: 12px;
+            background: linear-gradient(135deg, var(--amber), var(--gold));
+            border: none;
+            color: var(--dark);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+
+        .send-btn:hover:not(:disabled) {
+            box-shadow: 0 0 24px rgba(251, 191, 36, 0.4);
+            transform: translateY(-1px);
+        }
+
+        .send-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* Toast */
+        .toast-container {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 200;
+        }
+
+        .toast {
+            padding: 12px 20px;
+            background: var(--dark);
+            border: 1px solid var(--glass-border);
+            border-radius: 8px;
+            font-size: 13px;
+            animation: toastIn 0.3s ease;
+            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+        }
+
+        .toast.success { border-color: rgba(16, 185, 129, 0.5); color: #10b981; }
+        .toast.error { border-color: rgba(239, 68, 68, 0.5); color: #ef4444; }
+
+        @keyframes toastIn {
+            from { opacity: 0; transform: translateX(-50%) translateY(10px); }
+            to { opacity: 1; transform: translateX(-50%) translateY(0); }
+        }
+
+        /* Mobile */
+        @media (max-width: 640px) {
+            .app { padding: 12px; }
+            .logo-text { display: none; }
+            .message { max-width: 95%; }
+            .settings-panel { border-radius: 12px; }
+        }
+
+        .hljs { background: transparent !important; }
+    </style>
+</head>
+<body>
+    <div class="gradient-bg"></div>
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+
+    <div class="app">
+        <!-- Header -->
+        <header class="header">
+            <div class="logo">
+                <div class="logo-mark">V</div>
+                <span class="logo-text">VIRTUOSO AI</span>
+            </div>
+            <div class="header-actions">
+                <div class="status">
+                    <span class="status-dot" id="statusDot"></span>
+                    <span id="statusText">-</span>
+                </div>
+                <button class="icon-btn" onclick="exportChat()" title="Export">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                        <polyline points="7 10 12 15 17 10"/>
+                        <line x1="12" y1="15" x2="12" y2="3"/>
+                    </svg>
+                </button>
+                <button class="icon-btn" onclick="clearChat()" title="Clear">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="3 6 5 6 21 6"/>
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                    </svg>
+                </button>
+                <button class="icon-btn" id="settingsBtn" onclick="openSettings()" title="Settings">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="3"/>
+                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                    </svg>
+                </button>
+            </div>
+        </header>
+
+        <!-- Chat Area -->
+        <div class="chat-area">
+            <div class="messages" id="messages">
+                <div class="empty-state" id="emptyState">
+                    <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                    </svg>
+                    <h3>Start a conversation</h3>
+                    <p>Configure your API key in settings, then ask about markets or trading.</p>
+                </div>
+            </div>
+
+            <div class="input-area">
+                <div class="input-row">
+                    <div class="input-wrapper">
+                        <textarea
+                            class="chat-input"
+                            id="chatInput"
+                            placeholder="Ask anything..."
+                            rows="1"
+                            onkeydown="handleKeyDown(event)"
+                            oninput="autoResize(this)"
+                        ></textarea>
+                    </div>
+                    <button class="send-btn" id="sendBtn" onclick="sendMessage()">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                            <line x1="22" y1="2" x2="11" y2="13"/>
+                            <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Overlay -->
+    <div class="settings-overlay" id="settingsOverlay" onclick="closeSettingsOnBackdrop(event)">
+        <div class="settings-panel" onclick="event.stopPropagation()">
+            <div class="settings-header">
+                <span class="settings-title">Settings</span>
+                <button class="close-btn" onclick="closeSettings()">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"/>
+                        <line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="settings-body">
+                <!-- Provider -->
+                <div class="setting-section">
+                    <div class="setting-label">Provider</div>
+                    <div class="form-group">
+                        <label class="form-label">Active Provider</label>
+                        <select class="form-input form-select" id="provider" onchange="updateModelOptions()">
+                            <option value="claude">Anthropic (Claude)</option>
+                            <option value="openai">OpenAI</option>
+                            <option value="grok">xAI (Grok)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Model</label>
+                        <select class="form-input form-select" id="model"></select>
+                    </div>
+                </div>
+
+                <!-- Virtuoso Tools -->
+                <div class="setting-section">
+                    <div class="setting-label">Virtuoso Tools</div>
+                    <div class="form-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="enableTools" checked onchange="saveSettings()">
+                            <span class="checkbox-text">Enable real-time market data (Claude only)</span>
+                        </label>
+                        <p class="form-hint">When enabled, Claude can fetch live market data, signals, and analysis from Virtuoso APIs.</p>
+                    </div>
+                </div>
+
+                <!-- API Keys -->
+                <div class="setting-section">
+                    <div class="setting-label">API Keys</div>
+                    <div class="form-group">
+                        <label class="form-label">Claude API Key</label>
+                        <input type="password" class="form-input" id="claudeKey" placeholder="sk-ant-..." onchange="saveSettings()">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">OpenAI API Key</label>
+                        <input type="password" class="form-input" id="openaiKey" placeholder="sk-..." onchange="saveSettings()">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Grok API Key</label>
+                        <input type="password" class="form-input" id="grokKey" placeholder="xai-..." onchange="saveSettings()">
+                    </div>
+                </div>
+
+                <!-- System Prompt -->
+                <div class="setting-section">
+                    <div class="setting-label">System Prompt</div>
+                    <div class="form-group">
+                        <textarea class="form-input form-textarea" id="systemPrompt" onchange="saveSettings()">You are Virtuoso, an expert AI trading assistant specializing in cryptocurrency markets. You provide analysis on market conditions, trading strategies, technical analysis, and risk management. Always consider risk management and remind users that trading involves significant risk.</textarea>
+                    </div>
+                </div>
+
+                <!-- Actions -->
+                <div class="setting-section">
+                    <button class="btn btn-primary" onclick="testConnection()" style="width: 100%;">
+                        Test Connection
+                    </button>
+                </div>
+
+                <div class="warning-box">
+                    <strong>Security:</strong> API keys are stored locally in your browser. Never share this page with keys saved.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script>
+        let messages = [];
+        let isStreaming = false;
+
+        // Virtuoso API Configuration
+        const VIRTUOSO_API = 'https://virtuosocrypto.com';
+        const VIRTUOSO_DERIVATIVES = 'https://virtuosocrypto.com:8888';
+
+        // Virtuoso Tools for Claude
+        const virtuosoTools = [
+            {
+                name: "get_market_overview",
+                description: "Get a snapshot of overall market conditions including market regime, BTC price/dominance, volatility metrics, trend strength, and overall market health indicators.",
+                input_schema: { type: "object", properties: {}, required: [] }
+            },
+            {
+                name: "get_perpetuals_pulse",
+                description: "Get perpetuals market summary with derivatives positioning including open interest, funding rates, long/short ratios, and liquidation activity across monitored perpetual markets.",
+                input_schema: { type: "object", properties: {}, required: [] }
+            },
+            {
+                name: "get_top_signals",
+                description: "Get the top trading signals ranked by confluence score. Returns symbols with the strongest bullish or bearish setups based on 6-dimensional confluence analysis.",
+                input_schema: {
+                    type: "object",
+                    properties: {
+                        limit: { type: "integer", description: "Maximum signals to return (1-30)", default: 10 }
+                    },
+                    required: []
+                }
+            },
+            {
+                name: "get_symbol_analysis",
+                description: "Get detailed confluence analysis for a specific trading symbol. Breaks down the 6-dimensional analysis into components: Technical, Volume, OrderFlow, Orderbook, Position, Sentiment.",
+                input_schema: {
+                    type: "object",
+                    properties: {
+                        symbol: { type: "string", description: "Trading symbol (e.g., 'ETH', 'BTCUSDT', 'SOL')" }
+                    },
+                    required: ["symbol"]
+                }
+            },
+            {
+                name: "get_recommendation",
+                description: "Get AI-powered trading recommendation for a symbol. Analyzes derivatives data to generate a LONG/SHORT/WAIT recommendation with reasoning and confidence score.",
+                input_schema: {
+                    type: "object",
+                    properties: {
+                        symbol: { type: "string", description: "Trading symbol (e.g., 'BTC', 'ETHUSDT', 'SOL')" }
+                    },
+                    required: ["symbol"]
+                }
+            }
+        ];
+
+        // Execute Virtuoso tool calls
+        async function executeVirtuosoTool(name, input) {
+            try {
+                let endpoint, baseUrl = VIRTUOSO_API;
+
+                switch (name) {
+                    case 'get_market_overview':
+                        endpoint = '/api/market/overview';
+                        break;
+                    case 'get_perpetuals_pulse':
+                        endpoint = '/api/dashboard/perpetuals-pulse';
+                        break;
+                    case 'get_top_signals':
+                        endpoint = '/api/dashboard/symbols';
+                        break;
+                    case 'get_symbol_analysis':
+                        const sym = normalizeSymbol(input.symbol);
+                        endpoint = `/api/dashboard/confluence-analysis/${sym}`;
+                        break;
+                    case 'get_recommendation':
+                        // Synthesize recommendation from confluence + perpetuals data
+                        const recSym = normalizeSymbol(input.symbol);
+                        return await synthesizeRecommendation(recSym);
+                    default:
+                        return { error: `Unknown tool: ${name}` };
+                }
+
+                const res = await fetch(`${baseUrl}${endpoint}`, {
+                    headers: { 'Accept': 'application/json' }
+                });
+
+                if (!res.ok) {
+                    return { error: `API error: ${res.status}` };
+                }
+
+                const data = await res.json();
+
+                // Format response for readability based on endpoint
+                if (name === 'get_top_signals') {
+                    const symbols = data.symbols || data.data?.symbols || [];
+                    const limit = input.limit || 10;
+                    return {
+                        total: symbols.length,
+                        signals: symbols.slice(0, limit).map(s => ({
+                            symbol: s.symbol,
+                            score: s.score || s.confluence_score || 50,
+                            change_24h: s.price_change_24h_pct || s.change_24h || 0,
+                            price: s.price,
+                            signal: (s.score || s.confluence_score || 50) >= 60 ? 'BULLISH' : (s.score || s.confluence_score || 50) <= 40 ? 'BEARISH' : 'NEUTRAL'
+                        }))
+                    };
+                }
+
+                if (name === 'get_symbol_analysis') {
+                    return {
+                        symbol: data.symbol,
+                        score: data.score,
+                        analysis: data.analysis,
+                        timestamp: data.timestamp
+                    };
+                }
+
+                if (name === 'get_market_overview') {
+                    // Handle array of symbols format
+                    if (data.symbols && Array.isArray(data.symbols)) {
+                        const btc = data.symbols.find(s => s.symbol === 'BTCUSDT');
+                        return {
+                            btc_price: btc?.price,
+                            btc_change_24h: btc?.price_change_24h_pct,
+                            total_symbols: data.symbols.length,
+                            timestamp: data.timestamp
+                        };
+                    }
+                    return data;
+                }
+
+                return data.data || data;
+            } catch (err) {
+                return { error: err.message };
+            }
+        }
+
+        function normalizeSymbol(symbol) {
+            if (!symbol) return 'BTC';
+            let s = symbol.toUpperCase().trim();
+            // Remove common suffixes
+            s = s.replace(/[-_/]?(USDT|USD|PERP|PERPETUAL)$/i, '');
+            // Common name mappings
+            const aliases = {
+                'BITCOIN': 'BTC', 'ETHEREUM': 'ETH', 'SOLANA': 'SOL',
+                'RIPPLE': 'XRP', 'CARDANO': 'ADA', 'DOGECOIN': 'DOGE'
+            };
+            return aliases[s] || s;
+        }
+
+        // Synthesize recommendation from confluence + perpetuals data
+        async function synthesizeRecommendation(symbol) {
+            try {
+                // Fetch confluence analysis
+                const confRes = await fetch(`${VIRTUOSO_API}/api/dashboard/confluence-analysis/${symbol}`);
+                const confData = confRes.ok ? await confRes.json() : null;
+
+                // Fetch perpetuals data
+                const perpRes = await fetch(`${VIRTUOSO_API}/api/dashboard/perpetuals-pulse`);
+                const perpData = perpRes.ok ? await perpRes.json() : null;
+
+                // Build recommendation
+                const score = confData?.score || 50;
+                const funding = perpData?.funding_rate || 0;
+                const fundingSentiment = perpData?.funding_sentiment || 'neutral';
+
+                let action = 'WAIT';
+                let confidence = 50;
+                let reasons = [];
+
+                // Determine action based on score
+                if (score >= 65) {
+                    action = 'LONG';
+                    confidence = Math.min(90, 50 + (score - 50));
+                    reasons.push(`Strong bullish confluence score: ${score}`);
+                } else if (score <= 35) {
+                    action = 'SHORT';
+                    confidence = Math.min(90, 50 + (50 - score));
+                    reasons.push(`Strong bearish confluence score: ${score}`);
+                } else {
+                    action = 'WAIT';
+                    confidence = 40;
+                    reasons.push(`Neutral confluence score: ${score} - wait for clearer signal`);
+                }
+
+                // Adjust for funding
+                if (funding > 0.01 && action === 'LONG') {
+                    confidence -= 10;
+                    reasons.push(`Caution: High positive funding (${(funding * 100).toFixed(3)}%) - crowded longs`);
+                } else if (funding < -0.01 && action === 'SHORT') {
+                    confidence -= 10;
+                    reasons.push(`Caution: High negative funding (${(funding * 100).toFixed(3)}%) - crowded shorts`);
+                }
+
+                return {
+                    symbol: symbol,
+                    action: action,
+                    confidence: `${Math.round(confidence)}%`,
+                    confluence_score: score,
+                    funding_rate: funding ? `${(funding * 100).toFixed(4)}%` : 'N/A',
+                    funding_sentiment: fundingSentiment,
+                    analysis: confData?.analysis || {},
+                    reasons: reasons,
+                    disclaimer: "This is synthesized analysis, not financial advice. Always do your own research."
+                };
+            } catch (err) {
+                return { error: `Failed to generate recommendation: ${err.message}` };
+            }
+        }
+
+        const modelOptions = {
+            claude: [
+                { value: 'claude-sonnet-4-20250514', label: 'Claude Sonnet 4' },
+                { value: 'claude-3-5-sonnet-20241022', label: 'Claude 3.5 Sonnet' },
+                { value: 'claude-3-opus-20240229', label: 'Claude 3 Opus' }
+            ],
+            openai: [
+                { value: 'gpt-4o', label: 'GPT-4o' },
+                { value: 'gpt-4o-mini', label: 'GPT-4o Mini' },
+                { value: 'gpt-4-turbo', label: 'GPT-4 Turbo' }
+            ],
+            grok: [
+                { value: 'grok-2', label: 'Grok 2' },
+                { value: 'grok-2-mini', label: 'Grok 2 Mini' }
+            ]
+        };
+
+        document.addEventListener('DOMContentLoaded', () => {
+            loadSettings();
+            updateModelOptions();
+            updateStatus();
+            marked.setOptions({
+                highlight: (code, lang) => lang && hljs.getLanguage(lang) ? hljs.highlight(code, { language: lang }).value : hljs.highlightAuto(code).value,
+                breaks: true,
+                gfm: true
+            });
+        });
+
+        function loadSettings() {
+            const s = JSON.parse(localStorage.getItem('virtuoso_ai_settings') || '{}');
+            document.getElementById('claudeKey').value = s.claudeKey || '';
+            document.getElementById('openaiKey').value = s.openaiKey || '';
+            document.getElementById('grokKey').value = s.grokKey || '';
+            document.getElementById('provider').value = s.provider || 'claude';
+            document.getElementById('enableTools').checked = s.enableTools !== false; // Default true
+            document.getElementById('systemPrompt').value = s.systemPrompt || document.getElementById('systemPrompt').value;
+            messages = JSON.parse(localStorage.getItem('virtuoso_ai_messages') || '[]');
+            renderMessages();
+            setTimeout(() => {
+                document.getElementById('model').value = s.model || 'claude-sonnet-4-20250514';
+            }, 0);
+        }
+
+        function saveSettings() {
+            const s = {
+                claudeKey: document.getElementById('claudeKey').value,
+                openaiKey: document.getElementById('openaiKey').value,
+                grokKey: document.getElementById('grokKey').value,
+                provider: document.getElementById('provider').value,
+                model: document.getElementById('model').value,
+                enableTools: document.getElementById('enableTools').checked,
+                systemPrompt: document.getElementById('systemPrompt').value
+            };
+            localStorage.setItem('virtuoso_ai_settings', JSON.stringify(s));
+            updateStatus();
+        }
+
+        function saveMessages() {
+            localStorage.setItem('virtuoso_ai_messages', JSON.stringify(messages));
+        }
+
+        function openSettings() {
+            document.getElementById('settingsOverlay').classList.add('open');
+            document.getElementById('settingsBtn').classList.add('active');
+        }
+
+        function closeSettings() {
+            document.getElementById('settingsOverlay').classList.remove('open');
+            document.getElementById('settingsBtn').classList.remove('active');
+        }
+
+        function closeSettingsOnBackdrop(e) {
+            if (e.target === document.getElementById('settingsOverlay')) closeSettings();
+        }
+
+        function updateModelOptions() {
+            const provider = document.getElementById('provider').value;
+            const modelSelect = document.getElementById('model');
+            modelSelect.innerHTML = modelOptions[provider].map(o => `<option value="${o.value}">${o.label}</option>`).join('');
+            saveSettings();
+        }
+
+        function updateStatus() {
+            const provider = document.getElementById('provider').value;
+            const keys = {
+                claude: document.getElementById('claudeKey').value,
+                openai: document.getElementById('openaiKey').value,
+                grok: document.getElementById('grokKey').value
+            };
+            const hasKey = keys[provider]?.length > 0;
+            const dot = document.getElementById('statusDot');
+            const text = document.getElementById('statusText');
+            if (hasKey) {
+                dot.classList.add('connected');
+                text.textContent = provider.charAt(0).toUpperCase() + provider.slice(1);
+            } else {
+                dot.classList.remove('connected');
+                text.textContent = 'No key';
+            }
+        }
+
+        function showToast(msg, type = 'info') {
+            const c = document.getElementById('toastContainer');
+            const t = document.createElement('div');
+            t.className = `toast ${type}`;
+            t.textContent = msg;
+            c.appendChild(t);
+            setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 3000);
+        }
+
+        function autoResize(el) {
+            el.style.height = 'auto';
+            el.style.height = Math.min(el.scrollHeight, 150) + 'px';
+        }
+
+        function handleKeyDown(e) {
+            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+        }
+
+        function renderMessages() {
+            const c = document.getElementById('messages');
+            const e = document.getElementById('emptyState');
+            if (messages.length === 0) {
+                e.style.display = 'flex';
+                c.innerHTML = '';
+                c.appendChild(e);
+                return;
+            }
+            e.style.display = 'none';
+            c.innerHTML = messages.map((m, i) => createMessageHTML(m, i)).join('');
+            c.scrollTop = c.scrollHeight;
+            c.querySelectorAll('pre code').forEach(b => hljs.highlightElement(b));
+        }
+
+        function createMessageHTML(m, i) {
+            const isUser = m.role === 'user';
+            const content = isUser ? escapeHtml(m.content) : marked.parse(m.content);
+            return `<div class="message ${isUser ? 'user' : 'assistant'}">
+                <div class="message-avatar">${isUser ? 'U' : 'V'}</div>
+                <div class="message-body">${isUser ? `<p>${content}</p>` : content}
+                    <div class="message-actions"><button class="msg-action" onclick="copyMessage(${i})">Copy</button></div>
+                </div>
+            </div>`;
+        }
+
+        function escapeHtml(t) { const d = document.createElement('div'); d.textContent = t; return d.innerHTML; }
+
+        function addTypingIndicator() {
+            const c = document.getElementById('messages');
+            const ind = document.createElement('div');
+            ind.className = 'message assistant';
+            ind.id = 'typingIndicator';
+            ind.innerHTML = `<div class="message-avatar">V</div><div class="message-body"><div class="typing-indicator"><span></span><span></span><span></span></div></div>`;
+            c.appendChild(ind);
+            c.scrollTop = c.scrollHeight;
+        }
+
+        function removeTypingIndicator() {
+            const ind = document.getElementById('typingIndicator');
+            if (ind) ind.remove();
+        }
+
+        async function sendMessage() {
+            const input = document.getElementById('chatInput');
+            const content = input.value.trim();
+            if (!content || isStreaming) return;
+
+            const provider = document.getElementById('provider').value;
+            const apiKey = document.getElementById(`${provider}Key`).value;
+            if (!apiKey) { showToast('Add API key in settings', 'error'); return; }
+
+            messages.push({ role: 'user', content });
+            saveMessages();
+            renderMessages();
+            input.value = '';
+            autoResize(input);
+
+            isStreaming = true;
+            document.getElementById('sendBtn').disabled = true;
+            addTypingIndicator();
+
+            try {
+                const response = await callAPI(provider, apiKey, content);
+                removeTypingIndicator();
+                messages.push({ role: 'assistant', content: response });
+                saveMessages();
+                renderMessages();
+            } catch (err) {
+                removeTypingIndicator();
+                showToast(err.message || 'API error', 'error');
+            } finally {
+                isStreaming = false;
+                document.getElementById('sendBtn').disabled = false;
+            }
+        }
+
+        async function callAPI(provider, apiKey, userMessage) {
+            const model = document.getElementById('model').value;
+            const systemPrompt = document.getElementById('systemPrompt').value;
+            const history = messages.slice(-10).map(m => ({ role: m.role, content: m.content }));
+
+            if (provider === 'claude') return await callClaude(apiKey, model, systemPrompt, history, userMessage);
+            if (provider === 'openai') return await callOpenAI(apiKey, model, systemPrompt, history, userMessage);
+            if (provider === 'grok') return await callGrok(apiKey, model, systemPrompt, history, userMessage);
+        }
+
+        async function callClaude(apiKey, model, systemPrompt, history, userMessage) {
+            const enableTools = document.getElementById('enableTools')?.checked ?? true;
+            const msgs = [...history, { role: 'user', content: userMessage }];
+
+            // Enhanced system prompt with Virtuoso context
+            const enhancedSystem = systemPrompt + `\n\nYou have access to real-time Virtuoso trading tools. When users ask about markets, signals, or specific symbols, USE THE TOOLS to get current data. Always base your analysis on live data from the tools when available.`;
+
+            const requestBody = {
+                model,
+                max_tokens: 4096,
+                system: enhancedSystem,
+                messages: msgs
+            };
+
+            // Add tools if enabled
+            if (enableTools) {
+                requestBody.tools = virtuosoTools;
+            }
+
+            let res = await fetch('https://api.anthropic.com/v1/messages', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-api-key': apiKey,
+                    'anthropic-version': '2023-06-01',
+                    'anthropic-dangerous-direct-browser-access': 'true'
+                },
+                body: JSON.stringify(requestBody)
+            });
+
+            if (!res.ok) {
+                const e = await res.json();
+                throw new Error(e.error?.message || 'Claude error');
+            }
+
+            let data = await res.json();
+
+            // Handle tool use loop (max 5 iterations)
+            let iterations = 0;
+            while (data.stop_reason === 'tool_use' && iterations < 5) {
+                iterations++;
+
+                // Find tool use blocks
+                const toolUseBlocks = data.content.filter(c => c.type === 'tool_use');
+                if (toolUseBlocks.length === 0) break;
+
+                // Execute all tool calls
+                const toolResults = [];
+                for (const toolUse of toolUseBlocks) {
+                    showToast(`Fetching ${toolUse.name.replace(/_/g, ' ')}...`, 'info');
+                    const result = await executeVirtuosoTool(toolUse.name, toolUse.input);
+                    toolResults.push({
+                        type: 'tool_result',
+                        tool_use_id: toolUse.id,
+                        content: JSON.stringify(result, null, 2)
+                    });
+                }
+
+                // Continue conversation with tool results
+                msgs.push({ role: 'assistant', content: data.content });
+                msgs.push({ role: 'user', content: toolResults });
+
+                res = await fetch('https://api.anthropic.com/v1/messages', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'x-api-key': apiKey,
+                        'anthropic-version': '2023-06-01',
+                        'anthropic-dangerous-direct-browser-access': 'true'
+                    },
+                    body: JSON.stringify({
+                        model,
+                        max_tokens: 4096,
+                        system: enhancedSystem,
+                        tools: virtuosoTools,
+                        messages: msgs
+                    })
+                });
+
+                if (!res.ok) {
+                    const e = await res.json();
+                    throw new Error(e.error?.message || 'Claude error');
+                }
+
+                data = await res.json();
+            }
+
+            // Extract final text response
+            const textBlocks = data.content.filter(c => c.type === 'text');
+            return textBlocks.map(t => t.text).join('\n\n') || 'No response generated.';
+        }
+
+        async function callOpenAI(apiKey, model, systemPrompt, history, userMessage) {
+            const msgs = [{ role: 'system', content: systemPrompt }, ...history, { role: 'user', content: userMessage }];
+            const res = await fetch('https://api.openai.com/v1/chat/completions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+                body: JSON.stringify({ model, messages: msgs, max_tokens: 4096 })
+            });
+            if (!res.ok) { const e = await res.json(); throw new Error(e.error?.message || 'OpenAI error'); }
+            const data = await res.json();
+            return data.choices[0].message.content;
+        }
+
+        async function callGrok(apiKey, model, systemPrompt, history, userMessage) {
+            const msgs = [{ role: 'system', content: systemPrompt }, ...history, { role: 'user', content: userMessage }];
+            const res = await fetch('https://api.x.ai/v1/chat/completions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+                body: JSON.stringify({ model, messages: msgs, max_tokens: 4096 })
+            });
+            if (!res.ok) { const e = await res.json(); throw new Error(e.error?.message || 'Grok error'); }
+            const data = await res.json();
+            return data.choices[0].message.content;
+        }
+
+        async function testConnection() {
+            const provider = document.getElementById('provider').value;
+            const apiKey = document.getElementById(`${provider}Key`).value;
+            if (!apiKey) { showToast('Enter API key first', 'error'); return; }
+            showToast('Testing...', 'info');
+            try {
+                await callAPI(provider, apiKey, 'Reply with: OK');
+                showToast('Connected!', 'success');
+            } catch (e) { showToast('Failed: ' + e.message, 'error'); }
+        }
+
+        function copyMessage(i) {
+            navigator.clipboard.writeText(messages[i].content).then(() => showToast('Copied', 'success'));
+        }
+
+        function clearChat() {
+            if (messages.length && confirm('Clear chat?')) {
+                messages = [];
+                saveMessages();
+                renderMessages();
+                showToast('Cleared', 'success');
+            }
+        }
+
+        function exportChat() {
+            if (!messages.length) { showToast('Nothing to export', 'error'); return; }
+            let md = '# Virtuoso AI Chat\n\n';
+            messages.forEach(m => { md += `**${m.role === 'user' ? 'You' : 'Virtuoso'}:**\n\n${m.content}\n\n---\n\n`; });
+            const blob = new Blob([md], { type: 'text/markdown' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = `virtuoso-chat-${Date.now()}.md`;
+            a.click();
+            showToast('Exported', 'success');
+        }
+    </script>
+</body>
+</html>
