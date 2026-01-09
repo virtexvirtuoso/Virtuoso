@@ -1,6 +1,13 @@
 # Virtuoso MCP Server - HTTP Client
 # Async HTTP client with retry, circuit breaker, and graceful error handling
 
+import sys
+from pathlib import Path
+
+# Handle standalone execution
+if __name__ == "__main__" or "src.mcp" not in sys.modules:
+    sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
+
 import asyncio
 import logging
 from dataclasses import dataclass, field
@@ -9,7 +16,7 @@ from typing import Any, Optional
 
 import httpx
 
-from ..config import settings
+from src.mcp.config import settings
 
 logger = logging.getLogger(__name__)
 

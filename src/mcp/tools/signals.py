@@ -1,10 +1,16 @@
 # Virtuoso MCP Server - Signal Tools
 # Trading signal and symbol analysis tools
 
-from ..server import mcp
-from ..utils.client import get_api_client, get_derivatives_client
-from ..utils.normalizer import normalize_symbol, suggest_symbol
-from ..formatters.response import (
+import sys
+from pathlib import Path
+
+# Ensure src is in path for absolute imports
+sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
+
+from src.mcp.app import mcp
+from src.mcp.utils.client import get_api_client, get_derivatives_client
+from src.mcp.utils.normalizer import normalize_symbol, suggest_symbol
+from src.mcp.formatters.response import (
     format_top_signals,
     format_symbol_analysis,
     format_recommendation,

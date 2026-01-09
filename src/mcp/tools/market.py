@@ -1,9 +1,15 @@
 # Virtuoso MCP Server - Market Tools
 # Market overview and perpetuals analysis tools
 
-from ..server import mcp
-from ..utils.client import get_api_client
-from ..formatters.response import (
+import sys
+from pathlib import Path
+
+# Ensure src is in path for absolute imports
+sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
+
+from src.mcp.app import mcp
+from src.mcp.utils.client import get_api_client
+from src.mcp.formatters.response import (
     format_market_overview,
     format_perpetuals_pulse,
     format_error,
