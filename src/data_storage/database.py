@@ -1,5 +1,12 @@
 # src/data_storage/database.py
 
+import csv
+import sys
+
+# Increase CSV field size limit to handle large JSON-serialized fields from InfluxDB
+# Default is 131072 (128KB) which is too small for analysis data with serialized dicts
+csv.field_size_limit(sys.maxsize)
+
 try:
     from influxdb_client import InfluxDBClient, Point
     from influxdb_client.client.write_api import SYNCHRONOUS
