@@ -450,3 +450,161 @@ def normalize_array(
 
     z_scores = (arr - mean) / std
     return np.clip(z_scores, -winsorize_threshold, winsorize_threshold)
+
+
+# Volume and whale detection utilities (used by orderflow indicators)
+
+def calculate_volume_ratio(
+    buy_volume: float,
+    sell_volume: float,
+    default: float = 0.5
+) -> float:
+    """
+    Calculate buy/sell volume ratio normalized to 0-1 range.
+
+    Args:
+        buy_volume: Total buy volume
+        sell_volume: Total sell volume
+        default: Default value when total volume is zero
+
+    Returns:
+        Ratio between 0 (all sells) and 1 (all buys), 0.5 is neutral
+    """
+    total = buy_volume + sell_volume
+    if total <= 0:
+        return default
+    return buy_volume / total
+
+
+def get_whale_multiplier_sigmoid(
+    volume: float,
+    threshold: float = 1000000,
+    steepness: float = 2.0,
+    max_multiplier: float = 3.0
+) -> float:
+    """
+    Calculate whale activity multiplier using sigmoid function.
+
+    Provides smooth scaling that approaches max_multiplier for large volumes.
+
+    Args:
+        volume: Trade or order volume
+        threshold: Volume at which multiplier reaches ~1.5x
+        steepness: How quickly multiplier increases
+        max_multiplier: Maximum multiplier value
+
+    Returns:
+        Multiplier between 1.0 and max_multiplier
+    """
+    if volume <= 0 or threshold <= 0:
+        return 1.0
+
+    # Sigmoid: 1 + (max-1) * (2 / (1 + exp(-steepness * (v/t - 1))) - 1)
+    ratio = volume / threshold
+    sigmoid = 2.0 / (1.0 + np.exp(-steepness * (ratio - 1.0))) - 1.0
+    multiplier = 1.0 + (max_multiplier - 1.0) * max(0, sigmoid)
+
+    return min(multiplier, max_multiplier)
+
+
+def get_whale_multiplier_log(
+    volume: float,
+    base_volume: float = 100000,
+    scale: float = 0.5,
+    max_multiplier: float = 3.0
+) -> float:
+    """
+    Calculate whale activity multiplier using logarithmic scaling.
+
+    Provides diminishing returns for very large volumes.
+
+    Args:
+        volume: Trade or order volume
+        base_volume: Reference volume for 1x multiplier
+        scale: Log scaling factor
+        max_multiplier: Maximum multiplier value
+
+    Returns:
+        Multiplier between 1.0 and max_multiplier
+    """
+    if volume <= 0 or base_volume <= 0:
+        return 1.0
+
+    # Log scaling: 1 + scale * log(1 + volume/base)
+    multiplier = 1.0 + scale * np.log1p(volume / base_volume)
+
+    return min(multiplier, max_multiplier)
+
+
+def detect_manipulation_risk(
+    price_change_pct: float,
+    volume_ratio: float,
+    spread_pct: float,
+    oi_change_pct: float = 0.0,
+    thresholds: Optional[Dict[str, float]] = None
+) -> Dict[str, any]:
+    """
+    Detect potential market manipulation based on multiple signals.
+
+    Args:
+        price_change_pct: Recent price change percentage
+        volume_ratio: Buy/sell volume ratio (0-1)
+        spread_pct: Bid-ask spread percentage
+        oi_change_pct: Open interest change percentage
+        thresholds: Custom detection thresholds
+
+    Returns:
+        Dict with risk_score (0-1), risk_level, and detected_patterns
+    """
+    if thresholds is None:
+        thresholds = {
+            'price_spike': 2.0,      # % price move
+            'volume_imbalance': 0.8,  # extreme buy/sell ratio
+            'spread_spike': 0.5,      # % spread
+            'oi_divergence': 5.0      # % OI change
+        }
+
+    detected_patterns = []
+    risk_signals = 0
+    max_signals = 4
+
+    # Check for price spike without volume support
+    if abs(price_change_pct) > thresholds['price_spike']:
+        if 0.4 < volume_ratio < 0.6:  # Balanced volume = suspicious
+            detected_patterns.append('price_spike_low_volume')
+            risk_signals += 1
+
+    # Check for extreme volume imbalance
+    if volume_ratio > thresholds['volume_imbalance'] or volume_ratio < (1 - thresholds['volume_imbalance']):
+        detected_patterns.append('extreme_volume_imbalance')
+        risk_signals += 1
+
+    # Check for spread manipulation
+    if spread_pct > thresholds['spread_spike']:
+        detected_patterns.append('wide_spread')
+        risk_signals += 1
+
+    # Check for OI divergence from price
+    if abs(oi_change_pct) > thresholds['oi_divergence']:
+        if (oi_change_pct > 0 and price_change_pct < 0) or \
+           (oi_change_pct < 0 and price_change_pct > 0):
+            detected_patterns.append('oi_price_divergence')
+            risk_signals += 1
+
+    risk_score = risk_signals / max_signals
+
+    if risk_score >= 0.75:
+        risk_level = 'high'
+    elif risk_score >= 0.5:
+        risk_level = 'medium'
+    elif risk_score >= 0.25:
+        risk_level = 'low'
+    else:
+        risk_level = 'none'
+
+    return {
+        'risk_score': risk_score,
+        'risk_level': risk_level,
+        'detected_patterns': detected_patterns,
+        'signals_triggered': risk_signals
+    }
