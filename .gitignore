@@ -76,15 +76,10 @@ docs/
 */README_*.md
 !README.md
 
-# Proprietary Confluence Engine - KEEP PRIVATE
-src/core/analysis/confluence.py
+# Proprietary files - NOW ENCRYPTED WITH GIT-CRYPT
+# See .gitattributes for encryption rules
+# Run `git-crypt unlock <keyfile>` to decrypt after cloning
 src/analysis/core/confluence.py
-src/indicators/orderflow_indicators.py
-src/indicators/volume_indicators.py
-src/indicators/sentiment_indicators.py
-src/indicators/technical_indicators.py
-src/indicators/orderbook_indicators.py
-src/indicators/price_structure_indicators.py
 
 # Log files in root directory
 *.log
@@ -272,14 +267,7 @@ backup/
 profiling/
 !profiling/.gitkeep
 
-# Proprietary algorithms - KEEP PRIVATE
-src/core/analysis/confluence.py
-src/indicators/orderflow_indicators.py
-src/indicators/volume_indicators.py
-src/indicators/sentiment_indicators.py
-src/indicators/technical_indicators.py
-src/indicators/orderbook_indicators.py
-src/indicators/price_structure_indicators.py
+# (Proprietary algorithms now encrypted with git-crypt - see .gitattributes)
 
 # Fix and test files in root directory
 /fix_*.py

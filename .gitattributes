@@ -42,4 +42,21 @@
 # Define files that are not added to archive when creating a release package
 .gitattributes export-ignore
 .gitignore export-ignore
-.gitkeep export-ignore 
+.gitkeep export-ignore
+
+# ============================================
+# PROPRIETARY FILES - Encrypted with git-crypt
+# ============================================
+# These files are automatically encrypted when pushed and decrypted when pulled
+# Run `git-crypt unlock` with the key to access them
+
+# Core analysis (proprietary scoring algorithms)
+src/core/analysis/confluence.py filter=git-crypt diff=git-crypt
+
+# Indicator modules (proprietary trading logic)
+src/indicators/orderflow_indicators.py filter=git-crypt diff=git-crypt
+src/indicators/orderbook_indicators.py filter=git-crypt diff=git-crypt
+src/indicators/volume_indicators.py filter=git-crypt diff=git-crypt
+src/indicators/sentiment_indicators.py filter=git-crypt diff=git-crypt
+src/indicators/technical_indicators.py filter=git-crypt diff=git-crypt
+src/indicators/price_structure_indicators.py filter=git-crypt diff=git-crypt
