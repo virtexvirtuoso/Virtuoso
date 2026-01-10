@@ -20,29 +20,36 @@ from .utils.converters import ccxt_time_to_minutes
 
 class DataCollector(MonitoringComponent, DataProvider):
     """Handles all data collection from exchanges.
-    
+
     This class is responsible for fetching market data from various exchanges,
     including OHLCV data, orderbooks, trades, and tickers. It manages concurrent
     fetching for multiple symbols and handles exchange-specific requirements.
+
+    IMPORTANT: This class can optionally share cache with MarketDataManager to
+    prevent data gaps on first-pass symbols. When market_data_manager is provided,
+    it will check MDM's pre-warmed cache before making fresh API calls.
     """
-    
+
     def __init__(
         self,
         exchange_manager,
         config: Optional[Dict[str, Any]] = None,
-        logger: Optional[logging.Logger] = None
+        logger: Optional[logging.Logger] = None,
+        market_data_manager=None
     ):
         """Initialize the data collector.
-        
+
         Args:
             exchange_manager: Exchange manager instance for accessing exchanges
             config: Configuration dictionary
             logger: Optional logger instance
+            market_data_manager: Optional MarketDataManager for shared cache access
         """
         super().__init__(logger)
-        
+
         self.exchange_manager = exchange_manager
         self.config = config or {}
+        self.market_data_manager = market_data_manager  # Share cache with MDM
         
         # Configuration for data fetching
         # Handle complex timeframe config or fallback to simple strings
@@ -114,19 +121,52 @@ class DataCollector(MonitoringComponent, DataProvider):
     @measure_performance()
     async def fetch_market_data(self, symbol: str) -> Dict[str, Any]:
         """Fetch complete market data for a symbol.
-        
+
         This is the main entry point for fetching all market data for a symbol.
         It aggregates OHLCV, orderbook, trades, and ticker data.
-        
+
+        CACHE HIERARCHY (P1 Pipeline Fix):
+        1. Check MarketDataManager's pre-warmed cache first (if available)
+        2. Fall back to local cache
+        3. Make fresh API calls only if both caches miss
+
         Args:
             symbol: Trading pair symbol
-            
+
         Returns:
             Dictionary containing all market data for the symbol
         """
         self._fetch_stats['total_fetches'] += 1
-        
-        # Check cache first
+
+        # P1 FIX: Check MarketDataManager's pre-warmed cache FIRST
+        # This prevents data gaps on first-pass symbols (top movers)
+        if self.market_data_manager is not None:
+            mdm_cache = getattr(self.market_data_manager, 'data_cache', {})
+            if symbol in mdm_cache and mdm_cache[symbol]:
+                mdm_data = mdm_cache[symbol]
+                # Verify cache has essential data (ticker at minimum)
+                if mdm_data.get('ticker'):
+                    self._fetch_stats['cache_hits'] += 1
+                    self.logger.debug(f"Using MDM pre-warmed cache for {symbol}, has premium_index: {'premium_index' in mdm_data}")
+                    # Format for consistency with our output
+                    return {
+                        'symbol': symbol,
+                        'timestamp': TimestampUtility.get_utc_timestamp(),
+                        'exchange': 'bybit',
+                        'ohlcv': mdm_data.get('ohlcv', mdm_data.get('kline', {})),
+                        'orderbook': mdm_data.get('orderbook'),
+                        'trades': mdm_data.get('trades', []),
+                        'ticker': mdm_data.get('ticker'),
+                        'long_short_ratio': mdm_data.get('long_short_ratio'),
+                        'risk_limit': mdm_data.get('risk_limits'),
+                        'open_interest': mdm_data.get('open_interest'),
+                        'liquidations': mdm_data.get('liquidations', []),
+                        # Phase 1 Predictive Confluence data (2025-12)
+                        'premium_index': mdm_data.get('premium_index'),
+                        'taker_volume_ratio': mdm_data.get('taker_volume_ratio'),
+                    }
+
+        # Check local cache second
         cache_key = f"{symbol}_market_data"
         cached_data = self._get_cached_data(cache_key)
         if cached_data:
@@ -148,7 +188,10 @@ class DataCollector(MonitoringComponent, DataProvider):
                 self._fetch_trades(exchange, symbol),
                 self._fetch_ticker(exchange, symbol),
                 self._fetch_long_short_ratio(exchange, symbol),  # Add LSR fetching
-                self._fetch_risk_limits(exchange, symbol)  # Add risk limits fetching
+                self._fetch_risk_limits(exchange, symbol),  # Add risk limits fetching
+                self._fetch_premium_index(exchange, symbol),  # Phase 1: premium index
+                self._fetch_taker_volume_ratio(exchange, symbol),  # Phase 1: taker volume ratio
+                self._fetch_open_interest(exchange, symbol)  # Phase 1: open interest for oi_coiling
             ]
             
             results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -205,6 +248,25 @@ class DataCollector(MonitoringComponent, DataProvider):
                     self.logger.error(f"Error fetching risk limits for {symbol}: {results[5]}")
                 market_data['risk_limit'] = None
             
+            
+            # Add premium_index (Phase 1 Predictive Confluence)
+            if len(results) > 6 and not isinstance(results[6], Exception):
+                market_data["premium_index"] = results[6]
+            else:
+                market_data["premium_index"] = None
+            
+            # Add taker_volume_ratio (Phase 1 Predictive Confluence)
+            if len(results) > 7 and not isinstance(results[7], Exception):
+                market_data["taker_volume_ratio"] = results[7]
+            else:
+                market_data["taker_volume_ratio"] = None
+            
+            # Add open_interest (Phase 1 Predictive Confluence - oi_coiling)
+            if len(results) > 8 and not isinstance(results[8], Exception):
+                market_data["open_interest"] = results[8]
+                self.logger.debug(f"OI data added for {symbol}: current={results[8].get('current', 0):.2f}")
+            else:
+                market_data["open_interest"] = None
             # Cache the data
             self._cache_data(cache_key, market_data)
             
@@ -526,3 +588,112 @@ class DataCollector(MonitoringComponent, DataProvider):
         """Clear all cached data."""
         self._data_cache.clear()
         self.logger.info("Data cache cleared")
+    @retry_on_error(max_attempts=2, delay=0.5)
+    async def _fetch_premium_index(self, exchange, symbol: str) -> Optional[Dict[str, Any]]:
+        """Fetch premium index kline data for basis score calculation.
+        
+        Args:
+            exchange: Exchange instance
+            symbol: Trading pair symbol
+            
+        Returns:
+            Premium index data dict with 'signal' key containing z_score
+        """
+        try:
+            if hasattr(exchange, 'fetch_premium_index_kline'):
+                premium_data = await exchange.fetch_premium_index_kline(symbol)
+                if premium_data:
+                    self.logger.debug(f"Successfully fetched premium_index for {symbol}")
+                    return premium_data
+            else:
+                self.logger.debug(f"Exchange does not support premium index fetching")
+            return None
+        except Exception as e:
+            self.logger.error(f"Error fetching premium_index for {symbol}: {str(e)}")
+            return None
+
+    @retry_on_error(max_attempts=2, delay=0.5)
+    async def _fetch_taker_volume_ratio(self, exchange, symbol: str) -> Optional[Dict[str, Any]]:
+        """Fetch taker buy/sell volume ratio.
+        
+        Args:
+            exchange: Exchange instance
+            symbol: Trading pair symbol
+            
+        Returns:
+            Taker volume ratio data dict
+        """
+        try:
+            if hasattr(exchange, 'calculate_taker_buy_sell_ratio'):
+                ratio_data = await exchange.calculate_taker_buy_sell_ratio(symbol)
+                if ratio_data:
+                    self.logger.debug(f"Successfully fetched taker_volume_ratio for {symbol}")
+                    return ratio_data
+            else:
+                self.logger.debug(f"Exchange does not support taker volume ratio")
+            return None
+        except Exception as e:
+            self.logger.error(f"Error fetching taker_volume_ratio for {symbol}: {str(e)}")
+            return None
+
+    @retry_on_error(max_attempts=2, delay=0.5)
+    async def _fetch_open_interest(self, exchange, symbol: str) -> Optional[Dict[str, Any]]:
+        """Fetch open interest with history for current + previous values.
+        
+        Uses fetch_open_interest_history with limit=2 to get both current and 
+        previous OI values, enabling proper delta calculation for oi_coiling.
+        
+        Args:
+            exchange: Exchange instance
+            symbol: Trading pair symbol
+            
+        Returns:
+            Dict with 'current', 'previous', and 'history' keys, or None on error
+        """
+        try:
+            if hasattr(exchange, 'fetch_open_interest_history'):
+                # Fetch last 2 OI readings for delta calculation
+                oi_response = await exchange.fetch_open_interest_history(
+                    symbol, 
+                    interval='5min', 
+                    limit=2
+                )
+                
+                history = oi_response.get('history', [])
+                
+                if len(history) >= 2:
+                    # History is sorted newest first
+                    current_oi = history[0].get('value', 0)
+                    previous_oi = history[1].get('value', 0)
+                    
+                    self.logger.debug(
+                        f"OI for {symbol}: current={current_oi:.2f}, "
+                        f"previous={previous_oi:.2f}, delta={((current_oi/previous_oi)-1)*100:.2f}%"
+                    )
+                    
+                    return {
+                        'current': current_oi,
+                        'previous': previous_oi,
+                        'history': history,
+                        'timestamp': history[0].get('timestamp', 0)
+                    }
+                elif len(history) == 1:
+                    # Only have current, estimate previous as same (no change)
+                    current_oi = history[0].get('value', 0)
+                    self.logger.debug(f"Only 1 OI reading for {symbol}, using as both current/previous")
+                    return {
+                        'current': current_oi,
+                        'previous': current_oi,
+                        'history': history,
+                        'timestamp': history[0].get('timestamp', 0)
+                    }
+                else:
+                    self.logger.warning(f"No OI history returned for {symbol}")
+                    return None
+            else:
+                self.logger.debug(f"Exchange does not support fetch_open_interest_history")
+                return None
+                
+        except Exception as e:
+            self.logger.error(f"Error fetching open_interest for {symbol}: {str(e)}")
+            return None

@@ -21,6 +21,12 @@ from src.core.exchanges.websocket_manager import WebSocketManager as CoreWebSock
 from src.core.cache.liquidation_cache import LiquidationCacheManager
 from src.core.models.liquidation import LiquidationEvent, LiquidationType, LiquidationSeverity
 
+# OFI (Orderbook Flow Imbalance) calculator - Cont-Stoikov 2014
+try:
+    from src.indicators.orderbook_indicators import OFICalculator
+except ImportError:
+    OFICalculator = None
+
 
 class MonitoringWebSocketManager:
     """
@@ -102,6 +108,17 @@ class MonitoringWebSocketManager:
             db=cache_config.get('db', 0)
         )
         self.logger.info(f"Liquidation cache initialized with {cache_type} backend for monitoring")
+
+        # Initialize OFI calculator if available and enabled
+        self.ofi_calculator = None
+        ofi_config = config.get('parameters', {}).get('orderbook', {}).get('ofi', {})
+        if OFICalculator is not None and ofi_config.get('enabled', False):
+            self.ofi_calculator = OFICalculator(config=ofi_config, symbol=symbol)
+            self.logger.info(f"OFI Calculator initialized for {symbol}")
+        elif OFICalculator is None:
+            self.logger.debug("OFI Calculator not available (module not imported)")
+        else:
+            self.logger.debug("OFI Calculator disabled in configuration")
 
         self.logger.info(f"Monitoring WebSocket Manager initialized for {symbol}")
 
@@ -303,11 +320,25 @@ class MonitoringWebSocketManager:
                 'asks': [[float(ask[0]), float(ask[1])] for ask in ob_data.get('a', [])],
                 'timestamp': int(ob_data.get('u', timestamp))
             }
-            
+
+            # Calculate OFI BEFORE updating snapshot (Cont-Stoikov requires tick-by-tick comparison)
+            if self.ofi_calculator is not None and orderbook['bids'] and orderbook['asks']:
+                try:
+                    ofi_tick = {
+                        'bid_price': orderbook['bids'][0][0],
+                        'bid_qty': orderbook['bids'][0][1],
+                        'ask_price': orderbook['asks'][0][0],
+                        'ask_qty': orderbook['asks'][0][1],
+                        'timestamp': timestamp
+                    }
+                    self.ofi_calculator.update(ofi_tick)
+                except Exception as ofi_err:
+                    self.logger.debug(f"OFI update error: {ofi_err}")
+
             # Update internal state
             self.ws_data['orderbook'] = orderbook
             self.ws_data['last_update_time']['orderbook'] = timestamp
-            
+
             # Log update
             best_bid = orderbook['bids'][0][0] if orderbook['bids'] else 0
             best_ask = orderbook['asks'][0][0] if orderbook['asks'] else 0
@@ -491,6 +522,27 @@ class MonitoringWebSocketManager:
         """Get recent liquidations data from WebSocket."""
         return self.ws_data['liquidations']
 
+    def get_ofi_score(self) -> float:
+        """Get current OFI (Orderbook Flow Imbalance) score (0-100).
+
+        Returns neutral 50.0 if OFI is not enabled or not warmed up.
+        """
+        if self.ofi_calculator is None:
+            return 50.0
+        return self.ofi_calculator.get_score()
+
+    def get_ofi_health(self) -> Dict[str, Any]:
+        """Get OFI calculator health metrics.
+
+        Returns:
+            Dict with samples, last_update_age, state, or empty dict if not enabled.
+        """
+        if self.ofi_calculator is None:
+            return {'enabled': False}
+        health = self.ofi_calculator.get_health()
+        health['enabled'] = True
+        return health
+
     async def close(self) -> None:
         """Close WebSocket connections and clean up resources."""
         try:
@@ -516,7 +568,12 @@ class MonitoringWebSocketManager:
                     'kline': None
                 }
             }
-            
+
+            # Reset OFI calculator state on disconnect
+            if self.ofi_calculator is not None:
+                self.ofi_calculator.reset()
+                self.logger.debug("OFI calculator state reset")
+
             self.logger.info("WebSocket manager closed and cleaned up")
             
         except Exception as e:

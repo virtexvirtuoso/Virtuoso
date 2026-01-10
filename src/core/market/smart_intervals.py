@@ -125,10 +125,12 @@ class SmartIntervalsManager:
             return self.default_interval
         
         # Component-specific adjustments
+        # NOTE: trades multiplier is higher because WebSocket provides real-time data;
+        # REST polling is only for backup/recovery, not primary data source.
         component_multipliers = {
             'ticker': 1.0,
             'orderbook': 1.0,
-            'trades': 1.2,  # Slightly longer for trades
+            'trades': 2.0,  # Higher multiplier - WebSocket provides real-time trades
             'ohlcv': 2.0,   # Much longer for OHLCV data
             'analysis': 1.5  # Longer for analysis
         }

@@ -57,4 +57,8 @@ class Logger:
         self.logger.error(msg)
 
     def critical(self, msg: str):
-        self.logger.critical(msg) 
+        self.logger.critical(msg)
+
+    def isEnabledFor(self, level: int) -> bool:
+        """Check if logger is enabled for the specified level."""
+        return self.logger.isEnabledFor(level)

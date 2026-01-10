@@ -199,6 +199,11 @@ class MarketMonitor:
         self.interval = self.config.get('interval', 15)  # Default 15 seconds (optimized for production)
         self._error_count = 0
 
+        # Heartbeat tracking for monitoring health
+        self._last_successful_cycle = None  # Updated after each successful cycle
+        self._monitoring_started_at = None  # When start_monitoring() was called
+        self._total_cycles = 0  # Count of completed cycles
+
         # Whale trade detection cooldown tracking (Bug #2 fix - initialize here to avoid race condition)
         self._last_whale_trade_alert = {}
 
@@ -296,12 +301,16 @@ class MarketMonitor:
             await self._ensure_dependencies()
             
             # Data Collector - handles all market data fetching
+            # P1 FIX: Pass market_data_manager to share pre-warmed cache
+            # This prevents data gaps on first-pass symbols (top movers)
             if self.exchange_manager:
                 self._data_collector = DataCollector(
                     exchange_manager=self.exchange_manager,
                     config=self.config,
-                    logger=self.logger.getChild('data_collector')
+                    logger=self.logger.getChild('data_collector'),
+                    market_data_manager=self.market_data_manager  # Share cache!
                 )
+                self.logger.info("✅ DataCollector initialized with shared MDM cache")
             else:
                 self.logger.warning("DataCollector not initialized - exchange_manager unavailable")
 
@@ -640,32 +649,42 @@ class MarketMonitor:
             self.logger.error(f"Error validating market data: {str(e)}")
             return False
     
-    @handle_monitoring_error()
+    # NOTE: No @handle_monitoring_error() here - this is a CRITICAL function
+    # that must crash loudly if it fails, not return None silently.
+    # It has its own internal exception handling in the try/finally block.
     async def start_monitoring(self) -> None:
         """Start the monitoring system."""
         if self.running:
             self.logger.warning("Monitoring is already running")
             return
-        
+
         self.logger.info("Starting market monitoring system...")
-        
+
+        # Record start timestamp for heartbeat tracking
+        self._monitoring_started_at = time.time()
+
         # Initialize components
         if not await self.initialize():
-            self.logger.error("Failed to initialize monitoring system")
-            return
-        
+            self.logger.error("❌ CRITICAL: Failed to initialize monitoring system - NO CONFLUENCE ANALYSIS WILL RUN")
+            # Re-raise as exception to make this failure visible
+            raise RuntimeError("Failed to initialize monitoring system")
+
         self.running = True
         self._error_count = 0
-        
+
         try:
+            self.logger.info("✅ Monitoring initialized, entering main loop...")
             # Start the main monitoring loop
             await self._run_monitoring_loop()
         except Exception as e:
-            self.logger.error(f"Critical error in monitoring system: {str(e)}")
-            self.logger.debug(traceback.format_exc())
+            # Log full stack trace at ERROR level, not DEBUG
+            self.logger.error(f"💥 CRITICAL error in monitoring system: {str(e)}")
+            self.logger.error(f"Stack trace:\n{traceback.format_exc()}")
+            raise  # Re-raise to crash loudly
         finally:
             self.running = False
-            self.logger.info("Market monitoring system stopped")
+            elapsed = time.time() - self._monitoring_started_at if self._monitoring_started_at else 0
+            self.logger.info(f"🛑 Market monitoring system stopped after {elapsed:.1f}s ({self._total_cycles} cycles completed)")
     
     async def stop_monitoring(self) -> None:
         """Stop the monitoring system gracefully."""
@@ -689,7 +708,48 @@ class MarketMonitor:
             self.logger.info("All monitoring components stopped")
         except Exception as e:
             self.logger.error(f"Error stopping components: {str(e)}")
-    
+
+    def get_monitoring_health(self) -> Dict[str, Any]:
+        """Get monitoring health status for diagnostics.
+
+        Returns a dict with:
+        - running: bool - is monitoring loop active
+        - started_at: float/None - timestamp when monitoring started
+        - last_cycle: float/None - timestamp of last successful cycle
+        - total_cycles: int - number of completed cycles
+        - heartbeat_age_seconds: float/None - seconds since last cycle (None if never ran)
+        - status: str - 'healthy', 'stale', 'stopped', 'never_started'
+        """
+        now = time.time()
+        heartbeat_age = None
+        status = 'unknown'
+
+        if self._last_successful_cycle:
+            heartbeat_age = now - self._last_successful_cycle
+
+        if not self.running and not self._monitoring_started_at:
+            status = 'never_started'
+        elif not self.running:
+            status = 'stopped'
+        elif heartbeat_age is None:
+            status = 'initializing'  # Running but no cycle completed yet
+        elif heartbeat_age > 600:  # 10 minutes without a cycle
+            status = 'stale'
+        else:
+            status = 'healthy'
+
+        return {
+            'running': self.running,
+            'started_at': self._monitoring_started_at,
+            'last_cycle': self._last_successful_cycle,
+            'total_cycles': self._total_cycles,
+            'heartbeat_age_seconds': heartbeat_age,
+            'status': status,
+            'error_count': self._error_count,
+            'first_cycle_completed': self.first_cycle_completed,
+            'symbols_count': len(self.symbols) if self.symbols else 0,
+        }
+
     async def _run_monitoring_loop(self) -> None:
         """Main monitoring loop - orchestrates all components."""
         self.logger.info("Starting monitoring loop...")
@@ -716,7 +776,8 @@ class MarketMonitor:
                 
                 cycle_duration = time.time() - cycle_start_time
                 self._last_successful_cycle = time.time()  # Track successful completion
-                self.logger.info(f"🏁 Monitoring cycle completed in {cycle_duration:.2f}s, sleeping for {self.interval}s")
+                self._total_cycles += 1  # Increment cycle counter
+                self.logger.info(f"🏁 Monitoring cycle #{self._total_cycles} completed in {cycle_duration:.2f}s, sleeping for {self.interval}s")
                 
                 # Sleep until next cycle
                 await asyncio.sleep(self.interval)
@@ -923,6 +984,7 @@ class MarketMonitor:
                         self.logger.info(f'[LSR-MONITOR] Passing LSR to confluence: {market_data["long_short_ratio"]}')
                     else:
                         self.logger.warning('[LSR-MONITOR] No LSR in market_data being passed to confluence')
+                    self.logger.debug(f"[MONITOR-DEBUG] market_data has premium_index={bool(market_data.get('premium_index'))}")
                     analysis_result = await analyzer.analyze(market_data)
                     if analysis_result:
                         # Log confluence score

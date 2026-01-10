@@ -8048,13 +8048,14 @@
                 const pulseDuration = pulseLevels.find(l => intensity >= l.threshold).duration;
 
                 // Extract component scores
+                // Note: API returns 'price_structure' but UI displays as 'position'
                 const components = score.components || score.results || {};
                 const componentScores = {
                     technical: components.technical || 50,
                     volume: components.volume || 50,
                     orderflow: components.orderflow || 50,
                     orderbook: components.orderbook || 50,
-                    position: components.position || 50,
+                    position: components.price_structure || components.position || 50,
                     sentiment: components.sentiment || 50
                 };
 
@@ -8987,12 +8988,16 @@
             const scoreColor = score >= 70 ? 'var(--accent-positive)' : score >= 55 ? 'var(--neon-amber)' : 'var(--text-secondary)';
 
             // Calculate distance to TP/SL for progress indicator
+            // FIX: Prevent NaN when totalRange is 0 (missing TP/SL data)
             const totalRange = Math.abs(takeProfit - stopLoss);
             const currentFromEntry = currentPrice - entryPrice;
-            const progressPct = isLong
-                ? ((currentPrice - stopLoss) / totalRange) * 100
-                : ((stopLoss - currentPrice) / totalRange) * 100;
-            const clampedProgress = Math.max(0, Math.min(100, progressPct));
+            let progressPct = 50; // Default to midpoint if no TP/SL data
+            if (totalRange > 0) {
+                progressPct = isLong
+                    ? ((currentPrice - stopLoss) / totalRange) * 100
+                    : ((stopLoss - currentPrice) / totalRange) * 100;
+            }
+            const clampedProgress = Math.max(0, Math.min(100, isNaN(progressPct) ? 50 : progressPct));
 
             // Remove USDT suffix for cleaner display
             const displaySymbol = symbol.replace(/USDT$/i, '');

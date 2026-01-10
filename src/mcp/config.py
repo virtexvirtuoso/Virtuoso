@@ -2,7 +2,7 @@
 # Environment-based settings using pydantic-settings
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from typing import Optional
+from typing import Optional, Literal
 
 
 class Settings(BaseSettings):
@@ -25,6 +25,11 @@ class Settings(BaseSettings):
     request_timeout: float = 10.0
     max_retries: int = 3
     retry_delay: float = 1.0
+
+    # HTTP server settings (for SSE/HTTP transport)
+    http_host: str = "127.0.0.1"
+    http_port: int = 8090
+    http_transport: Literal["sse", "streamable-http"] = "sse"
 
     # Feature flags
     mock_mode: bool = False  # Return mock data instead of calling VPS

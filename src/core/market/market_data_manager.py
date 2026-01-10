@@ -100,6 +100,8 @@ class MarketDataManager:
             self.logger.info("Liquidation database persistence disabled")
 
         # Configure refresh intervals (in seconds) - now using smart intervals
+        # NOTE: WebSocket provides real-time data for ticker, orderbook, and trades.
+        # REST polling is a fallback/supplement, so longer intervals reduce rate limit pressure.
         self.base_refresh_intervals = {
             'ticker': 60,      # Base: 1 minute (will be adjusted by smart intervals)
             'orderbook': 60,   # Base: 1 minute (will be adjusted by smart intervals)
@@ -109,7 +111,8 @@ class MarketDataManager:
                 'mtf': 3600,   # 1 hour for 30m candles
                 'htf': 14400   # 4 hours for 4h candles
             },
-            'trades': 60,          # Base: 1 minute (will be adjusted by smart intervals)
+            'trades': 300,         # Base: 5 minutes - WebSocket provides real-time trades,
+                                   # REST is only for initial load/recovery. Reduces rate limit warnings.
             'long_short_ratio': 3600,  # 1 hour (REST only)
             'risk_limits': 86400       # 1 day (REST only)
         }

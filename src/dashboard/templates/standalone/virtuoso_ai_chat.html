@@ -659,6 +659,21 @@
         }
 
         .hljs { background: transparent !important; }
+
+        /* Tool mode badge */
+        .tool-mode-badge {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 9px;
+            padding: 2px 6px;
+            background: rgba(139, 92, 246, 0.2);
+            border: 1px solid rgba(139, 92, 246, 0.3);
+            border-radius: 4px;
+            color: var(--violet);
+            margin-left: 8px;
+            vertical-align: middle;
+        }
+
+        #toolModeGroup.hidden { display: none; }
     </style>
 </head>
 <body>
@@ -771,9 +786,17 @@
                     <div class="form-group">
                         <label class="checkbox-label">
                             <input type="checkbox" id="enableTools" checked onchange="saveSettings()">
-                            <span class="checkbox-text">Enable real-time market data (Claude only)</span>
+                            <span class="checkbox-text">Enable real-time market data</span>
                         </label>
-                        <p class="form-hint">When enabled, Claude can fetch live market data, signals, and analysis from Virtuoso APIs.</p>
+                        <p class="form-hint">When enabled, AI can fetch live market data, signals, and analysis from Virtuoso APIs using function calling.</p>
+                    </div>
+                    <div class="form-group" id="toolModeGroup">
+                        <label class="form-label">Tool Mode <span class="tool-mode-badge" id="toolModeBadge">Claude only</span></label>
+                        <select class="form-input form-select" id="toolMode" onchange="saveSettings()">
+                            <option value="direct">Function Calling (Browser executes)</option>
+                            <option value="mcp">MCP Connector (Claude native)</option>
+                        </select>
+                        <p class="form-hint">MCP Connector is Claude-only. Function Calling works with all providers.</p>
                     </div>
                 </div>
 
@@ -1028,6 +1051,68 @@
             }
         }
 
+        // OpenAI-format function definitions (mirrors virtuosoTools)
+        const openAIFunctions = [
+            {
+                type: "function",
+                function: {
+                    name: "get_market_overview",
+                    description: "Get a snapshot of overall market conditions including market regime, BTC price/dominance, volatility metrics, trend strength, and overall market health indicators.",
+                    parameters: { type: "object", properties: {}, required: [] }
+                }
+            },
+            {
+                type: "function",
+                function: {
+                    name: "get_perpetuals_pulse",
+                    description: "Get perpetuals market summary with derivatives positioning including open interest, funding rates, long/short ratios, and liquidation activity across monitored perpetual markets.",
+                    parameters: { type: "object", properties: {}, required: [] }
+                }
+            },
+            {
+                type: "function",
+                function: {
+                    name: "get_top_signals",
+                    description: "Get the top trading signals ranked by confluence score. Returns symbols with the strongest bullish or bearish setups based on 6-dimensional confluence analysis.",
+                    parameters: {
+                        type: "object",
+                        properties: {
+                            limit: { type: "integer", description: "Maximum signals to return (1-30)", default: 10 }
+                        },
+                        required: []
+                    }
+                }
+            },
+            {
+                type: "function",
+                function: {
+                    name: "get_symbol_analysis",
+                    description: "Get detailed confluence analysis for a specific trading symbol. Breaks down the 6-dimensional analysis into components: Technical, Volume, OrderFlow, Orderbook, Position, Sentiment.",
+                    parameters: {
+                        type: "object",
+                        properties: {
+                            symbol: { type: "string", description: "Trading symbol (e.g., 'ETH', 'BTCUSDT', 'SOL')" }
+                        },
+                        required: ["symbol"]
+                    }
+                }
+            },
+            {
+                type: "function",
+                function: {
+                    name: "get_recommendation",
+                    description: "Get AI-powered trading recommendation for a symbol. Analyzes derivatives data to generate a LONG/SHORT/WAIT recommendation with reasoning and confidence score.",
+                    parameters: {
+                        type: "object",
+                        properties: {
+                            symbol: { type: "string", description: "Trading symbol (e.g., 'BTC', 'ETHUSDT', 'SOL')" }
+                        },
+                        required: ["symbol"]
+                    }
+                }
+            }
+        ];
+
         const modelOptions = {
             claude: [
                 { value: 'claude-sonnet-4-20250514', label: 'Claude Sonnet 4' },
@@ -1063,6 +1148,7 @@
             document.getElementById('grokKey').value = s.grokKey || '';
             document.getElementById('provider').value = s.provider || 'claude';
             document.getElementById('enableTools').checked = s.enableTools !== false; // Default true
+            document.getElementById('toolMode').value = s.toolMode || 'direct';
             document.getElementById('systemPrompt').value = s.systemPrompt || document.getElementById('systemPrompt').value;
             messages = JSON.parse(localStorage.getItem('virtuoso_ai_messages') || '[]');
             renderMessages();
@@ -1079,6 +1165,7 @@
                 provider: document.getElementById('provider').value,
                 model: document.getElementById('model').value,
                 enableTools: document.getElementById('enableTools').checked,
+                toolMode: document.getElementById('toolMode').value,
                 systemPrompt: document.getElementById('systemPrompt').value
             };
             localStorage.setItem('virtuoso_ai_settings', JSON.stringify(s));
@@ -1107,6 +1194,21 @@
             const provider = document.getElementById('provider').value;
             const modelSelect = document.getElementById('model');
             modelSelect.innerHTML = modelOptions[provider].map(o => `<option value="${o.value}">${o.label}</option>`).join('');
+
+            // Show/hide MCP tool mode option based on provider
+            const toolModeGroup = document.getElementById('toolModeGroup');
+            const toolModeSelect = document.getElementById('toolMode');
+
+            if (provider === 'claude') {
+                // Claude supports both function calling and MCP Connector
+                toolModeGroup.classList.remove('hidden');
+            } else {
+                // OpenAI and Grok only support function calling
+                toolModeGroup.classList.add('hidden');
+                // Reset to direct mode for non-Claude providers
+                toolModeSelect.value = 'direct';
+            }
+
             saveSettings();
         }
 
@@ -1234,13 +1336,23 @@
             if (provider === 'grok') return await callGrok(apiKey, model, systemPrompt, history, userMessage);
         }
 
+        // MCP Server URL for MCP Connector mode
+        const MCP_SERVER_URL = 'https://virtuosocrypto.com/mcp/sse';
+
         async function callClaude(apiKey, model, systemPrompt, history, userMessage) {
             const enableTools = document.getElementById('enableTools')?.checked ?? true;
+            const toolMode = document.getElementById('toolMode')?.value || 'direct';
             const msgs = [...history, { role: 'user', content: userMessage }];
 
             // Enhanced system prompt with Virtuoso context
             const enhancedSystem = systemPrompt + `\n\nYou have access to real-time Virtuoso trading tools. When users ask about markets, signals, or specific symbols, USE THE TOOLS to get current data. Always base your analysis on live data from the tools when available.`;
 
+            // Use MCP Connector mode if selected
+            if (enableTools && toolMode === 'mcp') {
+                return await callClaudeWithMCP(apiKey, model, enhancedSystem, msgs);
+            }
+
+            // Direct API mode (browser calls Virtuoso APIs directly)
             const requestBody = {
                 model,
                 max_tokens: 4096,
@@ -1326,28 +1438,241 @@
             return textBlocks.map(t => t.text).join('\n\n') || 'No response generated.';
         }
 
-        async function callOpenAI(apiKey, model, systemPrompt, history, userMessage) {
-            const msgs = [{ role: 'system', content: systemPrompt }, ...history, { role: 'user', content: userMessage }];
-            const res = await fetch('https://api.openai.com/v1/chat/completions', {
+        // MCP Connector mode - Claude API connects directly to MCP server
+        async function callClaudeWithMCP(apiKey, model, systemPrompt, msgs) {
+            showToast('Using MCP Connector...', 'info');
+
+            const requestBody = {
+                model,
+                max_tokens: 4096,
+                system: systemPrompt,
+                messages: msgs,
+                // MCP Connector configuration
+                mcp_servers: [{
+                    type: 'url',
+                    url: MCP_SERVER_URL,
+                    name: 'virtuoso-mcp',
+                    authorization_token: '' // Public endpoint, no auth needed
+                }],
+                // Enable all tools from the MCP server
+                tools: [{
+                    type: 'mcp',
+                    server_label: 'virtuoso-mcp'
+                }]
+            };
+
+            const res = await fetch('https://api.anthropic.com/v1/messages', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-                body: JSON.stringify({ model, messages: msgs, max_tokens: 4096 })
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-api-key': apiKey,
+                    'anthropic-version': '2023-06-01',
+                    'anthropic-beta': 'mcp-client-2025-04-04', // MCP Connector beta header
+                    'anthropic-dangerous-direct-browser-access': 'true'
+                },
+                body: JSON.stringify(requestBody)
             });
-            if (!res.ok) { const e = await res.json(); throw new Error(e.error?.message || 'OpenAI error'); }
+
+            if (!res.ok) {
+                const e = await res.json();
+                // If MCP Connector fails, fall back to direct mode with helpful error
+                if (e.error?.message?.includes('mcp') || e.error?.message?.includes('beta')) {
+                    showToast('MCP mode unavailable, using direct API', 'info');
+                    // Fall back to direct mode
+                    document.getElementById('toolMode').value = 'direct';
+                    saveSettings();
+                    return await callClaude(apiKey, model, systemPrompt, msgs.slice(0, -1), msgs[msgs.length - 1].content);
+                }
+                throw new Error(e.error?.message || 'Claude error');
+            }
+
             const data = await res.json();
-            return data.choices[0].message.content;
+
+            // Extract final text response
+            const textBlocks = data.content.filter(c => c.type === 'text');
+            return textBlocks.map(t => t.text).join('\n\n') || 'No response generated.';
+        }
+
+        async function callOpenAI(apiKey, model, systemPrompt, history, userMessage) {
+            const enableTools = document.getElementById('enableTools')?.checked ?? true;
+
+            // Enhanced system prompt with Virtuoso context
+            const enhancedSystem = systemPrompt + `\n\nYou have access to real-time Virtuoso trading tools. When users ask about markets, signals, or specific symbols, USE THE TOOLS to get current data. Always base your analysis on live data from the tools when available.`;
+
+            const msgs = [{ role: 'system', content: enhancedSystem }, ...history, { role: 'user', content: userMessage }];
+
+            const requestBody = {
+                model,
+                messages: msgs,
+                max_tokens: 4096
+            };
+
+            // Add function calling if tools are enabled
+            if (enableTools) {
+                requestBody.tools = openAIFunctions;
+                requestBody.tool_choice = 'auto';
+            }
+
+            let res = await fetch('https://api.openai.com/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${apiKey}`
+                },
+                body: JSON.stringify(requestBody)
+            });
+
+            if (!res.ok) {
+                const e = await res.json();
+                throw new Error(e.error?.message || 'OpenAI error');
+            }
+
+            let data = await res.json();
+            let message = data.choices[0].message;
+
+            // Handle function calling loop (max 5 iterations)
+            let iterations = 0;
+            while (message.tool_calls && message.tool_calls.length > 0 && iterations < 5) {
+                iterations++;
+
+                // Add assistant message with tool calls to conversation
+                msgs.push(message);
+
+                // Execute each tool call and collect results
+                for (const toolCall of message.tool_calls) {
+                    const functionName = toolCall.function.name;
+                    const functionArgs = JSON.parse(toolCall.function.arguments || '{}');
+
+                    showToast(`Fetching ${functionName.replace(/_/g, ' ')}...`, 'info');
+
+                    // Execute the tool
+                    const result = await executeVirtuosoTool(functionName, functionArgs);
+
+                    // Add tool result to messages
+                    msgs.push({
+                        role: 'tool',
+                        tool_call_id: toolCall.id,
+                        content: JSON.stringify(result, null, 2)
+                    });
+                }
+
+                // Continue conversation with tool results
+                res = await fetch('https://api.openai.com/v1/chat/completions', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${apiKey}`
+                    },
+                    body: JSON.stringify({
+                        model,
+                        messages: msgs,
+                        max_tokens: 4096,
+                        tools: openAIFunctions,
+                        tool_choice: 'auto'
+                    })
+                });
+
+                if (!res.ok) {
+                    const e = await res.json();
+                    throw new Error(e.error?.message || 'OpenAI error');
+                }
+
+                data = await res.json();
+                message = data.choices[0].message;
+            }
+
+            return message.content || 'No response generated.';
         }
 
         async function callGrok(apiKey, model, systemPrompt, history, userMessage) {
-            const msgs = [{ role: 'system', content: systemPrompt }, ...history, { role: 'user', content: userMessage }];
-            const res = await fetch('https://api.x.ai/v1/chat/completions', {
+            const enableTools = document.getElementById('enableTools')?.checked ?? true;
+
+            // Enhanced system prompt with Virtuoso context
+            const enhancedSystem = systemPrompt + `\n\nYou have access to real-time Virtuoso trading tools. When users ask about markets, signals, or specific symbols, USE THE TOOLS to get current data. Always base your analysis on live data from the tools when available.`;
+
+            const msgs = [{ role: 'system', content: enhancedSystem }, ...history, { role: 'user', content: userMessage }];
+
+            const requestBody = {
+                model,
+                messages: msgs,
+                max_tokens: 4096
+            };
+
+            // Add function calling if tools are enabled (Grok supports OpenAI-compatible format)
+            if (enableTools) {
+                requestBody.tools = openAIFunctions;
+                requestBody.tool_choice = 'auto';
+            }
+
+            let res = await fetch('https://api.x.ai/v1/chat/completions', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-                body: JSON.stringify({ model, messages: msgs, max_tokens: 4096 })
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${apiKey}`
+                },
+                body: JSON.stringify(requestBody)
             });
-            if (!res.ok) { const e = await res.json(); throw new Error(e.error?.message || 'Grok error'); }
-            const data = await res.json();
-            return data.choices[0].message.content;
+
+            if (!res.ok) {
+                const e = await res.json();
+                throw new Error(e.error?.message || 'Grok error');
+            }
+
+            let data = await res.json();
+            let message = data.choices[0].message;
+
+            // Handle function calling loop (max 5 iterations)
+            let iterations = 0;
+            while (message.tool_calls && message.tool_calls.length > 0 && iterations < 5) {
+                iterations++;
+
+                // Add assistant message with tool calls to conversation
+                msgs.push(message);
+
+                // Execute each tool call and collect results
+                for (const toolCall of message.tool_calls) {
+                    const functionName = toolCall.function.name;
+                    const functionArgs = JSON.parse(toolCall.function.arguments || '{}');
+
+                    showToast(`Fetching ${functionName.replace(/_/g, ' ')}...`, 'info');
+
+                    // Execute the tool
+                    const result = await executeVirtuosoTool(functionName, functionArgs);
+
+                    // Add tool result to messages
+                    msgs.push({
+                        role: 'tool',
+                        tool_call_id: toolCall.id,
+                        content: JSON.stringify(result, null, 2)
+                    });
+                }
+
+                // Continue conversation with tool results
+                res = await fetch('https://api.x.ai/v1/chat/completions', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${apiKey}`
+                    },
+                    body: JSON.stringify({
+                        model,
+                        messages: msgs,
+                        max_tokens: 4096,
+                        tools: openAIFunctions,
+                        tool_choice: 'auto'
+                    })
+                });
+
+                if (!res.ok) {
+                    const e = await res.json();
+                    throw new Error(e.error?.message || 'Grok error');
+                }
+
+                data = await res.json();
+                message = data.choices[0].message;
+            }
+
+            return message.content || 'No response generated.';
         }
 
         async function testConnection() {

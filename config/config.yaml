@@ -180,6 +180,35 @@ analysis:
           lookback: 10
           sensitivity: 0.75
           threshold: 0.3
+        ofi:
+          # OFI (Orderbook Flow Imbalance) - Cont-Stoikov 2014
+          # Replaces MPI when enabled (R²≈0.65 vs R²≈0.20)
+          enabled: true                   # Toggle to use OFI instead of MPI
+          lookback_ticks: 50              # Ring buffer size for tick history
+          depth_exponent: 0.7             # Depth normalization (λ): 0.5=thin, 0.7=normal, 0.85=thick
+          min_updates: 5                  # Minimum updates before producing score (cold start)
+          decay_factor: 0.95              # Exponential decay for older ticks
+          # Crypto-specific enhancements
+          funding_filter:
+            enabled: true                 # Dampen during funding periods
+            dampen_pct: 0.7               # Reduce OFI weight by 70% near funding
+            window_minutes: 5             # Minutes before/after funding times
+          adaptive_depth:
+            enabled: true                 # Adjust depth_exponent based on book thickness
+            thin_threshold: 0.3           # < 30% baseline = thin book
+            thick_threshold: 2.0          # > 200% baseline = thick book
+            thin_exponent: 0.5            # λ for thin books
+            thick_exponent: 0.85          # λ for thick books
+          cascade_detection:
+            enabled: true                 # Detect liquidation cascades
+            spread_threshold: 0.005       # 0.5% spread indicates cascade
+            oi_drop_threshold: 0.02       # 2% OI drop in window
+            volume_spike: 3.0             # 3x normal volume
+            window_minutes: 5
+          # Shadow mode comparison (Phase 3)
+          shadow_mode:
+            enabled: false                # Log both MPI and OFI without switching
+            log_comparison: false         # Log IC comparison metrics
         obps:
           lookback: 10
           price_levels: 10

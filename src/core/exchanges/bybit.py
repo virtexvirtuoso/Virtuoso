@@ -246,7 +246,12 @@ class BybitExchange(BaseExchange):
         
         # Initialize rate limiter
         self.rate_limiter = BybitRateLimiter()
-        
+
+        # Initialize trades cache - CRITICAL for orderflow/volume indicators
+        # Without this, calculate_taker_buy_sell_ratio() returns 50.0 (neutral)
+        self._trades_cache: Dict[str, Dict[str, Any]] = {}  # {symbol: {'data': [...], 'timestamp': float}}
+        self._trades_cache_ttl = 300  # 5 minutes - matches market_data_manager.py trades interval
+
         # Initialize circuit breakers
         self._init_circuit_breakers()
         
@@ -446,6 +451,11 @@ class BybitExchange(BaseExchange):
         self._market_data_cache = {}
         self._cache_timestamp = 0
         self._cache_ttl = self.market_data_config.get('cache_ttl', 300)  # 5 minutes default
+
+        # Trades cache - WebSocket provides real-time trades, REST is backup only
+        # Cache trades for 300s to reduce rate limit warnings on v5/market/recent-trade
+        self._trades_cache: Dict[str, Dict[str, Any]] = {}  # {symbol: {'data': [...], 'timestamp': float}}
+        self._trades_cache_ttl = 300  # 5 minutes - matches market_data_manager.py trades interval
         
         # Set default options
         self.options.update({
@@ -1451,22 +1461,66 @@ class BybitExchange(BaseExchange):
             # Format liquidation channels
             channels = [f"allLiquidation.{symbol}" for symbol in symbols]
 
-            # Send subscription using underlying aiohttp WebSocket
-            # CRITICAL FIX: self.ws is BybitWebSocket, self.ws.ws is the aiohttp ClientWebSocketResponse
-            try:
-                subscription_msg = {
-                    "op": "subscribe",
-                    "args": channels
-                }
-                # Use the underlying aiohttp WebSocket's send_str method
-                import json
-                await self.ws.ws.send_str(json.dumps(subscription_msg))
-                self.logger.info(f"✅ Liquidation subscription sent: {channels}")
-            except Exception as sub_ex:
-                self.logger.error(f"❌ ERROR: Failed to send subscription: {sub_ex}")
-                import traceback
-                self.logger.debug(traceback.format_exc())
-                return False
+            # Send subscription using aiohttp WebSocket
+            # NOTE: self.ws can be either:
+            #   - ClientWebSocketResponse directly (has .closed attribute)
+            #   - BybitWebSocket wrapper (has .connected attribute, inner socket at .ws)
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    # Check WebSocket state before sending
+                    if not self.ws:
+                        self.logger.warning("WebSocket not available, will retry...")
+                        await asyncio.sleep(1.0)
+                        continue
+
+                    # Determine if ws is wrapper or direct ClientWebSocketResponse
+                    is_wrapper = hasattr(self.ws, 'connected')
+
+                    # Check if WebSocket is closed/disconnected
+                    if is_wrapper:
+                        # BybitWebSocket wrapper
+                        ws_closed = not self.ws.connected
+                        actual_ws = self.ws.ws  # Inner ClientWebSocketResponse
+                    else:
+                        # Direct ClientWebSocketResponse
+                        ws_closed = self.ws.closed
+                        actual_ws = self.ws
+
+                    if ws_closed or not actual_ws:
+                        self.logger.warning("WebSocket closed, reconnecting...")
+                        self.ws_connected = False
+                        ws_result = await self.connect_ws()
+                        if not ws_result:
+                            await asyncio.sleep(1.0)
+                            continue
+                        # After reconnect, self.ws should be ClientWebSocketResponse
+                        actual_ws = self.ws
+
+                    subscription_msg = {
+                        "op": "subscribe",
+                        "args": channels
+                    }
+                    import json
+                    await actual_ws.send_str(json.dumps(subscription_msg))
+                    self.logger.info(f"✅ Liquidation subscription sent: {channels}")
+                    break  # Success, exit retry loop
+
+                except Exception as sub_ex:
+                    error_msg = str(sub_ex)
+                    if "closing transport" in error_msg.lower():
+                        # Connection closing - this is a recoverable error
+                        self.logger.warning(f"WebSocket closing during subscription (attempt {attempt + 1}/{max_retries})")
+                        self.ws_connected = False
+                        if attempt < max_retries - 1:
+                            await asyncio.sleep(1.0)
+                            continue
+                    else:
+                        self.logger.error(f"❌ ERROR: Failed to send subscription: {sub_ex}")
+                        import traceback
+                        self.logger.debug(traceback.format_exc())
+                    if attempt == max_retries - 1:
+                        return False
 
             # Store subscribed symbols
             if not hasattr(self, '_liquidation_subscriptions'):
@@ -2807,6 +2861,47 @@ class BybitExchange(BaseExchange):
         if 'oi_history' not in market_data:
             market_data['oi_history'] = []
 
+    async def _get_cached_trades(self, symbol: str, limit: int = 100) -> List[Dict[str, Any]]:
+        """
+        Get trades with caching to reduce REST API rate limit pressure.
+
+        WebSocket provides real-time trades, so REST fetching is only needed for:
+        - Initial data load
+        - Recovery after WebSocket disconnection
+
+        Cache TTL: 300 seconds (5 minutes) to match market_data_manager.py interval.
+
+        Args:
+            symbol: Trading pair symbol
+            limit: Number of trades to fetch if cache miss
+
+        Returns:
+            List of trades (from cache or fresh fetch)
+        """
+        current_time = time.time()
+        symbol_key = self._get_symbol_string(symbol)
+
+        # Check if we have fresh cached trades
+        if symbol_key in self._trades_cache:
+            cache_entry = self._trades_cache[symbol_key]
+            cache_age = current_time - cache_entry.get('timestamp', 0)
+
+            if cache_age < self._trades_cache_ttl and cache_entry.get('data'):
+                self.logger.debug(f"Using cached trades for {symbol_key} (age: {cache_age:.1f}s)")
+                return cache_entry['data']
+
+        # Cache miss or stale - fetch fresh trades
+        self.logger.debug(f"Fetching fresh trades for {symbol_key} (cache miss/stale)")
+        trades = await self.fetch_trades(symbol, limit=limit)
+
+        # Update cache
+        self._trades_cache[symbol_key] = {
+            'data': trades if trades else [],
+            'timestamp': current_time
+        }
+
+        return trades if trades else []
+
     async def fetch_market_data(self, symbol: str, limit: Optional[int] = None) -> Dict[str, Any]:
         """
         Fetch comprehensive market data for a symbol.
@@ -2944,7 +3039,7 @@ class BybitExchange(BaseExchange):
             fetch_tasks = [
                 fetch_with_retry('ticker', self._fetch_ticker, symbol),
                 fetch_with_retry('orderbook', self.get_orderbook, symbol, 100),
-                fetch_with_retry('trades', self.fetch_trades, symbol, limit=100),
+                fetch_with_retry('trades', self._get_cached_trades, symbol, limit=100),
                 fetch_with_retry('lsr', self._fetch_long_short_ratio, symbol),
                 fetch_with_retry('risk_limits', self._fetch_risk_limits, symbol),
             ]
@@ -4367,48 +4462,71 @@ class BybitExchange(BaseExchange):
         return await self._make_request('GET', '/v5/market/orderbook', params)
 
     async def fetch_trades(self, symbol: Union[str, dict], since: Optional[int] = None, limit: Optional[int] = None, params={}) -> List[Dict[str, Any]]:
-        """Fetch recent trades with symbol validation.
-        
+        """Fetch recent trades with symbol validation and caching.
+
+        Uses internal cache to reduce rate limit pressure on v5/market/recent-trade endpoint.
+        WebSocket provides real-time trades; REST is primarily for initial load/recovery.
+
         Args:
             symbol: Symbol string or dictionary
-            since: Timestamp to fetch trades from
+            since: Timestamp to fetch trades from (bypasses cache for historical queries)
             limit: Number of trades to fetch (default: 1000, which is the maximum allowed by Bybit)
             params: Additional parameters
-            
+
         Returns:
             List of trades extracted from result.list in the response
         """
         symbol_str = self._get_symbol_string(symbol)
+        current_time = time.time()
+
+        # Use cache for recent trades requests (no 'since' parameter)
+        # Historical queries (with 'since') bypass cache
+        if since is None:
+            if symbol_str in self._trades_cache:
+                cache_entry = self._trades_cache[symbol_str]
+                cache_age = current_time - cache_entry.get('timestamp', 0)
+
+                if cache_age < self._trades_cache_ttl and cache_entry.get('data'):
+                    # Return cached data if fresh enough
+                    return cache_entry['data']
+
         request_params = {
             'category': 'linear',  # Always use linear category
             'symbol': symbol_str,
             'limit': 1000  # Set default limit to maximum allowed by Bybit
         }
-        
+
         # Override limit only if explicitly provided
         if limit is not None:
             request_params['limit'] = min(limit, 1000)  # Ensure it doesn't exceed the max
-            
+
         if since:
             request_params['startTime'] = since
-            
+
         request_params.update(params)
-        
+
         try:
             response = await self._make_request_with_retry('GET', '/v5/market/recent-trade', request_params)
-            
+
             # Verify the response has the expected structure
             if not response or 'result' not in response:
                 self.logger.warning(f"Invalid response structure from Bybit trades API: {response}")
                 return []
-                
+
             # Extract trades from result.list
             result = response.get('result', {})
             trades_list = result.get('list', [])
-            
+
+            # Cache the result for recent trades requests (no 'since')
+            if since is None:
+                self._trades_cache[symbol_str] = {
+                    'data': trades_list,
+                    'timestamp': current_time
+                }
+
             # Log the extraction results
             self.logger.debug(f"Successfully extracted {len(trades_list)} trades from Bybit API response")
-            
+
             return trades_list
         except Exception as e:
             self.logger.error(f"Error fetching trades for {symbol_str}: {str(e)}")

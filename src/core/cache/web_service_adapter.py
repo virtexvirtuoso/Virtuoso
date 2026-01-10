@@ -381,24 +381,97 @@ class WebServiceCacheAdapter:
                 overview_data.get('total_volume_24h', 0) == 0
             )
 
-            if is_cache_warmer_data:
-                logger.warning("⚠️ Detected cache warmer data in overview - attempting fallback to market-overview endpoint")
-                # Try the market-overview endpoint which often has real data
-                fallback_overview, _ = await get_market_data('market:overview')
-                if fallback_overview and isinstance(fallback_overview, dict):
-                    # Check if fallback has valid data
-                    fallback_has_data = (
-                        fallback_overview.get('trend_strength', 0) > 0 or
-                        fallback_overview.get('gainers', 0) > 0 or
-                        fallback_overview.get('losers', 0) > 0
-                    )
-                    if fallback_has_data:
-                        logger.info("✅ Using fallback market-overview data instead of cache warmer")
-                        overview_data = fallback_overview
+            # Check if data is stale (>2 min old) - staleness threshold provides natural rate limiting
+            is_stale = (
+                overview_data.get('timestamp', 0) > 0 and
+                (time.time() - overview_data.get('timestamp', 0)) > 120
+            )
+
+            needs_live_fetch = is_cache_warmer_data or is_stale
+            live_tickers = None  # Will be populated by live fetch if needed
+
+            if needs_live_fetch:
+                logger.warning(f"⚠️ Cache stale/empty - fetching live Bybit data (warmer={is_cache_warmer_data}, stale={is_stale})")
+                try:
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get(
+                            'https://api.bybit.com/v5/market/tickers?category=linear',
+                            timeout=aiohttp.ClientTimeout(total=5)
+                        ) as response:
+                            if response.status == 200:
+                                data = await response.json()
+                                if data.get('retCode') == 0:
+                                    tickers = data['result']['list']
+                                    live_tickers = tickers  # Store for fallback confluence generation
+
+                                    # Calculate market metrics
+                                    gainers = sum(1 for t in tickers if float(t.get('price24hPcnt', 0)) > 0)
+                                    losers = sum(1 for t in tickers if float(t.get('price24hPcnt', 0)) < 0)
+                                    total_volume = sum(float(t.get('turnover24h', 0)) for t in tickers)
+                                    avg_change = sum(float(t.get('price24hPcnt', 0)) * 100 for t in tickers) / len(tickers) if tickers else 0
+
+                                    # Get BTC price
+                                    btc_ticker = next((t for t in tickers if t['symbol'] == 'BTCUSDT'), None)
+                                    btc_price = float(btc_ticker['lastPrice']) if btc_ticker else 0
+
+                                    # Preserve CoinGecko fields from original cache
+                                    preserved_fields = {
+                                        'btc_dominance': overview_data.get('btc_dominance', _coingecko_cache['btc_dominance']),
+                                        'fear_greed_value': overview_data.get('fear_greed_value', 50),
+                                        'fear_greed_label': overview_data.get('fear_greed_label', 'Neutral'),
+                                    }
+
+                                    # Update overview with live data
+                                    overview_data.update({
+                                        'trend_strength': abs(avg_change),
+                                        'btc_price': btc_price,
+                                        'total_volume_24h': total_volume,
+                                        'gainers': gainers,
+                                        'losers': losers,
+                                        'average_change': avg_change,
+                                        'market_regime': 'Bullish' if gainers > losers else 'Bearish' if losers > gainers else 'Neutral',
+                                        'timestamp': int(time.time()),
+                                        **preserved_fields
+                                    })
+
+                                    # Derive movers if empty
+                                    if not movers_data.get('gainers') and not movers_data.get('losers'):
+                                        sorted_tickers = sorted(
+                                            tickers,
+                                            key=lambda x: float(x.get('price24hPcnt', 0)),
+                                            reverse=True
+                                        )
+                                        movers_data['gainers'] = [
+                                            {
+                                                "symbol": t.get('symbol', '').replace('USDT', ''),
+                                                "change_24h": round(float(t.get('price24hPcnt', 0)) * 100, 2),
+                                                "price": float(t.get('lastPrice', 0))
+                                            }
+                                            for t in sorted_tickers[:5]
+                                            if float(t.get('price24hPcnt', 0)) > 0
+                                        ]
+                                        movers_data['losers'] = [
+                                            {
+                                                "symbol": t.get('symbol', '').replace('USDT', ''),
+                                                "change_24h": round(float(t.get('price24hPcnt', 0)) * 100, 2),
+                                                "price": float(t.get('lastPrice', 0))
+                                            }
+                                            for t in sorted_tickers[-5:]
+                                            if float(t.get('price24hPcnt', 0)) < 0
+                                        ]
+
+                                    logger.info(f"✅ Live Bybit data: {gainers} gainers, {losers} losers, ${total_volume/1e9:.2f}B vol")
+                except Exception as e:
+                    logger.error(f"❌ Live Bybit fetch failed: {e}")
 
             # Process confluence scores with live data
             confluence_scores = []
             signal_list = signals_data.get('signals', [])
+
+            # Log warning if signals are unavailable - don't generate fake fallbacks
+            if not signal_list:
+                logger.warning(f"⚠️ NO SIGNALS IN CACHE - dashboard will show fallback state. "
+                              f"Check if virtuoso-trading service is running and generating signals.")
 
             for signal in signal_list[:15]:  # Top 15 for mobile
                 symbol = signal.get('symbol', '')
@@ -480,7 +553,25 @@ class WebServiceCacheAdapter:
                     "average_change": overview_data.get('average_change', 0),
                     # CRITICAL FIX: Include gainers/losers for market sentiment
                     "gainers": overview_data.get('gainers', 0),
-                    "losers": overview_data.get('losers', 0)
+                    "losers": overview_data.get('losers', 0),
+                    # CoinGecko Global Market Data (2026-01-09 fix: was missing from mobile-data)
+                    "total_market_cap": overview_data.get('total_market_cap', 0),
+                    "market_cap_change_24h": overview_data.get('market_cap_change_24h', 0),
+                    "coingecko_volume_24h": overview_data.get('coingecko_volume_24h', 0),
+                    "volume_mcap_ratio": overview_data.get('volume_mcap_ratio', 0),
+                    "active_cryptocurrencies": overview_data.get('active_cryptocurrencies', 0),
+                    # Fear & Greed Index
+                    "fear_greed_value": overview_data.get('fear_greed_value', 50),
+                    "fear_greed_label": overview_data.get('fear_greed_label', 'Neutral'),
+                    # DeFi metrics
+                    "defi_market_cap": overview_data.get('defi_market_cap', 0),
+                    "defi_dominance": overview_data.get('defi_dominance', 0),
+                    "defi_volume_24h": overview_data.get('defi_volume_24h', 0),
+                    # Dominance breakdown
+                    "eth_dominance": overview_data.get('eth_dominance', 0),
+                    "stablecoin_dominance": overview_data.get('stablecoin_dominance', 0),
+                    "altcoin_dominance": overview_data.get('altcoin_dominance', 0),
+                    "altcoin_season": overview_data.get('altcoin_season', 'Dormant')
                 },
                 "confluence_scores": confluence_scores,
                 "top_movers": {

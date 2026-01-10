@@ -78,12 +78,13 @@ imbalance:
   extreme_threshold: 0.5    # Threshold for extreme imbalance
 ```
 
-#### Market Pressure Index (20%)
+#### Orderbook Flow Imbalance - OFI (20%)
+> *Replaces MPI (Market Pressure Index) - based on Cont-Stoikov 2014, R²≈0.65*
 ```yaml
-mpi:
-  lookback: 10              # Periods for MPI calculation
-  threshold: 0.3            # Threshold for significant pressure
-  sensitivity: 0.75         # Sensitivity factor for calculations
+ofi:
+  lookback_ticks: 50        # History buffer size for OFI calculation
+  depth_exponent: 0.7       # Depth normalization exponent (academic default)
+  min_updates: 10           # Minimum updates before scoring (cold start)
 ```
 
 #### Depth Analysis (20%)
@@ -252,8 +253,9 @@ orderbook:
       threshold: 0.15         # More sensitive (default: 0.2)
     depth:
       weight_decay: 0.9       # Faster decay (default: 0.95)
-    mpi:
-      sensitivity: 0.8        # More sensitive (default: 0.75)
+    ofi:
+      lookback_ticks: 30      # Shorter lookback = more responsive (default: 50)
+      depth_exponent: 0.6     # Lower = less depth normalization (default: 0.7)
 ```
 
 ### Adjusting Orderflow Parameters

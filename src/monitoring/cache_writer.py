@@ -265,12 +265,13 @@ class MonitoringCacheWriter:
                 return False
 
             # Write to cache
+            # CRITICAL FIX: Pass dict directly, not JSON string!
+            # MultiTierCache handles JSON serialization internally.
             cache_data = schema.to_dict()
-            json_data = json.dumps(cache_data, default=str)
 
             await self.cache_adapter.set(
                 schema.CACHE_KEY,  # "market:breadth"
-                json_data,
+                cache_data,  # Pass dict, not JSON string
                 ttl=ttl
             )
 
@@ -320,12 +321,13 @@ class MonitoringCacheWriter:
                 return False
 
             # Write to cache
+            # CRITICAL FIX: Pass dict directly, not JSON string!
+            # MultiTierCache handles JSON serialization internally.
             cache_data = schema.to_dict()
-            json_data = json.dumps(cache_data, default=str)
 
             await self.cache_adapter.set(
                 schema.CACHE_KEY,  # "market:movers"
-                json_data,
+                cache_data,  # Pass dict, not JSON string
                 ttl=ttl
             )
 

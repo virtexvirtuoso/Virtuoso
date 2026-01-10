@@ -74,7 +74,7 @@ class AsyncLogHandler(logging.Handler):
                 # Process batch of log records for efficiency
                 records_batch = []
                 deadline = time.time() + 0.1  # 100ms batch window
-                
+
                 while time.time() < deadline and len(records_batch) < 50:
                     try:
                         record = self.log_queue.get(timeout=0.01)
@@ -83,11 +83,21 @@ class AsyncLogHandler(logging.Handler):
                         records_batch.append(record)
                     except queue.Empty:
                         break
-                
+
                 # Process the batch
+                # CRITICAL: Use handle() instead of emit() to acquire the handler's
+                # I/O lock. This prevents race conditions with RotatingFileHandler's
+                # doRollover() which modifies self.stream. Without the lock, concurrent
+                # access during rollover causes "OSError: [Errno 29] Illegal seek".
                 for record in records_batch:
-                    self.target_handler.emit(record)
-                    
+                    try:
+                        self.target_handler.handle(record)
+                    except OSError as e:
+                        # Gracefully handle I/O errors (e.g., disk full, seek errors)
+                        # Don't spam stderr - just drop the record
+                        if e.errno not in (29, 28):  # ESPIPE (illegal seek), ENOSPC (no space)
+                            print(f"Async log I/O error: {e}", file=sys.stderr)
+
             except Exception as e:
                 # Fallback to stderr if logging fails
                 print(f"Async log handler error: {e}", file=sys.stderr)
@@ -368,17 +378,17 @@ def configure_optimized_logging(
     
     file_handler = handler_class(
         filename='logs/app.log',
-        maxBytes=5*1024*1024,  # 5MB (smaller for faster rotation)
-        backupCount=10,
+        maxBytes=100*1024*1024,  # 100MB - reduced rotation frequency
+        backupCount=5,           # 500MB total max
         encoding='utf-8'
     )
     file_handler.setFormatter(file_formatter)
     file_handler.setLevel(logging.DEBUG)
-    
+
     error_handler = handler_class(
         filename='logs/error.log',
-        maxBytes=1*1024*1024,  # 1MB
-        backupCount=30,
+        maxBytes=25*1024*1024,  # 25MB
+        backupCount=10,         # 250MB total max
         encoding='utf-8'
     )
     error_handler.setFormatter(file_formatter)

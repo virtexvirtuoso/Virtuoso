@@ -47,25 +47,39 @@ class ServiceDescriptor:
         """Analyze constructor dependencies using type hints."""
         if not self.implementation_type:
             return {}
-            
+
         try:
             sig = inspect.signature(self.implementation_type.__init__)
-            type_hints = get_type_hints(self.implementation_type.__init__)
+
+            # Try to get type hints, but handle forward reference errors gracefully
+            # Forward references like 'AlertManager' (string) fail when the class
+            # isn't in the local/global namespace during get_type_hints() evaluation
+            try:
+                type_hints = get_type_hints(self.implementation_type.__init__)
+            except NameError:
+                # Forward reference couldn't be resolved - fall back to raw annotations
+                type_hints = {}
+
             dependencies = {}
-            
+
             for param_name, param in sig.parameters.items():
                 if param_name == 'self':
                     continue
-                    
+
                 # Get type from hints or annotation
                 param_type = type_hints.get(param_name, param.annotation)
-                
+
+                # Skip string forward references that couldn't be resolved
+                if isinstance(param_type, str):
+                    continue
+
                 if param_type and param_type != inspect.Parameter.empty:
                     dependencies[param_name] = param_type
-                    
+
             return dependencies
         except Exception as e:
-            logging.warning(f"Could not analyze dependencies for {self.implementation_type}: {e}")
+            # Only log at DEBUG level - this is expected for some complex type hints
+            logging.debug(f"Could not analyze dependencies for {self.implementation_type}: {e}")
             return {}
 
 

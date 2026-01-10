@@ -39,7 +39,7 @@ class ExchangeManager:
     
     def __init__(self, config_manager: ConfigManager):
         """Initialize the exchange manager
-        
+
         Args:
             config_manager: Configuration manager instance
         """
@@ -51,6 +51,12 @@ class ExchangeManager:
         self.logger = logging.getLogger(__name__)
         self.factory = ExchangeFactory()
         self._disposed = False
+
+        # Health check caching to reduce API calls
+        # Without this, get_primary_exchange() hammers /v5/market/time ~100x/min
+        self._health_cache: Dict[str, bool] = {}  # exchange_id -> is_healthy
+        self._health_cache_time: Dict[str, float] = {}  # exchange_id -> timestamp
+        self._health_cache_ttl = 60.0  # Cache health status for 60 seconds
         
     async def initialize(self) -> bool:
         """Initialize all configured exchanges"""
@@ -152,7 +158,10 @@ class ExchangeManager:
         return None
 
     async def _test_exchange_health(self, exchange: BaseExchange) -> bool:
-        """Test if an exchange is responding to API calls
+        """Test if an exchange is responding to API calls with caching.
+
+        Uses a 60-second cache to avoid hammering the /v5/market/time endpoint.
+        Without caching, this was generating ~100 API calls/min causing rate limit warnings.
 
         Args:
             exchange: Exchange instance to test
@@ -160,6 +169,17 @@ class ExchangeManager:
         Returns:
             bool: True if exchange is healthy, False otherwise
         """
+        exchange_id = getattr(exchange, 'exchange_id', 'unknown')
+        current_time = time.time()
+
+        # Check cache first - return cached result if still valid
+        if exchange_id in self._health_cache:
+            cache_age = current_time - self._health_cache_time.get(exchange_id, 0)
+            if cache_age < self._health_cache_ttl:
+                self.logger.debug(f"Using cached health status for {exchange_id} (age: {cache_age:.1f}s)")
+                return self._health_cache[exchange_id]
+
+        # Cache miss or expired - perform actual health check
         max_retries = 2
         timeout = 15.0  # Increased from 5.0 to allow for API latency spikes
 
@@ -168,10 +188,16 @@ class ExchangeManager:
                 # Simple health check - use fetch_status if available
                 if hasattr(exchange, 'fetch_status'):
                     status = await asyncio.wait_for(exchange.fetch_status(), timeout=timeout)
-                    return status.get('online', False) if isinstance(status, dict) else True
+                    is_healthy = status.get('online', False) if isinstance(status, dict) else True
                 else:
                     # If no fetch_status, assume healthy (will fail gracefully later if not)
-                    return True
+                    is_healthy = True
+
+                # Cache the result
+                self._health_cache[exchange_id] = is_healthy
+                self._health_cache_time[exchange_id] = current_time
+                return is_healthy
+
             except Exception as e:
                 if attempt < max_retries - 1:
                     # Retry on first failure without logging
@@ -179,7 +205,10 @@ class ExchangeManager:
                     continue
                 else:
                     # Only log WARNING after 2 consecutive failures
-                    self.logger.debug(f"Exchange {exchange.exchange_id} health check failed after {max_retries} attempts: {str(e)}")
+                    self.logger.debug(f"Exchange {exchange_id} health check failed after {max_retries} attempts: {str(e)}")
+                    # Cache the failure too (but with shorter TTL implied by returning False)
+                    self._health_cache[exchange_id] = False
+                    self._health_cache_time[exchange_id] = current_time
                     return False
 
         return False
