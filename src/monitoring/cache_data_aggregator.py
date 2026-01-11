@@ -788,6 +788,64 @@ class CacheDataAggregator:
             # Don't fail startup, just log the error
             self._initialized = True  # Mark as initialized anyway to proceed
 
+    def get_health_status(self) -> Dict[str, Any]:
+        """
+        Get health status of the cache data aggregator.
+
+        Returns:
+            Dict with health status including:
+            - initialized: bool - whether aggregator is initialized
+            - healthy: bool - overall health status
+            - cache_push_count: int - total successful cache pushes
+            - cache_push_errors: int - total cache push errors
+            - last_aggregation: float - timestamp of last aggregation
+            - symbols_in_buffer: int - number of symbols with data
+            - signals_in_buffer: int - number of signals buffered
+            - error_rate: float - cache push error rate (0-1)
+        """
+        now = time.time()
+        age_seconds = now - self.last_aggregation_time if self.last_aggregation_time > 0 else 0
+
+        # Calculate error rate
+        total_pushes = self.cache_push_count + self.cache_push_errors
+        error_rate = self.cache_push_errors / total_pushes if total_pushes > 0 else 0.0
+
+        # Health criteria:
+        # - Must be initialized
+        # - Must have recent aggregation (within 5 minutes)
+        # - Error rate should be < 20%
+        is_healthy = (
+            self._initialized and
+            (age_seconds < 300 or self.last_aggregation_time == 0) and  # Allow 0 at startup
+            error_rate < 0.2
+        )
+
+        # Determine status string
+        if not self._initialized:
+            status = "not_initialized"
+        elif age_seconds > 300 and self.last_aggregation_time > 0:
+            status = "stale"
+        elif error_rate >= 0.2:
+            status = "degraded"
+        else:
+            status = "healthy"
+
+        return {
+            "initialized": self._initialized,
+            "healthy": is_healthy,
+            "status": status,
+            "cache_push_count": self.cache_push_count,
+            "cache_push_errors": self.cache_push_errors,
+            "error_rate": round(error_rate, 4),
+            "last_aggregation": self.last_aggregation_time,
+            "aggregation_age_seconds": round(age_seconds, 1),
+            "symbols_in_buffer": len(self.market_data_buffer),
+            "signals_in_buffer": len(self.signal_buffer),
+            "analysis_results_buffered": len(self.analysis_results_buffer),
+            "market_wide_tickers": len(self.market_wide_tickers),
+            "timestamp": now
+        }
+
     async def add_analysis_result(self, symbol: str, analysis_result: Dict[str, Any]) -> None:
         """
         Add analysis result and trigger cache updates.

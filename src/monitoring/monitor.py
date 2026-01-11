@@ -611,9 +611,24 @@ class MarketMonitor:
                 try:
                     await self.cache_data_aggregator.initialize()
                     self.logger.info("✅ Cache aggregator pre-warmed for instant dashboard data")
+
+                    # Verify cache aggregator health after initialization
+                    health = self.get_cache_aggregator_health()
+                    if health.get('healthy'):
+                        self.logger.info(f"✅ Cache aggregator health verified: {health.get('status')}")
+                    else:
+                        self.logger.warning(
+                            f"⚠️ CACHE AGGREGATOR UNHEALTHY after init: {health.get('status')} - "
+                            f"Dashboards may show stale/no data. Details: {health}"
+                        )
                 except Exception as e:
                     self.logger.warning(f"Cache aggregator pre-warming failed (non-critical): {e}")
                     # Not critical - cache will warm up gradually during normal operation
+            else:
+                self.logger.error(
+                    "❌ CRITICAL: CacheDataAggregator is None - mobile/web dashboards will NOT receive data! "
+                    "Check initialization logs above for errors."
+                )
 
             # Always return True - we can function with lazy initialization
             return True
@@ -1951,6 +1966,34 @@ class MarketMonitor:
             'errors': 0,
             'active_connections': 0
         }
+
+    def get_cache_aggregator_health(self) -> Dict[str, Any]:
+        """
+        Return health status of the cache data aggregator.
+
+        This is critical for ensuring market data flows to dashboards.
+        Unhealthy state indicates mobile/web dashboards may show stale or no data.
+        """
+        if not self.cache_data_aggregator:
+            return {
+                'initialized': False,
+                'healthy': False,
+                'status': 'not_available',
+                'error': 'CacheDataAggregator not initialized',
+                'timestamp': time.time()
+            }
+
+        try:
+            return self.cache_data_aggregator.get_health_status()
+        except Exception as e:
+            self.logger.warning(f"Error getting cache aggregator health: {e}")
+            return {
+                'initialized': False,
+                'healthy': False,
+                'status': 'error',
+                'error': str(e),
+                'timestamp': time.time()
+            }
 
     async def get_ohlcv_for_report(self, symbol: str, timeframe: str = 'base') -> Optional['pd.DataFrame']:
         """Retrieve OHLCV data for reporting via MarketDataManager cache if available."""
