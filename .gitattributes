@@ -60,3 +60,6 @@ src/indicators/volume_indicators.py filter=git-crypt diff=git-crypt
 src/indicators/sentiment_indicators.py filter=git-crypt diff=git-crypt
 src/indicators/technical_indicators.py filter=git-crypt diff=git-crypt
 src/indicators/price_structure_indicators.py filter=git-crypt diff=git-crypt
+
+# Documentation (proprietary system documentation)
+docs/**/*.md filter=git-crypt diff=git-crypt

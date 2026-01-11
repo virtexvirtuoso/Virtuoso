@@ -70,8 +70,8 @@ CLAUDE.local.md
 .claude/
 *claude*.md
 
-# Documentation
-docs/
+# Documentation (now encrypted with git-crypt)
+# docs/
 */README.md
 */README_*.md
 !README.md
