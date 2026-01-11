@@ -2622,54 +2622,84 @@ class BybitExchange(BaseExchange):
             self.logger.debug(f"Raw message: {message}")
 
     async def _check_rate_limit(self, endpoint: str, category: str = 'linear') -> None:
-        """Check rate limit using sliding window approach matching Bybit's limits."""
-        async with self._rate_limit_lock:
-            now = time.time()
-            
-            # Use global rate limit bucket (600 requests per 5 seconds)
-            global_bucket = self._rate_limit_buckets.setdefault('global', [])
-            window_start = now - 5.0  # 5-second sliding window
-            
-            # Clean expired timestamps (older than 5 seconds)
-            global_bucket[:] = [ts for ts in global_bucket if ts > window_start]
-            
-            # Check if we've hit the global limit
-            if len(global_bucket) >= 600:
-                # Calculate wait time until oldest request expires
-                wait_time = global_bucket[0] + 5.0 - now
-                if wait_time > 0:
-                    self.logger.warning(f"Global rate limit reached (600/5s), waiting {wait_time:.2f}s")
-                    await asyncio.sleep(wait_time)
-                    # Recursive check after waiting
-                    await self._check_rate_limit(endpoint, category)
+        """Check rate limit using sliding window approach matching Bybit's limits.
+
+        IMPORTANT: This method uses a while loop instead of recursion to avoid
+        deadlock. asyncio.Lock is non-reentrant, so recursive calls while holding
+        the lock would cause the task to wait forever on itself.
+
+        Fix applied: 2026-01-11 - Replaced recursive calls with loop pattern.
+        """
+        max_iterations = 10  # Safety limit to prevent infinite loops
+        iteration = 0
+
+        while iteration < max_iterations:
+            iteration += 1
+            wait_time = 0
+            wait_reason = None
+
+            async with self._rate_limit_lock:
+                now = time.time()
+
+                # Use global rate limit bucket (600 requests per 5 seconds)
+                global_bucket = self._rate_limit_buckets.setdefault('global', [])
+                window_start = now - 5.0  # 5-second sliding window
+
+                # Clean expired timestamps (older than 5 seconds)
+                global_bucket[:] = [ts for ts in global_bucket if ts > window_start]
+
+                # Check if we've hit the global limit
+                if len(global_bucket) >= 600:
+                    # Calculate wait time until oldest request expires
+                    wait_time = global_bucket[0] + 5.0 - now
+                    if wait_time > 0:
+                        wait_reason = f"Global rate limit reached (600/5s), waiting {wait_time:.2f}s"
+                        # Release lock before sleeping - continue loop to re-check
+                    else:
+                        wait_time = 0  # No need to wait, timestamps expired
+
+                # If no global wait needed, check endpoint-specific limits
+                if wait_time <= 0:
+                    endpoint_bucket = self._rate_limit_buckets.setdefault(endpoint, [])
+                    endpoint_limit = self.RATE_LIMITS['endpoints'].get(endpoint, {'requests': 100, 'per_second': 1})
+
+                    # Clean expired timestamps for endpoint
+                    endpoint_window = now - endpoint_limit['per_second']
+                    endpoint_bucket[:] = [ts for ts in endpoint_bucket if ts > endpoint_window]
+
+                    # Check endpoint limit
+                    if len(endpoint_bucket) >= endpoint_limit['requests']:
+                        wait_time = endpoint_bucket[0] + endpoint_limit['per_second'] - now
+                        if wait_time > 0:
+                            wait_reason = f"Endpoint {endpoint} rate limit, waiting {wait_time:.2f}s"
+                        else:
+                            wait_time = 0
+
+                # If no rate limit wait needed, we can proceed
+                if wait_time <= 0:
+                    # Check dynamic rate limit from headers (small delay, done inside lock)
+                    if hasattr(self, 'rate_limit_status') and self.rate_limit_status.get('remaining', 100) < 50:
+                        self.logger.warning(f"Low rate limit remaining: {self.rate_limit_status['remaining']}")
+                        await asyncio.sleep(0.1)
+
+                    # Record the request timestamp and return
+                    global_bucket.append(now)
+                    endpoint_bucket = self._rate_limit_buckets.setdefault(endpoint, [])
+                    endpoint_bucket.append(now)
                     return
-            
-            # Also check endpoint-specific limits for internal throttling
-            endpoint_bucket = self._rate_limit_buckets.setdefault(endpoint, [])
-            endpoint_limit = self.RATE_LIMITS['endpoints'].get(endpoint, {'requests': 100, 'per_second': 1})
-            
-            # Clean expired timestamps for endpoint
-            endpoint_window = now - endpoint_limit['per_second']
-            endpoint_bucket[:] = [ts for ts in endpoint_bucket if ts > endpoint_window]
-            
-            # Check endpoint limit
-            if len(endpoint_bucket) >= endpoint_limit['requests']:
-                wait_time = endpoint_bucket[0] + endpoint_limit['per_second'] - now
-                if wait_time > 0:
-                    self.logger.debug(f"Endpoint {endpoint} rate limit, waiting {wait_time:.2f}s")
-                    await asyncio.sleep(wait_time)
-                    await self._check_rate_limit(endpoint, category)
-                    return
-            
-            # Check dynamic rate limit from headers
-            if hasattr(self, 'rate_limit_status') and self.rate_limit_status['remaining'] < 50:
-                self.logger.warning(f"Low rate limit remaining: {self.rate_limit_status['remaining']}")
-                # Add small delay to be conservative
-                await asyncio.sleep(0.1)
-            
-            # Record the request timestamp
-            global_bucket.append(now)
-            endpoint_bucket.append(now)
+
+            # Lock released - now sleep outside the lock if needed
+            if wait_time > 0:
+                if wait_reason:
+                    if 'Global' in wait_reason:
+                        self.logger.warning(wait_reason)
+                    else:
+                        self.logger.debug(wait_reason)
+                await asyncio.sleep(wait_time)
+                # Loop continues to re-check rate limits
+
+        # Safety: if we hit max iterations, log error but allow request
+        self.logger.error(f"Rate limit check exceeded {max_iterations} iterations for {endpoint}, allowing request")
 
     def _ensure_sentiment_structure(self, market_data: Dict[str, Any], symbol: str) -> None:
         """Ensure sentiment structure exists in market_data to prevent KeyErrors."""
