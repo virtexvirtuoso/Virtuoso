@@ -5806,9 +5806,10 @@ class BybitExchange(BaseExchange):
             current_time = int(time.time() * 1000)
             cutoff_time = current_time - (lookback_seconds * 1000)
 
+            # Handle both CCXT format (timestamp) and raw Bybit format (time)
             recent_trades = [
                 t for t in trades
-                if t.get('timestamp', 0) >= cutoff_time
+                if int(t.get('timestamp', t.get('time', 0))) >= cutoff_time
             ]
 
             if not recent_trades:
@@ -5827,13 +5828,13 @@ class BybitExchange(BaseExchange):
                     'error': 'No recent trades in lookback window'
                 }
 
-            # Separate buy and sell trades
-            buy_trades = [t for t in recent_trades if t.get('side') == 'buy']
-            sell_trades = [t for t in recent_trades if t.get('side') == 'sell']
+            # Separate buy and sell trades (handle both lowercase and capitalized side values)
+            buy_trades = [t for t in recent_trades if t.get('side', '').lower() == 'buy']
+            sell_trades = [t for t in recent_trades if t.get('side', '').lower() == 'sell']
 
-            # Calculate volumes
-            buy_volume = sum(float(t.get('amount', 0)) for t in buy_trades)
-            sell_volume = sum(float(t.get('amount', 0)) for t in sell_trades)
+            # Calculate volumes (handle both CCXT 'amount' and Bybit 'size' formats)
+            buy_volume = sum(float(t.get('amount', t.get('size', 0))) for t in buy_trades)
+            sell_volume = sum(float(t.get('amount', t.get('size', 0))) for t in sell_trades)
 
             # Calculate ratio
             if sell_volume > 0:

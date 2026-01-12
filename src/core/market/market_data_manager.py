@@ -114,7 +114,9 @@ class MarketDataManager:
             'trades': 300,         # Base: 5 minutes - WebSocket provides real-time trades,
                                    # REST is only for initial load/recovery. Reduces rate limit warnings.
             'long_short_ratio': 3600,  # 1 hour (REST only)
-            'risk_limits': 86400       # 1 day (REST only)
+            'risk_limits': 86400,      # 1 day (REST only)
+            'taker_volume_ratio': 120, # 2 minutes - needs fresh trades within 5-min lookback
+            'premium_index': 300       # 5 minutes - uses 5-min kline data
         }
         
         # State tracking
@@ -178,7 +180,9 @@ class MarketDataManager:
                 'trades': self.smart_intervals.get_current_interval('trades'),
                 'kline': self.base_refresh_intervals['kline'],  # Keep kline intervals static
                 'long_short_ratio': self.base_refresh_intervals['long_short_ratio'],
-                'risk_limits': self.base_refresh_intervals['risk_limits']
+                'risk_limits': self.base_refresh_intervals['risk_limits'],
+                'taker_volume_ratio': self.base_refresh_intervals['taker_volume_ratio'],
+                'premium_index': self.base_refresh_intervals['premium_index']
             }
         else:
             return self.base_refresh_intervals
@@ -368,7 +372,7 @@ class MarketDataManager:
             List of component names that need refreshing
         """
         if symbol not in self.last_full_refresh:
-            return ['ticker', 'orderbook', 'kline', 'trades', 'long_short_ratio', 'risk_limits']
+            return ['ticker', 'orderbook', 'kline', 'trades', 'long_short_ratio', 'risk_limits', 'taker_volume_ratio', 'premium_index']
         
         last_refresh = self.last_full_refresh[symbol]
         components_to_refresh = []
@@ -479,7 +483,31 @@ class MarketDataManager:
                     if risk_data:
                         self.data_cache[symbol]['risk_limits'] = risk_data
                         self.last_full_refresh[symbol]['components']['risk_limits'] = current_time
-                
+
+                elif component == 'taker_volume_ratio':
+                    # Refresh taker volume ratio (needs fresh trades for accurate calculation)
+                    primary_exchange = await self.exchange_manager.get_primary_exchange()
+                    if primary_exchange and hasattr(primary_exchange, 'calculate_taker_buy_sell_ratio'):
+                        taker_data = await self._fetch_with_rate_limiting(
+                            'v5/market/recent-trade',
+                            lambda: primary_exchange.calculate_taker_buy_sell_ratio(symbol)
+                        )
+                        if taker_data:
+                            self.data_cache[symbol]['taker_volume_ratio'] = taker_data
+                            self.last_full_refresh[symbol]['components']['taker_volume_ratio'] = current_time
+
+                elif component == 'premium_index':
+                    # Refresh premium index for basis score calculation
+                    primary_exchange = await self.exchange_manager.get_primary_exchange()
+                    if primary_exchange and hasattr(primary_exchange, 'fetch_premium_index_kline'):
+                        premium_data = await self._fetch_with_rate_limiting(
+                            'v5/market/premium-index-price-kline',
+                            lambda: primary_exchange.fetch_premium_index_kline(symbol, interval='5')
+                        )
+                        if premium_data:
+                            self.data_cache[symbol]['premium_index'] = premium_data
+                            self.last_full_refresh[symbol]['components']['premium_index'] = current_time
+
                 # Update stats
                 self.stats['rest_calls'] += 1
                 
@@ -513,7 +541,9 @@ class MarketDataManager:
             'trades': None,
             'long_short_ratio': None,
             'risk_limits': None,
-            'open_interest': None  # Initialize open interest field
+            'open_interest': None,  # Initialize open interest field
+            'premium_index': None,  # Initialize premium index for basis score calculation
+            'taker_volume_ratio': None  # Initialize taker volume ratio for orderflow analysis
         }
         
         try:
@@ -545,6 +575,16 @@ class MarketDataManager:
                 'open_interest': self._fetch_with_rate_limiting(
                     'v5/market/open-interest',
                     lambda: primary_exchange.fetch_open_interest_history(symbol, interval='5min', limit=200)
+                ),
+                # Add premium index for basis score calculation (5-min interval for granular data)
+                'premium_index': self._fetch_with_rate_limiting(
+                    'v5/market/premium-index-price-kline',
+                    lambda: primary_exchange.fetch_premium_index_kline(symbol, interval='5')
+                ),
+                # Add taker volume ratio for orderflow analysis
+                'taker_volume_ratio': self._fetch_with_rate_limiting(
+                    'v5/market/recent-trade',  # Uses trades data
+                    lambda: primary_exchange.calculate_taker_buy_sell_ratio(symbol)
                 )
             }
             
