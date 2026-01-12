@@ -9,6 +9,7 @@ Tables:
 - shadow_dual_regime: Dual-regime adjustments
 - shadow_crypto_regime: Crypto-specific regime detections
 - shadow_cas_signals: Cascade Absorption Signal (CAS) predictions
+- shadow_distribution_signals: Whale Distribution Detector (WDD) signals
 """
 
 import sqlite3
@@ -172,6 +173,42 @@ def init_shadow_tables():
         cursor.execute('''
             CREATE INDEX IF NOT EXISTS idx_cas_is_valid
             ON shadow_cas_signals(is_valid)
+        ''')
+
+        # Distribution Signals (WDD - Whale Distribution Detector) table
+        # Tracks CVD bearish divergence: Price↑ + CVD↓ = whales distributing
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS shadow_distribution_signals (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp INTEGER NOT NULL,
+                symbol TEXT NOT NULL,
+                divergence_type TEXT NOT NULL,
+                divergence_strength REAL,
+                price_trend REAL,
+                cvd_trend REAL,
+                entry_price REAL,
+                volume_profile TEXT,
+                lookback_bars INTEGER,
+                return_15m REAL,
+                return_1h REAL,
+                return_4h REAL,
+                return_24h REAL,
+                return_calculated_at TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_dist_timestamp
+            ON shadow_distribution_signals(timestamp)
+        ''')
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_dist_symbol
+            ON shadow_distribution_signals(symbol)
+        ''')
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_dist_divergence_type
+            ON shadow_distribution_signals(divergence_type)
         ''')
 
         conn.commit()
@@ -645,17 +682,18 @@ def update_crypto_regime_forward_returns(
 
 def get_crypto_regime_pending_returns(
     hours_back: int = 24,
-    return_type: str = '15m'
+    return_type: str = 'any'
 ) -> List[Dict[str, Any]]:
     """
     Get crypto regime detections that need forward returns calculated.
 
     Args:
         hours_back: How many hours back to look for records
-        return_type: Which return to check ('15m', '1h', '4h', '24h')
+        return_type: Which return to check ('15m', '1h', '4h', '24h', 'any')
+                    Use 'any' to get records missing ANY return (default)
 
     Returns:
-        List of records missing the specified return
+        List of records missing the specified return(s)
     """
     try:
         db_path = get_db_path()
@@ -666,15 +704,22 @@ def get_crypto_regime_pending_returns(
         # Calculate cutoff timestamp
         cutoff_ms = int((datetime.now(timezone.utc).timestamp() - (hours_back * 3600)) * 1000)
 
-        # Map return type to column
-        return_col = f'return_{return_type}'
-        if return_col not in ['return_15m', 'return_1h', 'return_4h', 'return_24h']:
-            return_col = 'return_15m'
+        # Build WHERE clause based on return_type
+        if return_type == 'any':
+            # Get records missing ANY return
+            null_check = '''(return_15m IS NULL OR return_1h IS NULL
+                           OR return_4h IS NULL OR return_24h IS NULL)'''
+        else:
+            # Map return type to column
+            return_col = f'return_{return_type}'
+            if return_col not in ['return_15m', 'return_1h', 'return_4h', 'return_24h']:
+                return_col = 'return_15m'
+            null_check = f'{return_col} IS NULL'
 
         cursor.execute(f'''
             SELECT * FROM shadow_crypto_regime
             WHERE timestamp >= ?
-            AND {return_col} IS NULL
+            AND {null_check}
             AND entry_price IS NOT NULL
             ORDER BY timestamp ASC
         ''', (cutoff_ms,))
@@ -753,74 +798,6 @@ def get_crypto_regime_detections(
     except Exception as e:
         logger.error(f"Error retrieving crypto regime detections: {e}")
         return []
-
-
-def update_crypto_regime_forward_returns(
-    record_id: int,
-    return_15m: Optional[float] = None,
-    return_1h: Optional[float] = None,
-    return_4h: Optional[float] = None,
-    return_24h: Optional[float] = None,
-    entry_price: Optional[float] = None
-) -> bool:
-    """
-    Update forward returns for a crypto regime detection (for validation).
-
-    Args:
-        record_id: Database ID of the detection record
-        return_15m: 15-minute forward return (%)
-        return_1h: 1-hour forward return (%)
-        return_4h: 4-hour forward return (%)
-        return_24h: 24-hour forward return (%)
-        entry_price: Price at time of detection (if not set during insert)
-
-    Returns:
-        True if updated successfully
-    """
-    try:
-        db_path = get_db_path()
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-
-        updates = []
-        params = []
-
-        if return_15m is not None:
-            updates.append('return_15m = ?')
-            params.append(return_15m)
-
-        if return_1h is not None:
-            updates.append('return_1h = ?')
-            params.append(return_1h)
-
-        if return_4h is not None:
-            updates.append('return_4h = ?')
-            params.append(return_4h)
-
-        if return_24h is not None:
-            updates.append('return_24h = ?')
-            params.append(return_24h)
-
-        if entry_price is not None:
-            updates.append('entry_price = ?')
-            params.append(entry_price)
-
-        if updates:
-            updates.append('return_calculated_at = ?')
-            params.append(datetime.now(timezone.utc).isoformat())
-
-            query = f"UPDATE shadow_crypto_regime SET {', '.join(updates)} WHERE id = ?"
-            params.append(record_id)
-
-            cursor.execute(query, params)
-            conn.commit()
-
-        conn.close()
-        return True
-
-    except Exception as e:
-        logger.error(f"Error updating crypto regime forward returns: {e}")
-        return False
 
 
 # ============================================================================
@@ -1089,6 +1066,250 @@ def get_cas_signals_pending_returns(
 
 
 # ============================================================================
+# DISTRIBUTION SIGNAL STORAGE (WDD - Whale Distribution Detector)
+# ============================================================================
+
+def store_distribution_signal(signal: Dict[str, Any]) -> Optional[int]:
+    """
+    Store a distribution signal (CVD bearish divergence) to the database.
+
+    Args:
+        signal: Dictionary with keys:
+            - timestamp: Unix timestamp (ms)
+            - symbol: Trading symbol
+            - divergence_type: 'bearish' (price↑ CVD↓) or 'bullish' (price↓ CVD↑)
+            - divergence_strength: Strength 0-100
+            - price_trend: Price change over lookback
+            - cvd_trend: CVD change over lookback
+            - entry_price: Current price at detection time
+            - volume_profile: Additional volume context (JSON string)
+            - lookback_bars: Number of bars used for detection
+
+    Returns:
+        Inserted row ID or None on failure
+    """
+    try:
+        db_path = get_db_path()
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            INSERT INTO shadow_distribution_signals (
+                timestamp, symbol, divergence_type, divergence_strength,
+                price_trend, cvd_trend, entry_price, volume_profile, lookback_bars
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            signal.get('timestamp', int(datetime.now(timezone.utc).timestamp() * 1000)),
+            signal.get('symbol', ''),
+            signal.get('divergence_type', 'bearish'),
+            signal.get('divergence_strength', 0),
+            signal.get('price_trend', 0),
+            signal.get('cvd_trend', 0),
+            signal.get('entry_price', 0),
+            json.dumps(signal.get('volume_profile', {})) if signal.get('volume_profile') else None,
+            signal.get('lookback_bars', 20)
+        ))
+
+        conn.commit()
+        row_id = cursor.lastrowid
+        conn.close()
+
+        logger.debug(f"Stored distribution signal for {signal.get('symbol')} "
+                    f"(id={row_id}, type={signal.get('divergence_type')}, "
+                    f"strength={signal.get('divergence_strength', 0):.1f})")
+        return row_id
+
+    except Exception as e:
+        logger.error(f"Error storing distribution signal: {e}")
+        return None
+
+
+def get_distribution_signals(
+    start_timestamp: Optional[int] = None,
+    end_timestamp: Optional[int] = None,
+    symbol: Optional[str] = None,
+    divergence_type: Optional[str] = None,
+    min_strength: Optional[float] = None,
+    limit: int = 1000
+) -> List[Dict[str, Any]]:
+    """
+    Retrieve distribution signals from the database.
+
+    Args:
+        start_timestamp: Filter signals after this timestamp (ms)
+        end_timestamp: Filter signals before this timestamp (ms)
+        symbol: Filter by symbol
+        divergence_type: Filter by divergence type ('bearish' or 'bullish')
+        min_strength: Minimum divergence strength to return
+        limit: Maximum rows to return
+
+    Returns:
+        List of signal dictionaries
+    """
+    try:
+        db_path = get_db_path()
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        query = 'SELECT * FROM shadow_distribution_signals WHERE 1=1'
+        params = []
+
+        if start_timestamp:
+            query += ' AND timestamp >= ?'
+            params.append(start_timestamp)
+
+        if end_timestamp:
+            query += ' AND timestamp <= ?'
+            params.append(end_timestamp)
+
+        if symbol:
+            query += ' AND symbol = ?'
+            params.append(symbol.upper())
+
+        if divergence_type:
+            query += ' AND divergence_type = ?'
+            params.append(divergence_type.lower())
+
+        if min_strength is not None:
+            query += ' AND divergence_strength >= ?'
+            params.append(min_strength)
+
+        query += ' ORDER BY timestamp DESC LIMIT ?'
+        params.append(limit)
+
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+        conn.close()
+
+        # Parse JSON fields
+        results = []
+        for row in rows:
+            record = dict(row)
+            if record.get('volume_profile'):
+                try:
+                    record['volume_profile'] = json.loads(record['volume_profile'])
+                except:
+                    record['volume_profile'] = {}
+            results.append(record)
+
+        return results
+
+    except Exception as e:
+        logger.error(f"Error retrieving distribution signals: {e}")
+        return []
+
+
+def update_distribution_forward_returns(
+    record_id: int,
+    return_15m: Optional[float] = None,
+    return_1h: Optional[float] = None,
+    return_4h: Optional[float] = None,
+    return_24h: Optional[float] = None
+) -> bool:
+    """
+    Update forward returns for a distribution signal (for validation).
+
+    Args:
+        record_id: Database ID of the signal
+        return_15m: 15-minute forward return (%)
+        return_1h: 1-hour forward return (%)
+        return_4h: 4-hour forward return (%)
+        return_24h: 24-hour forward return (%)
+
+    Returns:
+        True if updated successfully
+    """
+    try:
+        db_path = get_db_path()
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+
+        updates = []
+        params = []
+
+        if return_15m is not None:
+            updates.append('return_15m = ?')
+            params.append(return_15m)
+
+        if return_1h is not None:
+            updates.append('return_1h = ?')
+            params.append(return_1h)
+
+        if return_4h is not None:
+            updates.append('return_4h = ?')
+            params.append(return_4h)
+
+        if return_24h is not None:
+            updates.append('return_24h = ?')
+            params.append(return_24h)
+
+        if updates:
+            updates.append('return_calculated_at = ?')
+            params.append(datetime.now(timezone.utc).isoformat())
+
+            query = f"UPDATE shadow_distribution_signals SET {', '.join(updates)} WHERE id = ?"
+            params.append(record_id)
+
+            cursor.execute(query, params)
+            conn.commit()
+
+        conn.close()
+        return True
+
+    except Exception as e:
+        logger.error(f"Error updating distribution forward returns: {e}")
+        return False
+
+
+def get_distribution_pending_returns(
+    hours_back: int = 24,
+    return_type: str = '1h'
+) -> List[Dict[str, Any]]:
+    """
+    Get distribution signals that need forward returns calculated.
+
+    Args:
+        hours_back: How many hours back to look for signals
+        return_type: Which return to check ('15m', '1h', '4h', '24h')
+
+    Returns:
+        List of signals missing the specified return
+    """
+    try:
+        db_path = get_db_path()
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        # Calculate cutoff timestamp
+        cutoff_ms = int((datetime.now(timezone.utc).timestamp() - (hours_back * 3600)) * 1000)
+
+        # Map return type to column
+        return_col = f'return_{return_type}'
+        if return_col not in ['return_15m', 'return_1h', 'return_4h', 'return_24h']:
+            return_col = 'return_1h'
+
+        cursor.execute(f'''
+            SELECT * FROM shadow_distribution_signals
+            WHERE timestamp >= ?
+            AND entry_price IS NOT NULL
+            AND entry_price > 0
+            AND {return_col} IS NULL
+            ORDER BY timestamp ASC
+        ''', (cutoff_ms,))
+
+        rows = cursor.fetchall()
+        conn.close()
+
+        return [dict(row) for row in rows]
+
+    except Exception as e:
+        logger.error(f"Error getting distribution signals pending returns: {e}")
+        return []
+
+
+# ============================================================================
 # STATISTICS & REPORTING
 # ============================================================================
 
@@ -1224,6 +1445,50 @@ def get_shadow_statistics(days: int = 7) -> Dict[str, Any]:
         wins = row[1] or 0
         stats['cas_signals']['win_rate_1h'] = round(wins / total_with_returns * 100, 1) if total_with_returns > 0 else None
 
+        # Distribution Signal stats
+        cursor.execute('''
+            SELECT
+                COUNT(*) as total,
+                AVG(divergence_strength) as avg_strength,
+                COUNT(DISTINCT symbol) as unique_symbols,
+                COUNT(CASE WHEN return_1h IS NOT NULL THEN 1 END) as with_returns
+            FROM shadow_distribution_signals
+            WHERE timestamp >= ?
+        ''', (cutoff_ms,))
+        row = cursor.fetchone()
+        stats['distribution_signals'] = {
+            'total': row[0] or 0,
+            'avg_strength': round(row[1] or 0, 2),
+            'unique_symbols': row[2] or 0,
+            'with_returns': row[3] or 0
+        }
+
+        # Distribution divergence type distribution
+        cursor.execute('''
+            SELECT divergence_type, COUNT(*) as count
+            FROM shadow_distribution_signals
+            WHERE timestamp >= ?
+            GROUP BY divergence_type
+            ORDER BY count DESC
+        ''', (cutoff_ms,))
+        stats['distribution_signals']['type_distribution'] = {
+            row[0]: row[1] for row in cursor.fetchall()
+        }
+
+        # Distribution win rate (bearish divergence should predict price drop)
+        cursor.execute('''
+            SELECT
+                COUNT(*) as total,
+                COUNT(CASE WHEN (divergence_type = 'bearish' AND return_1h < 0)
+                           OR (divergence_type = 'bullish' AND return_1h > 0) THEN 1 END) as wins
+            FROM shadow_distribution_signals
+            WHERE timestamp >= ? AND return_1h IS NOT NULL
+        ''', (cutoff_ms,))
+        row = cursor.fetchone()
+        dist_total = row[0] or 0
+        dist_wins = row[1] or 0
+        stats['distribution_signals']['win_rate_1h'] = round(dist_wins / dist_total * 100, 1) if dist_total > 0 else None
+
         conn.close()
         return stats
 
@@ -1250,7 +1515,7 @@ def cleanup_old_shadow_data(days_to_keep: int = 30) -> int:
         cutoff_ms = int((datetime.now(timezone.utc).timestamp() - (days_to_keep * 86400)) * 1000)
         total_deleted = 0
 
-        for table in ['shadow_btc_predictions', 'shadow_dual_regime', 'shadow_crypto_regime', 'shadow_cas_signals']:
+        for table in ['shadow_btc_predictions', 'shadow_dual_regime', 'shadow_crypto_regime', 'shadow_cas_signals', 'shadow_distribution_signals']:
             cursor.execute(f'DELETE FROM {table} WHERE timestamp < ?', (cutoff_ms,))
             total_deleted += cursor.rowcount
 
