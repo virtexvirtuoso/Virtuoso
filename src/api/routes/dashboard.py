@@ -1982,7 +1982,9 @@ async def get_confluence_analysis(symbol: str) -> Dict[str, Any]:
             analysis_lines.append(f"  {date_str}  {time_str} UTC")
             analysis_lines.append("")
             # Center-align the alpha score line (60 char width)
-            score_line = f"Alpha Score: {score:.1f}  │  Signal: {signal_dir}  │  Reliability: {reliability:.0f}%"
+            # Reliability: convert from decimal (0-1) to percentage if needed
+            reliability_pct = reliability * 100 if reliability <= 1 else reliability
+            score_line = f"Alpha Score: {score:.1f}  │  Signal: {signal_dir}  │  Reliability: {reliability_pct:.0f}%"
             analysis_lines.append("────────────────────────────────────────────────────────────")
             analysis_lines.append(score_line.center(60))
             analysis_lines.append("────────────────────────────────────────────────────────────")
