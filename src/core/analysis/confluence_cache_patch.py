@@ -6,6 +6,19 @@ import logging
 from typing import Dict, Any, Optional
 import time
 
+# Import InterpretationGenerator for rich interpretations
+from src.core.analysis.interpretation_generator import InterpretationGenerator
+
+# Module-level interpreter instance (lazy initialization)
+_interpretation_generator = None
+
+def _get_interpretation_generator():
+    """Get or create the InterpretationGenerator instance."""
+    global _interpretation_generator
+    if _interpretation_generator is None:
+        _interpretation_generator = InterpretationGenerator()
+    return _interpretation_generator
+
 
 def patch_confluence_analyzer(analyzer_instance):
     """Patch a ConfluenceAnalyzer instance to include caching functionality.
@@ -101,16 +114,16 @@ async def _enhance_result_for_caching(result: Dict[str, Any], symbol: str, analy
         if 'components' not in enhanced_result:
             enhanced_result['components'] = _extract_components_from_result(result)
         
-        # Add interpretations if available from interpretation_generator
-        if not enhanced_result.get('interpretations') and hasattr(analyzer_instance, 'interpretation_generator'):
+        # Generate rich interpretations using InterpretationGenerator
+        if not enhanced_result.get('interpretations'):
             try:
-                interpretations = await _generate_interpretations(enhanced_result, analyzer_instance.interpretation_generator)
+                interp_gen = _get_interpretation_generator()
+                interpretations = _generate_rich_interpretations(enhanced_result, interp_gen, symbol)
                 enhanced_result['interpretations'] = interpretations
+                analyzer_instance.logger.debug(f"Generated {len(interpretations)} rich interpretations for {symbol}")
             except Exception as e:
-                analyzer_instance.logger.debug(f"Could not generate interpretations: {e}")
+                analyzer_instance.logger.warning(f"Could not generate rich interpretations for {symbol}: {e}")
                 enhanced_result['interpretations'] = _generate_basic_interpretations(enhanced_result, symbol)
-        elif not enhanced_result.get('interpretations'):
-            enhanced_result['interpretations'] = _generate_basic_interpretations(enhanced_result, symbol)
         
         # Add sub_components if available
         if 'sub_components' not in enhanced_result:
@@ -248,13 +261,72 @@ async def _generate_interpretations(result: Dict[str, Any], interpretation_gener
         return _generate_basic_interpretations(result, result.get('symbol', 'UNKNOWN'))
 
 
+def _generate_rich_interpretations(result: Dict[str, Any], interp_gen: InterpretationGenerator, symbol: str) -> Dict[str, str]:
+    """Generate rich interpretations using the InterpretationGenerator.
+
+    Args:
+        result: Analysis result with components
+        interp_gen: InterpretationGenerator instance
+        symbol: Trading symbol
+
+    Returns:
+        Dictionary of rich interpretations for each component
+    """
+    interpretations = {}
+    confluence_score = result.get('confluence_score', 50.0)
+    components = result.get('components', {})
+
+    # Generate overall interpretation
+    if confluence_score >= 70:
+        interpretations['overall'] = f"Strong bullish confluence detected for {symbol}. Multiple indicators align for high-confidence upward movement."
+    elif confluence_score >= 60:
+        interpretations['overall'] = f"Moderate bullish bias for {symbol}. Several indicators support upward movement with reasonable conviction."
+    elif confluence_score >= 40:
+        interpretations['overall'] = f"Neutral to mixed signals for {symbol}. Market shows uncertainty with conflicting indicators."
+    elif confluence_score >= 30:
+        interpretations['overall'] = f"Moderate bearish bias for {symbol}. Several indicators suggest downward pressure with reasonable conviction."
+    else:
+        interpretations['overall'] = f"Strong bearish confluence for {symbol}. Multiple indicators align for potential downward movement."
+
+    # Get sub_components for richer interpretations
+    sub_components = result.get('sub_components', {})
+
+    # Generate rich component interpretations using InterpretationGenerator
+    for component, value in components.items():
+        try:
+            # Extract score from component value
+            if isinstance(value, dict):
+                score = value.get('score', 50)
+                # Pass full component data for richer interpretation
+                component_data = value
+            else:
+                score = float(value) if value else 50
+                # Build rich component_data with sub-component indicators
+                # InterpretationGenerator looks for 'components' key to find RSI, AO, etc.
+                component_data = {
+                    'score': score,
+                    'components': sub_components.get(component, {})
+                }
+
+            # Use InterpretationGenerator for rich interpretation
+            interpretation = interp_gen.get_component_interpretation(component, component_data)
+            interpretations[component] = interpretation
+
+        except Exception as e:
+            # Fallback to simple interpretation on error
+            score = value.get('score', 50) if isinstance(value, dict) else value
+            interpretations[component] = f"{component.replace('_', ' ').title()} score: {score:.1f}"
+
+    return interpretations
+
+
 def _generate_basic_interpretations(result: Dict[str, Any], symbol: str) -> Dict[str, str]:
     """Generate basic interpretations when advanced interpretation is not available.
-    
+
     Args:
         result: Analysis result
         symbol: Trading symbol
-        
+
     Returns:
         Basic interpretations
     """
