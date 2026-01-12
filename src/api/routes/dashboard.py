@@ -2156,7 +2156,18 @@ async def get_confluence_analysis(symbol: str) -> Dict[str, Any]:
             analysis_lines.append("  ──────────────────────────────────────────────────────")
 
             # Display interpretations with word wrap (56 chars for modern mobile)
-            for component, interpretation in interpretations.items():
+            # Order: overall first, components in standard order, actionable_insights last
+            interpretation_order = [
+                'overall', 'technical', 'volume', 'orderflow',
+                'sentiment', 'orderbook', 'price_structure', 'actionable_insights'
+            ]
+            # Sort interpretations: ordered keys first, then any remaining
+            ordered_keys = [k for k in interpretation_order if k in interpretations]
+            remaining_keys = [k for k in interpretations if k not in interpretation_order]
+            sorted_keys = ordered_keys + remaining_keys
+
+            for component in sorted_keys:
+                interpretation = interpretations[component]
                 analysis_lines.append("")
                 analysis_lines.append(f"  ▸ {component.upper()}")
                 wrapped = textwrap.wrap(str(interpretation), width=56)
