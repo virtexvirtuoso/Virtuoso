@@ -276,17 +276,45 @@ def _generate_rich_interpretations(result: Dict[str, Any], interp_gen: Interpret
     confluence_score = result.get('confluence_score', 50.0)
     components = result.get('components', {})
 
-    # Generate overall interpretation
+    # Generate overall interpretation with component leaders
+    overall_parts = []
+
     if confluence_score >= 70:
-        interpretations['overall'] = f"Strong bullish confluence detected for {symbol}. Multiple indicators align for high-confidence upward movement."
+        overall_parts.append(f"Strong bullish confluence detected for {symbol} with score {confluence_score:.1f}.")
     elif confluence_score >= 60:
-        interpretations['overall'] = f"Moderate bullish bias for {symbol}. Several indicators support upward movement with reasonable conviction."
+        overall_parts.append(f"Moderate bullish bias for {symbol} with score {confluence_score:.1f}.")
     elif confluence_score >= 40:
-        interpretations['overall'] = f"Neutral to mixed signals for {symbol}. Market shows uncertainty with conflicting indicators."
+        overall_parts.append(f"Neutral to mixed signals for {symbol} with score {confluence_score:.1f}.")
     elif confluence_score >= 30:
-        interpretations['overall'] = f"Moderate bearish bias for {symbol}. Several indicators suggest downward pressure with reasonable conviction."
+        overall_parts.append(f"Moderate bearish bias for {symbol} with score {confluence_score:.1f}.")
     else:
-        interpretations['overall'] = f"Strong bearish confluence for {symbol}. Multiple indicators align for potential downward movement."
+        overall_parts.append(f"Strong bearish confluence for {symbol} with score {confluence_score:.1f}.")
+
+    # Identify strongest and weakest components
+    if components:
+        sorted_comps = sorted(
+            [(k, v if isinstance(v, (int, float)) else v.get('score', 50))
+             for k, v in components.items()],
+            key=lambda x: x[1], reverse=True
+        )
+        strongest = sorted_comps[0]
+        weakest = sorted_comps[-1]
+
+        if strongest[1] > 60:
+            overall_parts.append(f"{strongest[0].replace('_', ' ').title()} leads at {strongest[1]:.1f}.")
+        if weakest[1] < 40:
+            overall_parts.append(f"{weakest[0].replace('_', ' ').title()} shows weakness at {weakest[1]:.1f}.")
+
+    interpretations['overall'] = " ".join(overall_parts)
+
+    # Generate actionable insights as separate interpretation
+    try:
+        insights_list = interp_gen.generate_actionable_insights(
+            result, confluence_score, long_threshold=65, short_threshold=35
+        )
+        interpretations['actionable_insights'] = " | ".join(insights_list)
+    except Exception:
+        interpretations['actionable_insights'] = ""
 
     # Get sub_components for richer interpretations
     sub_components = result.get('sub_components', {})
