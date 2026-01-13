@@ -604,42 +604,6 @@
             box-shadow: 0 0 20px rgba(251, 191, 36, 0.3), inset 0 0 10px rgba(251, 191, 36, 0.1);
         }
 
-        /* Theme Toggle Button */
-        .theme-toggle {
-            position: relative;
-        }
-
-        .theme-toggle .theme-icon-light,
-        .theme-toggle .theme-icon-dark {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            transition: opacity 0.3s ease, transform 0.3s ease;
-        }
-
-        /* Dark mode (default) - show moon */
-        .theme-toggle .theme-icon-light {
-            opacity: 0;
-            transform: translate(-50%, -50%) scale(0.8) rotate(-90deg);
-        }
-
-        .theme-toggle .theme-icon-dark {
-            opacity: 1;
-            transform: translate(-50%, -50%) scale(1) rotate(0deg);
-        }
-
-        /* Light mode - show sun */
-        [data-theme="light"] .theme-toggle .theme-icon-light {
-            opacity: 1;
-            transform: translate(-50%, -50%) scale(1) rotate(0deg);
-        }
-
-        [data-theme="light"] .theme-toggle .theme-icon-dark {
-            opacity: 0;
-            transform: translate(-50%, -50%) scale(0.8) rotate(90deg);
-        }
-
         /* Glassmorphism Bottom Navigation - Edge-to-edge for iOS */
         .bottom-nav {
             position: fixed;
@@ -3087,10 +3051,6 @@
                 <button class="header-btn" onclick="refreshData()">
                     <i data-lucide="refresh-cw" class="header-icon"></i>
                 </button>
-                <button class="header-btn theme-toggle" id="themeToggle" onclick="toggleTheme()" aria-label="Toggle theme">
-                    <i data-lucide="sun" class="header-icon theme-icon-light"></i>
-                    <i data-lucide="moon" class="header-icon theme-icon-dark"></i>
-                </button>
                 <button class="header-btn" onclick="toggleSettings()">
                     <i data-lucide="settings" class="header-icon"></i>
                 </button>
@@ -4273,6 +4233,17 @@
                         <input type="checkbox" id="showNewsTicker" checked style="accent-color: var(--accent-primary);" onchange="toggleNewsTicker()">
                     </label>
                 </div>
+
+                <div class="setting-item" style="margin-bottom: 12px;">
+                    <label style="display: flex; justify-content: space-between; align-items: center; color: var(--text-secondary); font-size: 13px;">
+                        Theme
+                        <select id="themeSelect" style="background: var(--bg-secondary); border: 1px solid var(--border-light); border-radius: 4px; padding: 4px 8px; color: var(--text-primary); font-size: 12px;" onchange="handleThemeSelect(this.value)">
+                            <option value="dark">Dark</option>
+                            <option value="light">Light</option>
+                            <option value="system">System</option>
+                        </select>
+                    </label>
+                </div>
             </div>
 
             <!-- Alert Settings -->
@@ -4375,8 +4346,16 @@
             window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', (e) => {
                 if (!localStorage.getItem(THEME_STORAGE_KEY)) {
                     setTheme(e.matches ? 'light' : 'dark', true);
+                    syncThemeSelect();
                 }
             });
+
+            // Sync dropdown after DOM is ready
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', syncThemeSelect);
+            } else {
+                syncThemeSelect();
+            }
         }
 
         function setTheme(theme, animate = true) {
@@ -4412,12 +4391,27 @@
             }
         }
 
-        function toggleTheme() {
-            const currentTheme = document.documentElement.getAttribute('data-theme') || 'dark';
-            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+        function handleThemeSelect(value) {
+            if (value === 'system') {
+                localStorage.removeItem(THEME_STORAGE_KEY);
+                const systemTheme = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+                setTheme(systemTheme, true);
+            } else {
+                setTheme(value, true);
+                localStorage.setItem(THEME_STORAGE_KEY, value);
+            }
+            if (typeof hapticFeedback === 'function') hapticFeedback('light');
+        }
 
-            setTheme(newTheme, true);
-            localStorage.setItem(THEME_STORAGE_KEY, newTheme);
+        function syncThemeSelect() {
+            const select = document.getElementById('themeSelect');
+            if (!select) return;
+            const saved = localStorage.getItem(THEME_STORAGE_KEY);
+            if (saved) {
+                select.value = saved;
+            } else {
+                select.value = 'system';
+            }
         }
 
         function updateChartsTheme(theme) {
