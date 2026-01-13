@@ -3104,56 +3104,73 @@
 
         /* ===== COMPREHENSIVE LIGHT MODE OVERRIDES FOR INLINE STYLES ===== */
 
-        /* Override all dark rgba backgrounds in cards */
-        [data-theme="light"] .mobile-card [style*="rgba(0,0,0"] {
+        /* NUCLEAR OPTION: Force ALL dark backgrounds to light in cards */
+        [data-theme="light"] .mobile-card div[style*="background"] {
             background: var(--bg-secondary) !important;
         }
 
-        /* Market Overview inner boxes */
-        [data-theme="light"] .mobile-card > div[style*="background: linear-gradient(135deg, rgba(0,0,0"] {
-            background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-panel) 100%) !important;
+        /* Re-allow progress bars and colored elements */
+        [data-theme="light"] .mobile-card div[style*="background: var(--accent"],
+        [data-theme="light"] .mobile-card div[style*="background: linear-gradient"][style*="var(--accent"],
+        [data-theme="light"] .mobile-card div[style*="background: #10b981"],
+        [data-theme="light"] .mobile-card div[style*="background: #ef4444"],
+        [data-theme="light"] .mobile-card div[style*="background: #f59e0b"],
+        [data-theme="light"] .mobile-card div[style*="background:#10b981"],
+        [data-theme="light"] .mobile-card div[style*="background:#ef4444"],
+        [data-theme="light"] .mobile-card div[style*="background:#f59e0b"] {
+            background: unset !important;
+        }
+
+        /* Specific card overrides by ID */
+        [data-theme="light"] #perpsPulseCard div[style*="background"],
+        [data-theme="light"] #marketIntelCard div[style*="background"],
+        [data-theme="light"] #marketOverviewCard div[style*="background"],
+        [data-theme="light"] #topMoversCard div[style*="background"] {
+            background: var(--bg-secondary) !important;
             border-color: var(--border-light) !important;
         }
 
-        [data-theme="light"] .mobile-card > div[style*="background: rgba(0,0,0,0.15)"],
-        [data-theme="light"] .mobile-card > div[style*="background: rgba(0,0,0,0.2)"],
-        [data-theme="light"] .mobile-card div[style*="background: rgba(0,0,0,0.15)"],
-        [data-theme="light"] .mobile-card div[style*="background: rgba(0,0,0,0.2)"],
-        [data-theme="light"] .mobile-card div[style*="background: rgba(0,0,0,0.3)"] {
+        /* Special gradient sections - make them lighter */
+        [data-theme="light"] div[style*="linear-gradient"][style*="rgba(0,0,0"] {
+            background: linear-gradient(135deg, rgba(180, 83, 9, 0.08) 0%, var(--bg-secondary) 100%) !important;
+        }
+
+        [data-theme="light"] div[style*="linear-gradient"][style*="rgba(6, 182, 212"] {
+            background: linear-gradient(135deg, rgba(14, 116, 144, 0.12) 0%, var(--bg-secondary) 100%) !important;
+            border-color: rgba(14, 116, 144, 0.25) !important;
+        }
+
+        [data-theme="light"] div[style*="linear-gradient"][style*="rgba(251, 191, 36"] {
+            background: linear-gradient(135deg, rgba(180, 83, 9, 0.12) 0%, var(--bg-secondary) 100%) !important;
+            border-color: rgba(180, 83, 9, 0.2) !important;
+        }
+
+        /* Progress bars - keep them visible but lighter */
+        [data-theme="light"] div[style*="overflow: hidden"][style*="display: flex"] > div {
+            /* Allow colored progress bars */
+        }
+
+        /* Specifically fix the stat boxes that have dark backgrounds */
+        [data-theme="light"] div[style*="text-align: center"][style*="border-radius: 8px"],
+        [data-theme="light"] div[style*="text-align: center"][style*="border-radius: 6px"] {
             background: var(--bg-secondary) !important;
             border: 1px solid var(--border-light) !important;
         }
 
-        /* Progress bar backgrounds */
-        [data-theme="light"] div[style*="background: rgba(0,0,0,0.3)"][style*="border-radius"] {
-            background: rgba(0, 0, 0, 0.08) !important;
-        }
-
-        /* Breadth bar container */
-        [data-theme="light"] .breadth-bar-container,
-        [data-theme="light"] [style*="background: #0a1018"] {
-            background: rgba(0, 0, 0, 0.1) !important;
-        }
-
-        /* Sector rotation and special sections */
-        [data-theme="light"] div[style*="rgba(6, 182, 212"] {
-            background: linear-gradient(135deg, rgba(6, 182, 212, 0.12) 0%, var(--bg-secondary) 100%) !important;
-            border-color: rgba(6, 182, 212, 0.3) !important;
-        }
-
-        [data-theme="light"] div[style*="rgba(251, 191, 36"] {
-            background: linear-gradient(135deg, rgba(251, 191, 36, 0.12) 0%, var(--bg-secondary) 100%) !important;
-            border-color: rgba(251, 191, 36, 0.25) !important;
+        /* Alpha Pulse cards - force light backgrounds */
+        [data-theme="light"] .alpha-card,
+        [data-theme="light"] [class*="alpha-card"],
+        [data-theme="light"] div[style*="border-radius: 12px"][style*="padding: 12px"] {
+            background: var(--bg-secondary) !important;
+            border: 1px solid var(--border-light) !important;
         }
 
         /* Card expanded sections */
-        [data-theme="light"] [id*="_expanded"] {
+        [data-theme="light"] [id*="_expanded"],
+        [data-theme="light"] [id*="_buttons"],
+        [data-theme="light"] [id*="Section"] {
             background: var(--bg-secondary) !important;
             border-color: var(--border-light) !important;
-        }
-
-        [data-theme="light"] [id*="_buttons"] {
-            background: var(--bg-secondary) !important;
         }
 
         /* Settings overlay */
@@ -3162,15 +3179,13 @@
         }
 
         /* Loading states */
-        [data-theme="light"] .loading-overlay,
-        [data-theme="light"] [style*="rgba(0, 0, 0, 0.85)"] {
+        [data-theme="light"] .loading-overlay {
             background: rgba(255, 255, 255, 0.9) !important;
             color: var(--text-primary) !important;
         }
 
         /* Quick actions and menus */
-        [data-theme="light"] .quick-actions-menu,
-        [data-theme="light"] [style*="rgba(0, 0, 0, 0.8)"] {
+        [data-theme="light"] .quick-actions-menu {
             background: rgba(255, 255, 255, 0.95) !important;
             border: 1px solid var(--border-light) !important;
             box-shadow: var(--shadow-elevated) !important;
@@ -3186,6 +3201,41 @@
         /* Stat boxes text */
         [data-theme="light"] .mobile-card div[style*="text-align: center"] {
             color: var(--text-primary);
+        }
+
+        /* Force ALL text inside cards to be dark */
+        [data-theme="light"] .mobile-card div,
+        [data-theme="light"] .mobile-card span {
+            color: var(--text-primary) !important;
+        }
+
+        /* Restore semantic colors */
+        [data-theme="light"] .mobile-card [style*="color: var(--accent-positive)"],
+        [data-theme="light"] .mobile-card [style*="color: #10b981"],
+        [data-theme="light"] .mobile-card [style*="color:#10b981"] {
+            color: #047857 !important;
+        }
+
+        [data-theme="light"] .mobile-card [style*="color: var(--accent-negative)"],
+        [data-theme="light"] .mobile-card [style*="color: #ef4444"],
+        [data-theme="light"] .mobile-card [style*="color:#ef4444"] {
+            color: #b91c1c !important;
+        }
+
+        [data-theme="light"] .mobile-card [style*="color: var(--accent-warning)"],
+        [data-theme="light"] .mobile-card [style*="color: var(--neon-amber)"],
+        [data-theme="light"] .mobile-card [style*="color: #f59e0b"],
+        [data-theme="light"] .mobile-card [style*="color:#f59e0b"],
+        [data-theme="light"] .mobile-card [style*="color: #fbbf24"],
+        [data-theme="light"] .mobile-card [style*="color:#fbbf24"],
+        [data-theme="light"] .mobile-card [style*="color: #ffa500"],
+        [data-theme="light"] .mobile-card [style*="color:#ffa500"] {
+            color: #b45309 !important;
+        }
+
+        /* Secondary text should be readable but slightly muted */
+        [data-theme="light"] .mobile-card [style*="color: var(--text-secondary)"] {
+            color: #4b5563 !important;
         }
 
         /* ===== FORCE READABLE TEXT COLORS ===== */
