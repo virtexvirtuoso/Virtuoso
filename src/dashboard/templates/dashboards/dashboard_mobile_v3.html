@@ -123,9 +123,10 @@
             --border-light: #e2d5a0;
             --border-glow: rgba(180, 83, 9, 0.25);
 
-            /* Text - warmer tones */
-            --text-primary: #0a1525;
-            --text-secondary: #4a5568;
+            /* Text - DARKER for cream bg readability */
+            --text-primary: #1a1a1a;
+            --text-secondary: #374151;
+            --text-muted: #52525b;
             --text-accent: #b45309;
 
             /* Complementary Navy Accent */
@@ -3187,11 +3188,62 @@
             color: var(--text-primary);
         }
 
-        /* Labels and secondary text in cards */
-        [data-theme="light"] .mobile-card span[style*="color: #9ca3af"],
-        [data-theme="light"] .mobile-card span[style*="color: var(--text-secondary)"],
-        [data-theme="light"] .mobile-card div[style*="color: #9ca3af"] {
-            color: var(--text-secondary) !important;
+        /* ===== FORCE READABLE TEXT COLORS ===== */
+
+        /* Override ALL light gray text colors */
+        [data-theme="light"] [style*="color: #9ca3af"],
+        [data-theme="light"] [style*="color:#9ca3af"],
+        [data-theme="light"] [style*="color: rgb(156, 163, 175)"],
+        [data-theme="light"] [style*="color: #6b7280"],
+        [data-theme="light"] [style*="color:#6b7280"],
+        [data-theme="light"] span[style*="color: var(--text-secondary)"] {
+            color: #374151 !important;
+        }
+
+        /* Make all text in cards readable */
+        [data-theme="light"] .mobile-card,
+        [data-theme="light"] .mobile-card * {
+            color: var(--text-primary);
+        }
+
+        /* Restore specific colored elements */
+        [data-theme="light"] .mobile-card .card-title,
+        [data-theme="light"] .mobile-card h2,
+        [data-theme="light"] .mobile-card h3,
+        [data-theme="light"] .mobile-card h4 {
+            color: var(--accent-navy) !important;
+        }
+
+        /* Labels should be darker */
+        [data-theme="light"] .mobile-card span,
+        [data-theme="light"] .mobile-card label {
+            color: #374151 !important;
+        }
+
+        /* Keep semantic colors for values */
+        [data-theme="light"] [style*="color: #10b981"],
+        [data-theme="light"] [style*="color:#10b981"],
+        [data-theme="light"] [style*="color: var(--accent-positive)"] {
+            color: #047857 !important;
+        }
+
+        [data-theme="light"] [style*="color: #ef4444"],
+        [data-theme="light"] [style*="color:#ef4444"],
+        [data-theme="light"] [style*="color: var(--accent-negative)"] {
+            color: #b91c1c !important;
+        }
+
+        [data-theme="light"] [style*="color: #f59e0b"],
+        [data-theme="light"] [style*="color:#f59e0b"],
+        [data-theme="light"] [style*="color: var(--accent-warning)"],
+        [data-theme="light"] [style*="color: var(--neon-amber)"] {
+            color: #b45309 !important;
+        }
+
+        /* ===== SKELETON LOADERS - More visible ===== */
+        [data-theme="light"] .skeleton {
+            background: linear-gradient(90deg, #e8dfc0 25%, #d4c9a0 50%, #e8dfc0 75%) !important;
+            background-size: 200% 100% !important;
         }
 
         /* Checkbox and input styling */
@@ -3208,6 +3260,20 @@
         /* Border overrides */
         [data-theme="light"] [style*="border: 1px solid rgba(255,255,255"] {
             border-color: var(--border-light) !important;
+        }
+
+        /* Bottom nav text */
+        [data-theme="light"] .nav-label {
+            color: #52525b !important;
+        }
+
+        [data-theme="light"] .nav-item.active .nav-label {
+            color: var(--text-primary) !important;
+        }
+
+        /* Header text */
+        [data-theme="light"] .header-btn {
+            color: #374151 !important;
         }
     </style>
 </head>
