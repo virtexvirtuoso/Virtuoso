@@ -4330,6 +4330,10 @@
         // ========================================
         const THEME_STORAGE_KEY = 'virtuoso-theme';
 
+        // Forward declarations to avoid TDZ errors (these are reassigned later)
+        var lwChart = null;
+        var lwChartVisibleRange = null;
+
         function initTheme() {
             // Priority: localStorage > system preference > dark default
             const savedTheme = localStorage.getItem(THEME_STORAGE_KEY);
@@ -7380,12 +7384,11 @@
         }
 
         // Store chart instance and series globally for toggle functionality
-        let lwChart = null;
+        // Note: lwChart and lwChartVisibleRange declared earlier to avoid TDZ errors
         let lwSeries = {};
         let lwSeriesData = [];
         let labelsVisible = true;
         let topBottomOnly = false;
-        let lwChartVisibleRange = null;  // Preserve zoom state across refreshes
 
         // Toggle all chart labels on/off
         function toggleChartLabels() {
