@@ -2772,6 +2772,51 @@
             transition: none !important;
         }
 
+        /* Theme Toggle Group - Sun/Moon/System */
+        .theme-toggle-group {
+            display: flex;
+            gap: 4px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-light);
+            border-radius: 8px;
+            padding: 3px;
+        }
+
+        .theme-toggle-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 32px;
+            height: 28px;
+            border: none;
+            border-radius: 6px;
+            background: transparent;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .theme-toggle-btn:hover {
+            color: var(--text-primary);
+            background: rgba(180, 83, 9, 0.1);
+        }
+
+        .theme-toggle-btn.active {
+            background: var(--accent-primary);
+            color: #fff;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+        }
+
+        /* Dark mode specific adjustments */
+        :root .theme-toggle-btn:hover {
+            background: rgba(255, 191, 0, 0.15);
+        }
+
+        :root .theme-toggle-btn.active {
+            background: var(--neon-amber);
+            color: #000;
+        }
+
         /* Body */
         [data-theme="light"] body {
             background: var(--bg-primary);
@@ -4235,14 +4280,20 @@
                 </div>
 
                 <div class="setting-item" style="margin-bottom: 12px;">
-                    <label style="display: flex; justify-content: space-between; align-items: center; color: var(--text-secondary); font-size: 13px;">
-                        Theme
-                        <select id="themeSelect" style="background: var(--bg-secondary); border: 1px solid var(--border-light); border-radius: 4px; padding: 4px 8px; color: var(--text-primary); font-size: 12px;" onchange="handleThemeSelect(this.value)">
-                            <option value="dark">Dark</option>
-                            <option value="light">Light</option>
-                            <option value="system">System</option>
-                        </select>
-                    </label>
+                    <div style="display: flex; justify-content: space-between; align-items: center; color: var(--text-secondary); font-size: 13px;">
+                        <span>Theme</span>
+                        <div id="themeToggle" class="theme-toggle-group">
+                            <button type="button" class="theme-toggle-btn" data-theme="dark" onclick="handleThemeSelect('dark')" aria-label="Dark mode">
+                                <i data-lucide="moon" style="width: 16px; height: 16px;"></i>
+                            </button>
+                            <button type="button" class="theme-toggle-btn active" data-theme="system" onclick="handleThemeSelect('system')" aria-label="System preference">
+                                <i data-lucide="monitor" style="width: 16px; height: 16px;"></i>
+                            </button>
+                            <button type="button" class="theme-toggle-btn" data-theme="light" onclick="handleThemeSelect('light')" aria-label="Light mode">
+                                <i data-lucide="sun" style="width: 16px; height: 16px;"></i>
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -4404,18 +4455,28 @@
                 setTheme(value, true);
                 localStorage.setItem(THEME_STORAGE_KEY, value);
             }
+            syncThemeToggle(value);
             if (typeof hapticFeedback === 'function') hapticFeedback('light');
         }
 
+        function syncThemeToggle(activeValue) {
+            const buttons = document.querySelectorAll('.theme-toggle-btn');
+            if (!buttons.length) return;
+
+            const value = activeValue || localStorage.getItem(THEME_STORAGE_KEY) || 'system';
+
+            buttons.forEach(btn => {
+                if (btn.dataset.theme === value) {
+                    btn.classList.add('active');
+                } else {
+                    btn.classList.remove('active');
+                }
+            });
+        }
+
+        // Alias for backwards compatibility
         function syncThemeSelect() {
-            const select = document.getElementById('themeSelect');
-            if (!select) return;
-            const saved = localStorage.getItem(THEME_STORAGE_KEY);
-            if (saved) {
-                select.value = saved;
-            } else {
-                select.value = 'system';
-            }
+            syncThemeToggle();
         }
 
         function updateChartsTheme(theme) {
