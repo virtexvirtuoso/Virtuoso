@@ -5,6 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Virtuoso Mobile Dashboard</title>
 
+    <!-- Theme Flash Prevention - Apply saved theme before render -->
+    <script>
+        (function() {
+            var theme = localStorage.getItem('virtuoso-theme');
+            if (theme) document.documentElement.setAttribute('data-theme', theme);
+        })();
+    </script>
+
     <!-- Access Control - Check for valid access cookie -->
     <script>
         (function() {
@@ -97,6 +105,38 @@
             --safe-area-bottom: env(safe-area-inset-bottom);
             --content-padding: 20px;
             --card-gap: 17px;
+        }
+
+        /* Light Mode Theme - Warm Off-White */
+        [data-theme="light"] {
+            /* Brand Colors - Deepened for light bg contrast */
+            --neon-amber: #d97706;
+            --neon-cyan: #0891b2;
+            --neon-red: #dc2626;
+
+            /* Light Backgrounds */
+            --bg-primary: #FAFAFA;
+            --bg-secondary: #F5F5F0;
+            --bg-panel: #FFFFFF;
+
+            /* Borders */
+            --border-light: #E5E5E5;
+            --border-glow: rgba(217, 119, 6, 0.2);
+
+            /* Text */
+            --text-primary: #1f2937;
+            --text-secondary: #6b7280;
+            --text-accent: #d97706;
+
+            /* Semantic Colors */
+            --accent-positive: #059669;
+            --accent-negative: #dc2626;
+            --accent-warning: #d97706;
+            --accent-primary: #d97706;
+
+            /* Shadows (replace glows in light mode) */
+            --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
+            --shadow-elevated: 0 4px 6px rgba(0, 0, 0, 0.1), 0 2px 4px rgba(0, 0, 0, 0.06);
         }
 
         * {
@@ -562,6 +602,42 @@
         .header-btn:active {
             background: rgba(251, 191, 36, 0.1);
             box-shadow: 0 0 20px rgba(251, 191, 36, 0.3), inset 0 0 10px rgba(251, 191, 36, 0.1);
+        }
+
+        /* Theme Toggle Button */
+        .theme-toggle {
+            position: relative;
+        }
+
+        .theme-toggle .theme-icon-light,
+        .theme-toggle .theme-icon-dark {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+
+        /* Dark mode (default) - show moon */
+        .theme-toggle .theme-icon-light {
+            opacity: 0;
+            transform: translate(-50%, -50%) scale(0.8) rotate(-90deg);
+        }
+
+        .theme-toggle .theme-icon-dark {
+            opacity: 1;
+            transform: translate(-50%, -50%) scale(1) rotate(0deg);
+        }
+
+        /* Light mode - show sun */
+        [data-theme="light"] .theme-toggle .theme-icon-light {
+            opacity: 1;
+            transform: translate(-50%, -50%) scale(1) rotate(0deg);
+        }
+
+        [data-theme="light"] .theme-toggle .theme-icon-dark {
+            opacity: 0;
+            transform: translate(-50%, -50%) scale(0.8) rotate(90deg);
         }
 
         /* Glassmorphism Bottom Navigation - Edge-to-edge for iOS */
@@ -2705,6 +2781,284 @@
         .sheet-btn:active {
             transform: scale(0.98);
         }
+
+        /* ============================================
+           LIGHT MODE COMPONENT OVERRIDES
+           ============================================ */
+
+        /* Theme Transitions - Smooth color changes */
+        html:not(.no-transition) body,
+        html:not(.no-transition) .mobile-header,
+        html:not(.no-transition) .bottom-nav,
+        html:not(.no-transition) .mobile-card,
+        html:not(.no-transition) .nav-item,
+        html:not(.no-transition) .tf-chip,
+        html:not(.no-transition) .price-ticker,
+        html:not(.no-transition) .news-ticker {
+            transition:
+                background-color 0.3s ease,
+                border-color 0.3s ease,
+                box-shadow 0.3s ease,
+                color 0.3s ease;
+        }
+
+        /* Disable all transitions during theme init */
+        html.no-transition,
+        html.no-transition * {
+            transition: none !important;
+        }
+
+        /* Body */
+        [data-theme="light"] body {
+            background: var(--bg-primary);
+            color: var(--text-primary);
+        }
+
+        /* Glassmorphism Header - Light Mode */
+        [data-theme="light"] .mobile-header {
+            background: linear-gradient(
+                180deg,
+                rgba(250, 250, 250, 0.92) 0%,
+                rgba(245, 245, 240, 0.88) 100%
+            );
+            border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+        }
+
+        [data-theme="light"] .mobile-header::before {
+            background: linear-gradient(
+                90deg,
+                transparent 0%,
+                rgba(0, 0, 0, 0.03) 20%,
+                rgba(217, 119, 6, 0.08) 50%,
+                rgba(0, 0, 0, 0.03) 80%,
+                transparent 100%
+            );
+        }
+
+        /* Bottom Navigation - Light Mode */
+        [data-theme="light"] .bottom-nav {
+            background: linear-gradient(
+                180deg,
+                rgba(255, 255, 255, 0.95) 0%,
+                rgba(250, 250, 250, 0.98) 100%
+            );
+            border-top: 1px solid rgba(0, 0, 0, 0.08);
+            box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.06);
+        }
+
+        [data-theme="light"] .bottom-nav::before {
+            background: linear-gradient(90deg,
+                transparent 0%,
+                rgba(0, 0, 0, 0.06) 30%,
+                rgba(0, 0, 0, 0.08) 50%,
+                rgba(0, 0, 0, 0.06) 70%,
+                transparent 100%
+            );
+        }
+
+        /* Nav Items - Light Mode */
+        [data-theme="light"] .nav-item {
+            color: rgba(0, 0, 0, 0.5);
+        }
+
+        [data-theme="light"] .nav-item:hover {
+            color: rgba(0, 0, 0, 0.8);
+            background: rgba(0, 0, 0, 0.05);
+        }
+
+        [data-theme="light"] .nav-item.active {
+            color: #1f2937;
+            background: linear-gradient(
+                180deg,
+                rgba(217, 119, 6, 0.15) 0%,
+                rgba(217, 119, 6, 0.08) 100%
+            );
+            box-shadow: 0 0 12px rgba(217, 119, 6, 0.12);
+        }
+
+        [data-theme="light"] .nav-item.active .nav-label {
+            color: var(--neon-amber);
+        }
+
+        /* Cards - Light Mode */
+        [data-theme="light"] .mobile-card {
+            background: var(--bg-panel);
+            border: 1px solid var(--border-light);
+            box-shadow: var(--shadow-card);
+        }
+
+        [data-theme="light"] .mobile-card:hover {
+            border-color: rgba(217, 119, 6, 0.4);
+            box-shadow: var(--shadow-elevated);
+        }
+
+        /* Price Ticker - Light Mode */
+        [data-theme="light"] .price-ticker {
+            background: rgba(255, 255, 255, 0.85);
+            border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+        }
+
+        [data-theme="light"] .ticker-symbol {
+            color: rgba(0, 0, 0, 0.7);
+        }
+
+        [data-theme="light"] .ticker-price {
+            color: rgba(0, 0, 0, 0.5);
+        }
+
+        /* News Ticker - Light Mode */
+        [data-theme="light"] .news-ticker {
+            background: rgba(245, 245, 240, 0.92);
+            border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+        }
+
+        [data-theme="light"] .news-ticker-label {
+            background: var(--neon-amber);
+            color: #fff;
+        }
+
+        /* Timeframe Chips - Light Mode */
+        [data-theme="light"] .tf-chip {
+            background: rgba(0, 0, 0, 0.03);
+            border: 1px solid rgba(0, 0, 0, 0.08);
+            color: var(--text-secondary);
+        }
+
+        [data-theme="light"] .tf-chip-active,
+        [data-theme="light"] .tf-chip.active {
+            background: linear-gradient(135deg,
+                rgba(217, 119, 6, 0.15) 0%,
+                rgba(217, 119, 6, 0.08) 100%
+            );
+            border: 1px solid var(--neon-amber);
+            color: var(--neon-amber);
+        }
+
+        /* Skeleton Loader - Light Mode */
+        [data-theme="light"] .skeleton {
+            background: linear-gradient(90deg,
+                #f0f0f0 25%,
+                #e0e0e0 50%,
+                #f0f0f0 75%
+            );
+            background-size: 200% 100%;
+        }
+
+        /* Fullscreen Chart - Light Mode */
+        [data-theme="light"] .fullscreen-chart {
+            background: var(--bg-primary);
+        }
+
+        [data-theme="light"] .price-hud {
+            background: rgba(255, 255, 255, 0.95);
+            border: 1px solid rgba(217, 119, 6, 0.2);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+        }
+
+        /* Settings Panel - Light Mode */
+        [data-theme="light"] #settingsPanel {
+            background: var(--bg-panel);
+            border-left: 1px solid var(--border-light);
+        }
+
+        /* Header Buttons - Light Mode */
+        [data-theme="light"] .header-btn {
+            color: var(--text-primary);
+        }
+
+        [data-theme="light"] .header-btn:hover {
+            border-color: var(--neon-amber);
+            box-shadow: 0 0 12px rgba(217, 119, 6, 0.15);
+        }
+
+        [data-theme="light"] .header-btn:active {
+            background: rgba(217, 119, 6, 0.1);
+        }
+
+        /* App Title - Light Mode */
+        [data-theme="light"] .app-title {
+            color: var(--neon-amber);
+            text-shadow: none;
+        }
+
+        /* Tab Buttons - Light Mode */
+        [data-theme="light"] .tab-btn {
+            background: rgba(0, 0, 0, 0.03);
+            border: 1px solid rgba(0, 0, 0, 0.08);
+            color: var(--text-secondary);
+        }
+
+        [data-theme="light"] .tab-btn.active {
+            background: linear-gradient(135deg,
+                rgba(217, 119, 6, 0.15) 0%,
+                rgba(217, 119, 6, 0.08) 100%
+            );
+            border-color: var(--neon-amber);
+            color: var(--neon-amber);
+        }
+
+        /* Alert Filter Pills - Light Mode */
+        [data-theme="light"] .alert-filter-pill {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-light);
+            color: var(--text-secondary);
+        }
+
+        [data-theme="light"] .alert-filter-pill.active {
+            background: linear-gradient(135deg,
+                rgba(217, 119, 6, 0.15) 0%,
+                rgba(217, 119, 6, 0.08) 100%
+            );
+            border-color: var(--neon-amber);
+            color: var(--neon-amber);
+        }
+
+        /* Trending Pills - Light Mode */
+        [data-theme="light"] .trending-pill {
+            background: linear-gradient(135deg, rgba(217, 119, 6, 0.1) 0%, rgba(217, 119, 6, 0.05) 100%);
+            border: 1px solid rgba(217, 119, 6, 0.25);
+        }
+
+        /* Card Headers - Light Mode */
+        [data-theme="light"] .card-header {
+            border-bottom-color: var(--border-light);
+        }
+
+        /* Scroll Fade Wrappers - Light Mode */
+        [data-theme="light"] .scroll-fade-wrapper::before {
+            background: linear-gradient(to right, var(--bg-panel) 0%, transparent 100%);
+        }
+
+        [data-theme="light"] .scroll-fade-wrapper::after {
+            background: linear-gradient(to left, var(--bg-panel) 0%, transparent 100%);
+        }
+
+        /* Empty State - Light Mode */
+        [data-theme="light"] .empty-state {
+            color: var(--text-secondary);
+        }
+
+        /* Notification Badge - Light Mode */
+        [data-theme="light"] .notification-badge {
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+        }
+
+        /* Main Content - Light Mode */
+        [data-theme="light"] .main-content {
+            background: var(--bg-primary);
+        }
+
+        /* Sheet / Modal - Light Mode */
+        [data-theme="light"] .settings-sheet,
+        [data-theme="light"] .detail-sheet {
+            background: var(--bg-panel);
+        }
+
+        [data-theme="light"] .sheet-btn {
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+        }
     </style>
 </head>
 <body>
@@ -2732,6 +3086,10 @@
             <div class="header-actions" id="headerActions">
                 <button class="header-btn" onclick="refreshData()">
                     <i data-lucide="refresh-cw" class="header-icon"></i>
+                </button>
+                <button class="header-btn theme-toggle" id="themeToggle" onclick="toggleTheme()" aria-label="Toggle theme">
+                    <i data-lucide="sun" class="header-icon theme-icon-light"></i>
+                    <i data-lucide="moon" class="header-icon theme-icon-dark"></i>
                 </button>
                 <button class="header-btn" onclick="toggleSettings()">
                     <i data-lucide="settings" class="header-icon"></i>
@@ -3995,6 +4353,118 @@
         } catch (e) {
             console.warn('Lucide icon initialization failed:', e);
         }
+
+        // ========================================
+        // THEME MANAGEMENT SYSTEM
+        // ========================================
+        const THEME_STORAGE_KEY = 'virtuoso-theme';
+
+        function initTheme() {
+            // Priority: localStorage > system preference > dark default
+            const savedTheme = localStorage.getItem(THEME_STORAGE_KEY);
+
+            if (savedTheme) {
+                setTheme(savedTheme, false); // false = no transition on initial load
+            } else if (window.matchMedia('(prefers-color-scheme: light)').matches) {
+                setTheme('light', false);
+            } else {
+                setTheme('dark', false);
+            }
+
+            // Listen for system preference changes (only if no saved preference)
+            window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', (e) => {
+                if (!localStorage.getItem(THEME_STORAGE_KEY)) {
+                    setTheme(e.matches ? 'light' : 'dark', true);
+                }
+            });
+        }
+
+        function setTheme(theme, animate = true) {
+            // Disable transitions on initial load to prevent flash
+            if (!animate) {
+                document.documentElement.classList.add('no-transition');
+            }
+
+            document.documentElement.setAttribute('data-theme', theme);
+
+            // Update meta theme-color for browser chrome
+            const themeColor = theme === 'light' ? '#FAFAFA' : '#000000';
+            const metaThemeColor = document.querySelector('meta[name="theme-color"]');
+            if (metaThemeColor) {
+                metaThemeColor.setAttribute('content', themeColor);
+            }
+
+            // Update charts if they exist
+            updateChartsTheme(theme);
+
+            // Re-enable transitions
+            if (!animate) {
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(() => {
+                        document.documentElement.classList.remove('no-transition');
+                    });
+                });
+            } else {
+                // Haptic feedback on user-initiated theme change
+                if (typeof hapticFeedback === 'function') {
+                    hapticFeedback('light');
+                }
+            }
+        }
+
+        function toggleTheme() {
+            const currentTheme = document.documentElement.getAttribute('data-theme') || 'dark';
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+
+            setTheme(newTheme, true);
+            localStorage.setItem(THEME_STORAGE_KEY, newTheme);
+        }
+
+        function updateChartsTheme(theme) {
+            // Update LightweightCharts colors if chart exists
+            if (typeof lwChart !== 'undefined' && lwChart) {
+                const chartColors = theme === 'light' ? {
+                    layout: {
+                        background: { color: '#FAFAFA' },
+                        textColor: '#6b7280'
+                    },
+                    grid: {
+                        vertLines: { color: 'rgba(217, 119, 6, 0.08)' },
+                        horzLines: { color: 'rgba(217, 119, 6, 0.08)' }
+                    },
+                    crosshair: {
+                        vertLine: { color: 'rgba(217, 119, 6, 0.5)', labelBackgroundColor: '#d97706' },
+                        horzLine: { color: 'rgba(217, 119, 6, 0.5)', labelBackgroundColor: '#f5f5f0' }
+                    },
+                    rightPriceScale: { borderColor: 'rgba(217, 119, 6, 0.2)' },
+                    timeScale: { borderColor: 'rgba(217, 119, 6, 0.2)' }
+                } : {
+                    layout: {
+                        background: { color: '#0a0a0a' },
+                        textColor: '#9ca3af'
+                    },
+                    grid: {
+                        vertLines: { color: 'rgba(255, 191, 0, 0.06)' },
+                        horzLines: { color: 'rgba(255, 191, 0, 0.06)' }
+                    },
+                    crosshair: {
+                        vertLine: { color: 'rgba(251, 191, 36, 0.4)', labelBackgroundColor: '#fbbf24' },
+                        horzLine: { color: 'rgba(251, 191, 36, 0.4)', labelBackgroundColor: '#333' }
+                    },
+                    rightPriceScale: { borderColor: 'rgba(255, 191, 0, 0.15)' },
+                    timeScale: { borderColor: 'rgba(255, 191, 0, 0.15)' }
+                };
+
+                try {
+                    lwChart.applyOptions(chartColors);
+                } catch (e) {
+                    console.debug('Chart theme update skipped:', e.message);
+                }
+            }
+        }
+
+        // Initialize theme immediately
+        initTheme();
 
         // ========================================
         // HAPTIC FEEDBACK SYSTEM (Optimization #3)
