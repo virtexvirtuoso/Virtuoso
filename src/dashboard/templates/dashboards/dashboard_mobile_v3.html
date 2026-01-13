@@ -3100,6 +3100,115 @@
             background: var(--bg-secondary);
             color: var(--text-primary);
         }
+
+        /* ===== COMPREHENSIVE LIGHT MODE OVERRIDES FOR INLINE STYLES ===== */
+
+        /* Override all dark rgba backgrounds in cards */
+        [data-theme="light"] .mobile-card [style*="rgba(0,0,0"] {
+            background: var(--bg-secondary) !important;
+        }
+
+        /* Market Overview inner boxes */
+        [data-theme="light"] .mobile-card > div[style*="background: linear-gradient(135deg, rgba(0,0,0"] {
+            background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-panel) 100%) !important;
+            border-color: var(--border-light) !important;
+        }
+
+        [data-theme="light"] .mobile-card > div[style*="background: rgba(0,0,0,0.15)"],
+        [data-theme="light"] .mobile-card > div[style*="background: rgba(0,0,0,0.2)"],
+        [data-theme="light"] .mobile-card div[style*="background: rgba(0,0,0,0.15)"],
+        [data-theme="light"] .mobile-card div[style*="background: rgba(0,0,0,0.2)"],
+        [data-theme="light"] .mobile-card div[style*="background: rgba(0,0,0,0.3)"] {
+            background: var(--bg-secondary) !important;
+            border: 1px solid var(--border-light) !important;
+        }
+
+        /* Progress bar backgrounds */
+        [data-theme="light"] div[style*="background: rgba(0,0,0,0.3)"][style*="border-radius"] {
+            background: rgba(0, 0, 0, 0.08) !important;
+        }
+
+        /* Breadth bar container */
+        [data-theme="light"] .breadth-bar-container,
+        [data-theme="light"] [style*="background: #0a1018"] {
+            background: rgba(0, 0, 0, 0.1) !important;
+        }
+
+        /* Sector rotation and special sections */
+        [data-theme="light"] div[style*="rgba(6, 182, 212"] {
+            background: linear-gradient(135deg, rgba(6, 182, 212, 0.12) 0%, var(--bg-secondary) 100%) !important;
+            border-color: rgba(6, 182, 212, 0.3) !important;
+        }
+
+        [data-theme="light"] div[style*="rgba(251, 191, 36"] {
+            background: linear-gradient(135deg, rgba(251, 191, 36, 0.12) 0%, var(--bg-secondary) 100%) !important;
+            border-color: rgba(251, 191, 36, 0.25) !important;
+        }
+
+        /* Card expanded sections */
+        [data-theme="light"] [id*="_expanded"] {
+            background: var(--bg-secondary) !important;
+            border-color: var(--border-light) !important;
+        }
+
+        [data-theme="light"] [id*="_buttons"] {
+            background: var(--bg-secondary) !important;
+        }
+
+        /* Settings overlay */
+        [data-theme="light"] #settingsOverlay {
+            background: rgba(0, 0, 0, 0.3) !important;
+        }
+
+        /* Loading states */
+        [data-theme="light"] .loading-overlay,
+        [data-theme="light"] [style*="rgba(0, 0, 0, 0.85)"] {
+            background: rgba(255, 255, 255, 0.9) !important;
+            color: var(--text-primary) !important;
+        }
+
+        /* Quick actions and menus */
+        [data-theme="light"] .quick-actions-menu,
+        [data-theme="light"] [style*="rgba(0, 0, 0, 0.8)"] {
+            background: rgba(255, 255, 255, 0.95) !important;
+            border: 1px solid var(--border-light) !important;
+            box-shadow: var(--shadow-elevated) !important;
+        }
+
+        /* Select dropdowns */
+        [data-theme="light"] select {
+            background: var(--bg-panel) !important;
+            color: var(--text-primary) !important;
+            border-color: var(--border-light) !important;
+        }
+
+        /* Stat boxes text */
+        [data-theme="light"] .mobile-card div[style*="text-align: center"] {
+            color: var(--text-primary);
+        }
+
+        /* Labels and secondary text in cards */
+        [data-theme="light"] .mobile-card span[style*="color: #9ca3af"],
+        [data-theme="light"] .mobile-card span[style*="color: var(--text-secondary)"],
+        [data-theme="light"] .mobile-card div[style*="color: #9ca3af"] {
+            color: var(--text-secondary) !important;
+        }
+
+        /* Checkbox and input styling */
+        [data-theme="light"] input[type="checkbox"] {
+            accent-color: var(--accent-primary);
+        }
+
+        /* Chart containers */
+        [data-theme="light"] .chart-container,
+        [data-theme="light"] [style*="background: { color: '#0a0a0a'"] {
+            background: var(--bg-panel) !important;
+        }
+
+        /* Border overrides */
+        [data-theme="light"] [style*="border: 1px solid rgba(255,255,255"] {
+            border-color: var(--border-light) !important;
+        }
     </style>
 </head>
 <body>
