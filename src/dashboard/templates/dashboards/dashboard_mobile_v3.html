@@ -3203,91 +3203,50 @@
             color: var(--text-primary);
         }
 
-        /* Force ALL text inside cards to be dark */
+        /* ===== NUCLEAR TEXT COLOR OVERRIDE ===== */
+        /* Use direct hex values, not CSS vars, for maximum reliability */
+
+        /* Force ALL text inside cards to be dark - direct hex value */
+        [data-theme="light"] .mobile-card,
         [data-theme="light"] .mobile-card div,
-        [data-theme="light"] .mobile-card span {
-            color: var(--text-primary) !important;
+        [data-theme="light"] .mobile-card span,
+        [data-theme="light"] .mobile-card p,
+        [data-theme="light"] .mobile-card label {
+            color: #1f2937 !important;
         }
 
-        /* Restore semantic colors */
-        [data-theme="light"] .mobile-card [style*="color: var(--accent-positive)"],
-        [data-theme="light"] .mobile-card [style*="color: #10b981"],
-        [data-theme="light"] .mobile-card [style*="color:#10b981"] {
+        /* Override ANY inline color styles */
+        [data-theme="light"] .mobile-card [style*="color:"],
+        [data-theme="light"] .mobile-card [style*="color :"] {
+            color: #1f2937 !important;
+        }
+
+        /* Restore semantic colors - these MUST come after the nuclear override */
+        [data-theme="light"] .mobile-card [style*="var(--accent-positive)"],
+        [data-theme="light"] .mobile-card [style*="#10b981"],
+        [data-theme="light"] .mobile-card [style*="rgb(16, 185, 129)"] {
             color: #047857 !important;
         }
 
-        [data-theme="light"] .mobile-card [style*="color: var(--accent-negative)"],
-        [data-theme="light"] .mobile-card [style*="color: #ef4444"],
-        [data-theme="light"] .mobile-card [style*="color:#ef4444"] {
+        [data-theme="light"] .mobile-card [style*="var(--accent-negative)"],
+        [data-theme="light"] .mobile-card [style*="#ef4444"],
+        [data-theme="light"] .mobile-card [style*="rgb(239, 68, 68)"] {
             color: #b91c1c !important;
         }
 
-        [data-theme="light"] .mobile-card [style*="color: var(--accent-warning)"],
-        [data-theme="light"] .mobile-card [style*="color: var(--neon-amber)"],
-        [data-theme="light"] .mobile-card [style*="color: #f59e0b"],
-        [data-theme="light"] .mobile-card [style*="color:#f59e0b"],
-        [data-theme="light"] .mobile-card [style*="color: #fbbf24"],
-        [data-theme="light"] .mobile-card [style*="color:#fbbf24"],
-        [data-theme="light"] .mobile-card [style*="color: #ffa500"],
-        [data-theme="light"] .mobile-card [style*="color:#ffa500"] {
+        [data-theme="light"] .mobile-card [style*="var(--accent-warning)"],
+        [data-theme="light"] .mobile-card [style*="var(--neon-amber)"],
+        [data-theme="light"] .mobile-card [style*="#f59e0b"],
+        [data-theme="light"] .mobile-card [style*="#fbbf24"],
+        [data-theme="light"] .mobile-card [style*="#ffa500"] {
             color: #b45309 !important;
         }
 
-        /* Secondary text should be readable but slightly muted */
-        [data-theme="light"] .mobile-card [style*="color: var(--text-secondary)"] {
-            color: #4b5563 !important;
-        }
-
-        /* ===== FORCE READABLE TEXT COLORS ===== */
-
-        /* Override ALL light gray text colors */
-        [data-theme="light"] [style*="color: #9ca3af"],
-        [data-theme="light"] [style*="color:#9ca3af"],
-        [data-theme="light"] [style*="color: rgb(156, 163, 175)"],
-        [data-theme="light"] [style*="color: #6b7280"],
-        [data-theme="light"] [style*="color:#6b7280"],
-        [data-theme="light"] span[style*="color: var(--text-secondary)"] {
-            color: #374151 !important;
-        }
-
-        /* Make all text in cards readable */
-        [data-theme="light"] .mobile-card,
-        [data-theme="light"] .mobile-card * {
-            color: var(--text-primary);
-        }
-
-        /* Restore specific colored elements */
+        /* Card titles - navy accent */
         [data-theme="light"] .mobile-card .card-title,
         [data-theme="light"] .mobile-card h2,
-        [data-theme="light"] .mobile-card h3,
-        [data-theme="light"] .mobile-card h4 {
-            color: var(--accent-navy) !important;
-        }
-
-        /* Labels should be darker */
-        [data-theme="light"] .mobile-card span,
-        [data-theme="light"] .mobile-card label {
-            color: #374151 !important;
-        }
-
-        /* Keep semantic colors for values */
-        [data-theme="light"] [style*="color: #10b981"],
-        [data-theme="light"] [style*="color:#10b981"],
-        [data-theme="light"] [style*="color: var(--accent-positive)"] {
-            color: #047857 !important;
-        }
-
-        [data-theme="light"] [style*="color: #ef4444"],
-        [data-theme="light"] [style*="color:#ef4444"],
-        [data-theme="light"] [style*="color: var(--accent-negative)"] {
-            color: #b91c1c !important;
-        }
-
-        [data-theme="light"] [style*="color: #f59e0b"],
-        [data-theme="light"] [style*="color:#f59e0b"],
-        [data-theme="light"] [style*="color: var(--accent-warning)"],
-        [data-theme="light"] [style*="color: var(--neon-amber)"] {
-            color: #b45309 !important;
+        [data-theme="light"] .mobile-card h3 {
+            color: #1e3a5f !important;
         }
 
         /* ===== SKELETON LOADERS - More visible ===== */
