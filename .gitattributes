@@ -61,5 +61,20 @@ src/indicators/sentiment_indicators.py filter=git-crypt diff=git-crypt
 src/indicators/technical_indicators.py filter=git-crypt diff=git-crypt
 src/indicators/price_structure_indicators.py filter=git-crypt diff=git-crypt
 
+# Signal generation (core trading signal logic)
+src/signal_generation/signal_generator.py filter=git-crypt diff=git-crypt
+
+# Core analysis modules (proprietary algorithms)
+src/core/analysis/market_regime_detector.py filter=git-crypt diff=git-crypt
+src/core/analysis/liquidation_detector.py filter=git-crypt diff=git-crypt
+src/core/analysis/market_psychology_shadow.py filter=git-crypt diff=git-crypt
+src/core/analysis/alpha_scanner.py filter=git-crypt diff=git-crypt
+src/core/analysis/dual_regime_calculator.py filter=git-crypt diff=git-crypt
+src/core/analysis/mtf_beta_ranker.py filter=git-crypt diff=git-crypt
+src/core/analysis/enhanced_liquidation_analyzer.py filter=git-crypt diff=git-crypt
+
+# Monitoring (signal processing pipeline)
+src/monitoring/signal_processor.py filter=git-crypt diff=git-crypt
+
 # NOTE: docs/**/*.md encryption removed 2026-01-14 - caused corruption when files
 # were committed unencrypted. Docs don't contain proprietary algorithms anyway.
