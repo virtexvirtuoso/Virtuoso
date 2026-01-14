@@ -30,7 +30,7 @@ class MobileOptimizationService:
         try:
             # Import here to avoid circular dependencies
             from src.api.cache_adapter_direct import cache_adapter
-            from src.core.cache.priority_warmer import priority_cache_warmer
+            from src.core.cache_warmer import priority_cache_warmer
             from src.api.services.mobile_fallback_service import mobile_fallback_service
             
             self.cache_adapter = cache_adapter

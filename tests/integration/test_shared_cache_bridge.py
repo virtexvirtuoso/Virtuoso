@@ -134,12 +134,10 @@ class SharedCacheBridgeValidator:
         logger.info("📊 Test 2: Data Bridge Population Validation")
 
         try:
-            # Import trading service bridge
-            from src.core.cache.trading_service_bridge import get_trading_service_bridge
+            # Use direct SharedCacheBridge for publishing (simplified architecture)
+            from src.core.cache.shared_cache_bridge import get_shared_cache_bridge, publish_market_data
 
-            # Get trading bridge
-            trading_bridge = get_trading_service_bridge()
-            await trading_bridge.initialize()
+            bridge = get_shared_cache_bridge()
 
             # Test data population
             test_market_data = {
@@ -153,8 +151,8 @@ class SharedCacheBridgeValidator:
                 'test_identifier': f'bridge_test_{int(time.time())}'
             }
 
-            # Populate market overview
-            await trading_bridge.populate_market_overview(test_market_data)
+            # Populate market overview using direct publish
+            await publish_market_data('market:overview', test_market_data, ttl=300)
 
             # Test signals data
             test_signals = {
@@ -177,7 +175,7 @@ class SharedCacheBridgeValidator:
                 'timestamp': int(time.time())
             }
 
-            await trading_bridge.populate_signals_data(test_signals)
+            await publish_market_data('analysis:signals', test_signals, ttl=300)
 
             # Test market movers
             test_movers = {
@@ -190,18 +188,19 @@ class SharedCacheBridgeValidator:
                 ]
             }
 
-            await trading_bridge.populate_market_movers(test_movers)
+            await publish_market_data('market:movers', test_movers, ttl=300)
 
             # Verify data was stored
             await asyncio.sleep(2)  # Allow propagation
 
-            # Check performance metrics
-            metrics = trading_bridge.get_performance_metrics()
-            if metrics['cache_updates'] < 3:
-                logger.error(f"❌ Expected at least 3 cache updates, got {metrics['cache_updates']}")
+            # Check bridge metrics
+            metrics = bridge.get_bridge_metrics()
+            data_events = metrics.get('cross_service_metrics', {}).get('data_bridge_events', 0)
+            if data_events < 3:
+                logger.error(f"❌ Expected at least 3 data bridge events, got {data_events}")
                 return False
 
-            logger.info(f"✅ Data bridge populated {metrics['cache_updates']} cache entries")
+            logger.info(f"✅ Data bridge populated {data_events} cache entries")
             self.test_results['data_bridge_test'] = True
             return True
 
@@ -280,17 +279,14 @@ class SharedCacheBridgeValidator:
 
         try:
             from src.core.cache.shared_cache_bridge import get_shared_cache_bridge
-            from src.core.cache.trading_service_bridge import get_trading_service_bridge
             from src.core.cache.web_service_adapter import get_web_service_cache_adapter
 
-            # Get all components
+            # Get components (simplified - no trading_service_bridge layer)
             shared_bridge = get_shared_cache_bridge()
-            trading_bridge = get_trading_service_bridge()
             web_adapter = get_web_service_cache_adapter()
 
             # Collect performance metrics
             shared_metrics = shared_bridge.get_bridge_metrics()
-            trading_metrics = trading_bridge.get_performance_metrics()
             web_metrics = web_adapter.get_performance_metrics()
 
             # Performance benchmark test
@@ -333,17 +329,18 @@ class SharedCacheBridgeValidator:
         logger.info("🔄 Test 5: End-to-End Data Flow Validation")
 
         try:
-            from src.core.cache.service_integration import validate_cache_bridge_connectivity
+            from src.core.cache.shared_cache_bridge import get_shared_cache_bridge
+            from src.core.cache.web_service_adapter import get_web_service_cache_adapter
 
-            # Run comprehensive connectivity validation
-            connectivity_valid = await validate_cache_bridge_connectivity()
+            # Validate connectivity directly via SharedCacheBridge health check
+            shared_bridge = get_shared_cache_bridge()
+            health = await shared_bridge.health_check()
 
-            if not connectivity_valid:
-                logger.error("❌ Cache bridge connectivity validation failed")
+            if health.get('status') != 'healthy':
+                logger.error(f"❌ Cache bridge health check failed: {health}")
                 return False
 
             # Test data freshness
-            from src.core.cache.web_service_adapter import get_web_service_cache_adapter
             web_adapter = get_web_service_cache_adapter()
 
             # Get current data

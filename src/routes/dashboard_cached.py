@@ -497,7 +497,7 @@ async def get_mobile_performance() -> Dict[str, Any]:
         
         # Get priority warmer stats
         try:
-            from src.core.cache.priority_warmer import priority_cache_warmer
+            from src.core.cache_warmer import priority_cache_warmer
             performance_data['priority_warmer_stats'] = priority_cache_warmer.get_warming_stats()
         except Exception as e:
             performance_data['priority_warmer_error'] = str(e)

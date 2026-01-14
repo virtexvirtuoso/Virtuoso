@@ -1062,13 +1062,16 @@ async def lifespan(app: FastAPI):
         app.state.liquidation_detector = getattr(market_monitor, 'liquidation_detector', None)
 
         # CRITICAL INTEGRATION: Initialize shared cache bridge with market monitor
+        # Simplified: Use direct SharedCacheBridge + market_monitor.set_shared_cache() instead of service_integration layer
         try:
-            from src.core.cache.service_integration import trading_service_startup_hook
-            cache_integration_success = await trading_service_startup_hook(market_monitor)
-            if cache_integration_success:
+            from src.core.cache.shared_cache_bridge import get_shared_cache_bridge, initialize_shared_cache
+            cache_initialized = await initialize_shared_cache()
+            if cache_initialized:
+                shared_cache = get_shared_cache_bridge()
+                market_monitor.set_shared_cache(shared_cache)
                 logger.info("✅ Shared cache bridge integration successful - data flow enabled")
             else:
-                logger.warning("⚠️ Shared cache bridge integration failed - performance may be limited")
+                logger.warning("⚠️ Shared cache bridge initialization failed - performance may be limited")
         except Exception as e:
             logger.error(f"❌ Shared cache bridge integration error: {e}")
 

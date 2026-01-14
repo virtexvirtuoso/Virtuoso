@@ -26,7 +26,7 @@ from .multi_tier_cache import (
 #     start_intelligent_cache_warming
 # )
 
-from .monitoring import (
+from .cache_monitoring import (
     CachePerformanceMonitor,
     PerformanceAlert,
     AlertLevel,
