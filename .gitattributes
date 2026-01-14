@@ -61,5 +61,5 @@ src/indicators/sentiment_indicators.py filter=git-crypt diff=git-crypt
 src/indicators/technical_indicators.py filter=git-crypt diff=git-crypt
 src/indicators/price_structure_indicators.py filter=git-crypt diff=git-crypt
 
-# Documentation (proprietary system documentation)
-docs/**/*.md filter=git-crypt diff=git-crypt
+# NOTE: docs/**/*.md encryption removed 2026-01-14 - caused corruption when files
+# were committed unencrypted. Docs don't contain proprietary algorithms anyway.
