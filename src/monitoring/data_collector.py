@@ -147,7 +147,9 @@ class DataCollector(MonitoringComponent, DataProvider):
                 # Verify cache has essential data (ticker at minimum)
                 if mdm_data.get('ticker'):
                     self._fetch_stats['cache_hits'] += 1
-                    self.logger.debug(f"Using MDM pre-warmed cache for {symbol}, has premium_index: {'premium_index' in mdm_data}")
+                    rpi_ob = mdm_data.get('rpi_orderbook', {})
+                    rpi_en = mdm_data.get('rpi_enabled', False)
+                    self.logger.debug(f"Using MDM pre-warmed cache for {symbol}, premium_index: {'premium_index' in mdm_data}, rpi_enabled={rpi_en}, rpi_orderbook_has_data={bool(rpi_ob and rpi_ob.get('b'))}")
                     # Format for consistency with our output
                     return {
                         'symbol': symbol,
@@ -164,6 +166,10 @@ class DataCollector(MonitoringComponent, DataProvider):
                         # Phase 1 Predictive Confluence data (2025-12)
                         'premium_index': mdm_data.get('premium_index'),
                         'taker_volume_ratio': mdm_data.get('taker_volume_ratio'),
+                        # TR-6967B37C fix: Pass through RPI data for retail score calculation
+                        'rpi_orderbook': mdm_data.get('rpi_orderbook', {}),
+                        'rpi_enabled': mdm_data.get('rpi_enabled', False),
+                        'enhanced_orderbook': mdm_data.get('enhanced_orderbook', {}),
                     }
 
         # Check local cache second
