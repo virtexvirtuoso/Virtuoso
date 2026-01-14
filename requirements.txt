@@ -42,7 +42,7 @@ discord-webhook==1.4.1
 discord.py==2.5.2
 dparse==0.6.4
 ecdsa==0.19.1
-fastapi==0.115.12
+fastapi==0.128.0
 filelock==3.20.3
 fonttools==4.60.2
 fpdf2==2.8.4
