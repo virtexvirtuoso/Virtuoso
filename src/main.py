@@ -2005,6 +2005,14 @@ async def aggregate_confluence_signals():
                     ticker = ticker_data.get(symbol, {})
                     
                     # Map breakdown structure to expected format with price data
+                    # Extract high/low for range calculation (TR-6967B37C fix)
+                    high_24h = ticker.get('high_24h', ticker.get('high', ticker.get('highPrice24h', 0)))
+                    low_24h = ticker.get('low_24h', ticker.get('low', ticker.get('lowPrice24h', 0)))
+                    # Calculate range_24h as percentage (TR-6967B37C fix)
+                    range_24h = 0
+                    if low_24h > 0:
+                        range_24h = round(((high_24h - low_24h) / low_24h) * 100, 2)
+
                     analysis = {
                         'symbol': symbol,
                         'confluence_score': breakdown.get('overall_score', 50),
@@ -2019,9 +2027,10 @@ async def aggregate_confluence_signals():
                         'price': ticker.get('price', ticker.get('last', 0)),
                         'volume_24h': ticker.get('volume_24h_usd', ticker.get('volume', 0)),
                         'price_change_percent': ticker.get('price_change_percent', ticker.get('percentage', 0)),
-                        'high_24h': ticker.get('high_24h', ticker.get('high', 0)),
-                        'low_24h': ticker.get('low_24h', ticker.get('low', 0)),
-                        'turnover_24h': ticker.get('volume_24h_usd', ticker.get('turnover', 0))
+                        'high_24h': high_24h,
+                        'low_24h': low_24h,
+                        'range_24h': range_24h,  # TR-6967B37C fix: add range_24h calculation
+                        'turnover_24h': ticker.get('turnover24h', ticker.get('volume_24h_usd', ticker.get('turnover', 0)))  # TR-6967B37C fix: use turnover24h
                     }
                     all_analyses[symbol] = analysis
                     logger.debug(f"Got breakdown for {symbol}: components={bool(breakdown.get('components'))}, price=${analysis['price']}")
@@ -2047,6 +2056,7 @@ async def aggregate_confluence_signals():
                 'price_change_percent': analysis.get('price_change_percent', 0),
                 'high_24h': analysis.get('high_24h', 0),
                 'low_24h': analysis.get('low_24h', 0),
+                'range_24h': analysis.get('range_24h', 0),  # TR-6967B37C fix: add range_24h
                 'turnover_24h': analysis.get('turnover_24h', 0)
             }
             signals_list.append(signal)
