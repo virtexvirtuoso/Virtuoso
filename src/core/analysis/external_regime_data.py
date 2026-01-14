@@ -143,7 +143,24 @@ class ExternalRegimeDataProvider:
         self._global_cache: Optional[GlobalMarketData] = None
         self._sentiment_cache: Optional[SentimentData] = None
 
+        # Shared HTTP session (lazy initialization)
+        self._session: Optional[aiohttp.ClientSession] = None
+
         self.logger.info("ExternalRegimeDataProvider initialized")
+
+    async def _get_session(self) -> aiohttp.ClientSession:
+        """Get or create shared HTTP session."""
+        if self._session is None or self._session.closed:
+            # Increased timeout to handle event loop contention during WebSocket activity
+            timeout = aiohttp.ClientTimeout(total=15, connect=5)
+            self._session = aiohttp.ClientSession(timeout=timeout)
+        return self._session
+
+    async def close(self):
+        """Close the HTTP session."""
+        if self._session and not self._session.closed:
+            await self._session.close()
+            self._session = None
 
     async def get_external_signals(self) -> ExternalRegimeSignals:
         """
@@ -184,19 +201,19 @@ class ExternalRegimeDataProvider:
             return ExternalRegimeSignals()
 
     async def _fetch_derivatives_data(self) -> DerivativesData:
-        """Fetch derivatives data from perps-tracker."""
+        """Fetch derivatives data from perps-tracker with retry."""
         now = time.time()
 
         # Check cache
         if self._derivatives_cache and (now - self._derivatives_cache.timestamp) < self.PERPS_TTL:
             return self._derivatives_cache
 
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(
-                    self.PERPS_TRACKER_URL,
-                    timeout=aiohttp.ClientTimeout(total=10)
-                ) as response:
+        # Retry with backoff for local service (handles event loop contention)
+        max_retries = 2
+        for attempt in range(max_retries + 1):
+            try:
+                session = await self._get_session()
+                async with session.get(self.PERPS_TRACKER_URL) as response:
                     if response.status == 200:
                         data = await response.json()
 
@@ -222,14 +239,21 @@ class ExternalRegimeDataProvider:
                             )
                             return result
 
-            self.logger.warning("Perps tracker returned non-success status")
+                    self.logger.warning("Perps tracker returned non-success status")
+                    break  # Don't retry non-success responses
 
-        except asyncio.TimeoutError:
-            self.logger.warning("Perps tracker request timed out")
-        except aiohttp.ClientError as e:
-            self.logger.warning(f"Perps tracker connection error: {e}")
-        except Exception as e:
-            self.logger.error(f"Perps tracker error: {e}")
+            except asyncio.TimeoutError:
+                if attempt < max_retries:
+                    self.logger.debug(f"Perps tracker timeout, retry {attempt + 1}/{max_retries}")
+                    await asyncio.sleep(1)  # Brief pause before retry
+                else:
+                    self.logger.warning("Perps tracker request timed out after retries")
+            except aiohttp.ClientError as e:
+                self.logger.warning(f"Perps tracker connection error: {e}")
+                break  # Don't retry connection errors
+            except Exception as e:
+                self.logger.error(f"Perps tracker error: {e}")
+                break
 
         return self._derivatives_cache or DerivativesData()
 
@@ -242,33 +266,30 @@ class ExternalRegimeDataProvider:
             return self._global_cache
 
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(
-                    self.COINGECKO_GLOBAL_URL,
-                    timeout=aiohttp.ClientTimeout(total=10)
-                ) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        global_data = data.get('data', {})
-                        market_cap_pct = global_data.get('market_cap_percentage', {})
+            session = await self._get_session()
+            async with session.get(self.COINGECKO_GLOBAL_URL) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    global_data = data.get('data', {})
+                    market_cap_pct = global_data.get('market_cap_percentage', {})
 
-                        result = GlobalMarketData(
-                            btc_dominance=market_cap_pct.get('btc', 57.0),
-                            eth_dominance=market_cap_pct.get('eth', 11.5),
-                            market_cap_change_24h=global_data.get('market_cap_change_percentage_24h_usd', 0.0),
-                            total_market_cap=global_data.get('total_market_cap', {}).get('usd', 0),
-                            total_volume_24h=global_data.get('total_volume', {}).get('usd', 0),
-                            active_cryptocurrencies=global_data.get('active_cryptocurrencies', 0),
-                            timestamp=now,
-                            is_fresh=True
-                        )
+                    result = GlobalMarketData(
+                        btc_dominance=market_cap_pct.get('btc', 57.0),
+                        eth_dominance=market_cap_pct.get('eth', 11.5),
+                        market_cap_change_24h=global_data.get('market_cap_change_percentage_24h_usd', 0.0),
+                        total_market_cap=global_data.get('total_market_cap', {}).get('usd', 0),
+                        total_volume_24h=global_data.get('total_volume', {}).get('usd', 0),
+                        active_cryptocurrencies=global_data.get('active_cryptocurrencies', 0),
+                        timestamp=now,
+                        is_fresh=True
+                    )
 
-                        self._global_cache = result
-                        self.logger.debug(
-                            f"CoinGecko: BTC dom={result.btc_dominance:.1f}%, "
-                            f"MCap chg={result.market_cap_change_24h:.2f}%"
-                        )
-                        return result
+                    self._global_cache = result
+                    self.logger.debug(
+                        f"CoinGecko: BTC dom={result.btc_dominance:.1f}%, "
+                        f"MCap chg={result.market_cap_change_24h:.2f}%"
+                    )
+                    return result
 
         except asyncio.TimeoutError:
             self.logger.warning("CoinGecko request timed out")
@@ -286,25 +307,22 @@ class ExternalRegimeDataProvider:
             return self._sentiment_cache
 
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(
-                    self.FEAR_GREED_URL,
-                    timeout=aiohttp.ClientTimeout(total=10)
-                ) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        fng_data = data.get('data', [{}])[0]
+            session = await self._get_session()
+            async with session.get(self.FEAR_GREED_URL) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    fng_data = data.get('data', [{}])[0]
 
-                        result = SentimentData(
-                            value=int(fng_data.get('value', 50)),
-                            classification=fng_data.get('value_classification', 'Neutral'),
-                            timestamp=now,
-                            is_fresh=True
-                        )
+                    result = SentimentData(
+                        value=int(fng_data.get('value', 50)),
+                        classification=fng_data.get('value_classification', 'Neutral'),
+                        timestamp=now,
+                        is_fresh=True
+                    )
 
-                        self._sentiment_cache = result
-                        self.logger.debug(f"Fear/Greed: {result.value} ({result.classification})")
-                        return result
+                    self._sentiment_cache = result
+                    self.logger.debug(f"Fear/Greed: {result.value} ({result.classification})")
+                    return result
 
         except asyncio.TimeoutError:
             self.logger.warning("Fear/Greed request timed out")

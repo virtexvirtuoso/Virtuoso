@@ -294,6 +294,9 @@ class SignalGenerator:
         else:
             self.logger.info("ℹ️  Dual-regime calculator not available (module not found)")
 
+        # Cached external regime data provider (lazy init to avoid circular imports)
+        self._external_regime_provider = None
+
         # Verify AlertManager initialization
         if self.alert_manager and hasattr(self.alert_manager, 'discord_webhook_url') and self.alert_manager.discord_webhook_url:
             self.logger.info(f"✅ AlertManager initialized with Discord webhook URL")
@@ -481,12 +484,12 @@ class SignalGenerator:
             return None
 
         try:
-            # Import external regime data provider
-            from src.core.analysis.external_regime_data import ExternalRegimeDataProvider
+            # Use cached provider instance (lazy initialization)
+            if self._external_regime_provider is None:
+                from src.core.analysis.external_regime_data import ExternalRegimeDataProvider
+                self._external_regime_provider = ExternalRegimeDataProvider(self.config)
 
-            # Get singleton instance or create new one
-            provider = ExternalRegimeDataProvider(self.config)
-            signals = await provider.get_external_signals()
+            signals = await self._external_regime_provider.get_external_signals()
 
             # Map external signals to MarketRegimeContext
             market_context = MarketRegimeContext(
@@ -3879,4 +3882,14 @@ class SignalGenerator:
             self.logger.error(f"Error fetching OHLCV data for {symbol}: {str(e)}")
             self.logger.debug(traceback.format_exc())
             return None
+
+    async def cleanup(self) -> None:
+        """Clean up resources held by the signal generator."""
+        if self._external_regime_provider is not None:
+            try:
+                await self._external_regime_provider.close()
+                self._external_regime_provider = None
+                self.logger.debug("Closed external regime provider session")
+            except Exception as e:
+                self.logger.warning(f"Error closing external regime provider: {e}")
 

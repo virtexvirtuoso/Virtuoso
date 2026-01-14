@@ -116,7 +116,8 @@ class MarketDataManager:
             'long_short_ratio': 3600,  # 1 hour (REST only)
             'risk_limits': 86400,      # 1 day (REST only)
             'taker_volume_ratio': 120, # 2 minutes - needs fresh trades within 5-min lookback
-            'premium_index': 300       # 5 minutes - uses 5-min kline data
+            'premium_index': 300,      # 5 minutes - uses 5-min kline data
+            'open_interest': 300       # 5 minutes - OI history for divergence calculation
         }
         
         # State tracking
@@ -182,7 +183,8 @@ class MarketDataManager:
                 'long_short_ratio': self.base_refresh_intervals['long_short_ratio'],
                 'risk_limits': self.base_refresh_intervals['risk_limits'],
                 'taker_volume_ratio': self.base_refresh_intervals['taker_volume_ratio'],
-                'premium_index': self.base_refresh_intervals['premium_index']
+                'premium_index': self.base_refresh_intervals['premium_index'],
+                'open_interest': self.base_refresh_intervals['open_interest']
             }
         else:
             return self.base_refresh_intervals
@@ -372,7 +374,7 @@ class MarketDataManager:
             List of component names that need refreshing
         """
         if symbol not in self.last_full_refresh:
-            return ['ticker', 'orderbook', 'kline', 'trades', 'long_short_ratio', 'risk_limits', 'taker_volume_ratio', 'premium_index']
+            return ['ticker', 'orderbook', 'kline', 'trades', 'long_short_ratio', 'risk_limits', 'taker_volume_ratio', 'premium_index', 'open_interest']
         
         last_refresh = self.last_full_refresh[symbol]
         components_to_refresh = []
@@ -507,6 +509,33 @@ class MarketDataManager:
                         if premium_data:
                             self.data_cache[symbol]['premium_index'] = premium_data
                             self.last_full_refresh[symbol]['components']['premium_index'] = current_time
+
+                elif component == 'open_interest':
+                    # Refresh open interest history for OI-price divergence calculation
+                    primary_exchange = await self.exchange_manager.get_primary_exchange()
+                    if primary_exchange and hasattr(primary_exchange, 'fetch_open_interest_history'):
+                        oi_data = await self._fetch_with_rate_limiting(
+                            'v5/market/open-interest',
+                            lambda: primary_exchange.fetch_open_interest_history(symbol, interval='5min', limit=200)
+                        )
+                        if oi_data and isinstance(oi_data, dict) and oi_data.get('history'):
+                            history_list = oi_data.get('history', [])
+                            # Get current and previous values from history
+                            current_oi = float(history_list[0]['value']) if history_list else 0.0
+                            previous_oi = float(history_list[1]['value']) if len(history_list) > 1 else current_oi
+
+                            self.data_cache[symbol]['open_interest'] = {
+                                'current': current_oi,
+                                'previous': previous_oi,
+                                'timestamp': int(oi_data.get('timestamp', time.time() * 1000)),
+                                'history': history_list,
+                                'is_synthetic': False
+                            }
+                            self.data_cache[symbol]['open_interest_history'] = history_list
+                            self.last_full_refresh[symbol]['components']['open_interest'] = current_time
+                            logger.debug(f"Refreshed OI for {symbol}: {len(history_list)} history points")
+                        else:
+                            logger.warning(f"OI refresh for {symbol} returned empty/invalid data")
 
                 # Update stats
                 self.stats['rest_calls'] += 1
@@ -767,15 +796,23 @@ class MarketDataManager:
                                             
                                     self.logger.debug(f"Using OHLCV data for synthetic OI: price={price}, volume={volume_24h}")
                             
-                            # Don't generate synthetic OI - return None if no real data
+                            # Create minimal structure even when no real OI data available
+                            # This prevents "No proper history found" warnings in confluence analyzer
+                            now = int(time.time() * 1000)
                             if price > 0 and volume_24h > 0:
-                                self.logger.warning(f"No real OI data available for {symbol}")
-                                market_data['open_interest'] = None
-                                market_data['open_interest_history'] = []
+                                self.logger.warning(f"No real OI data available for {symbol}, using minimal structure")
                             else:
-                                self.logger.error(f"FALLBACK FAILED: Could not create synthetic OI - missing price/volume data for {symbol}")
-                                market_data['open_interest'] = None
-                                market_data['open_interest_history'] = []
+                                self.logger.error(f"FALLBACK: No price/volume data for synthetic OI for {symbol}, using minimal structure")
+
+                            # Create minimal structure with empty history
+                            # This allows confluence analyzer to gracefully skip OI divergence calculation
+                            market_data['open_interest'] = {
+                                'current': 0.0,
+                                'previous': 0.0,
+                                'timestamp': now,
+                                'history': []
+                            }
+                            market_data['open_interest_history'] = []
                                 
             except Exception as e:
                 self.logger.error(f"Error processing open interest data: {str(e)}")
