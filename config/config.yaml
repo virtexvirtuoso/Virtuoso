@@ -570,16 +570,17 @@ confluence:
       technical: 0.1
       sentiment: 0.07
     sub_components:
+      # Orderbook weights (2026-01-14): Retail disabled - Bybit RPI only for spot (TR-6967CDCB)
       orderbook:
         depth: 0.19
-        imbalance: 0.17
-        oir: 0.15
+        imbalance: 0.19          # +0.02 from retail
+        oir: 0.16                # +0.01 from retail
         liquidity: 0.13
-        mpi: 0.11
+        mpi: 0.12                # +0.01 from retail
         manipulation: 0.08
         absorption_exhaustion: 0.08
         di: 0.05
-        retail: 0.04
+        retail: 0.00             # DISABLED: RPI only exists for spot, not perps
       orderflow:
         cvd: 0.22
         imbalance: 0.13
@@ -1027,7 +1028,9 @@ market_data:
       min_levels: 10
       update_interval: 100
       rpi:
-        enabled: true
+        # DISABLED: Bybit RPI only available for spot, not linear/perpetuals (TR-6967CDCB)
+        # Re-enable after validating spot RPI as perp sentiment proxy
+        enabled: false
         retail_threshold: 0.05
         cache_ttl: 30
         extreme_thresholds:
