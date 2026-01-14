@@ -146,6 +146,9 @@ class ExternalRegimeDataProvider:
         # Shared HTTP session (lazy initialization)
         self._session: Optional[aiohttp.ClientSession] = None
 
+        # Lock to prevent thundering herd on cache miss
+        self._fetch_lock: Optional[asyncio.Lock] = None
+
         self.logger.info("ExternalRegimeDataProvider initialized")
 
     async def _get_session(self) -> aiohttp.ClientSession:
@@ -201,61 +204,72 @@ class ExternalRegimeDataProvider:
             return ExternalRegimeSignals()
 
     async def _fetch_derivatives_data(self) -> DerivativesData:
-        """Fetch derivatives data from perps-tracker with retry."""
+        """Fetch derivatives data from perps-tracker with retry and thundering herd protection."""
         now = time.time()
 
-        # Check cache
+        # Fast path: check cache without lock
         if self._derivatives_cache and (now - self._derivatives_cache.timestamp) < self.PERPS_TTL:
             return self._derivatives_cache
 
-        # Retry with backoff for local service (handles event loop contention)
-        max_retries = 2
-        for attempt in range(max_retries + 1):
-            try:
-                session = await self._get_session()
-                async with session.get(self.PERPS_TRACKER_URL) as response:
-                    if response.status == 200:
-                        data = await response.json()
+        # Lazy init lock (must be created in async context)
+        if self._fetch_lock is None:
+            self._fetch_lock = asyncio.Lock()
 
-                        if data.get('status') == 'success':
-                            result = DerivativesData(
-                                funding_rate=data.get('funding_rate', 0.0),
-                                funding_sentiment=data.get('funding_sentiment', 'NEUTRAL'),
-                                basis_pct=data.get('basis_pct', 0.0),
-                                basis_status=data.get('basis_status', 'NEUTRAL'),
-                                long_pct=data.get('long_pct', 50.0),
-                                short_pct=data.get('short_pct', 50.0),
-                                total_open_interest=data.get('total_open_interest', 0.0),
-                                total_volume_24h=data.get('total_volume_24h', 0.0),
-                                timestamp=now,
-                                is_fresh=True
-                            )
+        # Acquire lock to prevent thundering herd
+        async with self._fetch_lock:
+            # Double-check cache after acquiring lock (another coroutine may have populated it)
+            now = time.time()
+            if self._derivatives_cache and (now - self._derivatives_cache.timestamp) < self.PERPS_TTL:
+                return self._derivatives_cache
 
-                            self._derivatives_cache = result
-                            self.logger.debug(
-                                f"Perps data: funding={result.funding_rate:.4f}, "
-                                f"L/S={result.long_pct:.1f}/{result.short_pct:.1f}, "
-                                f"basis={result.basis_pct:.3f}"
-                            )
-                            return result
+            # Retry with backoff for local service (handles event loop contention)
+            max_retries = 2
+            for attempt in range(max_retries + 1):
+                try:
+                    session = await self._get_session()
+                    async with session.get(self.PERPS_TRACKER_URL) as response:
+                        if response.status == 200:
+                            data = await response.json()
 
-                    self.logger.warning("Perps tracker returned non-success status")
-                    break  # Don't retry non-success responses
+                            if data.get('status') == 'success':
+                                result = DerivativesData(
+                                    funding_rate=data.get('funding_rate', 0.0),
+                                    funding_sentiment=data.get('funding_sentiment', 'NEUTRAL'),
+                                    basis_pct=data.get('basis_pct', 0.0),
+                                    basis_status=data.get('basis_status', 'NEUTRAL'),
+                                    long_pct=data.get('long_pct', 50.0),
+                                    short_pct=data.get('short_pct', 50.0),
+                                    total_open_interest=data.get('total_open_interest', 0.0),
+                                    total_volume_24h=data.get('total_volume_24h', 0.0),
+                                    timestamp=time.time(),
+                                    is_fresh=True
+                                )
 
-            except asyncio.TimeoutError:
-                if attempt < max_retries:
-                    self.logger.debug(f"Perps tracker timeout, retry {attempt + 1}/{max_retries}")
-                    await asyncio.sleep(1)  # Brief pause before retry
-                else:
-                    self.logger.warning("Perps tracker request timed out after retries")
-            except aiohttp.ClientError as e:
-                self.logger.warning(f"Perps tracker connection error: {e}")
-                break  # Don't retry connection errors
-            except Exception as e:
-                self.logger.error(f"Perps tracker error: {e}")
-                break
+                                self._derivatives_cache = result
+                                self.logger.debug(
+                                    f"Perps data: funding={result.funding_rate:.4f}, "
+                                    f"L/S={result.long_pct:.1f}/{result.short_pct:.1f}, "
+                                    f"basis={result.basis_pct:.3f}"
+                                )
+                                return result
 
-        return self._derivatives_cache or DerivativesData()
+                        self.logger.warning("Perps tracker returned non-success status")
+                        break  # Don't retry non-success responses
+
+                except asyncio.TimeoutError:
+                    if attempt < max_retries:
+                        self.logger.debug(f"Perps tracker timeout, retry {attempt + 1}/{max_retries}")
+                        await asyncio.sleep(1)  # Brief pause before retry
+                    else:
+                        self.logger.warning("Perps tracker request timed out after retries")
+                except aiohttp.ClientError as e:
+                    self.logger.warning(f"Perps tracker connection error: {e}")
+                    break  # Don't retry connection errors
+                except Exception as e:
+                    self.logger.error(f"Perps tracker error: {e}")
+                    break
+
+            return self._derivatives_cache or DerivativesData()
 
     async def _fetch_global_market_data(self) -> GlobalMarketData:
         """Fetch global market data from CoinGecko."""
