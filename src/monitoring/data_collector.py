@@ -149,6 +149,17 @@ class DataCollector(MonitoringComponent, DataProvider):
                     self._fetch_stats['cache_hits'] += 1
                     rpi_ob = mdm_data.get('rpi_orderbook', {})
                     rpi_en = mdm_data.get('rpi_enabled', False)
+
+                    # Get OI data with history for Phase 2 statistical analysis
+                    oi_data = mdm_data.get('open_interest', {})
+                    oi_hist_len = len(oi_data.get('history', [])) if oi_data else 0
+                    oi_hist_key_len = len(mdm_data.get('open_interest_history', []))
+
+                    # Use the larger OI history (WebSocket may have accumulated more)
+                    if oi_hist_key_len > oi_hist_len and oi_data:
+                        oi_data = oi_data.copy()
+                        oi_data['history'] = mdm_data.get('open_interest_history', [])
+
                     self.logger.debug(f"Using MDM pre-warmed cache for {symbol}, premium_index: {'premium_index' in mdm_data}, rpi_enabled={rpi_en}, rpi_orderbook_has_data={bool(rpi_ob and rpi_ob.get('b'))}")
                     # Format for consistency with our output
                     return {
@@ -161,7 +172,7 @@ class DataCollector(MonitoringComponent, DataProvider):
                         'ticker': mdm_data.get('ticker'),
                         'long_short_ratio': mdm_data.get('long_short_ratio'),
                         'risk_limit': mdm_data.get('risk_limits'),
-                        'open_interest': mdm_data.get('open_interest'),
+                        'open_interest': oi_data,  # Use enhanced OI with full history
                         'liquidations': mdm_data.get('liquidations', []),
                         # Phase 1 Predictive Confluence data (2025-12)
                         'premium_index': mdm_data.get('premium_index'),

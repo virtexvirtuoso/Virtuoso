@@ -852,9 +852,36 @@ class MarketDataManager:
             # Update stats
             self.stats['rest_calls'] += len(tasks) + 4
             
-            # Store market data in cache
+            # Store market data in cache (PRESERVE existing WebSocket-accumulated OI history)
             try:
+                # CRITICAL FIX: Preserve existing OI history before overwriting cache
+                # WebSocket updates accumulate 200 entries, REST refresh must not wipe them
+                existing_oi_history = []
+                if symbol in self.data_cache:
+                    existing_cache = self.data_cache[symbol]
+                    if 'open_interest' in existing_cache and 'history' in existing_cache.get('open_interest', {}):
+                        existing_oi_history = existing_cache['open_interest'].get('history', [])
+                    elif 'open_interest_history' in existing_cache:
+                        existing_oi_history = existing_cache.get('open_interest_history', [])
+
+                # Overwrite cache with new market data
                 self.data_cache[symbol] = market_data
+
+                # MERGE: Restore OI history - combine existing WebSocket history with new REST data
+                if existing_oi_history:
+                    new_oi_history = market_data.get('open_interest', {}).get('history', []) if market_data.get('open_interest') else []
+                    # Combine and deduplicate by timestamp, keeping most recent first
+                    combined_history = {}
+                    for entry in existing_oi_history + new_oi_history:
+                        ts = entry.get('timestamp', 0)
+                        if ts not in combined_history:
+                            combined_history[ts] = entry
+                    merged = sorted(combined_history.values(), key=lambda x: x.get('timestamp', 0), reverse=True)[:200]
+
+                    if 'open_interest' in self.data_cache[symbol]:
+                        self.data_cache[symbol]['open_interest']['history'] = merged
+                    self.data_cache[symbol]['open_interest_history'] = merged
+                    self.logger.debug(f"Preserved OI history for {symbol}: {len(existing_oi_history)} existing + {len(new_oi_history)} new = {len(merged)} merged entries")
                 self.last_full_refresh[symbol] = {
                     'timestamp': time.time(),
                     'components': {
@@ -1810,7 +1837,13 @@ class MarketDataManager:
         
         # Add open interest data if available
         market_data['open_interest'] = self.get_open_interest_data(symbol)
-        
+
+        # CRITICAL FIX: Also add direct reference to open_interest_history for divergence calculation
+        # The orderflow_indicators.py checks for market_data['open_interest_history'] first (line 3997)
+        if market_data['open_interest'] and 'history' in market_data['open_interest']:
+            market_data['open_interest_history'] = market_data['open_interest']['history']
+            self.logger.debug(f"Added direct open_interest_history reference for {symbol}: {len(market_data['open_interest_history'])} entries")
+
         # --- FIX: Propagate sentiment dict (including long_short_ratio) ---
         sentiment = {}
         # Copy over any sentiment fields from the data cache if present
@@ -2328,21 +2361,51 @@ class MarketDataManager:
 
     def get_open_interest_data(self, symbol: str) -> Dict[str, Any]:
         """Get open interest data for a symbol.
-        
+
         Args:
             symbol: Symbol to get open interest data for
-            
+
         Returns:
-            Dict containing open interest data or None if not available
+            Dict containing open interest data including history, or None if not available.
+            Structure: {
+                'value': float,           # Current OI value
+                'previous': float,        # Previous OI value
+                'change_24h': float,      # 24h change percentage
+                'history': list,          # OI history for divergence calculation
+                'is_synthetic': bool      # Whether data is synthetic
+            }
         """
         try:
             if symbol not in self.data_cache:
                 return None
-                
+
             if 'open_interest' not in self.data_cache[symbol]:
                 return None
-                
-            return self.data_cache[symbol]['open_interest']
+
+            # Create a copy to avoid mutating cache
+            result = self.data_cache[symbol]['open_interest'].copy()
+
+            # DEBUG: Check what's in the cache BEFORE any manipulation
+            cache_oi = self.data_cache[symbol]['open_interest']
+            cache_hist_len = len(cache_oi.get('history', [])) if cache_oi.get('history') else 0
+
+            # CRITICAL FIX: Include history if available (for OI-price divergence)
+            # Check multiple sources: 1) separate key, 2) nested in open_interest
+            oi_hist_from_key = self.data_cache[symbol].get('open_interest_history', [])
+            oi_hist_from_nested = result.get('history', [])
+
+            # Use the larger history (WebSocket accumulates more over time)
+            if len(oi_hist_from_key) >= len(oi_hist_from_nested):
+                result['history'] = oi_hist_from_key
+                source = 'open_interest_history key'
+            elif oi_hist_from_nested:
+                result['history'] = oi_hist_from_nested
+                source = 'open_interest.history nested'
+            else:
+                result['history'] = []
+                source = 'none (empty)'
+
+            return result
         except Exception as e:
             self.logger.error(f"Error getting open interest data: {str(e)}")
             return None
