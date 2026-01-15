@@ -8,13 +8,59 @@ import time
 import logging
 import asyncio
 
-# Import ConfluenceAnalyzer with safe fallback (module is gitignored/proprietary)
-try:
-    from src.core.analysis.confluence import ConfluenceAnalyzer
-except ImportError:
-    ConfluenceAnalyzer = None
-    logger = logging.getLogger(__name__)
-    logger.warning("ConfluenceAnalyzer not available - confluence features disabled")
+# SERVICE RESPONSIBILITY NOTE:
+# virtuoso-web reads CACHED confluence data only.
+# All confluence computation happens in virtuoso-trading and is written to cache.
+# DO NOT instantiate ConfluenceAnalyzer here - it requires live market data
+# that virtuoso-web doesn't have access to.
+# See CLAUDE.md "Service Responsibilities" for details.
+import aiomcache
+import json
+
+
+async def _get_cached_confluence(symbol: str) -> Optional[Dict[str, Any]]:
+    """
+    Read cached confluence data for a symbol.
+
+    Data flow: virtuoso-trading -> memcached -> virtuoso-web (here)
+    """
+    try:
+        client = aiomcache.Client('localhost', 11211, pool_size=2)
+
+        # Normalize symbol format for cache lookup
+        symbol_clean = symbol.replace('/', '')
+
+        # Try breakdown first (most detailed)
+        data = await client.get(f'confluence:breakdown:{symbol_clean}'.encode())
+        if data:
+            result = json.loads(data.decode())
+            await client.close()
+            return result
+
+        # Try simple confluence data
+        data = await client.get(f'confluence:{symbol_clean}'.encode())
+        if data:
+            result = json.loads(data.decode())
+            await client.close()
+            return result
+
+        # Try score only
+        data = await client.get(f'confluence:score:{symbol_clean}'.encode())
+        if data:
+            try:
+                score = float(data.decode())
+                await client.close()
+                return {"score": score, "source": "score_only"}
+            except ValueError:
+                pass
+
+        await client.close()
+        return None
+
+    except Exception as e:
+        logger = logging.getLogger(__name__)
+        logger.debug(f"Cache read error for confluence:{symbol}: {e}")
+        return None
 
 from src.api.cache_adapter_direct import cache_adapter
 
@@ -1221,116 +1267,74 @@ async def get_comprehensive_symbol_analysis(
             logger.warning(f"Could not fetch contango analysis for {symbol}: {e}")
             analysis["analysis"]["contango"] = {"error": f"Contango analysis unavailable: {str(e)}"}
         
-        # 4. GET CONFLUENCE ANALYSIS (COMPREHENSIVE TECHNICAL ANALYSIS)
+        # 4. GET CONFLUENCE ANALYSIS (FROM CACHE)
+        # SERVICE RESPONSIBILITY: Read cached data from virtuoso-trading
+        # DO NOT instantiate ConfluenceAnalyzer - it requires OHLCV DataFrames
+        # that virtuoso-web doesn't have access to.
         try:
-            # Check if ConfluenceAnalyzer is available
-            if ConfluenceAnalyzer is None:
-                logger.debug(f"ConfluenceAnalyzer not available for {symbol}")
-                analysis["analysis"]["confluence"] = {
-                    "error": "Confluence analysis module not available"
-                }
-            else:
-                # Initialize confluence analyzer
-                confluence_analyzer = ConfluenceAnalyzer()
+            # Read confluence data from cache (computed by virtuoso-trading)
+            confluence_result = await _get_cached_confluence(symbol_formatted)
 
-                # Prepare market data for confluence analysis
-                confluence_market_data = {
-                    "symbol": symbol_formatted,
-                    "exchange": exchange_id,
-                    "timestamp": int(time.time() * 1000)
-                }
+            if confluence_result and "error" not in confluence_result:
+                # Extract key confluence metrics
+                confluence_score = confluence_result.get("confluence_score", confluence_result.get("score", confluence_result.get("overall_score", 50.0)))
+                reliability = confluence_result.get("reliability", 0.0)
+                components = confluence_result.get("components", {})
 
-                # Add ticker data if available
-                if analysis["analysis"]["market_data"].get("price"):
-                    confluence_market_data["ticker"] = {
-                        "last": analysis["analysis"]["market_data"]["price"],
-                        "volume": analysis["analysis"]["market_data"]["volume_24h"],
-                        "high": analysis["analysis"]["market_data"]["high_24h"],
-                        "low": analysis["analysis"]["market_data"]["low_24h"],
-                        "bid": analysis["analysis"]["market_data"]["bid"],
-                        "ask": analysis["analysis"]["market_data"]["ask"]
-                    }
-
-                # Add orderbook data if available
-                if "orderbook" in analysis["analysis"] and "error" not in analysis["analysis"]["orderbook"]:
-                    confluence_market_data["orderbook"] = {
-                        "bids": [[analysis["analysis"]["orderbook"]["best_bid"], analysis["analysis"]["orderbook"]["bid_volume_top10"]]],
-                        "asks": [[analysis["analysis"]["orderbook"]["best_ask"], analysis["analysis"]["orderbook"]["ask_volume_top10"]]]
-                    }
-
-                # Get confluence analysis
-                if not (confluence_analyzer and hasattr(confluence_analyzer, 'analyze') and callable(getattr(confluence_analyzer, 'analyze'))):
-                    return {
-                        "error": "confluence_analyzer not available",
-                        "symbol": symbol,
-                        "message": "Confluence analysis service is currently unavailable"
-                    }
-
-                try:
-                    confluence_result = await confluence_analyzer.analyze(confluence_market_data)
-                except Exception as e:
-                    logger.debug(f"confluence_analyzer.analyze error for {symbol}: {e}")
-                    return {
-                        "error": f"analysis failed: {e}",
-                        "symbol": symbol,
-                        "message": "Failed to perform confluence analysis"
-                    }
-
-                if confluence_result and "error" not in confluence_result:
-                    # Extract key confluence metrics
-                    confluence_score = confluence_result.get("confluence_score", 50.0)
-                    reliability = confluence_result.get("reliability", 0.0)
-                    components = confluence_result.get("components", {})
-
-                    # Determine overall signal
-                    if confluence_score >= 70:
-                        overall_signal = "STRONG_LONG"
-                    elif confluence_score >= 60:
-                        overall_signal = "LONG"
-                    elif confluence_score >= 45:
-                        overall_signal = "NEUTRAL"
-                    elif confluence_score >= 30:
-                        overall_signal = "SHORT"
-                    else:
-                        overall_signal = "STRONG_SHORT"
-
-                    # Count component signals
-                    long_signals = sum(1 for comp in components.values() if isinstance(comp, dict) and comp.get("score", 50) > 60)
-                    short_signals = sum(1 for comp in components.values() if isinstance(comp, dict) and comp.get("score", 50) < 40)
-                    neutral_signals = len(components) - long_signals - short_signals
-
-                    analysis["analysis"]["confluence"] = {
-                        "confluence_score": confluence_score,
-                        "confluence_score_formatted": f"{confluence_score:.1f}/100",
-                        "reliability": reliability,
-                        "reliability_formatted": f"{reliability:.1f}%",
-                        "overall_signal": overall_signal,
-                        "signal_strength": "HIGH" if reliability > 80 else "MEDIUM" if reliability > 60 else "LOW",
-                        "components": {
-                            "technical": components.get("technical", {}).get("score", 50) if "technical" in components else 50,
-                            "volume": components.get("volume", {}).get("score", 50) if "volume" in components else 50,
-                            "orderflow": components.get("orderflow", {}).get("score", 50) if "orderflow" in components else 50,
-                            "sentiment": components.get("sentiment", {}).get("score", 50) if "sentiment" in components else 50,
-                            "orderbook": components.get("orderbook", {}).get("score", 50) if "orderbook" in components else 50,
-                            "price_structure": components.get("price_structure", {}).get("score", 50) if "price_structure" in components else 50
-                        },
-                        "signals": {
-                            "long_signals": long_signals,
-                            "short_signals": short_signals,
-                            "neutral_signals": neutral_signals,
-                            "total_components": len(components)
-                        },
-                        "analysis_timestamp": confluence_result.get("timestamp", int(time.time() * 1000)),
-                        "data_quality": len([c for c in components.values() if isinstance(c, dict) and c.get("score") is not None]) / max(len(components), 1) * 100
-                    }
-                    analysis["data_sources"].append("confluence")
-
+                # Determine overall signal
+                if confluence_score >= 70:
+                    overall_signal = "STRONG_LONG"
+                elif confluence_score >= 60:
+                    overall_signal = "LONG"
+                elif confluence_score >= 45:
+                    overall_signal = "NEUTRAL"
+                elif confluence_score >= 30:
+                    overall_signal = "SHORT"
                 else:
-                    analysis["analysis"]["confluence"] = {"error": "Confluence analysis unavailable - insufficient data"}
-            
+                    overall_signal = "STRONG_SHORT"
+
+                # Count component signals
+                long_signals = sum(1 for comp in components.values() if isinstance(comp, dict) and comp.get("score", 50) > 60)
+                short_signals = sum(1 for comp in components.values() if isinstance(comp, dict) and comp.get("score", 50) < 40)
+                neutral_signals = len(components) - long_signals - short_signals
+
+                analysis["analysis"]["confluence"] = {
+                    "confluence_score": confluence_score,
+                    "confluence_score_formatted": f"{confluence_score:.1f}/100",
+                    "reliability": reliability,
+                    "reliability_formatted": f"{reliability:.1f}%",
+                    "overall_signal": overall_signal,
+                    "signal_strength": "HIGH" if reliability > 80 else "MEDIUM" if reliability > 60 else "LOW",
+                    "components": {
+                        "technical": components.get("technical", {}).get("score", 50) if "technical" in components else 50,
+                        "volume": components.get("volume", {}).get("score", 50) if "volume" in components else 50,
+                        "orderflow": components.get("orderflow", {}).get("score", 50) if "orderflow" in components else 50,
+                        "sentiment": components.get("sentiment", {}).get("score", 50) if "sentiment" in components else 50,
+                        "orderbook": components.get("orderbook", {}).get("score", 50) if "orderbook" in components else 50,
+                        "price_structure": components.get("price_structure", {}).get("score", 50) if "price_structure" in components else 50
+                    },
+                    "signals": {
+                        "long_signals": long_signals,
+                        "short_signals": short_signals,
+                        "neutral_signals": neutral_signals,
+                        "total_components": len(components)
+                    },
+                    "analysis_timestamp": confluence_result.get("timestamp", int(time.time() * 1000)),
+                    "data_quality": len([c for c in components.values() if isinstance(c, dict) and c.get("score") is not None]) / max(len(components), 1) * 100,
+                    "source": "cached"  # Indicate data is from cache
+                }
+                analysis["data_sources"].append("confluence")
+
+            else:
+                # No cached data available
+                analysis["analysis"]["confluence"] = {
+                    "error": "No cached confluence data - waiting for virtuoso-trading to compute",
+                    "note": "Confluence analysis is computed by virtuoso-trading and cached for virtuoso-web"
+                }
+
         except Exception as e:
-            logger.warning(f"Confluence analysis error for {symbol}: {e}")
-            analysis["analysis"]["confluence"] = {"error": f"Confluence analysis unavailable: {str(e)}"}
+            logger.warning(f"Confluence cache read error for {symbol}: {e}")
+            analysis["analysis"]["confluence"] = {"error": f"Confluence cache unavailable: {str(e)}"}
         
         # 5. RISK ASSESSMENT
         try:

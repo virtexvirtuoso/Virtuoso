@@ -21,6 +21,21 @@ print(f"✅ Loaded environment variables from {project_root / '.env'}")
 # Set environment to avoid conflicts
 os.environ['WEB_SERVER_ONLY'] = 'true'
 os.environ['DISABLE_INTEGRATED_WEB_SERVER'] = 'false'
+os.environ['SERVICE_NAME'] = 'virtuoso-web'  # Used for import guards
+
+# SERVICE RESPONSIBILITY GUARD:
+# virtuoso-web must NOT instantiate ConfluenceAnalyzer or AlphaScannerEngine.
+# These require live market data (OHLCV DataFrames) that only virtuoso-trading has.
+# virtuoso-web should read cached results from memcached.
+def _warn_on_confluence_import():
+    """Warn if ConfluenceAnalyzer is imported directly in virtuoso-web"""
+    import warnings
+    warnings.warn(
+        "ConfluenceAnalyzer should not be imported directly in virtuoso-web! "
+        "Use cached data from memcached instead. "
+        "See CLAUDE.md 'Service Responsibilities' section.",
+        stacklevel=3
+    )
 
 import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
