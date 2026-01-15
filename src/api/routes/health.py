@@ -30,7 +30,7 @@ async def basic_health_check():
     return {
         "status": "healthy",
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "service": "virtuoso_ccxt",
+        "service": "virtuoso",
         "version": "1.0.0",
         "phase": "1_emergency_stabilization"
     }
@@ -191,7 +191,7 @@ async def comprehensive_health_check():
     return {
         "overall_status": overall_status,
         "timestamp": timestamp.isoformat(),
-        "service": "virtuoso_ccxt",
+        "service": "virtuoso",
         "version": "2.0.0",
         "checks": checks,
         "summary": {
@@ -363,7 +363,7 @@ async def database_storage():
     import subprocess
     import os
 
-    db_path = "/home/linuxuser/trading/Virtuoso_ccxt/data"
+    db_path = "/home/linuxuser/trading/Virtuoso/data"
     databases = {}
     total_size = 0
 

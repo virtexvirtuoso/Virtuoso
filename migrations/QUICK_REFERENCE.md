@@ -113,7 +113,7 @@ python scripts/apply_performance_migration.py --rollback
 
 ```bash
 ssh vps
-cd ~/trading/Virtuoso_ccxt
+cd ~/trading/Virtuoso
 cp data/virtuoso.db data/virtuoso_backup_$(date +%Y%m%d).db
 git pull origin main
 source venv311/bin/activate

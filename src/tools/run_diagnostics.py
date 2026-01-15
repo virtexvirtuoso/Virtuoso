@@ -1,7 +1,7 @@
 from src.utils.task_tracker import create_tracked_task
 #!/usr/bin/env python3
 """
-Optimized diagnostic script to run the Virtuoso_ccxt application with focus on
+Optimized diagnostic script to run the Virtuoso application with focus on
 capturing redundancies in the market monitor flow.
 """
 
@@ -707,7 +707,7 @@ async def analyze_logs(resource_data=None, error_filter=None, warning_filter=Non
     
     # Create the TXT report
     with open(txt_report_file, 'w', encoding='utf-8') as f:
-        f.write(f"===== Virtuoso_ccxt Diagnostic Report - {datetime.now().isoformat()} =====\n\n")
+        f.write(f"===== Virtuoso Diagnostic Report - {datetime.now().isoformat()} =====\n\n")
         
         # Write resource utilization summary if available
         if resource_data:

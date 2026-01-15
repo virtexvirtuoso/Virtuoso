@@ -1,0 +1,48 @@
+[Unit]
+Description=Virtuoso MCP Streamable HTTP Server (Mobile-friendly)
+Documentation=https://github.com/virtuoso/ccxt-trading
+After=network-online.target virtuoso-web.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=linuxuser
+Group=linuxuser
+WorkingDirectory=/home/linuxuser/trading/Virtuoso
+
+# Environment variables
+EnvironmentFile=/home/linuxuser/trading/Virtuoso/.env
+Environment="PYTHONUNBUFFERED=1"
+Environment="PYTHONPATH=/home/linuxuser/trading/Virtuoso"
+Environment="PATH=/home/linuxuser/trading/Virtuoso/venv311/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="VIRTUOSO_MCP_VIRTUOSO_API_URL=http://127.0.0.1:8002"
+Environment="VIRTUOSO_MCP_VIRTUOSO_DERIVATIVES_URL=http://127.0.0.1:8888"
+Environment="VIRTUOSO_MCP_HTTP_HOST=127.0.0.1"
+Environment="VIRTUOSO_MCP_HTTP_PORT=8091"
+
+# Startup - runs MCP server with streamable-http transport (better for mobile)
+ExecStart=/home/linuxuser/trading/Virtuoso/venv311/bin/python -m src.mcp.http_server --transport streamable-http --port 8091
+
+# Process management
+Restart=always
+RestartSec=5
+TimeoutStartSec=30
+TimeoutStopSec=10
+
+# Kill all processes in the control group
+KillMode=control-group
+KillSignal=SIGTERM
+SendSIGKILL=yes
+
+# Resource limits (lightweight service)
+LimitNOFILE=4096
+MemoryMax=512M
+CPUWeight=50
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=virtuoso-mcp-stream
+
+[Install]
+WantedBy=multi-user.target

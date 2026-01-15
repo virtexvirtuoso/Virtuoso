@@ -15,7 +15,7 @@ async def basic_health_check():
     return {
         "status": "healthy",
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "service": "virtuoso_ccxt",
+        "service": "virtuoso",
         "version": "1.0.0",
         "phase": "1_emergency_stabilization"
     }
