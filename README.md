@@ -100,8 +100,8 @@ Raw Market Data (Spectrum) → Market Prism → Trading Signals (Light)
 
 5. **Price Structure**
    - Illuminates market participant positioning
-   - Tracks aggregate trader behavior
-   - Identifies potential squeeze points
+   - Detects Fair Value Gaps and Liquidity Zones (ICT concepts)
+   - Identifies Break of Structure (BOS) and Change of Character (CHoCH)
 
 6. **Sentiment**
    - Captures the market's emotional state
@@ -199,22 +199,13 @@ alpha_scanning:
     - beta_expansion
     - alpha_breakout
   thresholds:
-    alpha_threshold: 0.03
-    beta_divergence: 0.25
-    correlation_breakdown: 0.25
+    # Thresholds configured in production config
 
 # Advanced Alpha Tiers (Optimized)
 alpha_scanning_optimized:
   enabled: true
   alpha_tiers:
-    tier_1_critical:
-      min_alpha: 0.5
-      min_confidence: 0.95
-      scan_interval_minutes: 1
-    tier_2_high:
-      min_alpha: 0.15
-      min_confidence: 0.9
-      scan_interval_minutes: 3
+    # Tier configurations in production config
       
 # Indicator Configuration
 analysis:
@@ -351,7 +342,18 @@ make format
 - **[Contributing Guidelines](CONTRIBUTING.md)** - How to contribute to the project
 - **[Change Log](CHANGELOG.md)** - Version history and updates
 - **[License](LICENSE)** - Project license information
- - **[Confluence Specification](docs/CONFLUENCE.md)** - Canonical Market Prism system design and operation
+- **[Confluence Specification](docs/08-features/indicators/confluence.md)** - Canonical Market Prism system design and operation
+
+### 📊 Indicator Documentation
+All indicator documentation is verified current as of January 15, 2026:
+- **[Indicator Overview](docs/08-features/indicators/overview.md)** - Module structure and common interface
+- **[Technical Indicators](docs/08-features/indicators/technical.md)** - RSI, ADX, AO, Williams %R, ATR, CCI
+- **[Volume Indicators](docs/08-features/indicators/volume.md)** - Volume Delta, ADL, CMF, RVOL, OBV, VCR
+- **[Orderbook Indicators](docs/08-features/indicators/orderbook.md)** - Unified imbalance, depth, manipulation detection
+- **[Orderflow Indicators](docs/08-features/indicators/orderflow.md)** - CVD, trade flow, OI, liquidity
+- **[Price Structure](docs/08-features/indicators/price_structure.md)** - FVG, Liquidity Zones, BOS/CHoCH, Range Analysis
+- **[Sentiment Indicators](docs/08-features/indicators/sentiment.md)** - Funding, LSR, liquidations, market mood
+- **[Base Indicator](docs/08-features/indicators/base_indicator.md)** - Framework and common functionality
 
 ### 📖 In-Application Documentation
 When the application is running, you can access:
@@ -509,53 +511,17 @@ Virtuoso includes sophisticated divergence visualization capabilities across all
 ├────────────────┬────────┬───────┬────────┬────────┬─────────────────────┤
 │ COMPONENT      │ SCORE  │ WEIGHT │ IMPACT │ DIV    │ GAUGE              │
 ├────────────────┼────────┼───────┼────────┼────────┼─────────────────────┤
-│ ao             │ 55.78  │ 0.20  │   11.2 │ +6.0   │ ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ │
-│ macd           │ 59.93  │ 0.15  │    9.0 │ +4.0   │ ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓  │
-│ rsi            │ 43.90  │ 0.20  │    8.8 │ 0.0    │ ▒▒▒▒▒▒▒▒▒▒▒▒▒      │
-│ williams_r     │ 48.52  │ 0.15  │    7.3 │ -3.0   │ ▒▒▒▒▒▒▒▒▒▒▒▒       │
-│ cci            │ 38.05  │ 0.15  │    5.7 │ 0.0    │ ░░░░░░░░░░         │
-│ atr            │ 27.20  │ 0.15  │    4.1 │ 0.0    │ ░░░░░░             │
+│ ao             │ 55.78  │  ...  │   ...  │ +6.0   │ ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ │
+│ adx            │ 59.93  │  ...  │   ...  │ +4.0   │ ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓  │
+│ rsi            │ 43.90  │  ...  │   ...  │ 0.0    │ ▒▒▒▒▒▒▒▒▒▒▒▒▒      │
+│ williams_r     │ 48.52  │  ...  │   ...  │ -3.0   │ ▒▒▒▒▒▒▒▒▒▒▒▒       │
+│ cci            │ 38.05  │  ...  │   ...  │ 0.0    │ ░░░░░░░░░░         │
+│ atr            │ 27.20  │  ...  │   ...  │ 0.0    │ ░░░░░░             │
 ├────────────────┴────────┴───────┴────────┴────────┼─────────────────────┤
 │ FINAL SCORE    │ 46.10  │       │        │ +7.0   │ ▒▒▒▒▒▒▒▒▒▒▒▒▒▒     │
 └────────────────┴────────┴───────┴────────┴────────┴─────────────────────┘
 * DIV column shows timeframe divergence adjustments
-```
-
-#### Implementation:
-
-The system implements a standardized divergence visualization framework that works across all indicator types:
-
-```python
-def _apply_divergence_bonuses(self, component_scores, divergences):
-    """
-    Apply divergence bonuses to component scores with enhanced visualization
-    
-    Args:
-        component_scores: Dictionary of component scores
-        divergences: Dictionary of divergence data by component
-        
-    Returns:
-        Dictionary of adjusted scores with divergence information
-    """
-    adjusted_scores = {}
-    
-    for component, score in component_scores.items():
-        # Get divergence bonus if available
-        div_bonus = divergences.get(component, {}).get('bonus', 0)
-        
-        # Apply the bonus
-        adjusted_score = score + div_bonus
-        adjusted_score = np.clip(adjusted_score, 0, 100)
-        
-        # Store the adjusted score with divergence information
-        adjusted_scores[component] = {
-            'score': adjusted_score,
-            'raw_score': score,
-            'divergence_bonus': div_bonus,
-            'divergence_type': divergences.get(component, {}).get('type', 'none')
-        }
-    
-    return adjusted_scores
+* Weights configured in production config
 ```
 
 ### 3. Advanced Open Interest Analysis
@@ -824,7 +790,7 @@ Market Data → Enhanced Analysis → Intelligence → Interface
 │   └── Enhanced error handling & retry logic
 │
 ├── L2: Processing Layer
-│   ├── Technical indicators (RSI, MACD, AO, ATR)
+│   ├── Technical indicators (RSI, ADX, AO, ATR)
 │   ├── Volume analysis (Delta, ADL, MFI, CMF)
 │   ├── Orderflow tracking (CVD, Trade flow, Absorption)
 │   ├── Orderbook analysis (OIR, DI, Depth, Imbalance)
@@ -913,8 +879,8 @@ Market Data → Enhanced Analysis → Intelligence → Interface
 - **Data Validation**: Multi-layer validation with integrity checks
 
 ### 📈 Analysis Component Improvements
-- **Range Analysis**: 8% weight allocation with multi-timeframe scoring
-- **OIR/DI Implementation**: Academic-backed predictors (10% and 5% weights)
+- **Range Analysis**: Multi-timeframe scoring with configurable weights
+- **OIR/DI Implementation**: Academic-backed predictors with configurable weights
 - **Enhanced Order Block Scoring**: ICT methodology with mitigation tracking
 - **Whale Detection**: 3-tier alert system with advanced filtering
 - **Alpha Opportunity Detection**: Multi-timeframe beta analysis
@@ -1013,13 +979,13 @@ exchanges:
 
 trading:
   max_positions: 10
-  base_position_size: 0.01
-  max_leverage: 3.0
-  
+  base_position_size: # Configure based on account
+  max_leverage: # Configure based on risk tolerance
+
 risk:
-  max_drawdown: 0.15
-  position_heat: 0.25
-  correlation_limit: 0.7
+  max_drawdown: # Configure based on risk tolerance
+  position_heat: # Configure based on strategy
+  correlation_limit: # Configure as needed
 ```
 
 ### 3. Start Services
@@ -1250,7 +1216,15 @@ The public repository does not include internal documentation to protect intelle
 
 **Note**: This is the public version of Virtuoso. Some advanced features require proprietary components not included in this repository.
 
-## 🚀 Recent Major Updates (2025)
+## 🚀 Recent Major Updates
+
+### 🔧 System Architecture (January 2026)
+- **Service Separation**: Clear virtuoso-trading (compute) vs virtuoso-web (serve) responsibilities
+- **Cache-First Dashboard**: Web service reads pre-computed confluence from cache
+- **Modular Price Structure**: Multi-component architecture with ICT concepts
+- **Unified Orderbook**: Optimized components with manipulation detection
+
+---
 
 ### 🐋 Enhanced Whale Detection System (May 2025)
 - **Three New Alert Types**: Pure trade imbalance, conflicting signals, enhanced sensitivity
@@ -1265,10 +1239,10 @@ The public repository does not include internal documentation to protect intelle
 - **Performance Optimization**: Parallel data fetching with intelligent rate limiting
 
 ### 🎯 Range Analysis Implementation (May 2025)
-- **8% Weight Allocation**: New component in price structure analysis
+- **New Component**: Range analysis added to price structure scoring
 - **EQ Level Detection**: Equilibrium level calculation and interaction tracking
 - **Enhanced Swing Points**: Local extrema analysis with strength validation
-- **Multi-timeframe Scoring**: 40% base, 30% LTF, 20% MTF, 10% HTF weighting
+- **Multi-timeframe Scoring**: Configurable weighting across timeframes
 
 ### 💰 Enhanced Futures Premium (May 2025)
 - **100% Success Rate**: Complete resolution of premium calculation failures
