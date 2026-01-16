@@ -1950,7 +1950,30 @@ background_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="back
 
 
 async def aggregate_confluence_signals():
-    """Aggregate confluence scores into signals for dashboard"""
+    """
+    DEPRECATED: 2026-01-16
+
+    This function has been disabled because it causes a race condition with
+    CacheDataAggregator._update_analysis_signals().
+
+    The CacheDataAggregator properly handles signal caching by:
+    1. Writing to ALL cache tiers (L1, L2, L3) via MultiTierCache
+    2. Publishing to SharedCacheBridge for cross-process visibility
+    3. Using validated SignalsSchema for data consistency
+    4. Using live signal_buffer data (not stale confluence:breakdown keys)
+
+    This function only wrote to L2 (memcached) and often overwrote good data
+    with empty signals when confluence:breakdown:{symbol} keys were missing.
+
+    See: docs/07-technical/fixes/2026-01-16_ANALYSIS_SIGNALS_CACHE_RACE_CONDITION_FIX.md
+
+    DO NOT RE-ENABLE without understanding the cache architecture.
+    """
+    # Function disabled - return immediately
+    logger.warning("aggregate_confluence_signals() called but is DEPRECATED - no-op")
+    return
+
+    # Original implementation below (kept for reference but unreachable)
     memcache_client = None
     try:
         import aiomcache
@@ -2187,8 +2210,14 @@ async def update_symbols_cache():
             }
             cache_timestamps["dashboard_symbols"] = time.time()
         
-        # Always aggregate confluence signals (even if top_symbols_manager fails)
-        await aggregate_confluence_signals()
+        # REMOVED: aggregate_confluence_signals()
+        # FIX: 2026-01-16 - This was causing a race condition with CacheDataAggregator
+        # The CacheDataAggregator._update_analysis_signals() properly handles this by:
+        #   1. Writing to ALL cache tiers (L1, L2, L3)
+        #   2. Using SharedCacheBridge for cross-process visibility
+        #   3. Using validated SignalsSchema
+        # See: docs/07-technical/fixes/2026-01-16_ANALYSIS_SIGNALS_CACHE_RACE_CONDITION_FIX.md
+
         logger.info("Background cache update completed")
     except Exception as e:
         logger.error(f"Background cache update failed: {e}")
