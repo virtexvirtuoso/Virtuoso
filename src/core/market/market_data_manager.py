@@ -1996,6 +1996,7 @@ class MarketDataManager:
                 # Calculate age from most recent component update, not initial load
                 # This fixes false staleness alerts when data is continuously updated via WebSocket
                 most_recent_component_time = last_refresh['timestamp']
+
                 for component, timestamp in last_refresh['components'].items():
                     if component == 'kline':
                         # For klines, get the most recent timeframe update
