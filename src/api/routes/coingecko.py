@@ -47,6 +47,8 @@ async def get_trending_coins(request: Request) -> Dict[str, Any]:
     """
     Get trending coins from CoinGecko.
 
+    Mobile v3 Usage: Not currently used (available for future widgets)
+
     Returns top 7 trending coins and top 3 trending NFTs.
     Data updates every ~15 minutes.
 
@@ -76,6 +78,8 @@ async def get_trending_coins(request: Request) -> Dict[str, Any]:
 async def get_derivatives_data(request: Request) -> Dict[str, Any]:
     """
     Get derivatives (perpetual futures) data from CoinGecko.
+
+    Mobile v3 Usage: Perpetuals Pulse section → Total OI, top contracts
 
     Returns:
     - Top contracts by open interest
@@ -108,6 +112,8 @@ async def get_derivatives_data(request: Request) -> Dict[str, Any]:
 async def get_funding_spreads(request: Request) -> Dict[str, Any]:
     """
     Get funding rate spreads for arbitrage opportunities.
+
+    Mobile v3 Usage: Perpetuals Pulse section → Funding spread table
 
     Returns symbols with the highest cross-exchange funding rate spreads.
     Higher spreads indicate potential arbitrage opportunities.
@@ -147,6 +153,8 @@ async def get_category_performance(request: Request) -> Dict[str, Any]:
     """
     Get category (sector) performance from CoinGecko.
 
+    Mobile v3 Usage: Market Intelligence → Sector Rotation section
+
     Returns:
     - All tracked categories with market cap and 24h change
     - Top 3 and bottom 3 performing sectors
@@ -177,6 +185,8 @@ async def get_category_performance(request: Request) -> Dict[str, Any]:
 async def get_rotation_signal(request: Request) -> Dict[str, Any]:
     """
     Get current sector rotation signal.
+
+    Mobile v3 Usage: Market Intelligence → Sector Rotation signal badge
 
     Signals:
     - RISK_ON: Meme coins leading - high risk appetite
@@ -209,6 +219,8 @@ async def get_exchange_distribution(request: Request) -> Dict[str, Any]:
     """
     Get exchange volume distribution from CoinGecko.
 
+    Mobile v3 Usage: Not directly used (see /exchanges/concentration)
+
     Returns:
     - Top 20 exchanges by volume with trust scores
     - Total 24h volume in BTC
@@ -239,6 +251,8 @@ async def get_exchange_distribution(request: Request) -> Dict[str, Any]:
 async def get_exchange_concentration(request: Request) -> Dict[str, Any]:
     """
     Get exchange market concentration metrics.
+
+    Mobile v3 Usage: Market Intelligence → Exchange concentration metric
 
     Returns:
     - Top 3 exchange market share %
@@ -271,6 +285,8 @@ async def get_exchange_concentration(request: Request) -> Dict[str, Any]:
 async def get_market_cycle_phase(request: Request) -> Dict[str, Any]:
     """
     Get market cycle phase derived from CoinGecko category performance.
+
+    Mobile v3 Usage: Market Cycle Phase section (bottom of Market Intelligence)
 
     Phases (BTC Dom → Infra → Alt → Spec → Peak):
     - ACCUMULATION: Stablecoins leading, risk-off positioning
@@ -408,6 +424,8 @@ def _get_phase_description(phase: str) -> str:
 async def get_coingecko_summary(request: Request) -> Dict[str, Any]:
     """
     Get summary of all CoinGecko extended data.
+
+    Mobile v3 Usage: Data availability checks, summary widget
 
     Combines trending, derivatives, categories, and exchanges into a single response.
     Useful for dashboard widgets that need multiple data points.
