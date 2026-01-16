@@ -236,14 +236,21 @@ class MarketDataManager:
     async def _initialize_websocket(self):
         """Initialize WebSocket manager and subscribe to channels"""
         try:
+            # PHASE 3b (TR-696a9e1f): Ensure cache is warm before WS subscriptions
+            # This provides baseline data for WS updates to build upon
+            symbols_without_data = [s for s in self.symbols if s not in self.data_cache or not self.data_cache.get(s)]
+            if symbols_without_data:
+                self.logger.info(f"Warming cache for {len(symbols_without_data)} symbols before WS init")
+                await self._warmup_cache(symbols_without_data)
+
             # Initialize WebSocket manager
             await self.websocket_manager.initialize(self.symbols)
-            
+
             # Register callback for WebSocket messages
             self.websocket_manager.register_message_callback(self._handle_websocket_message)
-            
+
             self.logger.info("WebSocket initialization completed")
-                
+
         except Exception as e:
             self.logger.error(f"Error initializing WebSocket: {str(e)}")
             self.logger.debug(traceback.format_exc())
@@ -290,14 +297,19 @@ class MarketDataManager:
     
     async def _refresh_symbol_data(self, symbol: str) -> None:
         """Selectively refresh components that need updating for a symbol
-        
+
         Args:
             symbol: Symbol to refresh data for
         """
         try:
             # Get current time
             current_time = time.time()
-            
+
+            # PHASE 3a (TR-696a9e1f): Check WebSocket health before normal refresh
+            # If WS data is stale, trigger emergency REST refresh
+            if symbol in self.data_cache and not self._check_ws_health(symbol):
+                await self._emergency_refresh(symbol)
+
             # Skip if no previous data exists (shouldn't happen after initialization)
             if symbol not in self.data_cache or symbol not in self.last_full_refresh:
                 self.logger.warning(f"Symbol {symbol} not found in cache, fetching full data")
@@ -1735,21 +1747,42 @@ class MarketDataManager:
     
     async def get_market_data(self, symbol: str) -> Dict[str, Any]:
         """Get all available market data for a symbol.
-        
+
         Args:
             symbol: The symbol to get market data for
-            
+
         Returns:
             Dict containing market data components (ticker, orderbook, trades, etc.)
         """
         if symbol not in self.data_cache:
             self.logger.warning(f"Symbol {symbol} not in cache, initializing")
             self.data_cache[symbol] = {}
-            
+
+        # PHASE 3b (TR-696a9e1f): WS-first strategy
+        # Check if WebSocket data is fresh enough to skip REST calls for real-time data
+        ws_ticker_fresh = self._is_ws_data_fresh(symbol, 'ticker', max_age=60)
+        ws_orderbook_fresh = self._is_ws_data_fresh(symbol, 'orderbook', max_age=60)
+        ws_trades_fresh = self._is_ws_data_fresh(symbol, 'trades', max_age=60)
+
         # First ensure we have refreshed data
         try:
-            # Add 'kline' and sentiment-related components to refresh
-            await self.refresh_components(symbol, components=['ticker', 'orderbook', 'trades', 'kline', 'long_short_ratio'])
+            # Determine which components need REST refresh
+            components_to_refresh = []
+
+            # Only refresh real-time components via REST if WS data is stale
+            if not ws_ticker_fresh:
+                components_to_refresh.append('ticker')
+            if not ws_orderbook_fresh:
+                components_to_refresh.append('orderbook')
+            if not ws_trades_fresh:
+                components_to_refresh.append('trades')
+
+            # Always check kline and REST-only components
+            components_to_refresh.extend(['kline', 'long_short_ratio'])
+
+            # Only make REST calls if there are components to refresh
+            if components_to_refresh:
+                await self.refresh_components(symbol, components=components_to_refresh)
         except Exception as e:
             self.logger.error(f"Error refreshing market data for {symbol}: {str(e)}")
             
