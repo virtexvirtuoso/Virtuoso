@@ -1707,36 +1707,6 @@ async def vps_services():
     }
 
 
-# =============================================================================
-# BTC-Wiz Proxy Routes
-# Forwards /btc-wiz/* requests to the BTC-Wiz service on port 8004
-# =============================================================================
-
-@app.get("/btc-wiz/api/{path:path}", tags=["btc-wiz-proxy"])
-async def btc_wiz_proxy(path: str):
-    """Proxy requests to BTC-Wiz service on port 8004.
-
-    Note: BTC-Wiz endpoints don't have /api/ prefix, so we strip it.
-    Dashboard calls /btc-wiz/api/cycle/phase -> BTC-Wiz /cycle/phase
-    """
-    import aiohttp
-
-    # BTC-Wiz endpoints don't have /api/ prefix
-    target_url = f"http://localhost:8004/{path}"
-
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(target_url, timeout=aiohttp.ClientTimeout(total=10)) as response:
-                data = await response.json()
-                return data
-    except aiohttp.ClientError as e:
-        logger.warning(f"BTC-Wiz proxy error: {e}")
-        return {"error": "BTC-Wiz service unavailable", "detail": str(e)}
-    except Exception as e:
-        logger.error(f"BTC-Wiz proxy unexpected error: {e}")
-        return {"error": "Proxy error", "detail": str(e)}
-
-
 def main():
     """Run the standalone web server with full API"""
     print("🚀 Starting Virtuoso Web Server (Full API Mode)")

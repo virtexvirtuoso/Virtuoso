@@ -5448,31 +5448,13 @@
                 .catch(err => console.warn('[WARN] Failed to fetch exchange concentration:', err));
         }
 
-        // Fetch and update Market Cycle Phase from BTC-Wiz
+        // Fetch and update Market Cycle Phase from CoinGecko category data
         function fetchMarketCyclePhase() {
-            fetch('/btc-wiz/api/cycle/phase')
+            fetch('/api/coingecko/cycle-phase')
                 .then(res => res.json())
                 .then(response => {
-                    if (response.data) {
-                        // Transform BTC-Wiz response to expected format
-                        const btcWizData = response.data;
-                        const transformed = {
-                            phase: {
-                                name: btcWizData.phase || 'Unknown',
-                                risk_level: btcWizData.phase === 'DISTRIBUTION' ? 'HIGH' :
-                                           btcWizData.phase === 'MARKUP' ? 'MODERATE' :
-                                           btcWizData.phase === 'ACCUMULATION' ? 'LOW' : 'MODERATE'
-                            },
-                            phase_score: btcWizData.phase_confidence || 50,
-                            indicators: {
-                                speculative_ratio: btcWizData.indicators?.mvrv_zscore ? btcWizData.indicators.mvrv_zscore / 3 : 1,
-                                nupl: btcWizData.indicators?.nupl || 0,
-                                sopr: btcWizData.indicators?.sopr || 1
-                            },
-                            confidence: (btcWizData.phase_confidence || 50) / 100,  // Convert to decimal for UI
-                            description: btcWizData.phase_description || ''
-                        };
-                        updateMarketCyclePhase(transformed);
+                    if (response.status === 'success' && response.data) {
+                        updateMarketCyclePhase(response.data);
                     }
                 })
                 .catch(err => console.warn('[WARN] Failed to fetch cycle phase:', err));

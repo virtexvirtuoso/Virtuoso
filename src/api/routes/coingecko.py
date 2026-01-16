@@ -267,6 +267,143 @@ async def get_exchange_concentration(request: Request) -> Dict[str, Any]:
     }
 
 
+@router.get("/cycle-phase")
+async def get_market_cycle_phase(request: Request) -> Dict[str, Any]:
+    """
+    Get market cycle phase derived from CoinGecko category performance.
+
+    Phases (BTC Dom → Infra → Alt → Spec → Peak):
+    - ACCUMULATION: Stablecoins leading, risk-off positioning
+    - BTC_DOMINANCE: BTC/major L1s leading, early bull
+    - INFRASTRUCTURE: DeFi/L2s leading, capital building
+    - ALT_SEASON: Mid-caps outperforming, risk appetite rising
+    - SPECULATION: Meme/GameFi leading, late cycle euphoria
+
+    Trading Value: Identifies current market cycle position for risk management.
+    """
+    data = await _get_from_cache(request, "coingecko:categories")
+
+    if not data:
+        raise HTTPException(
+            status_code=503,
+            detail={"error": "Category data not available"}
+        )
+
+    top_performers = data.get('top_performers', [])
+    bottom_performers = data.get('bottom_performers', [])
+    rotation_signal = data.get('rotation_signal', '')
+
+    # Derive market cycle phase from category performance
+    phase = "UNKNOWN"
+    phase_score = 50  # 0-100, where 0=BTC Dom, 100=Peak Speculation
+    risk_level = "MODERATE"
+    confidence = 0.5
+
+    # Define category groups for phase detection
+    stablecoin_keywords = ['stablecoin', 'usd', 'fiat']
+    btc_keywords = ['bitcoin', 'layer 1', 'layer-1', 'smart contract']
+    infra_keywords = ['defi', 'layer 2', 'layer-2', 'exchange', 'oracle', 'infrastructure']
+    alt_keywords = ['gaming', 'metaverse', 'nft', 'social', 'storage']
+    spec_keywords = ['meme', 'dog', 'cat', 'pepe', 'shib']
+
+    def matches_keywords(performers: list, keywords: list) -> bool:
+        """Check if any performer matches keywords."""
+        for performer in performers[:3]:  # Check top 3
+            performer_lower = performer.lower()
+            for kw in keywords:
+                if kw in performer_lower:
+                    return True
+        return False
+
+    # Determine phase based on what's leading
+    if matches_keywords(top_performers, stablecoin_keywords):
+        phase = "ACCUMULATION"
+        phase_score = 10
+        risk_level = "LOW"
+        confidence = 0.7
+    elif matches_keywords(top_performers, spec_keywords):
+        phase = "SPECULATION"
+        phase_score = 90
+        risk_level = "EXTREME"
+        confidence = 0.8
+    elif matches_keywords(top_performers, alt_keywords):
+        phase = "ALT_SEASON"
+        phase_score = 70
+        risk_level = "HIGH"
+        confidence = 0.6
+    elif matches_keywords(top_performers, infra_keywords):
+        phase = "INFRASTRUCTURE"
+        phase_score = 50
+        risk_level = "MODERATE"
+        confidence = 0.6
+    elif matches_keywords(top_performers, btc_keywords):
+        phase = "BTC_DOMINANCE"
+        phase_score = 30
+        risk_level = "LOW"
+        confidence = 0.7
+    else:
+        # Use rotation signal as fallback
+        if 'RISK_OFF' in rotation_signal.upper():
+            phase = "ACCUMULATION"
+            phase_score = 15
+            risk_level = "LOW"
+            confidence = 0.5
+        elif 'RISK_ON' in rotation_signal.upper():
+            phase = "ALT_SEASON"
+            phase_score = 65
+            risk_level = "MODERATE"
+            confidence = 0.5
+        else:
+            phase = "TRANSITION"
+            phase_score = 50
+            risk_level = "MODERATE"
+            confidence = 0.4
+
+    # Check bottom performers for confirmation
+    if matches_keywords(bottom_performers, spec_keywords):
+        # Meme coins at bottom = early cycle confirmation
+        if phase in ["ACCUMULATION", "BTC_DOMINANCE"]:
+            confidence = min(confidence + 0.15, 0.9)
+    elif matches_keywords(bottom_performers, stablecoin_keywords):
+        # Stablecoins at bottom = late cycle confirmation
+        if phase in ["SPECULATION", "ALT_SEASON"]:
+            confidence = min(confidence + 0.15, 0.9)
+
+    return {
+        "status": "success",
+        "data": {
+            "phase": {
+                "name": phase,
+                "risk_level": risk_level
+            },
+            "phase_score": phase_score,
+            "confidence": confidence,
+            "indicators": {
+                "speculative_ratio": phase_score / 50,  # Normalized 0-2 scale
+                "top_sectors": top_performers[:3],
+                "bottom_sectors": bottom_performers[:3]
+            },
+            "rotation_signal": rotation_signal,
+            "description": _get_phase_description(phase),
+            "updated_at": data.get('updated_at')
+        }
+    }
+
+
+def _get_phase_description(phase: str) -> str:
+    """Get human-readable description for each market phase."""
+    descriptions = {
+        "ACCUMULATION": "Risk-off positioning. Capital parked in stablecoins. Smart money accumulating.",
+        "BTC_DOMINANCE": "Bitcoin leading. Early bull market. Alts underperforming BTC.",
+        "INFRASTRUCTURE": "Capital flowing to DeFi/L2s. Building phase before alt season.",
+        "ALT_SEASON": "Mid-caps outperforming. Risk appetite increasing. Late-stage bull.",
+        "SPECULATION": "Meme coins leading. Euphoric phase. High risk of reversal.",
+        "TRANSITION": "No clear phase. Market in transition between cycles.",
+        "UNKNOWN": "Insufficient data to determine phase."
+    }
+    return descriptions.get(phase, "Unknown phase")
+
+
 @router.get("/summary")
 async def get_coingecko_summary(request: Request) -> Dict[str, Any]:
     """
