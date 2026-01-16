@@ -5469,7 +5469,7 @@
                                 nupl: btcWizData.indicators?.nupl || 0,
                                 sopr: btcWizData.indicators?.sopr || 1
                             },
-                            confidence: btcWizData.phase_confidence || 50,
+                            confidence: (btcWizData.phase_confidence || 50) / 100,  // Convert to decimal for UI
                             description: btcWizData.phase_description || ''
                         };
                         updateMarketCyclePhase(transformed);
