@@ -5363,7 +5363,7 @@
                 // Fetch bottom performers from full categories endpoint
                 if (bottomSectors) {
                     // Fetch full categories data for bottom performers
-                    fetch('/api/market/categories')
+                    fetch('/api/coingecko/categories')
                         .then(res => res.json())
                         .then(catData => {
                             if (catData.status === 'success' && catData.data?.bottom_performers) {
@@ -5430,7 +5430,7 @@
             const exchangeTop3 = document.getElementById('exchangeTop3Share');
             const exchangesList = document.getElementById('topExchangesList');
             
-            fetch('/api/market/exchanges/concentration')
+            fetch('/api/coingecko/exchanges/concentration')
                 .then(res => res.json())
                 .then(response => {
                     if (response.status === 'success' && response.data) {
@@ -5448,13 +5448,31 @@
                 .catch(err => console.warn('[WARN] Failed to fetch exchange concentration:', err));
         }
 
-        // Fetch and update Market Cycle Phase
+        // Fetch and update Market Cycle Phase from BTC-Wiz
         function fetchMarketCyclePhase() {
-            fetch('/api/market/cycle-phase')
+            fetch('/btc-wiz/api/cycle/phase')
                 .then(res => res.json())
-                .then(data => {
-                    if (data.status === 'success' && data.data) {
-                        updateMarketCyclePhase(data.data);
+                .then(response => {
+                    if (response.data) {
+                        // Transform BTC-Wiz response to expected format
+                        const btcWizData = response.data;
+                        const transformed = {
+                            phase: {
+                                name: btcWizData.phase || 'Unknown',
+                                risk_level: btcWizData.phase === 'DISTRIBUTION' ? 'HIGH' :
+                                           btcWizData.phase === 'MARKUP' ? 'MODERATE' :
+                                           btcWizData.phase === 'ACCUMULATION' ? 'LOW' : 'MODERATE'
+                            },
+                            phase_score: btcWizData.phase_confidence || 50,
+                            indicators: {
+                                speculative_ratio: btcWizData.indicators?.mvrv_zscore ? btcWizData.indicators.mvrv_zscore / 3 : 1,
+                                nupl: btcWizData.indicators?.nupl || 0,
+                                sopr: btcWizData.indicators?.sopr || 1
+                            },
+                            confidence: btcWizData.phase_confidence || 50,
+                            description: btcWizData.phase_description || ''
+                        };
+                        updateMarketCyclePhase(transformed);
                     }
                 })
                 .catch(err => console.warn('[WARN] Failed to fetch cycle phase:', err));
@@ -5781,7 +5799,7 @@
         // Fetch funding spreads for arbitrage display
         async function fetchFundingSpreads() {
             try {
-                const response = await fetch('/api/market/derivatives/funding-spreads');
+                const response = await fetch('/api/coingecko/derivatives/funding-spreads');
                 const data = await response.json();
 
                 if (data.status === 'success' && data.data && data.data.spreads) {
@@ -5822,7 +5840,7 @@
         // Fetch OI distribution by exchange from CoinGecko derivatives data
         async function fetchOIDistribution() {
             try {
-                const response = await fetch('/api/market/derivatives');
+                const response = await fetch('/api/coingecko/derivatives');
                 const data = await response.json();
 
                 if (data.status === 'success' && data.data && data.data.contracts) {
@@ -5908,7 +5926,7 @@
                     fetchWithLog('/api/dashboard/overview'),
                     fetchWithLog('/api/dashboard/symbols'),
                     fetchWithLog('/api/dashboard/mobile-data'),
-                    fetchWithLog('/api/market/summary')
+                    fetchWithLog('/api/coingecko/summary')
                 ]);
 
                 // Extract values, using null for failures
