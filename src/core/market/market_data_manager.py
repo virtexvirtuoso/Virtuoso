@@ -926,17 +926,27 @@ class MarketDataManager:
             return market_data
     
     async def _fetch_timeframes(self, symbol: str) -> Dict[str, Any]:
-        """Fetch OHLCV data for all timeframes for a symbol using parallel fetching.
+        """Fetch OHLCV data for all timeframes for a symbol using tiered refresh.
 
-        This method now delegates to _fetch_selective_timeframes for all timeframes,
-        which provides parallel fetching with proper concurrency controls.
+        PHASE 2 Optimization (TR-696a9e1f): Uses tiered intervals to skip fresh data.
+        Base (1m) timeframe is provided by WebSocket - only fetch via REST if stale.
+        Higher timeframes have longer refresh intervals to reduce API calls.
         """
         try:
-            self.logger.info(f"Fetching OHLCV data for all timeframes for {symbol}")
-
-            # Delegate to selective fetch with all timeframes
             all_tfs = ['base', 'ltf', 'mtf', 'htf']
-            timeframes = await self._fetch_selective_timeframes(symbol, all_tfs)
+
+            # Start with existing cached data
+            timeframes = {}
+            if symbol in self.data_cache and 'kline' in self.data_cache[symbol]:
+                timeframes = self.data_cache[symbol]['kline'].copy()
+
+            # PHASE 2b: Only fetch stale timeframes (skips base if WS is healthy)
+            stale_data = await self._fetch_stale_klines_only(symbol)
+
+            # Merge stale fetches into result
+            if stale_data:
+                timeframes.update(stale_data)
+                self.logger.debug(f"Fetched {len(stale_data)} stale timeframes for {symbol}")
 
             # Ensure all timeframes have entries (even if empty)
             for tf_name in all_tfs:
@@ -2290,7 +2300,18 @@ class MarketDataManager:
 
         for tf_name, interval in self.TIERED_KLINE_INTERVALS.items():
             if interval == 0:
-                # Skip base - WebSocket provides this data
+                # Base (1m) - WebSocket provides this data
+                # BUT on cold start, we need REST to populate initial data
+                base_exists = (
+                    symbol in self.data_cache and
+                    'kline' in self.data_cache[symbol] and
+                    'base' in self.data_cache[symbol]['kline'] and
+                    self.data_cache[symbol]['kline']['base'] is not None and
+                    not self.data_cache[symbol]['kline']['base'].empty
+                )
+                if not base_exists:
+                    stale_timeframes.append(tf_name)
+                    self.logger.debug(f"{symbol} base needs initial fetch (cold start)")
                 continue
 
             last_fetch = timestamps.get(tf_name, 0)
