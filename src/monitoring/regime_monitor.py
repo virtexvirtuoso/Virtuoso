@@ -671,12 +671,14 @@ class RegimeMonitor:
             )
 
             # Publish stats
+            # TTL increased from 60s to 300s to survive analysis cycle gaps
+            # caused by rate limiting and API timeouts (2026-01-15)
             stats_data = self.get_stats()
             await bridge.publish_data_update(
                 key='regime:stats',
                 data=stats_data,
                 source=DataSource.ANALYSIS_ENGINE,
-                ttl=60
+                ttl=300
             )
 
             self.logger.debug(f"Published regime data to shared cache: {len(regimes_data)} symbols")
