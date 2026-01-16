@@ -1720,11 +1720,13 @@ class CacheDataAggregator:
             volume_leaders = sorted(movers_data, key=lambda x: x.get('volume_24h', 0), reverse=True)[:10]
 
             # Use unified cache writer
+            # TTL increased from 90s to 300s to survive analysis cycle gaps
+            # caused by rate limiting and API timeouts (2026-01-15)
             success = await self.cache_writer.write_market_movers(
                 gainers=gainers,
                 losers=losers,
                 volume_leaders=volume_leaders,
-                ttl=90
+                ttl=300
             )
 
             if success:
