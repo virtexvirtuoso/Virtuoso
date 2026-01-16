@@ -75,7 +75,15 @@ class WebSocketManager:
             self.ws_url = "wss://stream-testnet.bybit.com/v5/public/linear"
         else:
             self.ws_url = "wss://stream.bybit.com/v5/public/linear"
-    
+
+        # WebSocket receive timeout configuration
+        # CRITICAL: Must be higher than longest event-loop-blocking operation (confluence analysis ~220s)
+        # Default 300s provides buffer. Set to None to disable (rely solely on heartbeat).
+        # See: docs/07-technical/investigations/2026-01-16_WEBSOCKET_HANDLER_TIMEOUT_INVESTIGATION.md
+        ws_config = config.get('websocket', {})
+        self._receive_timeout = ws_config.get('receive_timeout', 300.0)
+        self.logger.info(f"WebSocket receive_timeout configured: {self._receive_timeout}s")
+
     async def initialize(self, symbols: List[str]) -> None:
         """Initialize WebSocket connections and subscriptions
         
@@ -201,13 +209,19 @@ class WebSocketManager:
                 )
 
                 # Connect to Bybit WebSocket with proper error handling
+                # CRITICAL: receive_timeout must accommodate event-loop-blocking operations.
+                # The confluence analysis can block for 150-220 seconds. During this time,
+                # WebSocket handlers cannot process messages, but the connection is still healthy.
+                # The heartbeat (30s) provides actual connection liveness verification.
+                # A too-short receive_timeout (e.g., 5s) causes false HANDLER_TIMEOUT errors.
+                # See: docs/07-technical/investigations/2026-01-16_WEBSOCKET_HANDLER_TIMEOUT_INVESTIGATION.md
                 try:
                     ws = await session.ws_connect(
                         self.ws_url,
                         heartbeat=30,
                         compress=0,
                         max_msg_size=1024*1024,  # 1MB max message size
-                        receive_timeout=5.0
+                        receive_timeout=self._receive_timeout  # Configurable, default 300.0s
                     )
 
                     self.logger.info(f"WebSocket connection established for {connection_id}")
