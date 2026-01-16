@@ -1161,7 +1161,11 @@ class MarketDataManager:
             
             # Update statistics
             self.stats['websocket_updates'] += 1
-            
+
+            # Update last_full_refresh for health check freshness (fixes false stale alerts)
+            if symbol in self.last_full_refresh:
+                self.last_full_refresh[symbol]['components']['ticker'] = current_time
+
         except Exception as e:
             self.logger.error(f"Error updating ticker from WebSocket: {str(e)}")
             if self.logger.isEnabledFor(logging.DEBUG):
@@ -1390,7 +1394,13 @@ class MarketDataManager:
             
             # Update stats
             self.stats['websocket_updates'] += 1
-            
+
+            # Update last_full_refresh for health check freshness (fixes false stale alerts)
+            if symbol in self.last_full_refresh and timeframe:
+                if 'kline' not in self.last_full_refresh[symbol]['components']:
+                    self.last_full_refresh[symbol]['components']['kline'] = {}
+                self.last_full_refresh[symbol]['components']['kline'][timeframe] = now
+
         except Exception as e:
             self.logger.error(f"Error updating kline from WebSocket: {str(e)}")
             self.logger.debug(traceback.format_exc())
@@ -1510,7 +1520,11 @@ class MarketDataManager:
                 
             # Update statistics
             self.stats['websocket_updates'] += 1
-            
+
+            # Update last_full_refresh for health check freshness (fixes false stale alerts)
+            if symbol in self.last_full_refresh:
+                self.last_full_refresh[symbol]['components']['orderbook'] = current_time
+
         except Exception as e:
             self.logger.error(f"Error updating orderbook from WebSocket: {str(e)}")
             self.logger.debug(traceback.format_exc())
@@ -1604,9 +1618,13 @@ class MarketDataManager:
             
             # Update cache
             self.data_cache[symbol]['trades'] = all_trades
-            
-            # Throttle logging based on configured intervals
+
+            # Update last_full_refresh for health check freshness (fixes false stale alerts)
             current_time = time.time()
+            if symbol in self.last_full_refresh:
+                self.last_full_refresh[symbol]['components']['trades'] = current_time
+
+            # Throttle logging based on configured intervals
             if (current_time - self.ws_log_throttle['trades']['last_log'] >= 
                 self.ws_log_throttle['trades']['interval']):
                 if processed_trades:
