@@ -1987,6 +1987,10 @@ class MarketDataManager:
         Returns:
             Dictionary containing statistics
         """
+        # Clear stale entries before repopulating
+        # This prevents false alerts when symbols rotate out of the monitored list
+        self.stats['data_freshness'] = {}
+
         # Add data freshness statistics
         for symbol in self.symbols:
             if symbol in self.last_full_refresh:
