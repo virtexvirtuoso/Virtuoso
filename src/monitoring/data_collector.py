@@ -109,6 +109,29 @@ class DataCollector(MonitoringComponent, DataProvider):
             'cache_hits': 0,
             'average_fetch_time': 0
         }
+
+        # Rate Limit Optimization Metrics (TR-696a9e1f)
+        # Track REST calls by endpoint type for baseline measurement
+        self._rest_call_counts = {
+            'ticker': 0,
+            'orderbook': 0,
+            'trades': 0,
+            'ohlcv': 0,
+            'long_short_ratio': 0,
+            'risk_limits': 0,
+            'premium_index': 0,
+            'taker_volume_ratio': 0,
+            'open_interest': 0,
+            'batch_ticker': 0,  # New: batch ticker calls
+        }
+        # WebSocket cache statistics
+        self._ws_cache_hits = 0
+        self._ws_cache_misses = 0
+
+        # Batch ticker cache for PHASE 1 optimization
+        self._batch_ticker_cache: Dict[str, Any] = {}
+        self._batch_ticker_lock = asyncio.Lock()
+        self._batch_ticker_ttl = 60  # 60 second TTL for batch ticker cache
     
     async def _perform_initialization(self) -> None:
         """Perform component-specific initialization."""
@@ -338,33 +361,34 @@ class DataCollector(MonitoringComponent, DataProvider):
         symbol: str
     ) -> Dict[str, pd.DataFrame]:
         """Fetch OHLCV data for all configured timeframes.
-        
+
         Args:
             exchange: Exchange instance
             symbol: Trading pair symbol
-            
+
         Returns:
             Dictionary mapping timeframe names to DataFrames
         """
         ohlcv_data = {}
-        
+
         for tf_name, timeframe in self.timeframes.items():
             try:
+                self._rest_call_counts['ohlcv'] += 1
                 candles = await exchange.fetch_ohlcv(
                     symbol,
                     timeframe,
                     limit=self.ohlcv_limit
                 )
-                
+
                 if candles:
                     df = self._process_ohlcv_data(candles)
                     ohlcv_data[tf_name] = df
                     self.logger.debug(f"Fetched {len(candles)} candles for {symbol} {timeframe}")
-                    
+
             except Exception as e:
                 self.logger.error(f"Error fetching {timeframe} OHLCV for {symbol}: {str(e)}")
                 ohlcv_data[tf_name] = pd.DataFrame()
-        
+
         return ohlcv_data
     
     def _process_ohlcv_data(self, candles: List[List]) -> pd.DataFrame:
@@ -401,23 +425,24 @@ class DataCollector(MonitoringComponent, DataProvider):
     @retry_on_error(max_attempts=2, delay=0.5)
     async def _fetch_orderbook(self, exchange, symbol: str) -> Dict[str, Any]:
         """Fetch orderbook data.
-        
+
         Args:
             exchange: Exchange instance
             symbol: Trading pair symbol
-            
+
         Returns:
             Orderbook dictionary with bids and asks
         """
         try:
+            self._rest_call_counts['orderbook'] += 1
             orderbook = await exchange.fetch_order_book(symbol, self.orderbook_limit)
-            
+
             # Add timestamp if not present
             if 'timestamp' not in orderbook:
                 orderbook['timestamp'] = TimestampUtility.get_utc_timestamp()
-            
+
             return orderbook
-            
+
         except Exception as e:
             self.logger.error(f"Error fetching orderbook for {symbol}: {str(e)}")
             return {'bids': [], 'asks': [], 'timestamp': TimestampUtility.get_utc_timestamp()}
@@ -425,67 +450,147 @@ class DataCollector(MonitoringComponent, DataProvider):
     @retry_on_error(max_attempts=2, delay=0.5)
     async def _fetch_trades(self, exchange, symbol: str) -> List[Dict[str, Any]]:
         """Fetch recent trades.
-        
+
         Args:
             exchange: Exchange instance
             symbol: Trading pair symbol
-            
+
         Returns:
             List of recent trades
         """
         try:
+            self._rest_call_counts['trades'] += 1
             trades = await exchange.fetch_trades(symbol, limit=self.trades_limit)
             return trades if trades else []
-            
+
         except Exception as e:
             self.logger.error(f"Error fetching trades for {symbol}: {str(e)}")
             return []
     
     @retry_on_error(max_attempts=2, delay=0.5)
     async def _fetch_ticker(self, exchange, symbol: str) -> Dict[str, Any]:
-        """Fetch ticker data.
-        
+        """Fetch ticker data with batch cache optimization.
+
+        PHASE 1: Uses batch ticker cache when available (60s TTL).
+        Falls back to individual fetch if cache miss.
+
         Args:
             exchange: Exchange instance
             symbol: Trading pair symbol
-            
+
         Returns:
-            Ticker dictionary
+            Ticker dictionary with symbol, last, timestamp fields
         """
         try:
+            # PHASE 1: Check batch ticker cache first (double-check locking pattern)
+            cache_entry = self._batch_ticker_cache.get(symbol)
+            if cache_entry:
+                cache_age = TimestampUtility.get_utc_timestamp() - cache_entry.get('cached_at', 0)
+                if cache_age <= self._batch_ticker_ttl * 1000:  # Convert TTL to ms
+                    self._ws_cache_hits += 1
+                    return cache_entry.get('data')
+                # Cache expired, will refresh below
+
+            # Cache miss - need to fetch
+            self._ws_cache_misses += 1
+
+            # Try to refresh batch tickers if we have multiple symbols configured
+            await self._refresh_batch_tickers(exchange)
+
+            # Check cache again after refresh
+            cache_entry = self._batch_ticker_cache.get(symbol)
+            if cache_entry:
+                return cache_entry.get('data')
+
+            # Fallback to individual ticker fetch
+            self._rest_call_counts['ticker'] += 1
             ticker = await exchange.fetch_ticker(symbol)
-            
+
             # Add timestamp if not present
             if ticker and 'timestamp' not in ticker:
                 ticker['timestamp'] = TimestampUtility.get_utc_timestamp()
-            
+
             return ticker
-            
+
         except Exception as e:
             self.logger.error(f"Error fetching ticker for {symbol}: {str(e)}")
             return None
+
+    async def _refresh_batch_tickers(self, exchange) -> None:
+        """Refresh batch ticker cache using single API call for all symbols.
+
+        PHASE 1 Optimization: Instead of N individual ticker calls,
+        use one batch call to fetch all tickers, reducing API calls by ~95%.
+
+        Uses double-check locking pattern to prevent multiple concurrent refreshes.
+        """
+        # Fast path: check if cache is fresh without acquiring lock
+        if self._batch_ticker_cache:
+            # Check any entry's age
+            first_entry = next(iter(self._batch_ticker_cache.values()), None)
+            if first_entry:
+                cache_age = TimestampUtility.get_utc_timestamp() - first_entry.get('cached_at', 0)
+                if cache_age <= self._batch_ticker_ttl * 1000:
+                    return  # Cache is still fresh
+
+        # Slow path: acquire lock and refresh
+        async with self._batch_ticker_lock:
+            # Double-check after acquiring lock
+            if self._batch_ticker_cache:
+                first_entry = next(iter(self._batch_ticker_cache.values()), None)
+                if first_entry:
+                    cache_age = TimestampUtility.get_utc_timestamp() - first_entry.get('cached_at', 0)
+                    if cache_age <= self._batch_ticker_ttl * 1000:
+                        return  # Another thread refreshed while we waited
+
+            try:
+                # Fetch all tickers in one batch call
+                if hasattr(exchange, 'fetch_tickers'):
+                    self._rest_call_counts['batch_ticker'] += 1
+                    all_tickers = await exchange.fetch_tickers()
+
+                    if all_tickers:
+                        current_time = TimestampUtility.get_utc_timestamp()
+                        # Update cache for all symbols
+                        for symbol, ticker in all_tickers.items():
+                            if ticker and isinstance(ticker, dict):
+                                # Ensure required fields (symbol, last, timestamp)
+                                ticker['symbol'] = symbol  # Always set from cache key
+                                if 'timestamp' not in ticker:
+                                    ticker['timestamp'] = current_time
+                                self._batch_ticker_cache[symbol] = {
+                                    'data': ticker,
+                                    'cached_at': current_time
+                                }
+
+                        self.logger.debug(
+                            f"Batch ticker refresh: {len(all_tickers)} symbols cached"
+                        )
+            except Exception as e:
+                self.logger.warning(f"Batch ticker fetch failed, falling back to individual: {e}")
     
     @retry_on_error(max_attempts=2, delay=0.5)
     async def _fetch_long_short_ratio(self, exchange, symbol: str) -> Dict[str, Any]:
         """Fetch long/short ratio data.
-        
+
         Args:
             exchange: Exchange instance
             symbol: Trading pair symbol
-            
+
         Returns:
             Long/short ratio dictionary
         """
         try:
             # Check if exchange has the method
             if hasattr(exchange, 'fetch_long_short_ratio'):
+                self._rest_call_counts['long_short_ratio'] += 1
                 lsr = await exchange.fetch_long_short_ratio(symbol)
-                self.logger.info(f"Successfully fetched LSR for {symbol}: {lsr}")
+                self.logger.debug(f"Successfully fetched LSR for {symbol}: {lsr}")
                 return lsr
             else:
                 self.logger.warning(f"Exchange does not support LSR fetching")
                 return None
-                
+
         except Exception as e:
             self.logger.error(f"Error fetching LSR for {symbol}: {str(e)}")
             return None
@@ -493,23 +598,24 @@ class DataCollector(MonitoringComponent, DataProvider):
     @retry_on_error(max_attempts=2, delay=0.5)
     async def _fetch_risk_limits(self, exchange, symbol: str) -> Dict[str, Any]:
         """Fetch risk limits data.
-        
+
         Args:
             exchange: Exchange instance
             symbol: Trading pair symbol
-            
+
         Returns:
             Risk limits dictionary
         """
         try:
             # Check if exchange has the method
             if hasattr(exchange, 'fetch_risk_limits'):
+                self._rest_call_counts['risk_limits'] += 1
                 risk_limits = await exchange.fetch_risk_limits(symbol)
                 return risk_limits
             else:
                 self.logger.debug(f"Exchange does not support risk limits fetching")
                 return None
-                
+
         except Exception as e:
             self.logger.error(f"Error fetching risk limits for {symbol}: {str(e)}")
             return None
@@ -590,7 +696,7 @@ class DataCollector(MonitoringComponent, DataProvider):
     
     def get_stats(self) -> Dict[str, Any]:
         """Get data collector statistics.
-        
+
         Returns:
             Dictionary of statistics
         """
@@ -598,7 +704,49 @@ class DataCollector(MonitoringComponent, DataProvider):
             **self._fetch_stats,
             'cache_size': len(self._data_cache),
             'configured_timeframes': list(self.timeframes.values()),
-            'is_running': self.is_running
+            'is_running': self.is_running,
+            # Rate limit optimization metrics
+            'rest_call_counts': self._rest_call_counts.copy(),
+            'ws_cache_hits': self._ws_cache_hits,
+            'ws_cache_misses': self._ws_cache_misses,
+            'batch_ticker_cache_size': len(self._batch_ticker_cache),
+        }
+
+    def get_metrics_summary(self) -> Dict[str, Any]:
+        """Get summarized metrics for rate limit optimization analysis.
+
+        Returns baseline data for measuring API call reduction effectiveness.
+        Deploy to VPS and capture 24hr baseline before implementing optimizations.
+
+        Returns:
+            Dictionary containing:
+            - rest_call_counts: Breakdown of REST calls by endpoint type
+            - ws_cache_hits/misses: WebSocket cache efficiency
+            - total_rest_calls: Sum of all REST API calls
+            - cache_hit_rate: Percentage of requests served from cache
+            - estimated_calls_per_cycle: Average REST calls per monitoring cycle
+        """
+        total_rest_calls = sum(self._rest_call_counts.values())
+        total_ws_requests = self._ws_cache_hits + self._ws_cache_misses
+        cache_hit_rate = (
+            (self._ws_cache_hits / total_ws_requests * 100)
+            if total_ws_requests > 0 else 0.0
+        )
+
+        # Calculate per-cycle estimate (assumes ~20 symbols monitored)
+        num_symbols = 20
+        cycles = max(self._fetch_stats['total_fetches'] / num_symbols, 1)
+        calls_per_cycle = total_rest_calls / cycles if cycles > 0 else total_rest_calls
+
+        return {
+            'rest_call_counts': self._rest_call_counts.copy(),
+            'ws_cache_hits': self._ws_cache_hits,
+            'ws_cache_misses': self._ws_cache_misses,
+            'total_rest_calls': total_rest_calls,
+            'cache_hit_rate': round(cache_hit_rate, 2),
+            'estimated_calls_per_cycle': round(calls_per_cycle, 1),
+            'total_fetches': self._fetch_stats['total_fetches'],
+            'batch_ticker_cache_size': len(self._batch_ticker_cache),
         }
     
     async def clear_cache(self) -> None:
@@ -608,16 +756,17 @@ class DataCollector(MonitoringComponent, DataProvider):
     @retry_on_error(max_attempts=2, delay=0.5)
     async def _fetch_premium_index(self, exchange, symbol: str) -> Optional[Dict[str, Any]]:
         """Fetch premium index kline data for basis score calculation.
-        
+
         Args:
             exchange: Exchange instance
             symbol: Trading pair symbol
-            
+
         Returns:
             Premium index data dict with 'signal' key containing z_score
         """
         try:
             if hasattr(exchange, 'fetch_premium_index_kline'):
+                self._rest_call_counts['premium_index'] += 1
                 premium_data = await exchange.fetch_premium_index_kline(symbol)
                 if premium_data:
                     self.logger.debug(f"Successfully fetched premium_index for {symbol}")
@@ -632,16 +781,17 @@ class DataCollector(MonitoringComponent, DataProvider):
     @retry_on_error(max_attempts=2, delay=0.5)
     async def _fetch_taker_volume_ratio(self, exchange, symbol: str) -> Optional[Dict[str, Any]]:
         """Fetch taker buy/sell volume ratio.
-        
+
         Args:
             exchange: Exchange instance
             symbol: Trading pair symbol
-            
+
         Returns:
             Taker volume ratio data dict
         """
         try:
             if hasattr(exchange, 'calculate_taker_buy_sell_ratio'):
+                self._rest_call_counts['taker_volume_ratio'] += 1
                 ratio_data = await exchange.calculate_taker_buy_sell_ratio(symbol)
                 if ratio_data:
                     self.logger.debug(f"Successfully fetched taker_volume_ratio for {symbol}")
@@ -656,23 +806,24 @@ class DataCollector(MonitoringComponent, DataProvider):
     @retry_on_error(max_attempts=2, delay=0.5)
     async def _fetch_open_interest(self, exchange, symbol: str) -> Optional[Dict[str, Any]]:
         """Fetch open interest with history for current + previous values.
-        
-        Uses fetch_open_interest_history with limit=2 to get both current and 
+
+        Uses fetch_open_interest_history with limit=2 to get both current and
         previous OI values, enabling proper delta calculation for oi_coiling.
-        
+
         Args:
             exchange: Exchange instance
             symbol: Trading pair symbol
-            
+
         Returns:
             Dict with 'current', 'previous', and 'history' keys, or None on error
         """
         try:
             if hasattr(exchange, 'fetch_open_interest_history'):
+                self._rest_call_counts['open_interest'] += 1
                 # Fetch last 2 OI readings for delta calculation
                 oi_response = await exchange.fetch_open_interest_history(
-                    symbol, 
-                    interval='5min', 
+                    symbol,
+                    interval='5min',
                     limit=2
                 )
                 

@@ -123,6 +123,19 @@ class MarketDataManager:
             'premium_index': 300,      # 5 minutes - uses 5-min kline data
             'open_interest': 300       # 5 minutes - OI history for divergence calculation
         }
+
+        # PHASE 2a - Tiered kline refresh intervals (TR-696a9e1f)
+        # Base (1m) timeframe gets data from WebSocket, no REST polling needed
+        # Higher timeframes have increasingly longer intervals to reduce API calls
+        self.TIERED_KLINE_INTERVALS = {
+            'base': 0,       # WebSocket provides 1m data, skip REST entirely
+            'ltf': 300,      # 5 minutes for 5m candles
+            'mtf': 1800,     # 30 minutes for 30m candles
+            'htf': 14400     # 4 hours for 4h candles
+        }
+
+        # Track last fetch timestamp per symbol/timeframe for selective refreshing
+        self._kline_fetch_timestamps: Dict[str, Dict[str, float]] = {}
         
         # State tracking
         self.symbols = []
@@ -1072,7 +1085,8 @@ class MarketDataManager:
             # Initialize ticker if it doesn't exist
             if 'ticker' not in self.data_cache[symbol] or self.data_cache[symbol]['ticker'] is None:
                 self.data_cache[symbol]['ticker'] = {
-                    'bid': 0, 'ask': 0, 'last': 0, 'high': 0, 'low': 0, 
+                    'symbol': symbol,  # Required for validator
+                    'bid': 0, 'ask': 0, 'last': 0, 'high': 0, 'low': 0,
                     'volume': 0, 'timestamp': int(time.time() * 1000)
                 }
             
@@ -2248,6 +2262,227 @@ class MarketDataManager:
                     timeframes[tf_name] = self._create_empty_ohlcv_dataframe()
 
             return timeframes
+
+    async def _fetch_stale_klines_only(self, symbol: str) -> Dict[str, pd.DataFrame]:
+        """Fetch only stale kline timeframes based on tiered intervals.
+
+        PHASE 2b Optimization (TR-696a9e1f): Instead of fetching all 4 timeframes,
+        only fetch those whose data has exceeded their tiered refresh interval.
+        Base (1m) is NEVER fetched via REST - WebSocket provides real-time data.
+
+        Args:
+            symbol: Trading pair symbol
+
+        Returns:
+            Dictionary mapping timeframe names to DataFrames (only stale TFs)
+        """
+        current_time = time.time()
+
+        # Initialize timestamp tracking for this symbol if needed
+        if symbol not in self._kline_fetch_timestamps:
+            self._kline_fetch_timestamps[symbol] = {
+                'base': 0, 'ltf': 0, 'mtf': 0, 'htf': 0
+            }
+
+        # Determine which timeframes are stale
+        stale_timeframes = []
+        timestamps = self._kline_fetch_timestamps[symbol]
+
+        for tf_name, interval in self.TIERED_KLINE_INTERVALS.items():
+            if interval == 0:
+                # Skip base - WebSocket provides this data
+                continue
+
+            last_fetch = timestamps.get(tf_name, 0)
+            time_since_fetch = current_time - last_fetch
+
+            if time_since_fetch >= interval:
+                stale_timeframes.append(tf_name)
+                self.logger.debug(
+                    f"{symbol} {tf_name} stale: {time_since_fetch:.0f}s > {interval}s"
+                )
+
+        if not stale_timeframes:
+            self.logger.debug(f"No stale timeframes for {symbol}")
+            return {}
+
+        # Fetch only stale timeframes
+        result = await self._fetch_selective_timeframes(symbol, stale_timeframes)
+
+        # Update timestamps for successfully fetched timeframes
+        for tf_name, df in result.items():
+            if df is not None and not df.empty:
+                self._kline_fetch_timestamps[symbol][tf_name] = current_time
+
+        return result
+
+    def _check_ws_health(self, symbol: str) -> bool:
+        """Check if WebSocket data for a symbol is fresh enough.
+
+        PHASE 3a (TR-696a9e1f): Critical staleness threshold is 120 seconds.
+        If WS data is older, we need REST fallback.
+
+        Args:
+            symbol: Trading pair symbol
+
+        Returns:
+            True if WebSocket data is healthy (fresh), False if stale
+        """
+        WS_CRITICAL_STALENESS = 120  # 2 minutes threshold
+
+        if symbol not in self.data_cache:
+            return False
+
+        cache = self.data_cache[symbol]
+        current_time = time.time() * 1000  # Convert to ms
+
+        # Check ticker freshness (most critical real-time data)
+        ticker = cache.get('ticker')
+        if ticker:
+            ticker_ts = ticker.get('timestamp', 0)
+            ticker_age = (current_time - ticker_ts) / 1000  # Convert to seconds
+            if ticker_age > WS_CRITICAL_STALENESS:
+                self.logger.warning(
+                    f"WS health check FAILED for {symbol}: ticker age {ticker_age:.0f}s > {WS_CRITICAL_STALENESS}s"
+                )
+                return False
+
+        # Check orderbook freshness
+        orderbook = cache.get('orderbook')
+        if orderbook:
+            ob_ts = orderbook.get('timestamp', 0)
+            ob_age = (current_time - ob_ts) / 1000
+            if ob_age > WS_CRITICAL_STALENESS:
+                self.logger.warning(
+                    f"WS health check FAILED for {symbol}: orderbook age {ob_age:.0f}s > {WS_CRITICAL_STALENESS}s"
+                )
+                return False
+
+        return True
+
+    async def _emergency_refresh(self, symbol: str) -> None:
+        """Emergency REST refresh when WebSocket data is critically stale.
+
+        PHASE 3a (TR-696a9e1f): Fallback mechanism when WS stops updating.
+        Only refreshes critical real-time components (ticker, orderbook).
+
+        Args:
+            symbol: Trading pair symbol to refresh
+        """
+        self.logger.warning(f"EMERGENCY refresh triggered for {symbol} - WS data stale")
+
+        try:
+            # Refresh critical components only
+            primary_exchange = await self.exchange_manager.get_primary_exchange()
+            if not primary_exchange:
+                return
+
+            # Fetch ticker
+            ticker = await self._fetch_with_rate_limiting(
+                'v5/market/tickers',
+                lambda: self.exchange_manager.fetch_ticker(symbol)
+            )
+            if ticker:
+                self.data_cache[symbol]['ticker'] = ticker
+                self.logger.info(f"Emergency ticker refresh for {symbol} successful")
+
+            # Fetch orderbook
+            orderbook = await self._fetch_with_rate_limiting(
+                'v5/market/orderbook',
+                lambda: self.exchange_manager.fetch_order_book(symbol)
+            )
+            if orderbook:
+                self.data_cache[symbol]['orderbook'] = orderbook
+                self.logger.info(f"Emergency orderbook refresh for {symbol} successful")
+
+        except Exception as e:
+            self.logger.error(f"Emergency refresh failed for {symbol}: {e}")
+
+    def _is_ws_data_fresh(self, symbol: str, data_type: str, max_age: int = 60) -> bool:
+        """Check if specific WebSocket-provided data is fresh.
+
+        PHASE 3b (TR-696a9e1f): Helper to determine if WS cache can be used
+        instead of making REST call.
+
+        Args:
+            symbol: Trading pair symbol
+            data_type: Type of data ('ticker', 'orderbook', 'trades')
+            max_age: Maximum acceptable age in seconds (default 60s)
+
+        Returns:
+            True if data exists and is fresh, False otherwise
+        """
+        if symbol not in self.data_cache:
+            return False
+
+        data = self.data_cache[symbol].get(data_type)
+        if not data:
+            return False
+
+        current_time = time.time() * 1000  # ms
+        data_ts = 0
+
+        if isinstance(data, dict):
+            data_ts = data.get('timestamp', 0)
+        elif isinstance(data, list) and data:
+            # For trades, check the most recent trade timestamp
+            data_ts = data[-1].get('timestamp', 0) if data else 0
+
+        age_seconds = (current_time - data_ts) / 1000
+        return age_seconds <= max_age
+
+    def _build_from_ws_cache(self, symbol: str) -> Dict[str, Any]:
+        """Build market data response from WebSocket cache.
+
+        PHASE 3b (TR-696a9e1f): Constructs response from cached WS data
+        without making any REST calls.
+
+        Args:
+            symbol: Trading pair symbol
+
+        Returns:
+            Market data dictionary built from WS cache
+        """
+        if symbol not in self.data_cache:
+            return {}
+
+        cache = self.data_cache[symbol]
+
+        return {
+            'symbol': symbol,
+            'timestamp': int(time.time() * 1000),
+            'ticker': cache.get('ticker'),
+            'orderbook': cache.get('orderbook'),
+            'trades': cache.get('trades', []),
+            'kline': cache.get('kline', {}),
+            'ohlcv': cache.get('kline', {}),  # Alias for compatibility
+            'long_short_ratio': cache.get('long_short_ratio'),
+            'open_interest': cache.get('open_interest'),
+            'premium_index': cache.get('premium_index'),
+            'taker_volume_ratio': cache.get('taker_volume_ratio'),
+            '_from_ws_cache': True  # Flag indicating data source
+        }
+
+    async def _warmup_cache(self, symbols: List[str]) -> None:
+        """Warm up cache with initial data for cold start.
+
+        PHASE 3b (TR-696a9e1f): Called during initialization to populate
+        cache before WebSocket connections are fully established.
+
+        Args:
+            symbols: List of symbols to warm up
+        """
+        self.logger.info(f"Warming up cache for {len(symbols)} symbols")
+
+        for symbol in symbols:
+            try:
+                # Fetch initial data via REST
+                await self._fetch_symbol_data_atomically(symbol)
+                self.logger.debug(f"Cache warmed for {symbol}")
+            except Exception as e:
+                self.logger.warning(f"Cache warmup failed for {symbol}: {e}")
+
+        self.logger.info("Cache warmup complete")
 
     def _create_empty_ohlcv_dataframe(self) -> pd.DataFrame:
         """Create an empty OHLCV DataFrame with proper structure.
