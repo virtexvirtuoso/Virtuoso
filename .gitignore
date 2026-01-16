@@ -504,3 +504,6 @@ src/dashboard/templates/dashboard_beta*.html
 src/dashboard/templates/mobile_beta*.html
 src/dashboard/templates/*_phase*.html
 src/core/reporting/templates/test_*.html
+
+# Data directory
+data/
