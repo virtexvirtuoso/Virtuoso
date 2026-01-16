@@ -1983,7 +1983,7 @@ class MarketDataManager:
     
     def get_stats(self) -> Dict[str, Any]:
         """Get statistics about the market data manager
-        
+
         Returns:
             Dictionary containing statistics
         """
@@ -1992,12 +1992,25 @@ class MarketDataManager:
             if symbol in self.last_full_refresh:
                 last_refresh = self.last_full_refresh[symbol]
                 current_time = time.time()
-                
+
+                # Calculate age from most recent component update, not initial load
+                # This fixes false staleness alerts when data is continuously updated via WebSocket
+                most_recent_component_time = last_refresh['timestamp']
+                for component, timestamp in last_refresh['components'].items():
+                    if component == 'kline':
+                        # For klines, get the most recent timeframe update
+                        if isinstance(timestamp, dict):
+                            for tf_time in timestamp.values():
+                                if tf_time > most_recent_component_time:
+                                    most_recent_component_time = tf_time
+                    elif isinstance(timestamp, (int, float)) and timestamp > most_recent_component_time:
+                        most_recent_component_time = timestamp
+
                 self.stats['data_freshness'][symbol] = {
-                    'age_seconds': current_time - last_refresh['timestamp'],
+                    'age_seconds': current_time - most_recent_component_time,
                     'components': {}
                 }
-                
+
                 # Add component ages
                 for component, timestamp in last_refresh['components'].items():
                     if component == 'kline':
