@@ -75,7 +75,12 @@ class TopSymbolsManager:
             if symbol in self._symbols_cache:
                 cache_entry = self._symbols_cache[symbol]
                 if current_time - cache_entry['timestamp'] < self._cache_ttl:
-                    return cache_entry['data']
+                    # Update timestamp in returned data to reflect current retrieval time
+                    # This prevents false "stale data" alerts in downstream consumers
+                    # while still benefiting from cached underlying data
+                    cached_data = cache_entry['data'].copy()
+                    cached_data['timestamp'] = int(current_time * 1000)  # milliseconds
+                    return cached_data
 
             # Use centralized fetching with retries
             max_retries = 3

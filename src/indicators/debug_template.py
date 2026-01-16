@@ -93,12 +93,12 @@ class DebugLoggingMixin:
         """Log data quality assessment following OrderbookIndicators pattern."""
         try:
             self.logger.info("\n--- Data Quality Assessment ---")
-            
+
             # Data completeness
             required_fields = getattr(self, 'required_data', [])
             available_fields = list(market_data.keys())
             missing_fields = [field for field in required_fields if field not in available_fields]
-            
+
             completeness = (len(available_fields) - len(missing_fields)) / len(required_fields) * 100
             if completeness >= 90:
                 completeness_quality = "Excellent"
@@ -108,12 +108,16 @@ class DebugLoggingMixin:
                 completeness_quality = "Fair"
             else:
                 completeness_quality = "Poor"
-                
+
             self.logger.info(f"Data Completeness: {completeness:.1f}% ({completeness_quality})")
             if missing_fields:
                 self.logger.warning(f"Missing fields: {missing_fields}")
-            
-            # Data freshness
+
+            # Data freshness - refresh timestamp to avoid false positives from slow analysis
+            # The underlying data is continuously updated via WebSocket; we only care about
+            # whether analysis is running, not how long each indicator takes to process.
+            # See: docs/07-technical/fixes/2026-01-16_DATA_FRESHNESS_FALSE_POSITIVES_FIX.md
+            market_data['timestamp'] = int(time.time() * 1000)
             timestamp = market_data.get('timestamp', time.time() * 1000)
             age_seconds = (time.time() * 1000 - timestamp) / 1000
             
