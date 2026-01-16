@@ -744,10 +744,15 @@ async def initialize_components():
             market_monitor.portfolio_analyzer = portfolio_analyzer
             fixed_deps.append("portfolio_analyzer")
 
-    if hasattr(market_monitor, 'confluence_analyzer') and not market_monitor.confluence_analyzer:
+    # CRITICAL FIX: ALWAYS inject main.py's ConfluenceAnalyzer, replacing DI's singleton
+    # main.py's ConfluenceAnalyzer has proper MDM with WebSocket connections; DI's may be stale
+    if hasattr(market_monitor, 'confluence_analyzer'):
         if confluence_analyzer:
+            old_ca_id = id(market_monitor.confluence_analyzer) if market_monitor.confluence_analyzer else 'None'
             market_monitor.confluence_analyzer = confluence_analyzer
-            fixed_deps.append("confluence_analyzer")
+            new_ca_id = id(confluence_analyzer)
+            logger.info(f"✅ Replaced monitor's ConfluenceAnalyzer (old={old_ca_id}) with main.py's (new={new_ca_id})")
+            fixed_deps.append("confluence_analyzer (REPLACED)")
 
     # CRITICAL FIX: ALWAYS inject main.py's MDM, replacing DI's singleton
     # main.py's MDM has WebSocket connections and OI history; DI's singleton is empty
