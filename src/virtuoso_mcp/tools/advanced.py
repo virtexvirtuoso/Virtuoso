@@ -527,6 +527,172 @@ def _format_whale_market_interpretation(data: list) -> list[str]:
     return lines
 
 
+def format_alpha_opportunities(data: list, limit: int = 5) -> str:
+    """
+    Format alpha opportunities response showing high-conviction trading setups.
+
+    Ranks opportunities by score and includes key factors, confidence, and risk assessment.
+    """
+    lines = ["🎯 **Alpha Opportunities Scanner**\n"]
+
+    if not data:
+        lines.append("_No alpha opportunities currently detected._")
+        lines.append("\n**Why no opportunities?**")
+        lines.append("• Market may be in consolidation/low-conviction phase")
+        lines.append("• Waiting for higher-confidence setups")
+        lines.append("• Data collection in progress")
+        lines.append(f"\n_Updated: {format_timestamp()}_")
+        return "\n".join(lines)
+
+    # Sort by score descending and limit
+    sorted_opps = sorted(data, key=lambda x: x.get("score", 0), reverse=True)[:limit]
+
+    lines.append(f"**Found:** {len(data)} opportunities | **Showing:** Top {len(sorted_opps)}")
+    lines.append("")
+
+    for i, opp in enumerate(sorted_opps, 1):
+        lines.extend(_format_single_opportunity(opp, i))
+        lines.append("")
+
+    # Summary stats
+    lines.extend(_format_opportunity_summary(data))
+
+    lines.append(f"\n_Updated: {format_timestamp()}_")
+    return "\n".join(lines)
+
+
+def _format_single_opportunity(opp: dict, rank: int) -> list[str]:
+    """Format a single alpha opportunity entry."""
+    lines = []
+
+    symbol = opp.get("symbol", "UNKNOWN")
+    score = opp.get("score", 0)
+    confidence = opp.get("confidence", 0)
+    risk_level = opp.get("risk_level", "UNKNOWN")
+    timeframe = opp.get("timeframe", "1h")
+
+    # Price levels
+    entry = opp.get("entry_price", 0)
+    target = opp.get("target_price", 0)
+    stop = opp.get("stop_loss", 0)
+    potential_return = opp.get("potential_return", 0)
+
+    # Analysis details
+    analysis = opp.get("analysis", {})
+    trend = analysis.get("trend", "NEUTRAL")
+    momentum = analysis.get("momentum", "MODERATE")
+
+    # Direction and emoji
+    direction_emoji = _get_trend_emoji(trend)
+    risk_emoji = _get_risk_emoji(risk_level)
+    confidence_pct = confidence * 100 if confidence <= 1 else confidence
+
+    # Clean symbol
+    clean_symbol = symbol.replace("USDT", "").replace("USD", "")
+
+    # Header
+    lines.append(f"**#{rank} {clean_symbol}** {direction_emoji} | Score: {score:.0f}/100")
+    lines.append(f"   {confidence_bar(score)} {confidence_emoji(score)}")
+
+    # Key metrics
+    lines.append(f"   **Trend:** {trend} | **Momentum:** {momentum}")
+    lines.append(f"   **Confidence:** {confidence_pct:.0f}% | **Risk:** {risk_emoji} {risk_level}")
+    lines.append(f"   **Timeframe:** {timeframe}")
+
+    # Price levels if available
+    if entry > 0:
+        lines.append(f"   **Entry:** ${entry:,.4f}" if entry < 1 else f"   **Entry:** ${entry:,.2f}")
+        if target > 0 and stop > 0:
+            target_pct = ((target - entry) / entry * 100) if entry else 0
+            stop_pct = ((stop - entry) / entry * 100) if entry else 0
+            target_str = f"${target:,.4f}" if target < 1 else f"${target:,.2f}"
+            stop_str = f"${stop:,.4f}" if stop < 1 else f"${stop:,.2f}"
+            lines.append(f"   **Target:** {target_str} ({target_pct:+.1f}%) | **Stop:** {stop_str} ({stop_pct:+.1f}%)")
+
+    # Key signals/factors
+    signals = opp.get("signals", [])
+    if signals and isinstance(signals, list):
+        key_signals = signals[:3]  # Show top 3 signals
+        if key_signals:
+            lines.append("   **Key Factors:**")
+            for sig in key_signals:
+                sig_text = sig if isinstance(sig, str) else str(sig)
+                # Truncate long signals
+                if len(sig_text) > 60:
+                    sig_text = sig_text[:57] + "..."
+                lines.append(f"   • {sig_text}")
+
+    return lines
+
+
+def _get_trend_emoji(trend: str) -> str:
+    """Get emoji for trend direction."""
+    trend_upper = str(trend).upper()
+    if "BULLISH" in trend_upper or "STRONG_BUY" in trend_upper:
+        return "🟢"
+    elif "BEARISH" in trend_upper or "STRONG_SELL" in trend_upper:
+        return "🔴"
+    else:
+        return "🟡"
+
+
+def _get_risk_emoji(risk: str) -> str:
+    """Get emoji for risk level."""
+    risk_upper = str(risk).upper()
+    if risk_upper == "LOW":
+        return "🟢"
+    elif risk_upper == "MEDIUM":
+        return "🟡"
+    elif risk_upper == "HIGH":
+        return "🔴"
+    else:
+        return "⚪"
+
+
+def _format_opportunity_summary(data: list) -> list[str]:
+    """Generate summary of all opportunities."""
+    lines = ["\n**📊 Opportunity Summary:**"]
+
+    # Count by risk level
+    low_risk = sum(1 for d in data if d.get("risk_level", "").upper() == "LOW")
+    med_risk = sum(1 for d in data if d.get("risk_level", "").upper() == "MEDIUM")
+    high_risk = sum(1 for d in data if d.get("risk_level", "").upper() == "HIGH")
+
+    # Count by trend
+    bullish = sum(1 for d in data if "BULLISH" in str(d.get("analysis", {}).get("trend", "")).upper())
+    bearish = sum(1 for d in data if "BEARISH" in str(d.get("analysis", {}).get("trend", "")).upper())
+
+    # Average score
+    scores = [d.get("score", 0) for d in data if d.get("score", 0) > 0]
+    avg_score = sum(scores) / len(scores) if scores else 0
+
+    # High confidence count
+    high_conf = sum(1 for d in data if (d.get("confidence", 0) > 0.7 if d.get("confidence", 0) <= 1 else d.get("confidence", 0) > 70))
+
+    lines.append(f"• **Total:** {len(data)} opportunities")
+    lines.append(f"• **Avg Score:** {avg_score:.0f}/100")
+    lines.append(f"• **High Confidence:** {high_conf} setups (>70%)")
+    lines.append(f"• **Direction:** 🟢 {bullish} Bullish | 🔴 {bearish} Bearish")
+    lines.append(f"• **Risk Breakdown:** 🟢 {low_risk} Low | 🟡 {med_risk} Med | 🔴 {high_risk} High")
+
+    # Trading guidance
+    lines.append("\n**💡 Trading Guidance:**")
+    if low_risk >= 3:
+        lines.append("• Multiple low-risk setups available - good for position building")
+    if high_conf >= 3:
+        lines.append("• Several high-confidence opportunities - favorable conditions")
+    if bullish > bearish * 2:
+        lines.append("• Market skewing bullish - bias toward long setups")
+    elif bearish > bullish * 2:
+        lines.append("• Market skewing bearish - caution with longs")
+    if avg_score >= 75:
+        lines.append("• Above-average opportunity quality - conditions favorable")
+    elif avg_score < 60:
+        lines.append("• Below-average scores - wait for better setups")
+
+    return lines
+
+
 def register_advanced_tools(mcp):
     """Register all advanced analysis MCP tools."""
 
@@ -728,6 +894,92 @@ def register_advanced_tools(mcp):
 
         return add_disclaimer(formatted, short=True)
 
+    @mcp.tool()
+    async def get_alpha_opportunities(
+        limit: int = 5,
+        min_score: float = 60.0
+    ) -> str:
+        """
+        Get ranked alpha opportunities showing high-conviction trading setups.
+
+        This tool scans for the best trading opportunities based on confluence analysis,
+        combining technical, volume, orderflow, sentiment, and position data to identify
+        setups with high probability of success.
+
+        Each opportunity includes:
+        - symbol: The trading pair
+        - score: Confluence score (0-100) - higher = stronger signal
+        - confidence: How reliable the signal is (0-100%)
+        - risk_level: LOW, MEDIUM, or HIGH based on score
+        - direction: BULLISH/BEARISH based on trend analysis
+        - entry_price: Suggested entry level
+        - target_price: Projected target (typically 2-3% from entry)
+        - stop_loss: Suggested stop loss level
+        - key_factors: The main signals driving this opportunity
+
+        **Ranking Logic:**
+        Opportunities are ranked by confluence score. Higher scores indicate:
+        - Multiple indicators aligning in the same direction
+        - Strong volume and momentum confirmation
+        - Favorable orderflow and sentiment conditions
+
+        **Risk Assessment:**
+        - LOW (score >= 80): High confluence, multiple confirmations
+        - MEDIUM (score 60-79): Good confluence, some confirmations
+        - HIGH (score < 60): Lower confluence, use caution
+
+        Args:
+            limit: Maximum number of opportunities to return (default: 5, max: 10).
+                  Top opportunities by score are returned.
+            min_score: Minimum confluence score to include (default: 60.0).
+                      Higher values show only higher-conviction setups.
+
+        Returns:
+            Ranked list of alpha opportunities with scores, direction, key factors,
+            confidence levels, and risk assessment for each setup.
+        """
+        client = get_api_client()
+
+        # Validate and cap limit
+        limit = min(max(1, limit), 10)
+        min_score = max(0, min(100, min_score))
+
+        # Fetch alpha opportunities - try both endpoints
+        result = await client.get(
+            "/api/alpha/opportunities",
+            params={"limit": limit * 2, "min_score": min_score}  # Request more to filter
+        )
+
+        # If first endpoint fails, try dashboard endpoint
+        if "error" in result or not result:
+            result = await client.get("/api/dashboard/alpha-opportunities")
+
+        if "error" in result:
+            return format_error(
+                result["error"],
+                "Check if VPS is online and alpha scanner is running."
+            )
+
+        # Handle different response formats
+        data = result if isinstance(result, list) else result.get("data", result.get("opportunities", []))
+
+        if not data:
+            return format_error(
+                "No alpha opportunities currently available",
+                "Market may be in consolidation or data is still loading. Try again shortly."
+            )
+
+        # Filter by min_score if not already filtered by API
+        filtered = [
+            opp for opp in data
+            if opp.get("score", 0) >= min_score
+        ]
+
+        # Format response
+        formatted = format_alpha_opportunities(filtered, limit)
+
+        return add_disclaimer(formatted, short=True)
+
 
 # Export for easy import
 __all__ = [
@@ -735,4 +987,5 @@ __all__ = [
     "format_fusion_signal",
     "format_liquidation_zones",
     "format_whale_activity",
+    "format_alpha_opportunities",
 ]
