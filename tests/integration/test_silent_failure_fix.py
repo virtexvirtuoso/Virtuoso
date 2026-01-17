@@ -121,7 +121,7 @@ async def main():
     if success:
         print("✅ ALL TESTS PASSED - Fix is ready for deployment")
         print("\n🚀 NEXT STEPS:")
-        print("1. Deploy to VPS: scp src/monitoring/monitor.py vps:trading/Virtuoso_ccxt/src/monitoring/")
+        print("1. Deploy to VPS: scp src/monitoring/monitor.py vps:trading/Virtuoso/src/monitoring/")
         print("2. Restart VPS monitoring service")
         print("3. Monitor logs for 'TASK SUCCESS' messages instead of '15 tasks no work'")
     else:

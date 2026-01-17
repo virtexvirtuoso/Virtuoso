@@ -101,16 +101,17 @@ class PriceStructureIndicators(BaseIndicator, DebugLoggingMixin):
         # Set indicator type before calling super().__init__
         self.indicator_type = 'price_structure'
         
-        # Default component weights - Match the documented 6 components at 16.67% each
+        # Default component weights - Match the 7 components in config
         # IMPORTANT: Keys MUST match config (confluence.weights.sub_components.price_structure)
         # and score calculation output keys in _compute_final_score()
         default_weights = {
-            'support_resistance': 1/6,
-            'institutional_zones': 1/6,  # Was 'order_blocks' - renamed to match config
-            'trend_position': 1/6,
-            'volume_profile': 1/6,
-            'structure_breaks': 1/6,     # Was 'market_structure' - renamed to match config
-            'range_analysis': 1/6
+            'support_resistance': 1/7,
+            'institutional_zones': 1/7,  # Order blocks / supply-demand zones
+            'trend_position': 1/7,
+            'volume_profile': 1/7,
+            'structure_breaks': 1/7,     # Market structure / BOS/CHoCH
+            'range_analysis': 1/7,
+            'fair_value_gaps': 1/7       # FVG / imbalance zones
         }
         
         # Component name mapping to handle inconsistencies between config and internal names
@@ -236,11 +237,12 @@ class PriceStructureIndicators(BaseIndicator, DebugLoggingMixin):
             
             scores = {
                 'support_resistance': self._analyze_sr_levels(ohlcv_data),
-                'institutional_zones': self._analyze_orderblock_zones(ohlcv_data),  # Canonical name
+                'institutional_zones': self._analyze_orderblock_zones(ohlcv_data),
                 'trend_position': self._analyze_trend_position(ohlcv_data),
                 'volume_profile': self._analyze_volume(ohlcv_data),
-                'structure_breaks': self._analyze_market_structure(ohlcv_data),  # Canonical name
-                'range_analysis': self._analyze_range(ohlcv_data)
+                'structure_breaks': self._analyze_market_structure(ohlcv_data),
+                'range_analysis': self._analyze_range(ohlcv_data),
+                'fair_value_gaps': self._analyze_fvg(ohlcv_data)
             }
             
             if not all(comp in scores for comp in self.component_weights):
@@ -2380,11 +2382,16 @@ class PriceStructureIndicators(BaseIndicator, DebugLoggingMixin):
             component_scores['structure_breaks'] = structure_score
             self.logger.info(f"Market Structure: Score={structure_score:.2f}")
             
-            # Range analysis including sweeps, MSBs, and liquidity (16.67%)
+            # Range analysis including sweeps, MSBs, and liquidity
             range_score = self._analyze_range(ohlcv_data)
             component_scores['range_analysis'] = range_score
             self.logger.info(f"Range Analysis: Score={range_score:.2f}")
-            
+
+            # Fair Value Gaps / imbalance zones
+            fvg_score = self._analyze_fvg(ohlcv_data)
+            component_scores['fair_value_gaps'] = fvg_score
+            self.logger.info(f"Fair Value Gaps: Score={fvg_score:.2f}")
+
             # Apply divergence bonuses if available
             for key, div_info in divergences.items():
                 component = div_info.get('component')
@@ -2457,7 +2464,8 @@ class PriceStructureIndicators(BaseIndicator, DebugLoggingMixin):
             volume_score = self._analyze_volume(ohlcv_data)
             structure_score = self._analyze_market_structure(ohlcv_data)
             range_score = self._analyze_range(ohlcv_data)
-            
+            fvg_score = self._analyze_fvg(ohlcv_data)
+
             # Generate signals with more detailed information
             signals = {
                 'support_resistance': {
@@ -2493,9 +2501,15 @@ class PriceStructureIndicators(BaseIndicator, DebugLoggingMixin):
                     'signal': 'bullish_range' if range_score > 60 else ('bearish_range' if range_score < 40 else 'neutral_range'),
                     'bias': 'bullish' if range_score > 60 else ('bearish' if range_score < 40 else 'neutral'),
                     'strength': 'strong' if abs(range_score - 50) > 25 else 'moderate'
+                },
+                'fair_value_gaps': {
+                    'value': fvg_score,
+                    'signal': 'bullish_fvg' if fvg_score > 60 else ('bearish_fvg' if fvg_score < 40 else 'neutral'),
+                    'bias': 'bullish' if fvg_score > 60 else ('bearish' if fvg_score < 40 else 'neutral'),
+                    'strength': 'strong' if abs(fvg_score - 50) > 25 else 'moderate'
                 }
             }
-            
+
             return signals
             
         except Exception as e:
@@ -3152,7 +3166,8 @@ class PriceStructureIndicators(BaseIndicator, DebugLoggingMixin):
             'trend_position': 50.0,
             'volume_profile': 50.0,
             'structure_breaks': 50.0,
-            'range_analysis': 50.0
+            'range_analysis': 50.0,
+            'fair_value_gaps': 50.0
         }
         
         # Default interpretation
@@ -4078,6 +4093,145 @@ class PriceStructureIndicators(BaseIndicator, DebugLoggingMixin):
             self.logger.debug(traceback.format_exc())
             return 50.0
 
+    def _analyze_fvg(self, ohlcv_data: Dict[str, pd.DataFrame]) -> float:
+        """Analyze Fair Value Gaps (FVG) / imbalance zones across multiple timeframes.
+
+        FVGs are price inefficiencies where price moves rapidly, leaving gaps that
+        often get filled. This method detects unfilled FVGs and scores based on
+        proximity and potential for price to revisit these zones.
+
+        Args:
+            ohlcv_data: Dictionary of OHLCV DataFrames for different timeframes
+
+        Returns:
+            float: FVG analysis score (0-100) where:
+                - >50 = Bullish bias (unfilled bullish FVGs below, support)
+                - <50 = Bearish bias (unfilled bearish FVGs above, resistance)
+                - ~50 = Neutral (balanced or no significant FVGs)
+        """
+        try:
+            self.logger.debug("Starting multi-timeframe FVG analysis")
+
+            if not isinstance(ohlcv_data, dict) or not ohlcv_data:
+                self.logger.warning("Invalid OHLCV data for FVG analysis")
+                return 50.0
+
+            # Get available timeframes
+            available_timeframes = set(ohlcv_data.keys()) & set(self.required_timeframes)
+            if not available_timeframes:
+                self.logger.warning("No valid timeframes for FVG analysis")
+                return 50.0
+
+            timeframe_scores = []
+
+            for tf in available_timeframes:
+                data = ohlcv_data[tf]
+                if not isinstance(data, pd.DataFrame) or data.empty or len(data) < 10:
+                    continue
+
+                try:
+                    tf_score = self._calculate_fvg_score(data)
+                    weight = self.timeframe_weights.get(tf, 0.25)
+                    timeframe_scores.append((tf_score, weight))
+                    self.logger.debug(f"FVG score for {tf}: {tf_score:.2f}")
+                except Exception as e:
+                    self.logger.warning(f"Error calculating FVG for {tf}: {e}")
+                    continue
+
+            if not timeframe_scores:
+                return 50.0
+
+            # Calculate weighted average
+            total_weight = sum(w for _, w in timeframe_scores)
+            if total_weight == 0:
+                return 50.0
+
+            weighted_score = sum(s * w for s, w in timeframe_scores) / total_weight
+            final_score = float(np.clip(weighted_score, 0, 100))
+
+            self.logger.debug(f"FVG final score: {final_score:.2f}")
+            return final_score
+
+        except Exception as e:
+            self.logger.error(f"Error in FVG analysis: {str(e)}")
+            return 50.0
+
+    def _calculate_fvg_score(self, df: pd.DataFrame) -> float:
+        """Calculate FVG score for a single timeframe.
+
+        Detects Fair Value Gaps (3-candle patterns where middle candle body
+        doesn't overlap with outer candles' wicks) and scores based on:
+        - Proximity of price to unfilled FVGs
+        - Direction bias (bullish FVGs below = support, bearish above = resistance)
+        """
+        try:
+            if len(df) < 10:
+                return 50.0
+
+            high = df['high'].values
+            low = df['low'].values
+            close = df['close'].values
+            current_price = close[-1]
+
+            bullish_fvgs = []  # Gaps below price (support)
+            bearish_fvgs = []  # Gaps above price (resistance)
+
+            # Detect FVGs (look at last 50 candles)
+            lookback = min(50, len(df) - 2)
+            for i in range(len(df) - lookback, len(df) - 2):
+                # Bullish FVG: candle[i+2] low > candle[i] high (gap up)
+                if low[i + 2] > high[i]:
+                    gap_top = low[i + 2]
+                    gap_bottom = high[i]
+                    # Check if unfilled (price hasn't returned to gap)
+                    if current_price > gap_top:
+                        bullish_fvgs.append((gap_bottom, gap_top))
+
+                # Bearish FVG: candle[i+2] high < candle[i] low (gap down)
+                if high[i + 2] < low[i]:
+                    gap_top = low[i]
+                    gap_bottom = high[i + 2]
+                    # Check if unfilled
+                    if current_price < gap_bottom:
+                        bearish_fvgs.append((gap_bottom, gap_top))
+
+            # Score based on FVG presence and proximity
+            score = 50.0
+
+            if bullish_fvgs:
+                # Closest bullish FVG below = support
+                closest_bullish = max(bullish_fvgs, key=lambda x: x[1])  # Highest gap top
+                distance_pct = (current_price - closest_bullish[1]) / current_price * 100
+                if distance_pct < 2:  # Very close support
+                    score += 15
+                elif distance_pct < 5:
+                    score += 10
+                else:
+                    score += 5
+
+            if bearish_fvgs:
+                # Closest bearish FVG above = resistance
+                closest_bearish = min(bearish_fvgs, key=lambda x: x[0])  # Lowest gap bottom
+                distance_pct = (closest_bearish[0] - current_price) / current_price * 100
+                if distance_pct < 2:  # Very close resistance
+                    score -= 15
+                elif distance_pct < 5:
+                    score -= 10
+                else:
+                    score -= 5
+
+            # Imbalance component from volume
+            imbalance_score = self._calculate_imbalance_score(df)
+
+            # Blend FVG detection with volume imbalance
+            final_score = score * 0.6 + imbalance_score * 0.4
+
+            return float(np.clip(final_score, 0, 100))
+
+        except Exception as e:
+            self.logger.warning(f"Error calculating FVG score: {e}")
+            return 50.0
+
     def _calculate_single_vwap_score(self, df: pd.DataFrame) -> float:
         """Calculate VWAP score for a single timeframe DataFrame using daily and weekly session VWAPs."""
         try:
@@ -4190,3 +4344,10 @@ class PriceStructureIndicators(BaseIndicator, DebugLoggingMixin):
             alerts.append("Range Analysis Extremely Strong - Clear range bias with confluence")
         elif range_score <= 20:
             alerts.append("❌ Range Analysis Extremely Weak - No clear range structure")
+
+        # Fair Value Gaps alerts
+        fvg_score = component_scores.get('fair_value_gaps', 50)
+        if fvg_score >= 80:
+            alerts.append("Fair Value Gaps Extremely Strong - Unfilled bullish FVGs providing support")
+        elif fvg_score <= 20:
+            alerts.append("❌ Fair Value Gaps Extremely Weak - Unfilled bearish FVGs providing resistance")
