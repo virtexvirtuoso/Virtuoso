@@ -204,6 +204,124 @@ def _get_signal_emoji(signal: str) -> str:
         return "⚪"
 
 
+def format_liquidation_zones(data: dict, symbol: str) -> str:
+    """
+    Format liquidation zones response with cascade detection and interpretation.
+
+    Shows clustered liquidation levels across exchanges with support/resistance implications.
+    """
+    lines = ["💥 **Liquidation Zones Analysis**\n"]
+    lines[0] = f"💥 **{symbol} Liquidation Zones**\n"
+
+    zones = data.get("zones", [])
+    cascade_detected = data.get("cascade_detected", False)
+    cascade_price = data.get("cascade_price")
+    cascade_size = data.get("cascade_size")
+    total_exchanges = data.get("total_exchanges", 0)
+    lookback_hours = data.get("lookback_hours", 1)
+
+    lines.append(f"**Lookback:** {lookback_hours}H | **Exchanges:** {total_exchanges}")
+    lines.append("")
+
+    # Cascade warning (prominent if detected)
+    if cascade_detected and cascade_price and cascade_size:
+        lines.append("⚠️ **CASCADE RISK DETECTED** ⚠️")
+        lines.append(f"**Price Level:** ${cascade_price:,.2f}")
+        lines.append(f"**Cluster Size:** ${cascade_size:,.0f}")
+        lines.append("_Large liquidation cluster may trigger cascade effect_")
+        lines.append("")
+
+    # No zones found
+    if not zones:
+        lines.append("_No significant liquidation zones detected in this period._")
+        lines.append("\n**Interpretation:**")
+        lines.append("• Market appears stable with low liquidation activity")
+        lines.append("• No major support/resistance from liquidation clusters")
+        lines.append(f"\n_Updated: {format_timestamp()}_")
+        return "\n".join(lines)
+
+    # Format zones (top 5)
+    lines.append("**📊 Liquidation Clusters:**\n")
+
+    for i, zone in enumerate(zones[:5], 1):
+        price = zone.get("price", 0)
+        size_usd = zone.get("total_size_usd", 0)
+        count = zone.get("count", 0)
+        exchanges = zone.get("exchanges", [])
+        side = zone.get("side", "unknown")
+        confidence = zone.get("confidence", "low")
+
+        # Side emoji
+        side_emoji = "📈" if side == "long" else "📉" if side == "short" else "➡️"
+        side_label = "Long Liqs" if side == "long" else "Short Liqs" if side == "short" else "Mixed"
+
+        # Confidence indicator
+        conf_indicator = _get_confidence_indicator(confidence)
+
+        # Format exchanges
+        exchanges_str = ", ".join(exchanges[:3]) + ("..." if len(exchanges) > 3 else "")
+
+        lines.append(
+            f"**#{i}** ${price:,.2f} — {side_emoji} {side_label} | "
+            f"${size_usd:,.0f} ({count} events) {conf_indicator}"
+        )
+        lines.append(f"   _Exchanges: {exchanges_str}_")
+        lines.append("")
+
+    # Summary statistics
+    total_long_zones = sum(1 for z in zones if z.get("side") == "long")
+    total_short_zones = sum(1 for z in zones if z.get("side") == "short")
+    total_value = sum(z.get("total_size_usd", 0) for z in zones)
+    high_conf_zones = sum(1 for z in zones if z.get("confidence") == "high")
+
+    lines.append("**📈 Summary:**")
+    lines.append(f"• Total Zones: {len(zones)} (Long: {total_long_zones}, Short: {total_short_zones})")
+    lines.append(f"• Total Value: ${total_value:,.0f}")
+    lines.append(f"• High Confidence Zones: {high_conf_zones}")
+
+    # Interpretation
+    lines.append("\n**📋 Interpretation:**")
+
+    if zones:
+        top_zone = zones[0]
+        top_side = top_zone.get("side", "unknown")
+        top_price = top_zone.get("price", 0)
+        top_size = top_zone.get("total_size_usd", 0)
+
+        if top_side == "long":
+            lines.append(f"• **Potential Resistance:** Large long liquidations clustered at ${top_price:,.2f}")
+            lines.append("• If price drops to this level, liquidations may accelerate sell pressure")
+            lines.append("• Consider this zone as potential support breakdown level")
+        elif top_side == "short":
+            lines.append(f"• **Potential Support:** Large short liquidations clustered at ${top_price:,.2f}")
+            lines.append("• If price rises to this level, short squeezes may accelerate buying")
+            lines.append("• Consider this zone as potential resistance breakthrough level")
+
+        if cascade_detected:
+            lines.append("• ⚠️ **High cascade risk** - large clusters may trigger chain liquidations")
+            lines.append("• Consider reducing leverage near detected levels")
+
+        # Long vs short imbalance
+        if total_long_zones > total_short_zones * 2:
+            lines.append("• Market leaning heavily long - more downside liquidation risk")
+        elif total_short_zones > total_long_zones * 2:
+            lines.append("• Market leaning heavily short - more upside squeeze potential")
+
+    lines.append(f"\n_Updated: {format_timestamp()}_")
+    return "\n".join(lines)
+
+
+def _get_confidence_indicator(confidence: str) -> str:
+    """Get visual indicator for confidence level."""
+    conf_lower = confidence.lower()
+    if conf_lower == "high":
+        return "🟢 High"
+    elif conf_lower == "medium":
+        return "🟡 Med"
+    else:
+        return "🟠 Low"
+
+
 def register_advanced_tools(mcp):
     """Register all advanced analysis MCP tools."""
 
@@ -279,9 +397,67 @@ def register_advanced_tools(mcp):
 
         return add_disclaimer(formatted, short=True)
 
+    @mcp.tool()
+    async def get_liquidation_zones(symbol: str = "BTCUSDT") -> str:
+        """
+        Get clustered liquidation zones across multiple exchanges.
+
+        This tool analyzes recent liquidation events and clusters them into price
+        zones, showing where significant liquidations have occurred. Useful for:
+        - Identifying support/resistance levels from liquidation clusters
+        - Detecting cascade risk (large clusters that may trigger chain liquidations)
+        - Understanding market positioning (long vs short liquidations)
+
+        Each zone includes:
+        - Price: The liquidation cluster price level
+        - Size (USD): Total value of liquidations in this zone
+        - Side: Whether mostly long or short positions were liquidated
+        - Confidence: Based on how many exchanges confirm the zone (high/medium/low)
+        - Exchanges: Which exchanges contributed to the zone
+
+        **Cascade Detection:**
+        When a zone exceeds $200K, it's flagged as cascade risk - meaning price
+        reaching this level could trigger a chain reaction of liquidations.
+
+        **Interpretation:**
+        - Long liquidation clusters below current price = potential support breakdown
+        - Short liquidation clusters above current price = potential resistance breakthrough
+
+        Args:
+            symbol: Trading pair to analyze (e.g., "BTCUSDT", "ETHUSDT").
+                   Defaults to BTCUSDT.
+
+        Returns:
+            Formatted liquidation zones with cascade warnings and trading interpretation.
+        """
+        client = get_api_client()
+
+        # Normalize symbol
+        sym = symbol.upper().strip()
+        if not sym.endswith("USDT"):
+            sym = sym.replace("/USDT", "").replace("-USDT", "") + "USDT"
+
+        # Fetch liquidation zones
+        result = await client.get("/api/liquidation/zones", params={"symbol": sym})
+
+        if "error" in result:
+            return format_error(
+                result["error"],
+                "Check if VPS is online and liquidation collector is running."
+            )
+
+        # Handle wrapped response
+        data = result.get("data", result)
+
+        # Format response
+        formatted = format_liquidation_zones(data, sym)
+
+        return add_disclaimer(formatted, short=True)
+
 
 # Export for easy import
 __all__ = [
     "register_advanced_tools",
     "format_fusion_signal",
+    "format_liquidation_zones",
 ]
