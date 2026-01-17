@@ -239,10 +239,17 @@ class TechnicalIndicators(BaseIndicator, DebugLoggingMixin):
             # Apply divergence bonuses/penalties
             adjusted_component_scores = self._apply_divergence_adjustments(component_scores, divergence_data)
             
-            # Calculate final technical score
-            valid_scores = [val for val in adjusted_component_scores.values() if not pd.isna(val)]
-            total_score = sum(valid_scores)
-            average_score = total_score / len(valid_scores) if valid_scores else 50.0
+            # Calculate final technical score using weighted average
+            weighted_score = 0.0
+            total_weight = 0.0
+            for comp, score in adjusted_component_scores.items():
+                if not pd.isna(score):
+                    weight = self.component_weights.get(comp, 0.0)
+                    weighted_score += score * weight
+                    total_weight += weight
+
+            # Normalize by total weight (handles cases where some components are missing)
+            average_score = weighted_score / total_weight if total_weight > 0 else 50.0
             
             # Replace any NaN values with 50.0 (neutral) to avoid display issues
             for component in adjusted_component_scores:
@@ -357,31 +364,58 @@ class TechnicalIndicators(BaseIndicator, DebugLoggingMixin):
 
     def _analyze_timeframe_divergences(self, base_ohlcv, ltf_ohlcv, mtf_ohlcv, htf_ohlcv, indicators_data, viz_data=None):
         """
-        Analyze divergences between timeframes using indicator data.
-        
+        Analyze divergences between ALL timeframe pairs with HTF-weighted adjustments.
+
+        Timeframe pair weights (HTF divergences are more significant):
+        - base vs ltf (1m vs 5m): 0.5x - short-term noise
+        - base vs mtf (1m vs 30m): 1.0x - medium relevance
+        - base vs htf (1m vs 4h): 1.5x - high relevance (scalp against trend)
+        - ltf vs mtf (5m vs 30m): 1.0x - medium relevance
+        - ltf vs htf (5m vs 4h): 1.5x - high relevance
+        - mtf vs htf (30m vs 4h): 2.0x - highest relevance (major trend divergence)
+
         Args:
-            base_ohlcv: Base timeframe data
-            ltf_ohlcv: Lower timeframe data
-            mtf_ohlcv: Medium timeframe data 
-            htf_ohlcv: Higher timeframe data
+            base_ohlcv: Base timeframe data (1m)
+            ltf_ohlcv: Lower timeframe data (5m)
+            mtf_ohlcv: Medium timeframe data (30m)
+            htf_ohlcv: Higher timeframe data (4h)
             indicators_data: Dict containing all calculated indicator values
             viz_data: Optional DataFrame containing visualization data with NaN values handled
-        
+
         Returns:
-            Dictionary with divergence information
+            Dictionary with divergence information including weighted score adjustments
         """
         try:
             divergences = {
                 'bullish': [],
                 'bearish': [],
-                'score_adjustments': {}
+                'score_adjustments': {},
+                'details': {}  # Track per-indicator divergence details
             }
-            
+
             # If viz_data is None or doesn't have the expected structure, use a safer approach
             if viz_data is None or not isinstance(viz_data, pd.DataFrame) or viz_data.empty:
                 self.logger.debug("No valid visualization data available for divergence analysis")
                 return divergences
-                
+
+            # Timeframe pair weights - HTF divergences weighted higher
+            tf_pair_weights = {
+                ('base', 'ltf'): 0.5,    # 1m vs 5m - short-term noise
+                ('base', 'mtf'): 1.0,    # 1m vs 30m - medium relevance
+                ('base', 'htf'): 1.5,    # 1m vs 4h - high relevance
+                ('ltf', 'mtf'): 1.0,     # 5m vs 30m - medium relevance
+                ('ltf', 'htf'): 1.5,     # 5m vs 4h - high relevance
+                ('mtf', 'htf'): 2.0,     # 30m vs 4h - highest relevance
+            }
+
+            # Timeframe display names for logging
+            tf_names = {
+                'base': '1m',
+                'ltf': '5m',
+                'mtf': '30m',
+                'htf': '4h'
+            }
+
             # Helper function to safely get indicator value
             def safe_get_value(tf, indicator):
                 try:
@@ -392,178 +426,164 @@ class TechnicalIndicators(BaseIndicator, DebugLoggingMixin):
                 except Exception as e:
                     self.logger.debug(f"Error accessing {indicator} for {tf} timeframe: {str(e)}")
                     return None
-            
-            # Compare 1m to other timeframes for divergences
-            # MACD divergence analysis
-            try:
-                # Get base timeframe MACD values
-                base_macd = safe_get_value('base', 'MACD')
-                ltf_macd = safe_get_value('ltf', 'MACD')
-                
-                # If we have valid values for both timeframes
-                if base_macd is not None and ltf_macd is not None:
-                    # Bullish divergence: base negative, ltf positive
-                    if base_macd < 0 and ltf_macd > 0:
-                        divergences['bullish'].append(f"MACD: 1m negative ({base_macd:.6f}), 5m positive ({ltf_macd:.6f})")
-                        # Add score adjustment
-                        divergences['score_adjustments']['macd'] = 10.0  # Bullish bonus
-                        
-                    # Bearish divergence: base positive, ltf negative    
-                    elif base_macd > 0 and ltf_macd < 0:
-                        divergences['bearish'].append(f"MACD: 1m positive ({base_macd:.6f}), 5m negative ({ltf_macd:.6f})")
-                        # Add score adjustment
-                        divergences['score_adjustments']['macd'] = -10.0  # Bearish penalty
-                        
-            except Exception as e:
-                self.logger.debug(f"Could not calculate MACD divergence: {str(e)}")
-            
-            # Awesome Oscillator divergence analysis
-            try:
-                # Get base timeframe and other timeframe AO values
-                base_ao = safe_get_value('base', 'AO')
-                ltf_ao = safe_get_value('ltf', 'AO')
-                
-                # If we have valid values for both timeframes
-                if base_ao is not None and ltf_ao is not None:
-                    # Bullish divergence: base negative, ltf positive
-                    if base_ao < 0 and ltf_ao > 0:
-                        divergences['bullish'].append(f"AO: 1m negative ({base_ao:.6f}), 5m positive ({ltf_ao:.6f})")
-                        # Add score adjustment
-                        divergences['score_adjustments']['ao'] = 10.0  # Bullish bonus
-                        
-                    # Bearish divergence: base positive, ltf negative    
-                    elif base_ao > 0 and ltf_ao < 0:
-                        divergences['bearish'].append(f"AO: 1m positive ({base_ao:.6f}), 5m negative ({ltf_ao:.6f})")
-                        # Add score adjustment
-                        divergences['score_adjustments']['ao'] = -10.0  # Bearish penalty
-                        
-            except Exception as e:
-                self.logger.debug(f"Could not calculate AO divergence: {str(e)}")
-            
-            # Williams %R divergence analysis
-            try:
-                # Get base timeframe and other timeframe Williams %R values
-                base_williams_r = safe_get_value('base', 'Williams %R')
-                ltf_williams_r = safe_get_value('ltf', 'Williams %R')
-                
-                # If we have valid values for both timeframes
-                if base_williams_r is not None and ltf_williams_r is not None:
-                    # Using an arbitrary threshold to determine divergence 
-                    # (Williams %R ranges from -100 to 0)
-                    williams_r_threshold = -50
-                    
-                    # Bullish divergence: base below threshold, ltf above threshold
-                    if base_williams_r < williams_r_threshold and ltf_williams_r > williams_r_threshold:
-                        divergences['bullish'].append(f"Williams %R: 1m oversold ({base_williams_r:.6f}), 5m overbought ({ltf_williams_r:.6f})")
-                        # Add score adjustment
-                        divergences['score_adjustments']['williams_r'] = 10.0  # Bullish bonus
-                        
-                    # Bearish divergence: base above threshold, ltf below threshold
-                    elif base_williams_r > williams_r_threshold and ltf_williams_r < williams_r_threshold:
-                        divergences['bearish'].append(f"Williams %R: 1m overbought ({base_williams_r:.6f}), 5m oversold ({ltf_williams_r:.6f})")
-                        # Add score adjustment
-                        divergences['score_adjustments']['williams_r'] = -10.0  # Bearish penalty
-                        
-            except Exception as e:
-                self.logger.debug(f"Could not calculate Williams %R divergence: {str(e)}")
-            
-            # ATR divergence analysis
-            try:
-                # Get base timeframe and other timeframe ATR values
-                base_atr = safe_get_value('base', 'ATR')
-                ltf_atr = safe_get_value('ltf', 'ATR')
-                
-                # If we have valid values for both timeframes
-                if base_atr is not None and ltf_atr is not None:
-                    # For ATR, we're looking at relative volatility between timeframes
-                    if base_atr > 0 and ltf_atr > 0:
-                        # Calculate the ratio of base ATR to LTF ATR
-                        atr_ratio = base_atr / ltf_atr if ltf_atr != 0 else 0
-                        
-                        # High short-term volatility compared to medium-term (might signal reversal)
+
+            # Indicator divergence rules
+            # Each rule: (indicator_name, component_key, check_func, base_adjustment)
+            # check_func(val1, val2) returns: 'bullish', 'bearish', or None
+
+            def check_momentum_divergence(val1, val2):
+                """Check momentum indicator divergence (MACD, AO) - opposite signs"""
+                if val1 < 0 and val2 > 0:
+                    return 'bullish'
+                elif val1 > 0 and val2 < 0:
+                    return 'bearish'
+                return None
+
+            def check_rsi_divergence(val1, val2):
+                """Check RSI divergence - crossing overbought/oversold thresholds"""
+                if val1 < 30 and val2 > 50:  # Oversold vs neutral/bullish
+                    return 'bullish'
+                elif val1 > 70 and val2 < 50:  # Overbought vs neutral/bearish
+                    return 'bearish'
+                return None
+
+            def check_williams_r_divergence(val1, val2):
+                """Check Williams %R divergence - crossing -50 threshold"""
+                if val1 < -80 and val2 > -50:  # Oversold vs neutral/overbought
+                    return 'bullish'
+                elif val1 > -20 and val2 < -50:  # Overbought vs neutral/oversold
+                    return 'bearish'
+                return None
+
+            def check_cci_divergence(val1, val2):
+                """Check CCI divergence - crossing ±100 thresholds"""
+                if val1 < -100 and val2 > 0:  # Oversold vs neutral/bullish
+                    return 'bullish'
+                elif val1 > 100 and val2 < 0:  # Overbought vs neutral/bearish
+                    return 'bearish'
+                return None
+
+            # Define indicators to check
+            indicator_rules = [
+                ('MACD', 'macd', check_momentum_divergence, 5.0),
+                ('AO', 'ao', check_momentum_divergence, 5.0),
+                ('RSI', 'rsi', check_rsi_divergence, 5.0),
+                ('Williams %R', 'williams_r', check_williams_r_divergence, 5.0),
+                ('CCI', 'cci', check_cci_divergence, 5.0),
+            ]
+
+            # Initialize score adjustments
+            for _, comp_key, _, _ in indicator_rules:
+                divergences['score_adjustments'][comp_key] = 0.0
+                divergences['details'][comp_key] = []
+
+            # ATR handled separately (volatility ratio, not direction)
+            divergences['score_adjustments']['atr'] = 0.0
+            divergences['details']['atr'] = []
+
+            # Analyze each timeframe pair for each indicator
+            for (tf1, tf2), pair_weight in tf_pair_weights.items():
+                tf1_name = tf_names[tf1]
+                tf2_name = tf_names[tf2]
+
+                for indicator_name, comp_key, check_func, base_adj in indicator_rules:
+                    try:
+                        val1 = safe_get_value(tf1, indicator_name)
+                        val2 = safe_get_value(tf2, indicator_name)
+
+                        if val1 is not None and val2 is not None:
+                            divergence_type = check_func(val1, val2)
+
+                            if divergence_type:
+                                weighted_adj = base_adj * pair_weight
+                                detail = f"{indicator_name}: {tf1_name}={val1:.2f} vs {tf2_name}={val2:.2f} (weight: {pair_weight}x)"
+
+                                if divergence_type == 'bullish':
+                                    divergences['bullish'].append(detail)
+                                    divergences['score_adjustments'][comp_key] += weighted_adj
+                                else:
+                                    divergences['bearish'].append(detail)
+                                    divergences['score_adjustments'][comp_key] -= weighted_adj
+
+                                divergences['details'][comp_key].append({
+                                    'pair': f"{tf1_name}-{tf2_name}",
+                                    'type': divergence_type,
+                                    'weight': pair_weight,
+                                    'adjustment': weighted_adj if divergence_type == 'bullish' else -weighted_adj
+                                })
+
+                    except Exception as e:
+                        self.logger.debug(f"Error checking {indicator_name} divergence for {tf1}-{tf2}: {str(e)}")
+
+                # ATR volatility ratio analysis
+                try:
+                    atr1 = safe_get_value(tf1, 'ATR')
+                    atr2 = safe_get_value(tf2, 'ATR')
+
+                    if atr1 is not None and atr2 is not None and atr2 > 0:
+                        atr_ratio = atr1 / atr2
+                        base_atr_adj = 2.5  # Half of other indicators since ATR is less directional
+
+                        # High short-term volatility vs longer-term (potential reversal)
                         if atr_ratio > 1.5:
-                            divergences['bullish'].append(f"ATR: 1m volatility ({base_atr:.6f}) significantly higher than 5m ({ltf_atr:.6f})")
-                            # Add score adjustment
-                            divergences['score_adjustments']['atr'] = 5.0  # Small bullish bonus
-                        
-                        # Low short-term volatility compared to medium-term (might signal continuation)
+                            weighted_adj = base_atr_adj * pair_weight
+                            detail = f"ATR: {tf1_name} volatility {atr_ratio:.2f}x higher than {tf2_name} (weight: {pair_weight}x)"
+                            divergences['bullish'].append(detail)
+                            divergences['score_adjustments']['atr'] += weighted_adj
+                            divergences['details']['atr'].append({
+                                'pair': f"{tf1_name}-{tf2_name}",
+                                'type': 'bullish',
+                                'ratio': atr_ratio,
+                                'weight': pair_weight
+                            })
+                        # Low short-term volatility vs longer-term (potential continuation/breakout)
                         elif atr_ratio < 0.5:
-                            divergences['bearish'].append(f"ATR: 1m volatility ({base_atr:.6f}) significantly lower than 5m ({ltf_atr:.6f})")
-                            # Add score adjustment
-                            divergences['score_adjustments']['atr'] = -5.0  # Small bearish penalty
-                            
-            except Exception as e:
-                self.logger.debug(f"Could not calculate ATR divergence: {str(e)}")
-            
-            # CCI divergence analysis
-            try:
-                # Get base timeframe and other timeframe CCI values
-                base_cci = safe_get_value('base', 'CCI')
-                ltf_cci = safe_get_value('ltf', 'CCI')
-                
-                # If we have valid values for both timeframes
-                if base_cci is not None and ltf_cci is not None:
-                    # CCI values above 100 indicate overbought, below -100 indicate oversold
-                    
-                    # Bullish divergence: base oversold, ltf not oversold
-                    if base_cci < -100 and ltf_cci > -100:
-                        divergences['bullish'].append(f"CCI: 1m oversold ({base_cci:.6f}), 5m not oversold ({ltf_cci:.6f})")
-                        # Add score adjustment
-                        divergences['score_adjustments']['cci'] = 10.0  # Bullish bonus
-                        
-                    # Bearish divergence: base overbought, ltf not overbought
-                    elif base_cci > 100 and ltf_cci < 100:
-                        divergences['bearish'].append(f"CCI: 1m overbought ({base_cci:.6f}), 5m not overbought ({ltf_cci:.6f})")
-                        # Add score adjustment
-                        divergences['score_adjustments']['cci'] = -10.0  # Bearish penalty
-            except Exception as e:
-                self.logger.debug(f"Could not calculate CCI divergence: {str(e)}")
-            
-            # RSI divergence analysis
-            try:
-                # Get base timeframe and other timeframe RSI values
-                base_rsi = safe_get_value('base', 'RSI')
-                ltf_rsi = safe_get_value('ltf', 'RSI')
-                
-                # If we have valid values for both timeframes
-                if base_rsi is not None and ltf_rsi is not None:
-                    # RSI values above 70 indicate overbought, below 30 indicate oversold
-                    
-                    # Bullish divergence: base oversold, ltf not oversold
-                    if base_rsi < 30 and ltf_rsi > 30:
-                        divergences['bullish'].append(f"RSI: 1m oversold ({base_rsi:.6f}), 5m not oversold ({ltf_rsi:.6f})")
-                        # Add score adjustment
-                        divergences['score_adjustments']['rsi'] = 10.0  # Bullish bonus
-                        
-                    # Bearish divergence: base overbought, ltf not overbought
-                    elif base_rsi > 70 and ltf_rsi < 70:
-                        divergences['bearish'].append(f"RSI: 1m overbought ({base_rsi:.6f}), 5m not overbought ({ltf_rsi:.6f})")
-                        # Add score adjustment
-                        divergences['score_adjustments']['rsi'] = -10.0  # Bearish penalty
-            except Exception as e:
-                self.logger.debug(f"Could not calculate RSI divergence: {str(e)}")
-            
-            # Log the divergences
-            if divergences['bullish']:
-                self.logger.info(f"Detected {len(divergences['bullish'])} bullish divergences: {divergences['bullish']}")
-            if divergences['bearish']:
-                self.logger.info(f"Detected {len(divergences['bearish'])} bearish divergences: {divergences['bearish']}")
-            
-            # Log divergence analysis results
-            self.logger.info("\nDivergence Analysis:")
-            self.logger.info(f"- Bullish Divergences: {len(divergences['bullish'])}")
-            self.logger.info(f"- Bearish Divergences: {len(divergences['bearish'])}")
-            self.logger.info(f"- Score Adjustments: {divergences['score_adjustments']}")
-            
+                            weighted_adj = base_atr_adj * pair_weight
+                            detail = f"ATR: {tf1_name} volatility {atr_ratio:.2f}x lower than {tf2_name} (weight: {pair_weight}x)"
+                            divergences['bearish'].append(detail)
+                            divergences['score_adjustments']['atr'] -= weighted_adj
+                            divergences['details']['atr'].append({
+                                'pair': f"{tf1_name}-{tf2_name}",
+                                'type': 'bearish',
+                                'ratio': atr_ratio,
+                                'weight': pair_weight
+                            })
+
+                except Exception as e:
+                    self.logger.debug(f"Error checking ATR divergence for {tf1}-{tf2}: {str(e)}")
+
+            # Cap adjustments to prevent extreme swings (max ±20 per component)
+            for comp_key in divergences['score_adjustments']:
+                divergences['score_adjustments'][comp_key] = np.clip(
+                    divergences['score_adjustments'][comp_key], -20.0, 20.0
+                )
+
+            # Log divergence summary
+            total_bullish = len(divergences['bullish'])
+            total_bearish = len(divergences['bearish'])
+
+            if total_bullish > 0 or total_bearish > 0:
+                self.logger.info(f"\n=== Multi-Timeframe Divergence Analysis ===")
+                self.logger.info(f"Bullish divergences: {total_bullish}")
+                for div in divergences['bullish'][:5]:  # Log first 5
+                    self.logger.info(f"  ✅ {div}")
+                self.logger.info(f"Bearish divergences: {total_bearish}")
+                for div in divergences['bearish'][:5]:  # Log first 5
+                    self.logger.info(f"  ❌ {div}")
+                self.logger.info(f"Score adjustments: {divergences['score_adjustments']}")
+            else:
+                self.logger.debug("No significant timeframe divergences detected")
+
             return divergences
-            
+
         except Exception as e:
             self.logger.error(f"Error analyzing timeframe divergences: {str(e)}")
             self.logger.error(traceback.format_exc())
             return {
                 'bullish': [],
                 'bearish': [],
-                'score_adjustments': {}
+                'score_adjustments': {},
+                'details': {}
             }
 
     def _calculate_component_scores(self, data: Dict[str, Any]) -> Dict[str, float]:
