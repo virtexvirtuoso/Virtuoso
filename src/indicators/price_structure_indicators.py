@@ -102,30 +102,33 @@ class PriceStructureIndicators(BaseIndicator, DebugLoggingMixin):
         self.indicator_type = 'price_structure'
         
         # Default component weights - Match the documented 6 components at 16.67% each
+        # IMPORTANT: Keys MUST match config (confluence.weights.sub_components.price_structure)
+        # and score calculation output keys in _compute_final_score()
         default_weights = {
             'support_resistance': 1/6,
-            'order_blocks': 1/6,
+            'institutional_zones': 1/6,  # Was 'order_blocks' - renamed to match config
             'trend_position': 1/6,
             'volume_profile': 1/6,
-            'market_structure': 1/6,
+            'structure_breaks': 1/6,     # Was 'market_structure' - renamed to match config
             'range_analysis': 1/6
         }
         
         # Component name mapping to handle inconsistencies between config and internal names
+        # Canonical names: support_resistance, institutional_zones, trend_position,
+        #                  volume_profile, structure_breaks, range_analysis
         self.component_mapping = {
-            # Config name -> Internal calculation name
+            # Canonical names (no-op mappings for completeness)
             'support_resistance': 'support_resistance',
-            'institutional_zones': 'institutional_zones',  # Config name
+            'institutional_zones': 'institutional_zones',
             'trend_position': 'trend_position',
             'volume_profile': 'volume_profile',
-            'structure_breaks': 'structure_breaks',  # Config name
+            'structure_breaks': 'structure_breaks',
             'range_analysis': 'range_analysis',
             'fair_value_gaps': 'fair_value_gaps',
-            # Internal calculation name -> Config name (for reverse mapping)
-            'volume_analysis': 'volume_profile',
-            # Legacy backward compatibility
+            # Legacy/internal name -> Canonical config name (backward compatibility)
             'order_blocks': 'institutional_zones',
             'market_structure': 'structure_breaks',
+            'volume_analysis': 'volume_profile',
         }
         
         # Get price structure specific config
@@ -233,10 +236,10 @@ class PriceStructureIndicators(BaseIndicator, DebugLoggingMixin):
             
             scores = {
                 'support_resistance': self._analyze_sr_levels(ohlcv_data),
-                'order_blocks': self._analyze_orderblock_zones(ohlcv_data),
+                'institutional_zones': self._analyze_orderblock_zones(ohlcv_data),  # Canonical name
                 'trend_position': self._analyze_trend_position(ohlcv_data),
                 'volume_profile': self._analyze_volume(ohlcv_data),
-                'market_structure': self._analyze_market_structure(ohlcv_data),
+                'structure_breaks': self._analyze_market_structure(ohlcv_data),  # Canonical name
                 'range_analysis': self._analyze_range(ohlcv_data)
             }
             
@@ -2463,7 +2466,7 @@ class PriceStructureIndicators(BaseIndicator, DebugLoggingMixin):
                     'bias': 'bullish' if sr_score > 60 else ('bearish' if sr_score < 40 else 'neutral'),
                     'strength': 'strong' if abs(sr_score - 50) > 25 else 'moderate'
                 },
-                'order_blocks': {
+                'institutional_zones': {
                     'value': ob_score,
                     'signal': 'strong' if ob_score > 70 else ('weak' if ob_score < 40 else 'neutral'),
                     'bias': 'bullish' if ob_score > 60 else ('bearish' if ob_score < 40 else 'neutral'),
@@ -2480,7 +2483,7 @@ class PriceStructureIndicators(BaseIndicator, DebugLoggingMixin):
                     'signal': 'high' if volume_score > 70 else ('low' if volume_score < 40 else 'neutral'),
                     'strength': 'strong' if abs(volume_score - 50) > 25 else 'moderate'
                 },
-                'market_structure': {
+                'structure_breaks': {
                     'value': structure_score,
                     'signal': 'bullish' if structure_score > 60 else ('bearish' if structure_score < 40 else 'neutral'),
                     'strength': 'strong' if abs(structure_score - 50) > 25 else 'moderate'
@@ -2778,23 +2781,14 @@ class PriceStructureIndicators(BaseIndicator, DebugLoggingMixin):
                     # Convert single float score to a dictionary of component scores
                     # This ensures compatibility with log_multi_timeframe_analysis
                     if isinstance(tf_score, float):
-                        # Use consistent component names based on our mapping
+                        # Use canonical component names directly
                         timeframe_scores[tf] = {
                             'overall': tf_score,
                             'support_resistance': self._calculate_sr_levels(df),
-                            'order_blocks': self._calculate_order_blocks_score(df),
+                            'institutional_zones': self._calculate_order_blocks_score(df),
                             'trend_position': self._calculate_trend_position_score(df),
-                            'market_structure': self._calculate_structural_score(df)
+                            'structure_breaks': self._calculate_structural_score(df)
                         }
-                        
-                        # Map component names for consistency
-                        mapped_scores = {'overall': tf_score}
-                        for component, score in timeframe_scores[tf].items():
-                            if component != 'overall':
-                                config_component = self.component_mapping.get(component, component)
-                                mapped_scores[config_component] = score
-                        
-                        timeframe_scores[tf] = mapped_scores
                     else:
                         # If tf_score is already a dictionary, map the component names
                         mapped_scores = {}
@@ -3151,13 +3145,14 @@ class PriceStructureIndicators(BaseIndicator, DebugLoggingMixin):
         """
         self.logger.warning(f"Returning default price structure scores: {reason}")
         
-        # Default component scores
+        # Default component scores (use canonical names)
         component_scores = {
             'support_resistance': 50.0,
-            'order_blocks': 50.0,
+            'institutional_zones': 50.0,
             'trend_position': 50.0,
-            'volume_analysis': 50.0,
-            'market_structure': 50.0
+            'volume_profile': 50.0,
+            'structure_breaks': 50.0,
+            'range_analysis': 50.0
         }
         
         # Default interpretation
@@ -4161,12 +4156,12 @@ class PriceStructureIndicators(BaseIndicator, DebugLoggingMixin):
         elif sr_score <= 20:
             alerts.append("❌ Support/Resistance Extremely Weak - Key levels breaking down")
         
-        # Order blocks alerts
-        ob_score = component_scores.get('order_blocks', 50)
+        # Institutional zones alerts (order blocks)
+        ob_score = component_scores.get('institutional_zones', 50)
         if ob_score >= 80:
-            alerts.append("Order Blocks Extremely Strong - Significant institutional zones")
+            alerts.append("Institutional Zones Extremely Strong - Significant order block zones")
         elif ob_score <= 20:
-            alerts.append("❌ Order Blocks Extremely Weak - No significant institutional zones")
+            alerts.append("❌ Institutional Zones Extremely Weak - No significant order block zones")
         
         # Trend position alerts
         trend_score = component_scores.get('trend_position', 50)
@@ -4182,12 +4177,12 @@ class PriceStructureIndicators(BaseIndicator, DebugLoggingMixin):
         elif volume_score <= 20:
             alerts.append("❌ Volume Profile Extremely Weak - Volume divergence detected")
         
-        # Market structure alerts
-        structure_score = component_scores.get('market_structure', 50)
+        # Structure breaks alerts (market structure / BOS/CHoCH)
+        structure_score = component_scores.get('structure_breaks', 50)
         if structure_score >= 75:
-            alerts.append("Market Structure Extremely Strong - Clear structural pattern")
+            alerts.append("Structure Breaks Extremely Strong - Clear structural pattern")
         elif structure_score <= 25:
-            alerts.append("Market Structure Extremely Weak - Structural breakdown")
+            alerts.append("Structure Breaks Extremely Weak - Structural breakdown")
         
         # Range analysis alerts
         range_score = component_scores.get('range_analysis', 50)
