@@ -322,6 +322,211 @@ def _get_confidence_indicator(confidence: str) -> str:
         return "🟠 Low"
 
 
+def format_whale_activity(data: list, symbol: Optional[str] = None) -> str:
+    """
+    Format whale activity response with accumulation/distribution interpretation.
+
+    Provides smart money positioning insights based on whale percentage and net flows.
+    """
+    lines = ["🐋 **Whale Activity Monitor**\n"]
+
+    if symbol:
+        lines[0] = f"🐋 **{symbol} Whale Activity**\n"
+
+    if not data:
+        lines.append("_No whale activity data available._")
+        lines.append("\n**Interpretation:**")
+        lines.append("• Market may be quiet or data collection in progress")
+        lines.append(f"\n_Updated: {format_timestamp()}_")
+        return "\n".join(lines)
+
+    # If single symbol requested
+    if symbol and len(data) == 1:
+        item = data[0]
+        lines.extend(_format_single_whale_activity(item))
+    else:
+        # Multi-symbol view
+        lines.append("**📊 Whale Activity by Symbol:**\n")
+        for item in data[:10]:  # Limit to top 10
+            lines.extend(_format_whale_activity_entry(item))
+            lines.append("")
+
+        # Market-wide interpretation
+        lines.extend(_format_whale_market_interpretation(data))
+
+    lines.append(f"\n_Updated: {format_timestamp()}_")
+    return "\n".join(lines)
+
+
+def _format_single_whale_activity(data: dict) -> list[str]:
+    """Format detailed whale activity for a single symbol."""
+    lines = []
+
+    symbol = data.get("symbol", "UNKNOWN")
+    whale_vol = data.get("whale_volume_24h", 0)
+    total_vol = data.get("total_volume_24h", 0)
+    whale_pct = data.get("whale_percentage", 0)
+    large_orders = data.get("large_orders_count", 0)
+    accum_score = data.get("accumulation_score", 0)
+    dist_score = data.get("distribution_score", 0)
+    net_flow = data.get("net_flow", 0)
+
+    # Determine flow direction
+    if net_flow > 0:
+        flow_emoji = "📥"
+        flow_label = "Accumulation"
+        flow_color = "🟢"
+    elif net_flow < 0:
+        flow_emoji = "📤"
+        flow_label = "Distribution"
+        flow_color = "🔴"
+    else:
+        flow_emoji = "➡️"
+        flow_label = "Neutral"
+        flow_color = "🟡"
+
+    # Volume formatting
+    def fmt_usd(val: float) -> str:
+        if abs(val) >= 1e9:
+            return f"${val/1e9:.2f}B"
+        elif abs(val) >= 1e6:
+            return f"${val/1e6:.2f}M"
+        elif abs(val) >= 1e3:
+            return f"${val/1e3:.1f}K"
+        return f"${val:,.0f}"
+
+    lines.append(f"**Symbol:** {symbol}")
+    lines.append(f"**Whale Volume (24h):** {fmt_usd(whale_vol)}")
+    lines.append(f"**Total Volume (24h):** {fmt_usd(total_vol)}")
+    lines.append(f"**Whale Percentage:** {whale_pct:.1f}%")
+    lines.append(f"**Large Orders:** {large_orders}")
+    lines.append("")
+    lines.append(f"**{flow_emoji} Net Flow:** {flow_color} {fmt_usd(abs(net_flow))} ({flow_label})")
+    lines.append(f"**Accumulation Score:** {accum_score:.1f}/100")
+    lines.append(f"**Distribution Score:** {dist_score:.1f}/100")
+
+    # Smart money interpretation
+    lines.append("\n**📋 Smart Money Interpretation:**")
+
+    # Whale dominance analysis
+    if whale_pct >= 25:
+        lines.append("• 🐋 **Heavy whale presence** - Smart money highly active")
+        lines.append("• Price moves likely driven by institutional flows")
+    elif whale_pct >= 15:
+        lines.append("• 📊 **Moderate whale activity** - Institutional interest present")
+        lines.append("• Watch for continuation of current trend")
+    else:
+        lines.append("• 🦐 **Low whale activity** - Retail-dominated volume")
+        lines.append("• May see more volatile, less directional price action")
+
+    # Net flow interpretation
+    if net_flow > 0:
+        if accum_score > 70:
+            lines.append("• 🟢 **Strong accumulation signal** - Whales aggressively buying")
+            lines.append("• Consider: Bullish positioning may be warranted")
+        elif accum_score > 50:
+            lines.append("• 📈 **Moderate accumulation** - Smart money cautiously bullish")
+        else:
+            lines.append("• ➡️ **Slight accumulation** - Mixed signals from whales")
+    elif net_flow < 0:
+        if dist_score > 70:
+            lines.append("• 🔴 **Strong distribution signal** - Whales aggressively selling")
+            lines.append("• Consider: Defensive positioning may be prudent")
+        elif dist_score > 50:
+            lines.append("• 📉 **Moderate distribution** - Smart money cautiously bearish")
+        else:
+            lines.append("• ➡️ **Slight distribution** - Mixed signals from whales")
+
+    return lines
+
+
+def _format_whale_activity_entry(data: dict) -> list[str]:
+    """Format a single whale activity entry for multi-symbol view."""
+    lines = []
+
+    symbol = data.get("symbol", "UNKNOWN")
+    whale_pct = data.get("whale_percentage", 0)
+    net_flow = data.get("net_flow", 0)
+    whale_vol = data.get("whale_volume_24h", 0)
+    accum_score = data.get("accumulation_score", 0)
+    dist_score = data.get("distribution_score", 0)
+
+    # Flow direction
+    if net_flow > 0:
+        flow_emoji = "📥"
+        flow_label = "Accum"
+    elif net_flow < 0:
+        flow_emoji = "📤"
+        flow_label = "Dist"
+    else:
+        flow_emoji = "➡️"
+        flow_label = "Neutral"
+
+    # Whale presence indicator
+    if whale_pct >= 25:
+        whale_ind = "🐋🐋"
+    elif whale_pct >= 15:
+        whale_ind = "🐋"
+    else:
+        whale_ind = "🦐"
+
+    # Format volume
+    if abs(whale_vol) >= 1e6:
+        vol_str = f"${whale_vol/1e6:.1f}M"
+    elif abs(whale_vol) >= 1e3:
+        vol_str = f"${whale_vol/1e3:.0f}K"
+    else:
+        vol_str = f"${whale_vol:,.0f}"
+
+    # Dominant score
+    dominant = "A" if accum_score > dist_score else "D"
+    dominant_score = max(accum_score, dist_score)
+
+    lines.append(
+        f"**{symbol}** {whale_ind} | {whale_pct:.1f}% whale | "
+        f"{flow_emoji} {flow_label} | {vol_str} | {dominant}:{dominant_score:.0f}"
+    )
+
+    return lines
+
+
+def _format_whale_market_interpretation(data: list) -> list[str]:
+    """Generate market-wide whale interpretation."""
+    lines = ["\n**📊 Market Interpretation:**"]
+
+    # Aggregate metrics
+    accum_count = sum(1 for d in data if d.get("net_flow", 0) > 0)
+    dist_count = sum(1 for d in data if d.get("net_flow", 0) < 0)
+    total = len(data)
+
+    high_whale_pct = sum(1 for d in data if d.get("whale_percentage", 0) >= 20)
+    avg_whale_pct = sum(d.get("whale_percentage", 0) for d in data) / total if total else 0
+    total_net_flow = sum(d.get("net_flow", 0) for d in data)
+
+    # Market sentiment from whale flows
+    if accum_count > dist_count * 1.5:
+        lines.append("• 🟢 **Bullish whale sentiment** - Majority accumulating")
+        lines.append(f"• {accum_count}/{total} symbols showing net inflows")
+    elif dist_count > accum_count * 1.5:
+        lines.append("• 🔴 **Bearish whale sentiment** - Majority distributing")
+        lines.append(f"• {dist_count}/{total} symbols showing net outflows")
+    else:
+        lines.append("• 🟡 **Mixed whale sentiment** - Split between accumulation/distribution")
+        lines.append(f"• Accumulating: {accum_count}, Distributing: {dist_count}")
+
+    # Overall flow direction
+    if total_net_flow > 0:
+        lines.append(f"• 📥 Overall net inflow (smart money buying)")
+    elif total_net_flow < 0:
+        lines.append(f"• 📤 Overall net outflow (smart money selling)")
+
+    # Whale presence
+    if high_whale_pct >= 3:
+        lines.append(f"• 🐋 {high_whale_pct} symbols with heavy whale presence (>20%)")
+
+    return lines
+
+
 def register_advanced_tools(mcp):
     """Register all advanced analysis MCP tools."""
 
@@ -454,10 +659,80 @@ def register_advanced_tools(mcp):
 
         return add_disclaimer(formatted, short=True)
 
+    @mcp.tool()
+    async def get_whale_activity(symbol: Optional[str] = None) -> str:
+        """
+        Get whale activity monitoring data showing large trades and accumulation/distribution.
+
+        This tool tracks smart money flows by monitoring large trades (>$100K) and
+        aggregating them into whale activity metrics. Useful for:
+        - Identifying where institutional money is flowing
+        - Detecting accumulation (smart money buying) vs distribution (selling)
+        - Understanding market positioning from whale perspective
+
+        Key metrics provided:
+        - whale_volume_24h: Total volume from large trades in last 24h
+        - whale_percentage: What % of total volume comes from whales
+        - net_flow: Positive = accumulation (buying), Negative = distribution (selling)
+        - accumulation_score: 0-100 score indicating buying pressure
+        - distribution_score: 0-100 score indicating selling pressure
+
+        **Interpretation Guide:**
+        - High whale % (>20%) + positive net_flow = Strong bullish signal
+        - High whale % (>20%) + negative net_flow = Strong bearish signal
+        - Low whale % (<15%) = Retail-dominated, may see choppy action
+
+        Args:
+            symbol: Optional specific symbol (e.g., "BTCUSDT", "ETH").
+                   If not provided, returns whale activity across top symbols.
+
+        Returns:
+            Whale activity data with accumulation/distribution interpretation.
+        """
+        client = get_api_client()
+
+        # Build params
+        params = {"limit": 10}
+        if symbol:
+            sym = symbol.upper().strip()
+            if not sym.endswith("USDT"):
+                sym = sym.replace("/USDT", "").replace("-USDT", "") + "USDT"
+            params["symbol"] = sym
+
+        # Fetch whale activity data
+        result = await client.get("/api/whale-activity/activity", params=params)
+
+        if "error" in result:
+            return format_error(
+                result["error"],
+                "Check if VPS is online and whale activity collector is running."
+            )
+
+        # API returns a list directly
+        data = result if isinstance(result, list) else result.get("data", [])
+
+        if not data:
+            return format_error(
+                "No whale activity data available",
+                "Market data may still be loading. Try again in a few moments."
+            )
+
+        # Format response
+        normalized_symbol = None
+        if symbol:
+            normalized_symbol = symbol.upper().strip()
+            if not normalized_symbol.endswith("USDT"):
+                normalized_symbol = normalized_symbol + "USDT"
+
+        formatted = format_whale_activity(data, normalized_symbol)
+
+        return add_disclaimer(formatted, short=True)
+
 
 # Export for easy import
 __all__ = [
     "register_advanced_tools",
     "format_fusion_signal",
     "format_liquidation_zones",
+    "format_whale_activity",
 ]
