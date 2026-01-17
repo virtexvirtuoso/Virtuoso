@@ -1318,7 +1318,7 @@ class AlertManager:
                 self.logger.debug("pymemcache not available for signal caching")
                 return
             
-            cache = Client(('localhost', 11211), serde=serde.pickle_serde)
+            cache = Client(('127.0.0.1', 11211), serde=serde.pickle_serde)
             
             # Get existing signals
             existing = cache.get('analysis:signals')
@@ -1419,7 +1419,7 @@ class AlertManager:
                 from pymemcache.client.base import Client
                 from pymemcache import serde
 
-                cache = Client(('localhost', 11211), serde=serde.pickle_serde, connect_timeout=2, timeout=2)
+                cache = Client(('127.0.0.1', 11211), serde=serde.pickle_serde, connect_timeout=2, timeout=2)
                 try:
                     existing = cache.get('dashboard:alerts')
                     if not existing or not isinstance(existing, list):

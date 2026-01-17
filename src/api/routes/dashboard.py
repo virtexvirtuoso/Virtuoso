@@ -708,7 +708,7 @@ async def get_recent_alerts(limit: int = 50) -> List[Dict[str, Any]]:
             from pymemcache.client.base import Client
             from pymemcache import serde
 
-            cache = Client(('localhost', 11211), serde=serde.pickle_serde)
+            cache = Client(('127.0.0.1', 11211), serde=serde.pickle_serde)
             cached_alerts = cache.get('dashboard:alerts')
             cache.close()
 
