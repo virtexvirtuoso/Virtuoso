@@ -600,12 +600,13 @@ confluence:
         liquidity: 0.1
         smart_money_flow: 0.15
       price_structure:
-        support_resistance: 0.1667
-        order_blocks: 0.1667
-        trend_position: 0.1667
-        volume_profile: 0.1667
-        market_structure: 0.1667
-        range_analysis: 0.1667
+        support_resistance: 0.15
+        institutional_zones: 0.20    # Consolidated liquidity + order blocks
+        trend_position: 0.15
+        volume_profile: 0.15
+        structure_breaks: 0.15       # Market structure / BOS/CHoCH analysis
+        range_analysis: 0.10
+        fair_value_gaps: 0.10        # FVG/imbalance zones
       sentiment:
         funding_rate: 0.2
         liquidations: 0.2

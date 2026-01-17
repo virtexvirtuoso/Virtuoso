@@ -1333,7 +1333,8 @@ class InterpretationGenerator(IInterpretationService):
             message += ". Price oscillating near VWAP indicating equilibrium between buyers and sellers"
         
         # Add market structure insight with swing analysis
-        ms = safe_float_convert(components.get('market_structure', 50))
+        # Try both names for backward compatibility
+        ms = safe_float_convert(components.get('structure_breaks', components.get('market_structure', 50)))
         if ms > 65:
             message += ". Higher highs and higher lows confirming bullish structure"
             swing_strength = safe_float_convert(components.get('swing_strength', 50))
